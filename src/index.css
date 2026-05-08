@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* Custom Neon & Glow Utilities */
+@layer base {
+  :root {
+    --background: #050505;
+    --neon-red: #ef4444;
+    --neon-emerald: #10b981;
+  }
+
+  body {
+    @apply bg-[#050505] text-white antialiased selection:bg-red-500/30;
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom Glow Classes for "Progress" */
+@layer utilities {
+  .neon-border {
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.2), inset 0 0 5px rgba(239, 68, 68, 0.1);
+  }
+  
+  .neon-text {
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(239, 68, 68, 0.3);
+  }
+
+  /* Smooth scrolling for the TikTok feed later */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Background Animation for those glowing blobs */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 8s infinite ease-in-out;
+}
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
