@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Maximize, Volume2, Shield, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 // Ensure you import your webrtcConfig and supabase client
-import { webrtcConfig } from '../../../../config/webrtcConfig';
- import { supabase } from '../../../../lib/supabase';
+// Remove the // from these lines:
+import { webrtcConfig } from '../../../../config/webrtcConfig'; 
+import { supabase } from '../../../../lib/supabase';
 
 const VideoPlayer = ({ streamId, isHost = false }) => {
   const videoRef = useRef(null);
