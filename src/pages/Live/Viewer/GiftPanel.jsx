@@ -74,7 +74,7 @@ const GIFTS = useMemo(() => [
     { id: 'clap', name: 'Clap', price: 2, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Claptrap.glb', sound: `${SOUND_BASE_URL}clap.mp3` },
     { id: 'star', name: 'Star', price: 3, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Star.glb', sound: `${SOUND_BASE_URL}star.mp3` },
     { id: 'heart', name: 'Heart', price: 10, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Heart.glb', sound: `${SOUND_BASE_URL}heart.mp3` },
-    { id: 'pizza', name: 'Pizza', price: 30, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Pizza%3A0.glb', sound: `${SOUND_BASE_URL}pizza.mp3` },
+    { id: 'pizza', name: 'Pizza', price: 30, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Pizza.glb', sound: `${SOUND_BASE_URL}pizza.mp3` },
     { id: 'burger', name: 'Burger', price: 20, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Double%20Cheeseburger.glb', sound: `${SOUND_BASE_URL}burger.mp3` },
     { id: 'diamond', name: 'Diamond', price: 50, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/diamond.glb', sound: `${SOUND_BASE_URL}diamond.mp3` },
     { id: 'balloon', name: 'Balloon', price: 15, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Balloons.glb', sound: `${SOUND_BASE_URL}balloon.mp3` },
