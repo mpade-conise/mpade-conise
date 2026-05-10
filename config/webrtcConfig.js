@@ -8,10 +8,10 @@ export const webrtcConfig = {
       ],
     },
     {
-      // This is a public free relay provided by Metered
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
+      // These are the real details from your Metered table
+      urls: 'turn:standard.metered.ca:443', 
+      username: '28087eceaa61e6de7d551200', 
+      credential: 'KW6Vsm7ZTUwjjDWn', 
     },
   ],
   iceCandidatePoolSize: 10,
