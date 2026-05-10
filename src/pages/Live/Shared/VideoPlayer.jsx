@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 // Ensure you import your webrtcConfig and supabase client
 // Remove the // from these lines:
 import { webrtcConfig } from '../../../config/webrtcConfig';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../../lib/supabase';
 
 const VideoPlayer = ({ streamId, isHost = false }) => {
   const videoRef = useRef(null);
