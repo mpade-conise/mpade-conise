@@ -103,7 +103,7 @@ const ShareDrawer = ({ video, onClose }) => {
   );
 };
 
-const CommentDrawer = ({ videoId, onClose, user }) => {
+const CommentDrawer = ({ videoId, onClose, user, onCommentCountUpdate }) => {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [isFetching, setIsFetching] = useState(true);
@@ -115,14 +115,38 @@ const CommentDrawer = ({ videoId, onClose, user }) => {
       setIsFetching(true);
       const { data, error } = await supabase
         .from('video_comments')
-        .select('id, text, created_at, profiles:user_id(username, avatar_url)')
+        .select('id, text, created_at, user_id, profiles:user_id(username, avatar_url)')
         .eq('video_id', videoId)
         .order('created_at', { ascending: false });
 
       if (!error) setComments(data || []);
       setIsFetching(false);
     };
+
     fetchComments();
+
+    // REALTIME COMMENTS: Listen for new comments on this specific video
+    const commentChannel = supabase
+      .channel(`comments-${videoId}`)
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'video_comments', 
+        filter: `video_id=eq.${videoId}` 
+      }, async (payload) => {
+        // Fetch profile info for the new comment since payload only has raw data
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', payload.new.user_id)
+          .single();
+        
+        const fullComment = { ...payload.new, profiles: profile };
+        setComments(prev => [fullComment, ...prev]);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(commentChannel); };
   }, [videoId]);
 
   const postComment = async () => {
@@ -143,21 +167,12 @@ const CommentDrawer = ({ videoId, onClose, user }) => {
       if (error) throw error;
       
       if (data) { 
-        // 1. Update the local comments list (Instant visibility)
-        setComments(prev => [data, ...prev]); 
-        
-        // 2. Clear the input field
+        // Logic check: Realtime listener will catch the insert, but we clear input here
         setNewComment(""); 
-
-        // 3. Update the visual count on the VideoCard immediately
-        if (onCommentCountUpdate) {
-          onCommentCountUpdate();
-        }
+        if (onCommentCountUpdate) onCommentCountUpdate();
       }
     } catch (err) {
-      // Direct peer tip: If you still see this error, run the SQL 'DROP TRIGGER' 
-      // command we discussed to remove the 'follower_id' conflict.
-      console.error("Comment post failed. Check Supabase triggers for column errors:", err.message);
+      console.error("Comment post failed:", err.message);
     } finally {
       setIsPosting(false);
     }
@@ -327,7 +342,6 @@ const VideoCard = ({ video, currentUser }) => {
 
   useEffect(() => {
     const fetchStatus = async () => {
-      // Logic fix: Fetch both user status and latest global counts to prevent "0 on refresh"
       const [like, fav, follow, stats] = await Promise.all([
         currentUser ? supabase.from('video_likes').select('id').eq('video_id', video.id).eq('user_id', currentUser.id).maybeSingle() : Promise.resolve({ data: null }),
         currentUser ? supabase.from('favorites').select('id').eq('video_id', video.id).eq('user_id', currentUser.id).maybeSingle() : Promise.resolve({ data: null }),
@@ -341,7 +355,6 @@ const VideoCard = ({ video, currentUser }) => {
         setIsFollowing(!!follow.data);
       }
 
-      // Bug Fix: Update counts state with the actual database values on mount
       if (stats.data) {
         setCounts({
           likes: Number(stats.data.likes_count) || 0,
@@ -350,7 +363,27 @@ const VideoCard = ({ video, currentUser }) => {
         });
       }
     };
+    
     fetchStatus();
+
+    // REALTIME GLOBAL COUNTS: Listen for changes in the 'videos' table for this specific ID
+    const countChannel = supabase
+      .channel(`video-stats-${video.id}`)
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'videos', 
+        filter: `id=eq.${video.id}` 
+      }, (payload) => {
+        setCounts({
+          likes: payload.new.likes_count,
+          comments: payload.new.comments_count,
+          favorites: payload.new.favorites_count
+        });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(countChannel); };
   }, [video.id, video.user_id, currentUser]);
 
   useEffect(() => {
@@ -391,7 +424,7 @@ const VideoCard = ({ video, currentUser }) => {
       setIsLiked(res.updatedLiked);
       setCounts(prev => ({ ...prev, likes: res.newCount }));
     } catch (err) {
-      console.error("Like operation failed. Check Supabase 'video_likes' trigger.");
+      console.error("Like operation failed.");
     }
   };
 
@@ -407,6 +440,7 @@ const VideoCard = ({ video, currentUser }) => {
       console.error("Favorite operation failed:", err.message);
     }
   };
+
   return (
     <div 
       ref={containerRef} 
@@ -436,9 +470,7 @@ const VideoCard = ({ video, currentUser }) => {
             <Link 
               to={video?.user_id ? `/profile/${video.user_id}` : '#'} 
               onClick={(e) => {
-                if (!video?.user_id) {
-                  e.preventDefault();
-                }
+                if (!video?.user_id) e.preventDefault();
               }}
               className="block w-full h-full overflow-hidden rounded-full cursor-pointer active:scale-90 transition-transform"
             >
@@ -477,7 +509,16 @@ const VideoCard = ({ video, currentUser }) => {
       </div>
 
       <AnimatePresence>
-        {showComments && <CommentDrawer videoId={video.id} onClose={() => setShowComments(false)} user={currentUser} />}
+        {showComments && (
+          <CommentDrawer 
+            videoId={video.id} 
+            onClose={() => setShowComments(false)} 
+            user={currentUser} 
+            onCommentCountUpdate={() => {
+              setCounts(prev => ({ ...prev, comments: prev.comments + 1 }));
+            }}
+          />
+        )}
         {showShare && <ShareDrawer video={video} onClose={() => setShowShare(false)} />}
         {showSettings && <SettingsOverlay video={video} onClose={() => setShowSettings(false)} user={currentUser} onReport={() => handleReport(video.id, currentUser)} onNotInterested={() => handleNotInterested(video.id, currentUser)} />}
       </AnimatePresence>
@@ -485,7 +526,7 @@ const VideoCard = ({ video, currentUser }) => {
   );
 };
 
-// --- UPDATED FEED COMPONENT ---
+// --- UPDATED FEED COMPONENT WITH REALTIME VIDEO LIST ---
 
 const Feed = () => {
   const [videos, setVideos] = useState([]);
@@ -507,7 +548,29 @@ const Feed = () => {
       } catch (err) { console.error("Feed Initialization Error:", err); } 
       finally { setLoading(false); }
     };
+
     initFeed();
+
+    // REALTIME FEED: Listen for new videos or deletions globally
+    const feedChannel = supabase
+      .channel('global-feed')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'videos' }, async (payload) => {
+        // Fetch profile for the new video
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', payload.new.user_id)
+          .single();
+        
+        const newVideo = { ...payload.new, profiles: profile };
+        setVideos(prev => [newVideo, ...prev]);
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'videos' }, (payload) => {
+        setVideos(prev => prev.filter(v => v.id !== payload.old.id));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(feedChannel); };
   }, []);
 
   useEffect(() => {
