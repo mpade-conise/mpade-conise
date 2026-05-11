@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize, Volume2, Shield, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// FIXED IMPORTS: Points to the root of /src where your files actually live
 import { webrtcConfig } from '../../../config/webrtcConfig';
-import { supabase } from '../../../supabaseClient';
+import { supabase } from '../../../supabaseClient'; 
 
 const VideoPlayer = ({ streamId, isHost = false }) => {
   const videoRef = useRef(null);
@@ -19,15 +21,13 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
         pcRef.current = pc;
 
         pc.oniceconnectionstatechange = () => {
-          console.log("WebRTC State:", pc.iceConnectionState);
           setConnectionStatus(`State: ${pc.iceConnectionState}`);
           if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
             setIsConnected(true);
           }
         };
 
-        // --- ICE CANDIDATE LISTENER (The Missing Piece) ---
-        // Both Host and Viewer need to listen for each other's network info
+        // Listen for candidates from the OTHER party
         supabase
           .channel(`candidates-${streamId}`)
           .on('postgres_changes', { 
@@ -36,10 +36,10 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
             table: 'stream_candidates',
             filter: `stream_id=eq.${streamId}` 
           }, payload => {
+            // If we are host, add viewer candidates. If we are viewer, add host candidates.
             if (payload.new.is_host !== isHost) {
-              console.log("New ICE Candidate received!");
               pc.addIceCandidate(new RTCIceCandidate(payload.new.candidate))
-                .catch(e => console.error("Error adding candidate:", e));
+                .catch(e => console.error("Candidate Error:", e));
             }
           })
           .subscribe();
@@ -78,7 +78,6 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
 
         } else {
           pc.ontrack = (event) => {
-            console.log("Remote track received!");
             if (videoRef.current) videoRef.current.srcObject = event.streams[0];
           };
 
@@ -100,13 +99,13 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
           }
         }
 
-        // Send network info (ICE Candidates) to Supabase
+        // Send your network candidates to Supabase
         pc.onicecandidate = async (event) => {
           if (event.candidate) {
             await supabase.from('stream_candidates').insert({
               stream_id: streamId,
               candidate: event.candidate,
-              is_host: isHost
+              is_host: isHost // Matches your 'is_host' boolean column
             });
           }
         };
@@ -156,6 +155,7 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
         )}
       </AnimatePresence>
 
+      {/* Decorative Overlays */}
       <div className="absolute top-6 left-6 z-40 flex flex-col gap-2 pointer-events-none">
         {isHost && (
           <motion.div 
@@ -170,13 +170,6 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
         <div className="flex items-center gap-2 bg-black/40 backdrop-blur-xl px-3 py-1.5 rounded-full border border-white/10 w-fit">
           <Zap size={10} className="text-yellow-400 fill-yellow-400" />
           <span className="text-[9px] font-bold text-white/90">Ultra-Low Latency</span>
-        </div>
-      </div>
-
-      <div className="absolute top-6 right-6 z-40 flex items-center gap-3 pointer-events-none">
-        <div className="flex items-center gap-2 bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/5">
-           <div className={`w-1.5 h-1.5 ${isConnected ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-red-500'} rounded-full`} />
-           <span className="text-[9px] font-black uppercase tracking-tighter text-white">720p • Live</span>
         </div>
       </div>
     </div>
