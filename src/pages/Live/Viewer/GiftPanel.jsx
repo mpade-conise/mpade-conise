@@ -64,14 +64,14 @@ const GiftPanel = ({ streamId, onClose }) => {
   const [balance, setBalance] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [activeBigGift, setActiveBigGift] = useState(null);
-import { useMemo } from 'react';
+  
+  // 🔥 SHARED AUDIO REFERENCE TO BYPASS BROWSER BLOCKING
+  const audioRef = useRef(new Audio());
 
-// Since the files are in your public folder, we use relative paths.
-// In a React/Vercel project, anything in 'public' is served from the root '/'.
-const MODEL_BASE_URL = "/models/";
-const SOUND_BASE_URL = "/sounds/";
+  const MODEL_BASE_URL = "/models/";
+  const SOUND_BASE_URL = "/sounds/";
 
-const GIFTS = useMemo(() => [
+  const GIFTS = useMemo(() => [
     { id: 'rose', name: 'Rose', price: 1, model: `${MODEL_BASE_URL}Rose.glb`, sound: `${SOUND_BASE_URL}rose.mp3` },
     { id: 'fire', name: 'Campfire', price: 5, model: `${MODEL_BASE_URL}Campfire.glb`, sound: `${SOUND_BASE_URL}fire.mp3` },
     { id: 'weights', name: 'Flex', price: 3, model: `${MODEL_BASE_URL}Dumbell.glb`, sound: `${SOUND_BASE_URL}weights.mp3` },
@@ -105,7 +105,18 @@ const GIFTS = useMemo(() => [
     { id: 'shark', name: 'Shark', price: 1200, model: `${MODEL_BASE_URL}Shark.glb`, sound: `${SOUND_BASE_URL}shark.mp3` },
     { id: 'bunny', name: 'Bunny', price: 50, model: `${MODEL_BASE_URL}Bunnyears.glb`, sound: `${SOUND_BASE_URL}bunny.mp3` },
     { id: 'stag', name: 'Stag', price: 400, model: `${MODEL_BASE_URL}Stag.glb`, sound: `${SOUND_BASE_URL}stag.mp3` }
-], []);
+  ], []);
+
+  // 🔥 EFFECT TO UNLOCK AUDIO ON FIRST USER CLICK
+  useEffect(() => {
+    const unlock = () => {
+      audioRef.current.play().catch(() => {}); // Play empty/fail to unlock context
+      window.removeEventListener('click', unlock);
+    };
+    window.addEventListener('click', unlock);
+    return () => window.removeEventListener('click', unlock);
+  }, []);
+
   useEffect(() => {
     const fetchBalance = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -119,12 +130,12 @@ const GIFTS = useMemo(() => [
   const handleInstantSend = async (gift) => {
     if (isSending || balance < gift.price) return;
     
-    // 🔥 OPTIMIZED AUDIO PLAYBACK
-    const audio = new Audio(gift.sound);
-    audio.load(); // Forces immediate load from public folder
-    audio.play().catch(e => console.log("Audio play blocked by browser. Interaction required."));
+    // 🔥 PLAY VIA SHARED REFERENCE
+    const audio = audioRef.current;
+    audio.src = gift.sound;
+    audio.load();
+    audio.play().catch(e => console.log("Audio still blocked:", e.message));
 
-    // Close panel
     onClose?.(); 
     setIsSending(true);
 
@@ -153,17 +164,17 @@ const GIFTS = useMemo(() => [
     <>
       {activeBigGift && (
         <div className="fixed bottom-0 left-0 w-full h-1/2 z-[60] bg-gradient-to-t from-cyan-500/20 to-transparent pointer-events-none animate-in slide-in-from-bottom duration-700">
-           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48">
-              <Canvas camera={{ position: [0, 0, 5], fov: 45 }} gl={{ alpha: true }}>
-                <ambientLight intensity={2} />
-                <pointLight position={[10, 10, 10]} />
-                <Suspense fallback={null}>
-                   <GiftModel url={activeBigGift} />
-                   <ContactShadows position={[0, -1, 0]} opacity={0.6} scale={4} blur={2} />
-                </Suspense>
-                <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={10} />
-              </Canvas>
-           </div>
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48">
+               <Canvas camera={{ position: [0, 0, 5], fov: 45 }} gl={{ alpha: true }}>
+                 <ambientLight intensity={2} />
+                 <pointLight position={[10, 10, 10]} />
+                 <Suspense fallback={null}>
+                    <GiftModel url={activeBigGift} />
+                    <ContactShadows position={[0, -1, 0]} opacity={0.6} scale={4} blur={2} />
+                 </Suspense>
+                 <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={10} />
+               </Canvas>
+            </div>
         </div>
       )}
 
