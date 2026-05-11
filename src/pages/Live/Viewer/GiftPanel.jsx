@@ -64,45 +64,48 @@ const GiftPanel = ({ streamId, onClose }) => {
   const [balance, setBalance] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [activeBigGift, setActiveBigGift] = useState(null);
+import { useMemo } from 'react';
 
-const SOUND_BASE_URL = "https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/sounds/";
+// Since the files are in your public folder, we use relative paths.
+// In a React/Vercel project, anything in 'public' is served from the root '/'.
+const MODEL_BASE_URL = "/models/";
+const SOUND_BASE_URL = "/sounds/";
 
 const GIFTS = useMemo(() => [
-    { id: 'rose', name: 'Rose', price: 1, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Rose.glb', sound: `${SOUND_BASE_URL}rose.mp3` },
-    { id: 'fire', name: 'Campfire', price: 5, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Campfire.glb', sound: `${SOUND_BASE_URL}fire.mp3` },
-    { id: 'weights', name: 'Flex', price: 3, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Dumbell.glb', sound: `${SOUND_BASE_URL}weights.mp3` },
-    { id: 'clap', name: 'Clap', price: 2, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Claptrap.glb', sound: `${SOUND_BASE_URL}clap.mp3` },
-    { id: 'star', name: 'Star', price: 3, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Star.glb', sound: `${SOUND_BASE_URL}star.mp3` },
-    { id: 'heart', name: 'Heart', price: 10, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Heart.glb', sound: `${SOUND_BASE_URL}heart.mp3` },
-    { id: 'pizza', name: 'Pizza', price: 30, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Pizza.glb', sound: `${SOUND_BASE_URL}pizza.mp3` },
-    { id: 'burger', name: 'Burger', price: 20, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/DoubleCheeseburger.glb', sound: `${SOUND_BASE_URL}burger.mp3` },
-    { id: 'diamond', name: 'Diamond', price: 50, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/diamond.glb', sound: `${SOUND_BASE_URL}diamond.mp3` },
-    { id: 'balloon', name: 'Balloon', price: 15, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Balloons.glb', sound: `${SOUND_BASE_URL}balloon.mp3` },
-    { id: 'crown', name: 'Crown', price: 100, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Crown.glb', sound: `${SOUND_BASE_URL}crown.mp3` },
-    { id: 'guitar', name: 'Guitar', price: 150, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Guitar.glb', sound: `${SOUND_BASE_URL}guitar.mp3` },
-    { id: 'car', name: 'Car', price: 300, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/CARModel.glb', sound: `${SOUND_BASE_URL}54789481-car-start-engine-start-diesel-engine-car-start-490819.mp3` },
-    { id: 'drone', name: 'Drone', price: 400, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Drone.glb', sound: `${SOUND_BASE_URL}drone.mp3` },
-    { id: 'dj', name: 'DJ', price: 350, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/DJgear.glb', sound: `${SOUND_BASE_URL}dj.mp3` },
-    { id: 'castle', name: 'Castle', price: 2500, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/CastleFortress.glb', sound: `${SOUND_BASE_URL}castle.mp3`, big: true },
-    { id: 'lion', name: 'Lion', price: 5000, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Lion.glb', sound: `${SOUND_BASE_URL}lion.mp3`, big: true },
-    { id: 'money', name: 'Money Rain', price: 250, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Money.glb', sound: `${SOUND_BASE_URL}money.mp3` },
-    { id: 'helicopter', name: 'Helicopter', price: 4000, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Helicopter.glb', sound: `${SOUND_BASE_URL}helicopter.mp3`, big: true },
-    { id: 'ship', name: 'Cruise Ship', price: 3000, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Cruiseliner.glb', sound: `${SOUND_BASE_URL}ship.mp3`, big: true },
-    { id: 'dragon', name: 'Dragon', price: 10000, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/RedDragon.glb', sound: `${SOUND_BASE_URL}dragon.mp3`, big: true },
-    { id: 'universe', name: 'Universe', price: 15000, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/SolarSystem.glb', sound: `${SOUND_BASE_URL}universe.mp3`, big: true },
-    { id: 'space', name: 'Space', price: 12000, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/SpaceShuttle.glb', sound: `${SOUND_BASE_URL}space.mp3`, big: true },
-    { id: 'world', name: 'World', price: 8000, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/SimpleWorlds.glb', sound: `${SOUND_BASE_URL}world.mp3`, big: true },
-    { id: 'xwing', name: 'X-Wing', price: 5500, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/WingStarfighter.glb', sound: `${SOUND_BASE_URL}xwing.mp3`, big: true },
-    { id: 'cow', name: 'Cow', price: 120, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Cow.glb', sound: `${SOUND_BASE_URL}cow.mp3` },
-    { id: 'whale', name: 'Whale', price: 900, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Whale.glb', sound: `${SOUND_BASE_URL}whale.mp3` },
-    { id: 'horse', name: 'Horse', price: 350, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Horse.glb', sound: `${SOUND_BASE_URL}horse.mp3` },
-    { id: 'spider', name: 'Spider', price: 40, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Spider.glb', sound: `${SOUND_BASE_URL}spider.mp3` },
-    { id: 'wolf', name: 'Wolf', price: 600, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Wolf.glb', sound: `${SOUND_BASE_URL}wolf.mp3` },
-    { id: 'shark', name: 'Shark', price: 1200, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Shark.glb', sound: `${SOUND_BASE_URL}shark.mp3` },
-    { id: 'bunny', name: 'Bunny', price: 50, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Bunnyears.glb', sound: `${SOUND_BASE_URL}bunny.mp3` },
-    { id: 'stag', name: 'Stag', price: 400, model: 'https://wgzrebgvcqnvcstdpwsa.supabase.co/storage/v1/object/public/models/Stag.glb', sound: `${SOUND_BASE_URL}stag.mp3` }
+    { id: 'rose', name: 'Rose', price: 1, model: `${MODEL_BASE_URL}Rose.glb`, sound: `${SOUND_BASE_URL}rose.mp3` },
+    { id: 'fire', name: 'Campfire', price: 5, model: `${MODEL_BASE_URL}Campfire.glb`, sound: `${SOUND_BASE_URL}fire.mp3` },
+    { id: 'weights', name: 'Flex', price: 3, model: `${MODEL_BASE_URL}Dumbell.glb`, sound: `${SOUND_BASE_URL}weights.mp3` },
+    { id: 'clap', name: 'Clap', price: 2, model: `${MODEL_BASE_URL}Claptrap.glb`, sound: `${SOUND_BASE_URL}clap.mp3` },
+    { id: 'star', name: 'Star', price: 3, model: `${MODEL_BASE_URL}Star.glb`, sound: `${SOUND_BASE_URL}star.mp3` },
+    { id: 'heart', name: 'Heart', price: 10, model: `${MODEL_BASE_URL}Heart.glb`, sound: `${SOUND_BASE_URL}heart.mp3` },
+    { id: 'pizza', name: 'Pizza', price: 30, model: `${MODEL_BASE_URL}Pizza.glb`, sound: `${SOUND_BASE_URL}pizza.mp3` },
+    { id: 'burger', name: 'Burger', price: 20, model: `${MODEL_BASE_URL}DoubleCheeseburger.glb`, sound: `${SOUND_BASE_URL}burger.mp3` },
+    { id: 'diamond', name: 'Diamond', price: 50, model: `${MODEL_BASE_URL}diamond.glb`, sound: `${SOUND_BASE_URL}diamond.mp3` },
+    { id: 'balloon', name: 'Balloon', price: 15, model: `${MODEL_BASE_URL}Balloons.glb`, sound: `${SOUND_BASE_URL}balloon.mp3` },
+    { id: 'crown', name: 'Crown', price: 100, model: `${MODEL_BASE_URL}Crown.glb`, sound: `${SOUND_BASE_URL}crown.mp3` },
+    { id: 'guitar', name: 'Guitar', price: 150, model: `${MODEL_BASE_URL}Guitar.glb`, sound: `${SOUND_BASE_URL}guitar.mp3` },
+    { id: 'car', name: 'Car', price: 300, model: `${MODEL_BASE_URL}CARModel.glb`, sound: `${SOUND_BASE_URL}54789481-car-start-engine-start-diesel-engine-car-start-490819.mp3` },
+    { id: 'drone', name: 'Drone', price: 400, model: `${MODEL_BASE_URL}Drone.glb`, sound: `${SOUND_BASE_URL}drone.mp3` },
+    { id: 'dj', name: 'DJ', price: 350, model: `${MODEL_BASE_URL}DJgear.glb`, sound: `${SOUND_BASE_URL}dj.mp3` },
+    { id: 'castle', name: 'Castle', price: 2500, model: `${MODEL_BASE_URL}CastleFortress.glb`, sound: `${SOUND_BASE_URL}castle.mp3`, big: true },
+    { id: 'lion', name: 'Lion', price: 5000, model: `${MODEL_BASE_URL}Lion.glb`, sound: `${SOUND_BASE_URL}lion.mp3`, big: true },
+    { id: 'money', name: 'Money Rain', price: 250, model: `${MODEL_BASE_URL}Money.glb`, sound: `${SOUND_BASE_URL}money.mp3` },
+    { id: 'helicopter', name: 'Helicopter', price: 4000, model: `${MODEL_BASE_URL}Helicopter.glb`, sound: `${SOUND_BASE_URL}helicopter.mp3`, big: true },
+    { id: 'ship', name: 'Cruise Ship', price: 3000, model: `${MODEL_BASE_URL}Cruiseliner.glb`, sound: `${SOUND_BASE_URL}ship.mp3`, big: true },
+    { id: 'dragon', name: 'Dragon', price: 10000, model: `${MODEL_BASE_URL}RedDragon.glb`, sound: `${SOUND_BASE_URL}dragon.mp3`, big: true },
+    { id: 'universe', name: 'Universe', price: 15000, model: `${MODEL_BASE_URL}SolarSystem.glb`, sound: `${SOUND_BASE_URL}universe.mp3`, big: true },
+    { id: 'space', name: 'Space', price: 12000, model: `${MODEL_BASE_URL}SpaceShuttle.glb`, sound: `${SOUND_BASE_URL}space.mp3`, big: true },
+    { id: 'world', name: 'World', price: 8000, model: `${MODEL_BASE_URL}SimpleWorlds.glb`, sound: `${SOUND_BASE_URL}world.mp3`, big: true },
+    { id: 'xwing', name: 'X-Wing', price: 5500, model: `${MODEL_BASE_URL}WingStarfighter.glb`, sound: `${SOUND_BASE_URL}xwing.mp3`, big: true },
+    { id: 'cow', name: 'Cow', price: 120, model: `${MODEL_BASE_URL}Cow.glb`, sound: `${SOUND_BASE_URL}cow.mp3` },
+    { id: 'whale', name: 'Whale', price: 900, model: `${MODEL_BASE_URL}Whale.glb`, sound: `${SOUND_BASE_URL}whale.mp3` },
+    { id: 'horse', name: 'Horse', price: 350, model: `${MODEL_BASE_URL}Horse.glb`, sound: `${SOUND_BASE_URL}horse.mp3` },
+    { id: 'spider', name: 'Spider', price: 40, model: `${MODEL_BASE_URL}Spider.glb`, sound: `${SOUND_BASE_URL}spider.mp3` },
+    { id: 'wolf', name: 'Wolf', price: 600, model: `${MODEL_BASE_URL}Wolf.glb`, sound: `${SOUND_BASE_URL}wolf.mp3` },
+    { id: 'shark', name: 'Shark', price: 1200, model: `${MODEL_BASE_URL}Shark.glb`, sound: `${SOUND_BASE_URL}shark.mp3` },
+    { id: 'bunny', name: 'Bunny', price: 50, model: `${MODEL_BASE_URL}Bunnyears.glb`, sound: `${SOUND_BASE_URL}bunny.mp3` },
+    { id: 'stag', name: 'Stag', price: 400, model: `${MODEL_BASE_URL}Stag.glb`, sound: `${SOUND_BASE_URL}stag.mp3` }
 ], []);
-
   useEffect(() => {
     const fetchBalance = async () => {
       const { data: { user } } = await supabase.auth.getUser();
