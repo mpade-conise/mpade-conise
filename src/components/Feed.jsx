@@ -327,15 +327,28 @@ const VideoCard = ({ video, currentUser }) => {
 
   useEffect(() => {
     const fetchStatus = async () => {
-      if (!currentUser) return;
-      const [like, fav, follow] = await Promise.all([
-        supabase.from('video_likes').select('id').eq('video_id', video.id).eq('user_id', currentUser.id).maybeSingle(),
-        supabase.from('favorites').select('id').eq('video_id', video.id).eq('user_id', currentUser.id).maybeSingle(),
-        supabase.from('follows').select('id').eq('follower_id', currentUser.id).eq('following_id', video.user_id).maybeSingle()
+      // Logic fix: Fetch both user status and latest global counts to prevent "0 on refresh"
+      const [like, fav, follow, stats] = await Promise.all([
+        currentUser ? supabase.from('video_likes').select('id').eq('video_id', video.id).eq('user_id', currentUser.id).maybeSingle() : Promise.resolve({ data: null }),
+        currentUser ? supabase.from('favorites').select('id').eq('video_id', video.id).eq('user_id', currentUser.id).maybeSingle() : Promise.resolve({ data: null }),
+        currentUser ? supabase.from('follows').select('id').eq('follower_id', currentUser.id).eq('following_id', video.user_id).maybeSingle() : Promise.resolve({ data: null }),
+        supabase.from('videos').select('likes_count, comments_count, favorites_count').eq('id', video.id).single()
       ]);
-      setIsLiked(!!like.data);
-      setIsFavorited(!!fav.data);
-      setIsFollowing(!!follow.data);
+
+      if (currentUser) {
+        setIsLiked(!!like.data);
+        setIsFavorited(!!fav.data);
+        setIsFollowing(!!follow.data);
+      }
+
+      // Bug Fix: Update counts state with the actual database values on mount
+      if (stats.data) {
+        setCounts({
+          likes: Number(stats.data.likes_count) || 0,
+          comments: Number(stats.data.comments_count) || 0,
+          favorites: Number(stats.data.favorites_count) || 0
+        });
+      }
     };
     fetchStatus();
   }, [video.id, video.user_id, currentUser]);
@@ -378,16 +391,22 @@ const VideoCard = ({ video, currentUser }) => {
       setIsLiked(res.updatedLiked);
       setCounts(prev => ({ ...prev, likes: res.newCount }));
     } catch (err) {
-      console.error("Like operation failed. Check Supabase 'video_likes' trigger for incorrect 'follower_id' column usage.");
+      console.error("Like operation failed. Check Supabase 'video_likes' trigger.");
     }
   };
 
   const onFavorite = async (e) => {
-    const res = await handleFavorite(e, video.id, isFavorited, currentUser);
-    setIsFavorited(res);
-    setCounts(prev => ({ ...prev, favorites: res ? prev.favorites + 1 : Math.max(0, prev.favorites - 1) }));
+    try {
+      const res = await handleFavorite(e, video.id, isFavorited, currentUser);
+      setIsFavorited(res);
+      setCounts(prev => ({ 
+        ...prev, 
+        favorites: res ? prev.favorites + 1 : Math.max(0, prev.favorites - 1) 
+      }));
+    } catch (err) {
+      console.error("Favorite operation failed:", err.message);
+    }
   };
-
   return (
     <div 
       ref={containerRef} 
