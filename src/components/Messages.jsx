@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
-  Send, Mic, Video, Phone, Image, Smile, Search, MoreVertical, 
+  Send, Mic, VideoIcon, Phone, Image, Smile, Search, MoreVertical, 
   CheckCheck, Paperclip, X, Loader2, Heart, ThumbsUp, Trash2, 
   User, Settings, Shield, Bell, Zap, BarChart, Ghost
 } from 'lucide-react';
