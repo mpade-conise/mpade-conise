@@ -1,4 +1,3 @@
-// src/components/videoActions.js
 import { supabase } from '../supabaseClient';
 
 /**
@@ -10,12 +9,10 @@ export const handleLike = async (e, videoId, isLiked, currentLikes, user) => {
   if (e) e.stopPropagation();
   if (!user) return { updatedLiked: isLiked, newCount: currentLikes };
 
-  // Ensure we are working with numbers to avoid "01" string concatenation issues
   const startCount = Number(currentLikes) || 0;
 
   try {
     if (isLiked) {
-      // --- UNLIKE LOGIC ---
       const { error } = await supabase
         .from('video_likes')
         .delete()
@@ -28,12 +25,10 @@ export const handleLike = async (e, videoId, isLiked, currentLikes, user) => {
         newCount: Math.max(0, startCount - 1) 
       };
     } else {
-      // --- LIKE LOGIC ---
       const { error } = await supabase
         .from('video_likes')
         .insert({ video_id: videoId, user_id: user.id });
 
-      // Handle race conditions where user double-clicks
       if (error && (error.code === '23505' || error.code === '409')) {
         return { updatedLiked: true, newCount: startCount };
       }
@@ -50,10 +45,6 @@ export const handleLike = async (e, videoId, isLiked, currentLikes, user) => {
   }
 };
 
-/**
- * Optional: Use this to fetch the 'Truth' from the DB if the UI 
- * looks out of sync after a refresh.
- */
 export const getLatestVideoStats = async (videoId) => {
   const { data, error } = await supabase
     .from('videos')
@@ -116,9 +107,31 @@ export const handleFollow = async (e, followingId, isFollowing, user) => {
 };
 
 export const incrementView = async (videoId) => {
-  // Ensure your RPC name matches the SQL function created earlier
   const { error } = await supabase.rpc('increment_video_views', { video_id: videoId });
   if (error) console.error("View increment failed:", error.message);
+};
+
+// --- ALGORITHM & FEED CUSTOMIZATION ---
+
+/**
+ * FIXED: Export added to resolve build errors.
+ * Marks a video as "Not Interested" to refine the feed algorithm.
+ */
+export const handleNotInterested = async (videoId, user) => {
+  if (!user) return false;
+
+  try {
+    const { error } = await supabase
+      .from('video_not_interested')
+      .insert({ video_id: videoId, user_id: user.id });
+
+    if (error && error.code === '23505') return true;
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error("Not Interested failed:", err.message);
+    return false;
+  }
 };
 
 // --- SOCIAL & UTILITY ACTIONS ---
@@ -169,4 +182,14 @@ export const handleShare = async (e, video) => {
   } catch (err) {
     if (err.name !== 'AbortError') console.error("Share failed:", err);
   }
+};
+
+/**
+ * Placeholder for PayChangu integration.
+ * Redirects user to a tip/support page for the creator.
+ */
+export const handleSupportCreator = (creatorId) => {
+  // Logic for mobile money payment redirection (Airtel/TNM)
+  console.log(`Initiating support for creator: ${creatorId}`);
+  // window.location.href = `/tip/${creatorId}`;
 };
