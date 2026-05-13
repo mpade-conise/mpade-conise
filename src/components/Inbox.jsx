@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  MessageCircle, UserPlus, Heart, Send, Plus, Loader2, Search, Users, X, Play, Bell
+  MessageCircle, UserPlus, Heart, Send, Plus, Loader2, Search, Users, X, Play, Bell, ArrowLeft, Check
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatDistanceToNow } from 'date-fns';
@@ -9,7 +9,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const Inbox = () => {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate(); // For redirection
+  const navigate = useNavigate();
   const [liveStreams, setLiveStreams] = useState([]);
   const [activities, setActivities] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -20,6 +20,18 @@ const Inbox = () => {
   const [isActivityPanelOpen, setIsActivityPanelOpen] = useState(false);
 
   const channelRef = useRef(null);
+
+  // --- ACTIONS ---
+  const handleFollowBack = async (targetId) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
+    const { error } = await supabase
+      .from('followers')
+      .insert([{ follower_id: user.id, following_id: targetId }]);
+    
+    if (!error) fetchData(user.id);
+  };
 
   const getActivityIcon = (type) => {
     switch (type) {
@@ -55,8 +67,8 @@ const Inbox = () => {
         supabase.from('activities')
           .select(`
             *, 
-            actor:profiles!actor_id(avatar_url, username), 
-            videos!video_id(thumbnail_url, video_url)
+            actor:profiles!actor_id(id, avatar_url, username), 
+            videos!video_id(id, thumbnail_url, video_url)
           `)
           .eq('user_id', uid)
           .order('created_at', { ascending: false }),
@@ -110,7 +122,6 @@ const Inbox = () => {
     return () => { mounted = false; if (channelRef.current) supabase.removeChannel(channelRef.current); };
   }, []);
 
-  // Handler to redirect to the dedicated messaging page
   const openMessagingPage = (msg) => {
     const targetId = msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id;
     navigate(`/messaging?userId=${targetId}`);
@@ -121,6 +132,81 @@ const Inbox = () => {
   const unreadFollowers = activities.filter(a => a.type === 'follow' && !a.is_read);
   const unreadActivities = activities.filter(a => a.type !== 'follow' && !a.is_read);
   const followers = activities.filter(a => a.type === 'follow');
+  const nonFollowActivities = activities.filter(a => a.type !== 'follow');
+
+  // --- DRAWER COMPONENT ---
+  const ActivityDrawer = ({ isOpen, onClose, title, data, type }) => (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+          />
+          <motion.div 
+            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed inset-y-0 right-0 w-full max-w-md bg-[#0a0a0c] border-l border-white/5 z-[101] flex flex-col shadow-2xl"
+          >
+            <div className="p-4 flex items-center gap-4 border-b border-white/5 bg-black/40">
+              <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                <ArrowLeft size={24} />
+              </button>
+              <h2 className="text-lg font-black uppercase tracking-tight italic">{title}</h2>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-2 space-y-1 no-scrollbar">
+              {data.map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-white/5 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <img src={item.actor?.avatar_url} className="w-12 h-12 rounded-full object-cover border border-white/10" alt="" />
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/10 text-[#00f2ea]">
+                        {getActivityIcon(item.type)}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[14px] font-bold">@{item.actor?.username}</p>
+                      <p className="text-[12px] text-zinc-500">
+                        {item.type === 'follow' ? 'started following you' : 
+                         item.type === 'like' ? 'liked your video' : 'commented on your video'}
+                      </p>
+                      <p className="text-[10px] text-zinc-600 font-bold uppercase mt-1">
+                        {formatDistanceToNow(new Date(item.created_at))} ago
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {item.type === 'follow' ? (
+                    <button 
+                      onClick={() => handleFollowBack(item.actor_id)}
+                      className="bg-[#fe2c55] text-white text-[12px] font-black px-4 py-2 rounded-lg shadow-[0_4px_10px_rgba(254,44,85,0.3)] hover:scale-105 active:scale-95 transition-all"
+                    >
+                      Follow Back
+                    </button>
+                  ) : item.video_id && (
+                    <div onClick={() => navigate(`/video/${item.video_id}`)} className="w-12 h-16 rounded-lg bg-zinc-800 relative overflow-hidden group cursor-pointer border border-white/5">
+                      <img src={item.videos?.thumbnail_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform" alt="" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <Play size={16} fill="white" className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {data.length === 0 && (
+                <div className="h-full flex flex-col items-center justify-center text-zinc-600 space-y-2 opacity-50">
+                  <Bell size={48} />
+                  <p className="font-bold uppercase tracking-widest text-[11px]">Nothing to show</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
 
   return (
     <div className="flex flex-col h-screen bg-[#0a0a0c] text-white overflow-hidden font-sans">
@@ -131,8 +217,10 @@ const Inbox = () => {
       </header>
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
+        {/* Stories/Live Row */}
         <div className="flex gap-4 px-4 py-6 overflow-x-auto no-scrollbar border-b border-white/5">
-          <div className="flex flex-col items-center min-w-[72px]">
+           {/* ... Live Stream Mapping ... */}
+           <div className="flex flex-col items-center min-w-[72px]">
             <div className="w-[66px] h-[66px] rounded-full border border-dashed border-zinc-700 flex items-center justify-center bg-zinc-900/50 hover:border-[#00f2ea] transition-colors group">
               <Plus size={24} className="text-zinc-500 group-hover:text-[#00f2ea]" />
             </div>
@@ -140,20 +228,21 @@ const Inbox = () => {
           </div>
 
           {liveStreams.map((live) => (
-            <div key={live.id} onClick={() => window.location.href = `/watch-live/${live.id}`} className="flex flex-col items-center min-w-[72px] cursor-pointer">
+            <div key={live.id} onClick={() => navigate(`/watch-live/${live.id}`)} className="flex flex-col items-center min-w-[72px] cursor-pointer">
               <div className="relative p-[2px] rounded-full bg-gradient-to-tr from-[#00f2ea] via-[#fe2c55] to-[#FFD700] animate-pulse">
                 <div className="bg-[#0a0a0c] p-[2px] rounded-full">
-                  <img src={live.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${live.host_id}`} className="w-[58px] h-[58px] rounded-full object-cover border border-white/10" alt="avatar" />
+                  <img src={live.profiles?.avatar_url} className="w-[58px] h-[58px] rounded-full object-cover border border-white/10" alt="" />
                 </div>
-                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-[#fe2c55] border border-black rounded-sm px-1.5 text-[8px] text-white font-black shadow-[0_0_10px_#fe2c55]">LIVE</div>
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-[#fe2c55] border border-black rounded-sm px-1.5 text-[8px] text-white font-black">LIVE</div>
               </div>
               <span className="text-[11px] font-bold mt-2 truncate w-16 text-center text-zinc-300">@{live.profiles?.username}</span>
             </div>
           ))}
         </div>
 
+        {/* Action Tabs */}
         <div className="px-4 py-2 space-y-2 mt-2">
-          <div onClick={() => { setIsFollowerPanelOpen(true); markAsRead('follow'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 active:scale-[0.98] transition-transform">
+          <div onClick={() => { setIsFollowerPanelOpen(true); markAsRead('follow'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 active:scale-[0.98] transition-transform cursor-pointer">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-blue-500/20 border border-blue-500/50 rounded-full flex items-center justify-center text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]"><UserPlus size={22} /></div>
               <div>
@@ -164,7 +253,7 @@ const Inbox = () => {
             {unreadFollowers.length > 0 && <div className="bg-blue-500 text-white text-[10px] font-black px-2 py-1 rounded-md">{unreadFollowers.length}</div>}
           </div>
 
-          <div onClick={() => { setIsActivityPanelOpen(true); markAsRead('activity'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 active:scale-[0.98] transition-transform">
+          <div onClick={() => { setIsActivityPanelOpen(true); markAsRead('activity'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 active:scale-[0.98] transition-transform cursor-pointer">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-[#fe2c55]/20 border border-[#fe2c55]/50 rounded-full flex items-center justify-center text-[#fe2c55] shadow-[0_0_15px_rgba(254,44,85,0.3)]"><Heart size={22} fill="currentColor" /></div>
               <div>
@@ -176,27 +265,40 @@ const Inbox = () => {
           </div>
         </div>
 
-        <div className="mt-4 px-2">
+        {/* DM List */}
+        <div className="mt-4 px-2 pb-24">
           <h3 className="px-4 mb-2 text-[11px] font-black text-zinc-500 uppercase tracking-[0.2em]">Direct Messages</h3>
-          <div className="space-y-1">
-            {messages.map((msg) => (
-              <div key={msg.id} onClick={() => openMessagingPage(msg)} className="flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-white/5 cursor-pointer transition-colors group">
+          {messages.map((msg) => (
+             <div key={msg.id} onClick={() => openMessagingPage(msg)} className="flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-white/5 cursor-pointer transition-colors group">
                 <div className="relative">
-                  <img src={msg.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${msg.user_name}`} className="w-14 h-14 rounded-full object-cover border border-white/10" alt="avatar" />
+                  <img src={msg.profiles?.avatar_url} className="w-14 h-14 rounded-full object-cover border border-white/10" alt="" />
                   {msg.unread && <div className="absolute top-0 right-0 w-3 h-3 bg-[#00f2ea] rounded-full border-2 border-[#0a0a0c] shadow-[0_0_8px_#00f2ea]" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[15px] font-bold text-zinc-100 group-hover:text-[#00f2ea] transition-colors">{msg.user_name}</p>
-                  <p className={`text-[13px] truncate ${msg.unread ? 'text-white font-medium' : 'text-zinc-500'}`}>{msg.last_msg}</p>
+                  <p className="text-[15px] font-bold text-zinc-100 group-hover:text-[#00f2ea] transition-colors">{msg.profiles?.username}</p>
+                  <p className={`text-[13px] truncate ${msg.unread ? 'text-white font-medium' : 'text-zinc-500'}`}>{msg.content}</p>
                 </div>
                 <p className="text-[10px] font-bold text-zinc-600 uppercase">
-                  {msg.updated_at ? formatDistanceToNow(new Date(msg.updated_at), { addSuffix: false }) : ''}
+                  {formatDistanceToNow(new Date(msg.updated_at), { addSuffix: false })}
                 </p>
-              </div>
-            ))}
-          </div>
+             </div>
+          ))}
         </div>
       </div>
+
+      {/* --- DRAWERS --- */}
+      <ActivityDrawer 
+        isOpen={isFollowerPanelOpen} 
+        onClose={() => setIsFollowerPanelOpen(false)} 
+        title="Followers" 
+        data={followers} 
+      />
+      <ActivityDrawer 
+        isOpen={isActivityPanelOpen} 
+        onClose={() => setIsActivityPanelOpen(false)} 
+        title="Activity" 
+        data={nonFollowActivities} 
+      />
     </div>
   );
 };
