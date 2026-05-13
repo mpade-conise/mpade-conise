@@ -63,7 +63,7 @@ const Inbox = () => {
   const handleFollowBack = async (targetId) => {
     if (!currentUserId) return;
     const { error } = await supabase
-      .from('followers')
+      .from('follows')
       .insert([{ follower_id: currentUserId, following_id: targetId }]);
     if (!error) fetchData(currentUserId);
   };
