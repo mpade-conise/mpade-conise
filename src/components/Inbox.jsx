@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  MessageCircle, UserPlus, Heart, Send, Plus, Loader2, Search, Users, X, Play, Bell, ArrowLeft, Check
+  MessageCircle, UserPlus, Heart, Send, Plus, Loader2, Search, Users, X, Play, Bell, ArrowLeft, Check 
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatDistanceToNow } from 'date-fns';
@@ -20,7 +20,6 @@ const Inbox = () => {
 
   const channelRef = useRef(null);
 
-  // Use useCallback to prevent infinite loops in effects
   const fetchData = useCallback(async (uid) => {
     try {
       const [streamsRes, activitiesRes, messagesRes] = await Promise.all([
@@ -69,8 +68,23 @@ const Inbox = () => {
     if (!error) fetchData(currentUserId);
   };
 
+  /**
+   * FIX: Optimistic UI Update
+   * We update the local state 'is_read' immediately.
+   * This prevents the infinite loop caused by calling fetchData() 
+   * which would trigger a re-render and re-fetch.
+   */
   const markAsRead = async (typeGroup) => {
     if (!currentUserId) return;
+
+    // 1. Update local UI state immediately
+    setActivities(prev => prev.map(act => {
+        if (typeGroup === 'follow' && act.type === 'follow') return { ...act, is_read: true };
+        if (typeGroup === 'activity' && act.type !== 'follow') return { ...act, is_read: true };
+        return act;
+    }));
+
+    // 2. Perform database update silently
     const query = supabase
       .from('activities')
       .update({ is_read: true })
@@ -82,8 +96,7 @@ const Inbox = () => {
     } else {
       await query.neq('type', 'follow');
     }
-    // Only refresh data after update is complete
-    fetchData(currentUserId);
+    // No fetchData() call here to avoid loop!
   };
 
   useEffect(() => {
@@ -95,9 +108,20 @@ const Inbox = () => {
       setCurrentUserId(user.id);
       await fetchData(user.id);
       
+      // Real-time listener
       const channel = supabase.channel(`inbox-realtime-${user.id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'activities', filter: `user_id=eq.${user.id}` }, () => fetchData(user.id))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` }, () => fetchData(user.id))
+        .on('postgres_changes', { 
+            event: 'INSERT', // Only fetch on NEW items to prevent update loops
+            schema: 'public', 
+            table: 'activities', 
+            filter: `user_id=eq.${user.id}` 
+        }, () => fetchData(user.id))
+        .on('postgres_changes', { 
+            event: '*', 
+            schema: 'public', 
+            table: 'messages', 
+            filter: `receiver_id=eq.${user.id}` 
+        }, () => fetchData(user.id))
         .subscribe();
       channelRef.current = channel;
     };
@@ -147,6 +171,7 @@ const Inbox = () => {
                         <img 
                           src={item.actor.avatar_url} 
                           crossOrigin="anonymous" 
+                          referrerPolicy="no-referrer"
                           className="w-12 h-12 rounded-full object-cover border border-white/10" 
                           alt="" 
                         />
@@ -179,9 +204,9 @@ const Inbox = () => {
                       Follow Back
                     </button>
                   ) : item.video_id && (
-                    <div onClick={() => navigate(`/video/${item.video_id}`)} className="w-12 h-16 rounded-lg bg-zinc-800 relative overflow-hidden border border-white/5">
+                    <div onClick={() => navigate(`/video/${item.video_id}`)} className="w-12 h-16 rounded-lg bg-zinc-800 relative overflow-hidden border border-white/5 cursor-pointer">
                       {item.videos?.thumbnail_url && (
-                        <img src={item.videos.thumbnail_url} crossOrigin="anonymous" className="w-full h-full object-cover" alt="" />
+                        <img src={item.videos.thumbnail_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-full h-full object-cover" alt="" />
                       )}
                     </div>
                   )}
@@ -194,7 +219,6 @@ const Inbox = () => {
     </AnimatePresence>
   );
 
-  // Main UI Filter Logic
   const unreadFollowers = activities.filter(a => a.type === 'follow' && !a.is_read);
   const unreadActivities = activities.filter(a => a.type !== 'follow' && !a.is_read);
   const followers = activities.filter(a => a.type === 'follow');
@@ -204,7 +228,6 @@ const Inbox = () => {
 
   return (
     <div className="flex flex-col h-screen bg-[#0a0a0c] text-white overflow-hidden font-sans">
-      {/* ... Header remains the same ... */}
       <header className="px-4 pt-8 pb-4 flex items-center justify-between border-b border-white/5 bg-black/20 backdrop-blur-md">
         <Users size={24} className="text-[#00f2ea]" />
         <h1 className="text-xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-[#00f2ea] to-[#fe2c55]">Inbox</h1>
@@ -212,21 +235,19 @@ const Inbox = () => {
       </header>
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        {/* Story/Live Bar */}
         <div className="flex gap-4 px-4 py-6 overflow-x-auto no-scrollbar border-b border-white/5">
           {liveStreams.map((live) => (
-            <div key={live.id} onClick={() => navigate(`/watch-live/${live.id}`)} className="flex flex-col items-center min-w-[72px]">
+            <div key={live.id} onClick={() => navigate(`/watch-live/${live.id}`)} className="flex flex-col items-center min-w-[72px] cursor-pointer">
               <div className="relative p-[2px] rounded-full bg-gradient-to-tr from-[#00f2ea] to-[#fe2c55]">
-                <img src={live.profiles?.avatar_url} crossOrigin="anonymous" className="w-[58px] h-[58px] rounded-full object-cover" alt="" />
+                <img src={live.profiles?.avatar_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-[58px] h-[58px] rounded-full object-cover" alt="" />
               </div>
               <span className="text-[11px] font-bold mt-2 truncate w-16 text-center">@{live.profiles?.username}</span>
             </div>
           ))}
         </div>
 
-        {/* Buttons */}
         <div className="px-4 py-4 space-y-2">
-          <div onClick={() => { setIsFollowerPanelOpen(true); markAsRead('follow'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 cursor-pointer">
+          <div onClick={() => { setIsFollowerPanelOpen(true); markAsRead('follow'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 cursor-pointer hover:bg-white/10 transition-colors">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center"><UserPlus size={22} /></div>
               <p className="text-[14px] font-bold">New followers</p>
@@ -234,7 +255,7 @@ const Inbox = () => {
             {unreadFollowers.length > 0 && <div className="bg-blue-500 px-2 py-1 rounded-md text-[10px] font-black">{unreadFollowers.length}</div>}
           </div>
 
-          <div onClick={() => { setIsActivityPanelOpen(true); markAsRead('activity'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 cursor-pointer">
+          <div onClick={() => { setIsActivityPanelOpen(true); markAsRead('activity'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 cursor-pointer hover:bg-white/10 transition-colors">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-[#fe2c55]/20 text-[#fe2c55] rounded-full flex items-center justify-center"><Heart size={22} fill="currentColor" /></div>
               <p className="text-[14px] font-bold">Activity</p>
@@ -243,12 +264,11 @@ const Inbox = () => {
           </div>
         </div>
 
-        {/* Messages */}
         <div className="mt-4 px-2 pb-24">
           <h3 className="px-4 mb-2 text-[11px] font-black text-zinc-500 uppercase">Direct Messages</h3>
           {messages.map((msg) => (
              <div key={msg.id} onClick={() => navigate(`/messaging?userId=${msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id}`)} className="flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-white/5 cursor-pointer">
-                <img src={msg.profiles?.avatar_url} crossOrigin="anonymous" className="w-14 h-14 rounded-full object-cover border border-white/10" alt="" />
+                <img src={msg.profiles?.avatar_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-14 h-14 rounded-full object-cover border border-white/10" alt="" />
                 <div className="flex-1">
                   <p className="text-[15px] font-bold">{msg.profiles?.username}</p>
                   <p className="text-[13px] text-zinc-500 truncate">{msg.content}</p>
