@@ -418,52 +418,38 @@ const VideoCard = ({ video, currentUser }) => {
     setTimeout(() => setShowPlayIcon(false), 500);
   };
 
-  const onLike = async (e) => {
-    e.stopPropagation(); // Stop video from pausing when clicking like
-    
-    // 1. Optimistic UI update (makes the app feel instant)
-    const wasLiked = isLiked;
-    setIsLiked(!wasLiked);
-    setCounts(prev => ({ 
-      ...prev, 
-      likes: wasLiked ? Math.max(0, prev.likes - 1) : prev.likes + 1 
-    }));
+const onLike = async (e) => {
+  e.stopPropagation();
+  
+  // 1. Check if user is logged in
+  if (!currentUser) return alert("Please login to like!");
 
-    try {
-      if (!wasLiked) {
-        // CALL THE ATOMIC INCREMENT RPC
-        // This ensures if 2 people like at once, it becomes 2, not 1.
-        const { error } = await supabase.rpc('handle_video_like', { 
-          video_id_uuid: video.id 
-        });
-        
-        // Also record the individual like in the likes table
-        await supabase.from('video_likes').insert({ 
-          video_id: video.id, 
-          user_id: currentUser.id 
-        });
+  const wasLiked = isLiked;
+  
+  // 2. Optimistic UI: Make the heart change color immediately
+  setIsLiked(!wasLiked);
 
-        if (error) throw error;
-      } else {
-        // Handle Unlike
-        await supabase.from('video_likes')
-          .delete()
-          .eq('video_id', video.id)
-          .eq('user_id', currentUser.id);
-          
-        // Note: Your DB trigger should handle the decrement 
-        // or you can create a 'handle_video_unlike' RPC
-      }
-    } catch (err) {
-      console.error("Like operation failed. Rolling back UI.");
-      // Rollback UI if the database fails
-      setIsLiked(wasLiked);
-      setCounts(prev => ({ 
-        ...prev, 
-        likes: wasLiked ? prev.likes + 1 : Math.max(0, prev.likes - 1) 
-      }));
+  try {
+    if (!wasLiked) {
+      // Just insert the row. The SQL TRIGGER will update 'videos.likes_count' automatically.
+      const { error } = await supabase
+        .from('video_likes')
+        .insert({ video_id: video.id, user_id: currentUser.id });
+      if (error) throw error;
+    } else {
+      // Just delete the row. The SQL TRIGGER will handle the subtraction.
+      const { error } = await supabase
+        .from('video_likes')
+        .delete()
+        .eq('video_id', video.id)
+        .eq('user_id', currentUser.id);
+      if (error) throw error;
     }
-  };
+  } catch (err) {
+    console.error("Database sync failed:", err.message);
+    setIsLiked(wasLiked); // Rollback if error
+  }
+};
 
   const onFavorite = async (e) => {
     try {
