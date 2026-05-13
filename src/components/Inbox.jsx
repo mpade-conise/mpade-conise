@@ -26,7 +26,7 @@ const Inbox = () => {
     if (!user) return;
     
     const { error } = await supabase
-      .from('followers')
+      .from('follows')
       .insert([{ follower_id: user.id, following_id: targetId }]);
     
     if (!error) fetchData(user.id);
