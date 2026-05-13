@@ -419,12 +419,49 @@ const VideoCard = ({ video, currentUser }) => {
   };
 
   const onLike = async (e) => {
+    e.stopPropagation(); // Stop video from pausing when clicking like
+    
+    // 1. Optimistic UI update (makes the app feel instant)
+    const wasLiked = isLiked;
+    setIsLiked(!wasLiked);
+    setCounts(prev => ({ 
+      ...prev, 
+      likes: wasLiked ? Math.max(0, prev.likes - 1) : prev.likes + 1 
+    }));
+
     try {
-      const res = await handleLike(e, video.id, isLiked, counts.likes, currentUser);
-      setIsLiked(res.updatedLiked);
-      setCounts(prev => ({ ...prev, likes: res.newCount }));
+      if (!wasLiked) {
+        // CALL THE ATOMIC INCREMENT RPC
+        // This ensures if 2 people like at once, it becomes 2, not 1.
+        const { error } = await supabase.rpc('handle_video_like', { 
+          video_id_uuid: video.id 
+        });
+        
+        // Also record the individual like in the likes table
+        await supabase.from('video_likes').insert({ 
+          video_id: video.id, 
+          user_id: currentUser.id 
+        });
+
+        if (error) throw error;
+      } else {
+        // Handle Unlike
+        await supabase.from('video_likes')
+          .delete()
+          .eq('video_id', video.id)
+          .eq('user_id', currentUser.id);
+          
+        // Note: Your DB trigger should handle the decrement 
+        // or you can create a 'handle_video_unlike' RPC
+      }
     } catch (err) {
-      console.error("Like operation failed.");
+      console.error("Like operation failed. Rolling back UI.");
+      // Rollback UI if the database fails
+      setIsLiked(wasLiked);
+      setCounts(prev => ({ 
+        ...prev, 
+        likes: wasLiked ? prev.likes + 1 : Math.max(0, prev.likes - 1) 
+      }));
     }
   };
 
