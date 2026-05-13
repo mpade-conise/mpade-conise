@@ -298,19 +298,29 @@ const handleDownloadAction = async () => {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("Delete this video?")) return;
-    setIsProcessing('deleting');
-    try {
-      const { error } = await supabase.from('videos').delete().eq('id', video.id);
-      if (error) throw error;
-      if (onUpdate) onUpdate();
-      onClose();
-    } catch (err) {
-      alert("Delete failed.");
-    } finally {
-      setIsProcessing(null);
+  if (!window.confirm("Are you sure you want to delete this video? This cannot be undone.")) return;
+  
+  setIsProcessing('deleting');
+  try {
+    const { error } = await supabase
+      .from('videos')
+      .delete()
+      .eq('id', video.id);
+
+    if (error) {
+      console.error("Supabase Delete Error:", error.message, error.details);
+      throw error;
     }
-  };
+
+    // Successfully deleted
+    if (onUpdate) onUpdate();
+    onClose();
+  } catch (err) {
+    alert(`Delete failed: ${err.message || "Unknown error"}`);
+  } finally {
+    setIsProcessing(null);
+  }
+};
 
   return (
     <>
