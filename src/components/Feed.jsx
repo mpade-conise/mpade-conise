@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { Link } from 'react-router-dom';
 import { 
   Heart, MessageCircle, Share2, Music, UserPlus, Disc, 
@@ -225,27 +227,65 @@ const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUp
     </button>
   );
 
-  const handleDownloadAction = async () => {
-    if (!video.video_url) return alert("Video source not found.");
-    setIsProcessing('downloading');
-    try {
-      const response = await fetch(video.video_url);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Mpade_${video.id || 'video'}.mp4`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Download error", err);
-    } finally {
-      setIsProcessing(null);
-    }
-  };
+ // Move these outside the function or use a ref to avoid reloading FFmpeg every time
+const ffmpeg = new FFmpeg();
 
+const handleDownloadAction = async () => {
+  if (!video.video_url) return alert("Video source not found.");
+  
+  setIsProcessing('processing'); // Update status to show we are merging
+  
+  try {
+    // 1. Load FFmpeg if not already loaded
+    if (!ffmpeg.loaded) {
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+    }
+
+    // 2. Write both files to FFmpeg's virtual memory
+    // Replace 'video.music_url' with the actual property name in your database
+    const videoData = await fetchFile(video.video_url);
+    const audioData = await fetchFile(video.music_url || '/sounds/default_audio.mp3');
+
+    await ffmpeg.writeFile('input_video.mp4', videoData);
+    await ffmpeg.writeFile('input_audio.mp3', audioData);
+
+    // 3. Run the merge command
+    // This takes the video from stream 0 and audio from stream 1
+    await ffmpeg.exec([
+      '-i', 'input_video.mp4',
+      '-i', 'input_audio.mp3',
+      '-c:v', 'copy',      // Copy video without re-encoding (fast)
+      '-c:a', 'aac',       // Encode audio to AAC
+      '-map', '0:v:0',     // Map first file's video
+      '-map', '1:a:0',     // Map second file's audio
+      '-shortest',         // Match the duration of the shortest file
+      'output.mp4'
+    ]);
+
+    // 4. Read the resulting file and trigger download
+    const data = await ffmpeg.readFile('output.mp4');
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Mpade_Universe_${video.id || 'video'}.mp4`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("FFmpeg Processing Error:", err);
+    alert("Failed to process video with music. Check console for details.");
+  } finally {
+    setIsProcessing(null);
+  }
+};
   const handleShareAction = async () => {
     const url = `${window.location.origin}/video/${video.id}`;
     if (typeof navigator !== 'undefined' && navigator.share) {
