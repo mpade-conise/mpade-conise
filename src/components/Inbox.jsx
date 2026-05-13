@@ -25,8 +25,9 @@ const Inbox = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
+    // Updated table name to 'followers' to match your DB schema
     const { error } = await supabase
-      .from('follows')
+      .from('followers') 
       .insert([{ follower_id: user.id, following_id: targetId }]);
     
     if (!error) fetchData(user.id);
@@ -67,7 +68,7 @@ const Inbox = () => {
           .select(`
             *, 
             actor:profiles!actor_id(id, avatar_url, username), 
-            videos!video_id(id, thumbnail_url, video_url)
+            videos:video_id(id, thumbnail_url, video_url)
           `)
           .eq('user_id', uid)
           .order('created_at', { ascending: false }),
@@ -159,11 +160,10 @@ const Inbox = () => {
                 <div key={item.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-white/5 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      {/* Added crossOrigin="anonymous" */}
                       <img 
-                        src={item.actor?.avatar_url} 
+                        src={item.actor?.avatar_url || 'https://via.placeholder.com/150'} 
                         crossOrigin="anonymous" 
-                        className="w-12 h-12 rounded-full object-cover border border-white/10" 
+                        className="w-12 h-12 rounded-full object-cover border border-white/10 bg-zinc-800" 
                         alt="" 
                       />
                       <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/10 text-[#00f2ea]">
@@ -171,7 +171,7 @@ const Inbox = () => {
                       </div>
                     </div>
                     <div>
-                      <p className="text-[14px] font-bold">@{item.actor?.username}</p>
+                      <p className="text-[14px] font-bold">@{item.actor?.username || 'user'}</p>
                       <p className="text-[12px] text-zinc-500">
                         {item.type === 'follow' ? 'started following you' : 
                          item.type === 'like' ? 'liked your video' : 'commented on your video'}
@@ -191,9 +191,8 @@ const Inbox = () => {
                     </button>
                   ) : item.video_id && (
                     <div onClick={() => navigate(`/video/${item.video_id}`)} className="w-12 h-16 rounded-lg bg-zinc-800 relative overflow-hidden group cursor-pointer border border-white/5">
-                      {/* Added crossOrigin="anonymous" */}
                       <img 
-                        src={item.videos?.thumbnail_url} 
+                        src={item.videos?.thumbnail_url || 'https://via.placeholder.com/150'} 
                         crossOrigin="anonymous" 
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
                         alt="" 
@@ -239,7 +238,6 @@ const Inbox = () => {
             <div key={live.id} onClick={() => navigate(`/watch-live/${live.id}`)} className="flex flex-col items-center min-w-[72px] cursor-pointer">
               <div className="relative p-[2px] rounded-full bg-gradient-to-tr from-[#00f2ea] via-[#fe2c55] to-[#FFD700] animate-pulse">
                 <div className="bg-[#0a0a0c] p-[2px] rounded-full">
-                  {/* Added crossOrigin="anonymous" */}
                   <img 
                     src={live.profiles?.avatar_url} 
                     crossOrigin="anonymous" 
@@ -260,7 +258,7 @@ const Inbox = () => {
               <div className="w-12 h-12 bg-blue-500/20 border border-blue-500/50 rounded-full flex items-center justify-center text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]"><UserPlus size={22} /></div>
               <div>
                 <p className="text-[14px] font-bold">New followers</p>
-                <p className="text-[12px] text-zinc-500">{followers.length > 0 ? `${followers[0].actor?.username} & others` : 'No new followers'}</p>
+                <p className="text-[12px] text-zinc-500">{followers.length > 0 ? `${followers[0].actor?.username || 'someone'} & others` : 'No new followers'}</p>
               </div>
             </div>
             {unreadFollowers.length > 0 && <div className="bg-blue-500 text-white text-[10px] font-black px-2 py-1 rounded-md">{unreadFollowers.length}</div>}
@@ -283,11 +281,10 @@ const Inbox = () => {
           {messages.map((msg) => (
              <div key={msg.id} onClick={() => openMessagingPage(msg)} className="flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-white/5 cursor-pointer transition-colors group">
                 <div className="relative">
-                  {/* Added crossOrigin="anonymous" */}
                   <img 
                     src={msg.profiles?.avatar_url} 
                     crossOrigin="anonymous" 
-                    className="w-14 h-14 rounded-full object-cover border border-white/10" 
+                    className="w-14 h-14 rounded-full object-cover border border-white/10 bg-zinc-800" 
                     alt="" 
                   />
                   {msg.unread && <div className="absolute top-0 right-0 w-3 h-3 bg-[#00f2ea] rounded-full border-2 border-[#0a0a0c] shadow-[0_0_8px_#00f2ea]" />}
