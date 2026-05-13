@@ -61,12 +61,33 @@ const Inbox = () => {
   }, []);
 
   const handleFollowBack = async (targetId) => {
-    if (!currentUserId) return;
+  if (!currentUserId) return;
+
+  try {
+    // .upsert handles the "Conflict" by ignoring duplicates automatically
+    // provided you have a unique constraint on these two columns
     const { error } = await supabase
       .from('follows')
-      .insert([{ follower_id: currentUserId, following_id: targetId }]);
-    if (!error) fetchData(currentUserId);
-  };
+      .upsert(
+        { 
+          follower_id: currentUserId, 
+          following_id: targetId 
+        }, 
+        { onConflict: 'follower_id,following_id' }
+      );
+
+    if (error) {
+      console.error("Error following user:", error.message);
+      return;
+    }
+
+    // Refresh UI to show the new state
+    await fetchData(currentUserId);
+    
+  } catch (err) {
+    console.error("Follow operation failed:", err);
+  }
+};
 
   /**
    * FIX: Optimistic UI Update
