@@ -12,12 +12,12 @@ import ShareProfile from './components/ShareProfile';
 import UniverseTools from './components/UniverseTools'; 
 import LiveUniverse from './components/LiveUniverse'; 
 import Payouts from './components/Payouts'; 
-import Settings from './components/Settings';
+import Settings from "./components/settings";
 import Security from './settings/Security'; 
 import Notifications from './settings/Notifications'; 
 import Language from './settings/Language'; 
 import Theme from './settings/Theme'; 
-import FindFriends from './components/Find-Friends';
+import FindFriends from "./components/find-friends";
 import { supabase } from './supabaseClient';
 
 import LiveRouter from './pages/Live/LiveRouter'; 
