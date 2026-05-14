@@ -17,7 +17,7 @@ const UniverseTools = () => {
   const [syncing, setSyncing] = useState(false);
   const [myVideos, setMyVideos] = useState([]);
   const [aiTip, setAiTip] = useState("Analyzing trends...");
-  const [selectedVideo, setSelectedVideo] = useState(null); // New state for Drawer
+  const [selectedVideo, setSelectedVideo] = useState(null); 
   
   const [stats, setStats] = useState({
     views: '0', followers: '0', likes: '0', revenue: '0', coins: '0'
@@ -279,14 +279,12 @@ const UniverseTools = () => {
       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-zinc-900/60 backdrop-blur-3xl border border-white/10 rounded-[40px] p-2 flex items-center justify-around shadow-2xl z-[100]">
         <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={20}/>} label="Home" />
         <NavButton active={activeTab === 'content'} onClick={() => setActiveTab('content')} icon={<ListVideo size={20}/>} label="Videos" />
-        <NavButton active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics'} icon={<BarChart3 size={20}/>} label="Insights" />
+        <NavButton active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} icon={<BarChart3 size={20}/>} label="Insights" />
         <NavButton active={activeTab === 'monetization'} onClick={() => setActiveTab('monetization')} icon={<DollarSign size={20}/>} label="Earn" />
       </div>
     </div>
   );
 };
-
-// ... (GeoProgress, NavButton, StatCard, ToolCard components remain the same)
 
 const GeoProgress = ({ label, percent }) => (
   <div>
