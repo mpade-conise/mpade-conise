@@ -2,16 +2,15 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   Heart, MessageCircle, Share2, Music, UserPlus, Disc, 
   Loader2, MoreHorizontal, Bookmark, X, Send,
   Download, HeartOff, Scissors, Users, Captions, EyeOff, Flag, Check,
   MessageSquare, Copy, ExternalLink, Play,
-  Repeat2, Trash2, ShieldAlert // Added these three for the settings logic
+  Repeat2, Trash2, ShieldAlert 
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useLocation } from 'react-router-dom'; // Added for redirection logic
 import { supabase } from '../supabaseClient';
 import { 
   handleLike, 
@@ -24,7 +23,7 @@ import {
   handleDownload
 } from './videoActions';
 
-// --- SUB-COMPONENTS (PRESERVED) ---
+// --- SUB-COMPONENTS ---
 
 const ActionButton = ({ icon, label, onClick }) => {
   const numericLabel = Number(label);
@@ -105,7 +104,7 @@ const ShareDrawer = ({ video, onClose }) => {
   );
 };
 
-const CommentDrawer = ({ videoId, onClose, user }) => {
+const CommentDrawer = ({ videoId, onClose, user, onCommentCountUpdate }) => {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [isFetching, setIsFetching] = useState(true);
@@ -145,21 +144,12 @@ const CommentDrawer = ({ videoId, onClose, user }) => {
       if (error) throw error;
       
       if (data) { 
-        // 1. Update the local comments list (Instant visibility)
         setComments(prev => [data, ...prev]); 
-        
-        // 2. Clear the input field
         setNewComment(""); 
-
-        // 3. Update the visual count on the VideoCard immediately
-        if (onCommentCountUpdate) {
-          onCommentCountUpdate();
-        }
+        if (onCommentCountUpdate) onCommentCountUpdate();
       }
     } catch (err) {
-      // Direct peer tip: If you still see this error, run the SQL 'DROP TRIGGER' 
-      // command we discussed to remove the 'follower_id' conflict.
-      console.error("Comment post failed. Check Supabase triggers for column errors:", err.message);
+      console.error("Comment post failed:", err.message);
     } finally {
       setIsPosting(false);
     }
@@ -205,9 +195,9 @@ const CommentDrawer = ({ videoId, onClose, user }) => {
 
 const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUpdate }) => {
   const [isProcessing, setIsProcessing] = React.useState(null);
-  
-  if (!video) return null; 
+  const ffmpeg = new FFmpeg();
 
+  if (!video) return null; 
   const isOwner = user?.id === video?.user_id;
 
   const ActionSquare = ({ icon, label, onClick, loading }) => (
@@ -217,136 +207,83 @@ const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUp
       className="flex flex-col items-center justify-center gap-2 p-4 bg-white/5 rounded-3xl active:scale-90 transition-all border border-white/5 disabled:opacity-50"
     >
       <div className="text-white">
-        {loading ? (
-          typeof Loader2 !== 'undefined' ? <Loader2 size={22} className="animate-spin text-red-500" /> : '...'
-        ) : (
-          icon || '?'
-        )}
+        {loading ? <Loader2 size={22} className="animate-spin text-red-500" /> : (icon || '?')}
       </div>
       <span className="text-[10px] font-black uppercase text-zinc-500 tracking-tighter">{label}</span>
     </button>
   );
 
-// Move these outside the function or use a ref to avoid reloading FFmpeg every time
-const ffmpeg = new FFmpeg();
-
-const handleDownloadAction = async () => {
-  if (!video.video_url) return alert("Video source not found.");
-  
-  setIsProcessing('processing'); 
-  
-  try {
-    // 1. Load FFmpeg with the essential workerURL to prevent file corruption
-    if (!ffmpeg.loaded) {
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-        // workerURL is critical for stable multi-threaded processing in the browser
-        workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
-      });
-    }
-
-    // 2. Fetch and write files to virtual memory
-    // Note: ensure video.music_url is the correct field from your database
-    const videoData = await fetchFile(video.video_url);
-    const audioData = await fetchFile(video.music_url || '/sounds/default_audio.mp3');
-
-    await ffmpeg.writeFile('input_video.mp4', videoData);
-    await ffmpeg.writeFile('input_audio.mp3', audioData);
-
-    // 3. Execute the merge command with standard MP3 encoding for maximum compatibility
-    await ffmpeg.exec([
-      '-i', 'input_video.mp4',
-      '-i', 'input_audio.mp3',
-      '-c:v', 'copy',      // Keep original video quality
-      '-c:a', 'libmp3lame', // Use MP3 codec to fix Windows Media Player "unsupported" errors
-      '-map', '0:v:0',     
-      '-map', '1:a:0',     
-      '-shortest',         
-      'output.mp4'
-    ]);
-
-    // 4. Generate the Blob and trigger the download
-    const data = await ffmpeg.readFile('output.mp4');
-    const blob = new Blob([data.buffer], { type: 'video/mp4' });
-    const url = window.URL.createObjectURL(blob);
-
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Mpade_Universe_${video.id || 'video'}.mp4`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error("FFmpeg Processing Error:", err);
-    alert("Video processing failed. Please ensure you are using a modern browser.");
-  } finally {
-    setIsProcessing(null);
-  }
-};
-  const handleShareAction = async () => {
-    const url = `${window.location.origin}/video/${video.id}`;
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      try { await navigator.share({ title: 'Mpade Universe', url }); } catch {}
-    } else {
-      navigator.clipboard?.writeText(url);
-      alert("Link copied!");
+  const handleDownloadAction = async () => {
+    if (!video.video_url) return alert("Video source not found.");
+    setIsProcessing('downloading'); 
+    try {
+      if (!ffmpeg.loaded) {
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+        await ffmpeg.load({
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+          workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+        });
+      }
+      const videoData = await fetchFile(video.video_url);
+      const audioData = await fetchFile(video.music_url || '/sounds/default_audio.mp3');
+      await ffmpeg.writeFile('input_video.mp4', videoData);
+      await ffmpeg.writeFile('input_audio.mp3', audioData);
+      await ffmpeg.exec([
+        '-i', 'input_video.mp4', '-i', 'input_audio.mp3',
+        '-c:v', 'copy', '-c:a', 'libmp3lame',
+        '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'output.mp4'
+      ]);
+      const data = await ffmpeg.readFile('output.mp4');
+      const blob = new Blob([data.buffer], { type: 'video/mp4' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Mpade_${video.id}.mp4`;
+      link.click();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsProcessing(null);
     }
   };
 
   const handleDelete = async () => {
-  if (!window.confirm("Are you sure you want to delete this video? This cannot be undone.")) return;
-  
-  setIsProcessing('deleting');
-  try {
-    const { error } = await supabase
-      .from('videos')
-      .delete()
-      .eq('id', video.id);
-
-    if (error) {
-      console.error("Supabase Delete Error:", error.message, error.details);
-      throw error;
+    if (!window.confirm("Delete this video forever?")) return;
+    setIsProcessing('deleting');
+    try {
+      const { error } = await supabase.from('videos').delete().eq('id', video.id);
+      if (error) throw error;
+      if (onUpdate) onUpdate();
+      onClose();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsProcessing(null);
     }
-
-    // Successfully deleted
-    if (onUpdate) onUpdate();
-    onClose();
-  } catch (err) {
-    alert(`Delete failed: ${err.message || "Unknown error"}`);
-  } finally {
-    setIsProcessing(null);
-  }
-};
+  };
 
   return (
     <>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/60 z-[100] backdrop-blur-[2px]" />
       <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="absolute bottom-0 left-0 right-0 bg-zinc-900 rounded-t-[2rem] pb-10 z-[101] border-t border-white/10">
         <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mt-3 mb-6" />
-        
         <div className="px-6 flex flex-col gap-2">
           <div className="grid grid-cols-4 gap-2 mb-4">
-            <ActionSquare icon={typeof Download !== 'undefined' ? <Download size={22}/> : null} label="Save" onClick={handleDownloadAction} loading={isProcessing === 'downloading'} />
-            <ActionSquare icon={typeof Share2 !== 'undefined' ? <Share2 size={22}/> : null} label="Share" onClick={handleShareAction} />
-            <ActionSquare icon={typeof Repeat2 !== 'undefined' ? <Repeat2 size={22}/> : null} label="Duet" onClick={() => alert("Soon!")} />
-            <ActionSquare icon={typeof Scissors !== 'undefined' ? <Scissors size={22}/> : null} label="Trim" onClick={() => alert("Editor opening...")} />
+            <ActionSquare icon={<Download size={22}/>} label="Save" onClick={handleDownloadAction} loading={isProcessing === 'downloading'} />
+            <ActionSquare icon={<Share2 size={22}/>} label="Share" onClick={() => handleShare(video)} />
+            <ActionSquare icon={<Repeat2 size={22}/>} label="Duet" onClick={() => alert("Soon!")} />
+            <ActionSquare icon={<Scissors size={22}/>} label="Trim" onClick={() => alert("Editor opening...")} />
           </div>
-
           <button onClick={() => { onNotInterested?.(video.id); onClose(); }} className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl text-white">
-            {typeof EyeOff !== 'undefined' && <EyeOff size={20} />} <span className="font-semibold text-sm">Not Interested</span>
+            <EyeOff size={20} /> <span className="font-semibold text-sm">Not Interested</span>
           </button>
-          
           <button onClick={() => { onReport?.(video.id); onClose(); }} className="flex items-center gap-4 p-4 bg-red-500/10 rounded-2xl text-red-500">
-            {typeof Flag !== 'undefined' && <Flag size={20} />} <span className="font-semibold text-sm">Report</span>
+            <Flag size={20} /> <span className="font-semibold text-sm">Report</span>
           </button>
-
           {isOwner && (
             <button onClick={handleDelete} disabled={isProcessing === 'deleting'} className="flex items-center gap-4 p-4 bg-zinc-800 border border-red-500/20 rounded-2xl text-red-500 mt-2">
-              {isProcessing === 'deleting' ? 'Deleting...' : (typeof Trash2 !== 'undefined' && <Trash2 size={20} />)}
+              {isProcessing === 'deleting' ? 'Deleting...' : <Trash2 size={20} />}
               <span className="font-semibold text-sm ml-2">Delete Video</span>
             </button>
           )}
@@ -355,6 +292,8 @@ const handleDownloadAction = async () => {
     </>
   );
 };
+
+// --- VIDEO CARD COMPONENT ---
 
 const VideoCard = ({ video, currentUser }) => {
   const [playing, setPlaying] = useState(false);
@@ -404,8 +343,23 @@ const VideoCard = ({ video, currentUser }) => {
         setPlaying(false);
       }
     }, { threshold: 0.6 });
+
     if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
+
+    return () => {
+      // --- CRITICAL FIX: STOP MEDIA ON UNMOUNT ---
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.src = ""; 
+        videoRef.current.load();
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current.load();
+      }
+      observer.disconnect();
+    };
   }, [video.id]);
 
   const togglePlay = () => {
@@ -428,9 +382,7 @@ const VideoCard = ({ video, currentUser }) => {
       const res = await handleLike(e, video.id, isLiked, counts.likes, currentUser);
       setIsLiked(res.updatedLiked);
       setCounts(prev => ({ ...prev, likes: res.newCount }));
-    } catch (err) {
-      console.error("Like operation failed. Check Supabase 'video_likes' trigger for incorrect 'follower_id' column usage.");
-    }
+    } catch (err) { console.error("Like error:", err); }
   };
 
   const onFavorite = async (e) => {
@@ -451,12 +403,7 @@ const VideoCard = ({ video, currentUser }) => {
 
       <AnimatePresence>
         {showPlayIcon && (
-          <motion.div 
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1.2, opacity: 0.8 }}
-            exit={{ scale: 1.5, opacity: 0 }}
-            className="absolute z-50 pointer-events-none"
-          >
+          <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1.2, opacity: 0.8 }} exit={{ scale: 1.5, opacity: 0 }} className="absolute z-50 pointer-events-none">
             <Play size={80} className="text-white fill-white opacity-40" />
           </motion.div>
         )}
@@ -465,20 +412,8 @@ const VideoCard = ({ video, currentUser }) => {
       <div className="absolute right-3 bottom-24 flex flex-col gap-5 items-center z-20 text-white">
         <div className="relative mb-4">
           <div className="w-12 h-12 rounded-full border-2 border-white overflow-hidden bg-zinc-800">
-            <Link 
-              to={video?.user_id ? `/profile/${video.user_id}` : '#'} 
-              onClick={(e) => {
-                if (!video?.user_id) {
-                  e.preventDefault();
-                }
-              }}
-              className="block w-full h-full overflow-hidden rounded-full cursor-pointer active:scale-90 transition-transform"
-            >
-              <img 
-                src={video.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${video.user_id}`} 
-                className="w-full h-full object-cover" 
-                alt="User Profile" 
-              />
+            <Link to={video?.user_id ? `/profile/${video.user_id}` : '#'} className="block w-full h-full">
+              <img src={video.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${video.user_id}`} className="w-full h-full object-cover" alt="" />
             </Link>
           </div>
           {!isFollowing && currentUser?.id !== video.user_id && (
@@ -495,7 +430,6 @@ const VideoCard = ({ video, currentUser }) => {
           <ActionButton icon={<Share2 size={35} />} label="Share" onClick={(e) => { e.stopPropagation(); setShowShare(true); }} />
           <MoreHorizontal size={30} onClick={(e) => { e.stopPropagation(); setShowSettings(true); }} className="cursor-pointer opacity-70" />
         </div>
-        
         <motion.div animate={playing ? { rotate: 360 } : {}} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} className="mt-4 w-11 h-11 rounded-full bg-zinc-800 border-[6px] border-zinc-700 flex items-center justify-center shadow-lg"><Disc size={20} /></motion.div>
       </div>
 
@@ -509,9 +443,9 @@ const VideoCard = ({ video, currentUser }) => {
       </div>
 
       <AnimatePresence>
-        {showComments && <CommentDrawer videoId={video.id} onClose={() => setShowComments(false)} user={currentUser} />}
+        {showComments && <CommentDrawer videoId={video.id} onClose={() => setShowComments(false)} user={currentUser} onCommentCountUpdate={() => setCounts(prev => ({...prev, comments: prev.comments + 1}))} />}
         {showShare && <ShareDrawer video={video} onClose={() => setShowShare(false)} />}
-        {showSettings && <SettingsOverlay video={video} onClose={() => setShowSettings(false)} user={currentUser} onReport={() => handleReport(video.id, currentUser)} onNotInterested={() => handleNotInterested(video.id, currentUser)} />}
+        {showSettings && <SettingsOverlay video={video} onClose={() => setShowSettings(false)} user={currentUser} onReport={() => handleReport(video.id, currentUser)} onNotInterested={() => handleNotInterested(video.id, currentUser)} onUpdate={() => window.location.reload()} />}
       </AnimatePresence>
     </div>
   );
@@ -526,17 +460,26 @@ const Feed = () => {
   const location = useLocation(); 
 
   useEffect(() => {
+    const stopAllMedia = () => {
+      document.querySelectorAll('video').forEach(v => { v.pause(); v.muted = true; });
+      document.querySelectorAll('audio').forEach(a => a.pause());
+    };
+    stopAllMedia();
+    return () => stopAllMedia();
+  }, []);
+
+  useEffect(() => {
     const initFeed = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         setCurrentUser(user);
         const { data, error } = await supabase
           .from('videos')
-          .select('*, likes_count, comments_count, favorites_count, profiles:user_id (username, avatar_url)')
+          .select('*, profiles:user_id (username, avatar_url)')
           .order('created_at', { ascending: false });
         if (error) throw error;
         setVideos(data || []);
-      } catch (err) { console.error("Feed Initialization Error:", err); } 
+      } catch (err) { console.error("Feed error:", err); } 
       finally { setLoading(false); }
     };
     initFeed();
@@ -547,9 +490,7 @@ const Feed = () => {
       const targetId = location.state.scrollToId;
       setTimeout(() => {
         const element = document.getElementById(`video-${targetId}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'auto', block: 'start' });
-        }
+        if (element) element.scrollIntoView({ behavior: 'auto', block: 'start' });
       }, 100);
     }
   }, [loading, videos, location]);
