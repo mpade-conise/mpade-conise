@@ -72,7 +72,7 @@ const GiftPanel = ({ streamId, onClose }) => {
     { id: 'clap', name: 'Clap', price: 2, model: '/models/Claptrap.glb', sound: '/sound/clap.mp3' },
     { id: 'star', name: 'Star', price: 3, model: '/models/Star.glb', sound: '/sound/star.mp3' },
     { id: 'heart', name: 'Heart', price: 10, model: '/models/Heart.glb', sound: '/sound/heart.mp3' },
-    { id: 'pizza', name: 'Pizza', price: 30, model: '/models/Pizza%3A0.glb', sound: '/sound/pizza.mp3' },
+    { id: 'pizza', name: 'Pizza', price: 30, model: '/models/Pizza.glb', sound: '/sound/pizza.mp3' },
     { id: 'burger', name: 'Burger', price: 20, model: '/models/Double Cheeseburger.glb', sound: '/sound/burger.mp3' },
     { id: 'diamond', name: 'Diamond', price: 50, model: '/models/diamond.glb', sound: '/sound/diamond.mp3' },
     { id: 'balloon', name: 'Balloon', price: 15, model: '/models/Balloons.glb', sound: '/sound/balloon.mp3' },
