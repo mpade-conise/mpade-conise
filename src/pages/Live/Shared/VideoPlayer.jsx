@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Maximize, Volume2, Shield, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 // Import your configured supabase client instance here
-import { supabase } from '../../../supabase';
+import { supabase } from '../../../supabaseClient';
+
 
 const VideoPlayer = ({ streamId, isHost = false }) => {
   const videoRef = useRef(null);
