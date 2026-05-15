@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
-import { 
-  Users, Gift, BarChart3, Share2, Clock, 
-  MessageCircle, Settings, ShieldAlert, List, 
-  HelpCircle, BarChart, Heart, Smile, X, Check,
-  UserPlus, Swords, Mic, MicOff, Video, VideoOff, Layers
+import { 
+  Users, Gift, BarChart3, Share2, Clock, 
+  MessageCircle, Settings, ShieldAlert, List, 
+  HelpCircle, BarChart, Heart, Smile, X, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -14,216 +13,281 @@ import HostControls from './HostControls';
 import ChatBox from '../Shared/ChatBox';
 import LiveAnalyticsPanel from './HostAnalytics';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
-import StreamHeader from '../Shared/StreamHeader'; 
-import BattleOverlay from './BattleOverlay'; // New: Battle Logic Component
+import StreamHeader from '../Shared/StreamHeader'; 
 
 const StreamDashboard = () => {
-  const { streamId } = useParams();
-  const navigate = useNavigate();
-  const videoRef = useRef(null);
-  
-  // --- CORE STATE ---
-  const [streamData, setStreamData] = useState(null);
-  const [viewers, setViewers] = useState([]);
-  const [reactions, setReactions] = useState([]); 
-  const [activeGift, setActiveGift] = useState(null);
-  
-  // --- UI & FEATURE MODES ---
-  const [activePanel, setActivePanel] = useState(null); // 'analytics', 'settings', 'guests', 'battle'
-  const [isBattleMode, setIsBattleMode] = useState(false);
-  const [isGuestMode, setIsGuestMode] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isCameraOff, setIsCameraOff] = useState(false);
+  const { streamId } = useParams();
+  const navigate = useNavigate();
+  const videoRef = useRef(null);
+  
+  // --- STATE MANAGEMENT ---
+  const [streamData, setStreamData] = useState(null);
+  const [viewers, setViewers] = useState([]);
+  const [reactions, setReactions] = useState([]); 
+  const [activeGift, setActiveGift] = useState(null);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
-  // --- DATA FETCH & REALTIME --- (Logic remains same as your original)
-  useEffect(() => {
-    let isMounted = true;
-    const channel = supabase.channel(`live_room_${streamId}`);
-    // ... (Your existing fetchAndSubscribe logic)
-    return () => { isMounted = false; supabase.removeChannel(channel); };
-  }, [streamId]);
+  // --- FEATURE STATE ---
+  const [joinAlert, setJoinAlert] = useState(null);
+  const [showSettings, setShowSettings] = useState(false); 
+  const [activePoll, setActivePoll] = useState(null); 
+  const [isSlowMode, setIsSlowMode] = useState(false);
+  const [chatFilter, setChatFilter] = useState('all');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(false);
 
-  // --- VIDEO SETUP ---
-  useEffect(() => {
-    let mediaStream = null;
-    async function startBroadcasting() {
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: 1280, height: 720 }, audio: true 
-        });
-        if (videoRef.current) videoRef.current.srcObject = mediaStream;
-      } catch (err) { console.error("Broadcasting failed", err); }
-    }
-    startBroadcasting();
-    return () => mediaStream?.getTracks().forEach(t => t.stop());
-  }, []);
+  // 1. DATA & REALTIME SUBSCRIPTIONS
+  useEffect(() => {
+    let isMounted = true;
+    const channel = supabase.channel(`live_room_${streamId}`);
 
-  if (!streamData) return <div className="h-screen bg-black flex items-center justify-center font-black italic text-red-500 animate-pulse">SYNCING WITH SERVER...</div>;
+    const fetchAndSubscribe = async () => {
+      const { data } = await supabase
+        .from('live_streams')
+        .select('*, host:host_id(username, avatar_url)')
+        .eq('id', streamId)
+        .single();
+      
+      if (data && isMounted) {
+        setStreamData(data);
+        setIsSlowMode(data.slow_mode_enabled || false);
+      }
 
-  return (
-    <div className="h-[100dvh] w-full bg-zinc-950 text-white overflow-hidden relative font-sans">
-      
-      {/* 1. TOP SECTION: THE STATUS BAR */}
-      <div className="absolute top-0 left-0 right-0 z-[60] p-4 pt-10 bg-gradient-to-b from-black/80 to-transparent">
-        <StreamHeader 
-          data={streamData} 
-          isHost={true} 
-          viewerCount={viewers.length}
-          onLeave={() => navigate('/live')}
-        />
-      </div>
+      channel
+        .on('postgres_changes', { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'live_streams', 
+          filter: `id=eq.${streamId}` 
+        }, (payload) => {
+          if (isMounted) setStreamData(payload.new);
+        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'live_gifts',
+          filter: `stream_id=eq.${streamId}`
+        }, (payload) => {
+          if (isMounted) handleNewGift(payload.new);
+        })
+        .on('broadcast', { event: 'reaction' }, ({ payload }) => {
+          if (isMounted) handleNewReaction(payload.type);
+        })
+        .on('presence', { event: 'sync' }, () => {
+          if (!isMounted) return;
+          const newState = channel.presenceState();
+          const viewerList = Object.values(newState).flat();
+          
+          setViewers((prevViewers) => {
+            if (viewerList.length > prevViewers.length) {
+              const newest = viewerList[viewerList.length - 1];
+              setJoinAlert(`${newest.username || 'Someone'} joined!`);
+              setTimeout(() => { if (isMounted) setJoinAlert(null); }, 3000);
+            }
+            return viewerList;
+          });
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED' && isMounted) {
+            await channel.track({ 
+              user_id: 'host', 
+              username: 'Host', 
+              online_at: new Date().toISOString() 
+            });
+          }
+        });
+    };
 
-      {/* 2. CENTER: THE DYNAMIC STAGE (SPLIT SCREEN LOGIC) */}
-      <div className="absolute inset-0 z-0 flex transition-all duration-500 bg-zinc-900">
-        <motion.div 
-          animate={{ width: (isBattleMode || isGuestMode) ? '50%' : '100%' }}
-          className="relative h-full overflow-hidden border-r border-white/5"
-        >
-           <video 
-            ref={videoRef} autoPlay muted playsInline 
-            className={`w-full h-full object-cover scale-x-[-1] ${isCameraOff ? 'hidden' : 'block'}`} 
-          />
-          {isCameraOff && <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-700 font-black tracking-widest uppercase italic">Camera Off</div>}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60 pointer-events-none" />
-        </motion.div>
+    fetchAndSubscribe();
 
-        {/* The Guest/Challenger Slot */}
-        <AnimatePresence>
-          {(isBattleMode || isGuestMode) && (
-            <motion.div 
-              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              className="w-1/2 h-full bg-zinc-800 relative"
-            >
-              <div className="absolute inset-0 flex items-center justify-center border-l border-cyan-500/30">
-                <p className="text-[10px] font-black uppercase text-zinc-500">Waiting for Guest...</p>
-              </div>
-              {isBattleMode && <BattleOverlay score={{ host: 450, challenger: 120 }} />}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, [streamId]);
 
-      {/* 3. CENTER OVERLAYS: GIFTS & REACTIONS */}
-      <div className="absolute inset-0 pointer-events-none z-40">
-        <AnimatePresence>
-          {activeGift && <GiftAlertOverlay gift={activeGift} />}
-        </AnimatePresence>
-        
-        {/* Reaction Fountain (Right Side) */}
-        <div className="absolute bottom-40 right-6 h-80 w-16 flex flex-col-reverse items-center">
-           {reactions.map(r => (
-            <motion.div key={r.id} initial={{ y: 0, opacity: 1 }} animate={{ y: -500, opacity: 0, x: Math.random() * 60 - 30 }} className="text-3xl mb-2">❤️</motion.div>
-          ))}
-        </div>
-      </div>
+  // --- VIDEO SETUP ---
+  useEffect(() => {
+    let mediaStream = null;
+    async function startBroadcasting() {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 1280, height: 720 }, 
+          audio: true 
+        });
+        if (videoRef.current) videoRef.current.srcObject = mediaStream;
+      } catch (err) { 
+        console.error("Broadcasting failed", err); 
+      }
+    }
+    startBroadcasting();
 
-      {/* 4. BOTTOM INTERACTION AREA */}
-      <div className="absolute bottom-0 left-0 right-0 z-50 p-4 space-y-4 pointer-events-none">
-        
-        {/* Transparent Floating Chat (Pushed left) */}
-        <div className="h-56 w-full max-w-[320px] pointer-events-auto">
-          <ChatBox streamId={streamId} isHost={true} transparent={true} />
-        </div>
+    return () => {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
-        {/* 5. THE PROFESSIONAL COMMAND DOCK */}
-        <div className="w-full bg-black/40 backdrop-blur-3xl rounded-[28px] border border-white/10 p-2 flex items-center justify-between pointer-events-auto shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
-          
-          {/* Left: Device Toggles */}
-          <div className="flex items-center gap-1">
-            <button onClick={() => setIsMuted(!isMuted)} className={`p-3 rounded-full transition-colors ${isMuted ? 'bg-red-500 text-white' : 'bg-white/5'}`}>
-              {isMuted ? <MicOff size={18}/> : <Mic size={18}/>}
-            </button>
-            <button onClick={() => setIsCameraOff(!isCameraOff)} className={`p-3 rounded-full transition-colors ${isCameraOff ? 'bg-red-500 text-white' : 'bg-white/5'}`}>
-              {isCameraOff ? <VideoOff size={18}/> : <Video size={18}/>}
-            </button>
-          </div>
+  const handleNewReaction = (type) => {
+    const id = Date.now();
+    setReactions(prev => [...prev, { id, type }]);
+    setTimeout(() => setReactions(prev => prev.filter(r => r.id !== id)), 2000);
+  };
 
-          {/* Center: High-End Feature Tabs */}
-          <div className="flex bg-white/5 rounded-full p-1 border border-white/5">
-            <button 
-              onClick={() => {setIsBattleMode(!isBattleMode); setIsGuestMode(false)}}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${isBattleMode ? 'bg-[#fe2c55] text-white shadow-lg shadow-red-500/20' : 'text-zinc-400 hover:text-white'}`}
-            >
-              <Swords size={16}/>
-              <span className="text-[10px] font-black uppercase tracking-widest">Battle</span>
-            </button>
-            <button 
-              onClick={() => {setIsGuestMode(!isGuestMode); setIsBattleMode(false)}}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${isGuestMode ? 'bg-cyan-500 text-white shadow-lg' : 'text-zinc-400 hover:text-white'}`}
-            >
-              <UserPlus size={16}/>
-              <span className="text-[10px] font-black uppercase tracking-widest">Guest</span>
-            </button>
-          </div>
+  const handleNewGift = (gift) => {
+    const giftData = {
+      id: gift.gift_id,
+      name: gift.gift_id.replace('_', ' '),
+      price: gift.price_total,
+      sender_name: "A supporter"
+    };
+    setActiveGift(giftData);
+    setTimeout(() => setActiveGift(null), 5000);
+  };
 
-          {/* Right: Menu Opener */}
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={() => setActivePanel('analytics')}
-              className="p-3 bg-white/5 rounded-full text-zinc-300 hover:text-red-500 transition-colors"
-            >
-              <BarChart3 size={18}/>
-            </button>
-            <button 
-              onClick={() => setActivePanel('settings')}
-              className="p-3 bg-white/5 rounded-full text-zinc-300"
-            >
-              <Settings size={18}/>
-            </button>
-          </div>
-        </div>
-      </div>
+  if (!streamData) return <div className="h-screen bg-black flex items-center justify-center font-black italic text-red-500 underline decoration-red-500/50 animate-pulse">CONNECTING TO UNIVERSE...</div>;
 
-      {/* 6. UNIVERSAL DRAWER (SLIDE UP PANELS) */}
-      <AnimatePresence>
-        {activePanel && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setActivePanel(null)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[100]"
-            />
-            <motion.div 
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="absolute bottom-0 left-0 right-0 bg-zinc-900 border-t border-white/10 rounded-t-[32px] z-[110] max-h-[85vh] overflow-y-auto"
-            >
-              <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto my-4" />
-              
-              <div className="p-6">
-                {activePanel === 'analytics' && <LiveAnalyticsPanel streamId={streamId} />}
-                {activePanel === 'settings' && (
-                  <div className="space-y-6 pb-12">
-                    <h2 className="text-xl font-black italic tracking-widest uppercase text-red-500">Stream Settings</h2>
-                    <div className="grid grid-cols-2 gap-4">
-                       <SettingsCard icon={<ShieldAlert/>} title="Moderation" desc="Blocked words & filters" />
-                       <SettingsCard icon={<List/>} title="Polls" desc="Create viewer engagement" />
-                       <SettingsCard icon={<Share2/>} title="Share" desc="Promote your stream" />
-                       <SettingsCard icon={<Smile/>} title="Beauty" desc="AR Face Filters" />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+  return (
+    <div className="h-[100dvh] w-full bg-black text-white overflow-hidden relative pb-20">
+      
+      <style>
+        {`
+          .hide-scrollbar::-webkit-scrollbar { display: none; }
+          .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+          .floating-chat-container { background: transparent !important; border: none !important; }
+        `}
+      </style>
 
-    </div>
-  );
+      {/* 📊 FULLSCREEN ANALYTICS OVERLAY */}
+      <AnimatePresence>
+        {showAnalytics && (
+          <motion.div 
+            initial={{ opacity: 0, y: "100%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="absolute inset-0 z-[100] bg-black overflow-y-auto hide-scrollbar"
+          >
+            <div className="sticky top-0 right-0 p-6 flex justify-end z-[110]">
+              <button 
+                onClick={() => setShowAnalytics(false)} 
+                className="bg-white/10 backdrop-blur-xl p-3 rounded-full border border-white/10 hover:bg-white/20 transition-all"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <LiveAnalyticsPanel streamId={streamId} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🎥 BACKGROUND: VIDEO */}
+      <div className="absolute inset-0 z-0 bg-zinc-900">
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          muted 
+          playsInline 
+          className={`relative z-10 w-full h-full object-cover scale-x-[-1] transition-opacity duration-700 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} 
+        />
+        <div className="absolute inset-0 z-20 bg-gradient-to-b from-black/60 via-transparent to-black/90 pointer-events-none" />
+      </div>
+
+      {/* 🔴 TOP: SHARED HEADER */}
+      <div className="absolute top-0 left-0 right-0 z-50 p-4 pt-12">
+        <StreamHeader 
+          data={streamData} 
+          isHost={true} 
+          viewerCount={viewers.length}
+          onLeave={() => navigate('/live')}
+        />
+
+        <div className="flex justify-end items-center mt-4">
+          <div className="flex gap-2">
+            <button className="p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 active:scale-90"><Share2 size={18}/></button>
+            <button onClick={() => setShowSettings(true)} className="p-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 active:scale-90"><Settings size={18}/></button>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT SIDE ACTION BAR */}
+      <div className="absolute right-4 top-1/3 flex flex-col gap-5 z-30">
+        {[
+          { icon: <BarChart size={20}/>, label: 'POLL', active: !!activePoll },
+          { icon: <HelpCircle size={20}/>, label: 'Q&A', active: false },
+          { icon: <Smile size={20}/>, label: 'FILTERS', active: false }
+        ].map((btn, i) => (
+          <button key={i} className="flex flex-col items-center gap-1 group">
+            <div className={`p-3 rounded-full border transition-all ${btn.active ? 'bg-red-500 border-red-400' : 'bg-black/40 backdrop-blur-md border-white/10'}`}>
+              {btn.icon}
+            </div>
+            <span className="text-[7px] font-black text-zinc-400 group-active:text-white">{btn.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* JOIN NOTIFICATION */}
+      <AnimatePresence>
+        {joinAlert && (
+          <motion.div initial={{ x: -100, opacity: 0 }} animate={{ x: 16, opacity: 1 }} exit={{ x: -100, opacity: 0 }}
+            className="absolute top-48 left-4 bg-white/10 backdrop-blur-xl px-3 py-1.5 rounded-lg border border-white/20 z-40 text-[10px] font-black uppercase tracking-wider">
+            ⚡ {joinAlert}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CENTER: GIFTS POPUP */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
+        <AnimatePresence>
+          {activeGift && <GiftAlertOverlay gift={activeGift} />}
+        </AnimatePresence>
+      </div>
+
+      {/* BOTTOM: CHAT & ACTIONS */}
+      <div className="absolute bottom-8 left-0 right-0 p-4 z-30 space-y-4">
+        
+        <div className="h-44 w-4/5 mask-fade-top overflow-y-auto hide-scrollbar floating-chat-container">
+          <ChatBox streamId={streamId} isHost={true} transparent={true} filter={chatFilter} />
+        </div>
+
+        {/* Reactions Stream */}
+        <div className="absolute bottom-32 right-4 h-64 w-12 pointer-events-none flex flex-col-reverse items-center">
+          {reactions.map(r => (
+            <motion.div key={r.id} initial={{ y: 0, opacity: 1, scale: 0.5 }} animate={{ y: -400, opacity: 0, scale: 1.5, x: Math.random() * 40 - 20 }} className="text-3xl mb-2">
+              ❤️
+            </motion.div>
+          ))}
+        </div>
+
+        {/* ANALYTICS & MODERATION PILLS */}
+        <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <div className="bg-yellow-500/20 backdrop-blur-md px-3 py-2 rounded-xl border border-yellow-500/30 flex items-center gap-2">
+                <Gift size={14} className="text-yellow-500" />
+                <span className="text-xs font-black tracking-tighter">
+                  {streamData.gift_goal_current || 0}
+                </span>
+              </div>
+              <button onClick={() => setShowAnalytics(true)} className="bg-white/5 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10 flex items-center gap-2">
+                <BarChart3 size={14} className="text-red-500" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Stats</span>
+              </button>
+            </div>
+            
+            <button className="p-2.5 bg-red-500/10 backdrop-blur-md rounded-full border border-red-500/20 active:bg-red-500 transition-colors">
+               <ShieldAlert size={18} className="text-red-500" />
+            </button>
+        </div>
+
+        {/* FINAL CONTROLS */}
+        <div className="bg-black/60 backdrop-blur-3xl p-2 rounded-[32px] border border-white/10 shadow-2xl shadow-red-500/10">
+          <HostControls streamId={streamId} />
+        </div>
+      </div>
+      
+    </div>
+  );
 };
-
-// Sub-component for Settings UI
-const SettingsCard = ({ icon, title, desc }) => (
-  <button className="flex flex-col gap-3 p-5 bg-white/5 rounded-2xl border border-white/5 hover:border-red-500/50 transition-all text-left group">
-    <div className="p-3 bg-red-500/10 rounded-xl text-red-500 group-hover:bg-red-500 group-hover:text-white transition-colors w-fit">
-      {React.cloneElement(icon, { size: 20 })}
-    </div>
-    <div>
-      <h3 className="text-xs font-black uppercase tracking-widest mb-1">{title}</h3>
-      <p className="text-[10px] text-zinc-500 leading-tight">{desc}</p>
-    </div>
-  </button>
-);
 
 export default StreamDashboard;
