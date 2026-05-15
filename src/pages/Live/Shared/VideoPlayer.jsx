@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize, Volume2, Shield, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-// Import your configured supabase client instance here
 import { supabase } from '../../../supabaseClient';
 
 const VideoPlayer = ({ streamId, isHost = false }) => {
@@ -17,134 +16,150 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
 
     const initializeConnection = async () => {
       try {
-        // 1. Force explicit global lookup to bypass production minifier scope issues
+        // 1. Safe global context lookup with standard reliable fallback
         const globalIce = window.webrtcConfig || globalThis.webrtcConfig;
-
-        if (!globalIce) {
-          console.warn("window.webrtcConfig not found. Falling back to public Google STUN server.");
-        }
-
-        // Use your specialized TURN config if found; otherwise fallback to basic STUN to prevent crashes
         const activeConfig = globalIce || {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+          ],
+          iceCandidatePoolSize: 10
         };
 
-        console.log("WebRTC PeerConnection initializing with config:", activeConfig);
+        console.log("WebRTC Initialization Config:", activeConfig);
 
-        // 2. Setup Peer Connection safely
         const pc = new RTCPeerConnection(activeConfig);
         pcRef.current = pc;
 
-        // Debug Logs for Connection State
+        // 2. IMMEDIATE CONNECTION STATE CHANGES LISTENER
         pc.oniceconnectionstatechange = () => {
-          console.log("WebRTC State:", pc.iceConnectionState);
+          console.log("👉 CRITICAL - ICE Connection State Changed to:", pc.iceConnectionState);
           setConnectionStatus(`State: ${pc.iceConnectionState}`);
           if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
             setIsConnected(true);
           }
         };
 
-        // --- 3. ICE CANDIDATE EXCHANGE CHANNEL ---
-        // Listen live for incoming ICE network pathways from the opposite user type
+        pc.onsignalingstatechange = () => {
+          console.log("👉 Signaling State Changed to:", pc.signalingState);
+        };
+
+        // 3. IMMEDIATE LOCAL ICE CANDIDATE GENERATION LISTENER
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            console.log("🚀 Local ICE Candidate generated! Saving to DB...");
+            const { error } = await supabase.from('viewer_sessions').insert({
+              stream_id: streamId,
+              candidate: event.candidate,
+              type: isHost ? 'host' : 'viewer'
+            });
+            if (error) console.error("❌ Error saving ICE candidate to Supabase:", error);
+          }
+        };
+
+        // 4. SUBSCRIBE TO INCOMING ICE CANDIDATES (Broadened table stream filter)
         candidateChannel = supabase
-          .channel(`candidates-${streamId}`)
+          .channel(`candidates-room-${streamId}`)
           .on('postgres_changes', { 
             event: 'INSERT', 
             schema: 'public', 
-            table: 'viewer_sessions',
-            filter: `stream_id=eq.${streamId}`
+            table: 'viewer_sessions'
           }, 
           payload => {
-            const targetType = isHost ? 'viewer' : 'host';
-            if (payload.new.type === targetType && payload.new.candidate) {
-              console.log(`Adding received ICE candidate from ${targetType}`);
-              pc.addIceCandidate(new RTCIceCandidate(payload.new.candidate))
-                .catch(e => console.error("Error setting remote ICE candidate:", e));
+            // Safe filter inside the callback to bypass Postgres string format errors
+            if (payload.new.stream_id === streamId) {
+              const targetType = isHost ? 'viewer' : 'host';
+              if (payload.new.type === targetType && payload.new.candidate) {
+                console.log(`📥 Incoming ICE candidate detected from target type [${targetType}]`);
+                pc.addIceCandidate(new RTCIceCandidate(payload.new.candidate))
+                  .catch(e => console.error("❌ Failed to attach remote ICE candidate:", e));
+              }
             }
           })
-          .subscribe();
+          .subscribe((status) => console.log(`📡 Candidate Channel Status:`, status));
 
         if (isHost) {
-          // HOST LOGIC
+          // ================== HOST WORKFLOW ==================
+          console.log("Setting up host multimedia stream...");
           localStream = await navigator.mediaDevices.getUserMedia({ 
             video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
             audio: true 
           });
           
           if (videoRef.current) videoRef.current.srcObject = localStream;
-          
-          // Add tracks to the connection
           localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-          // Create Offer and save to Supabase 'live_streams'
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
+          console.log("🔥 Host Local Description (Offer) set successfully.");
           
-          await supabase
+          const { error } = await supabase
             .from('live_streams')
             .update({ offer: offer, status: 'live' })
             .eq('id', streamId);
+          if (error) console.error("❌ Host failed to write WebRTC offer to database:", error);
 
-          // Listen for Answer updates from viewers
+          // Listen for incoming Answer updates from viewers
           streamChannel = supabase
-            .channel(`stream-host-${streamId}`)
+            .channel(`stream-host-signaling-${streamId}`)
             .on('postgres_changes', { 
               event: 'UPDATE', 
               schema: 'public', 
-              table: 'live_streams',
-              filter: `id=eq.${streamId}`
+              table: 'live_streams'
             }, 
             payload => {
-              if (payload.new.answer && !pc.currentRemoteDescription) {
-                console.log("Host received viewer WebRTC answer");
-                pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer));
+              if (payload.new.id === streamId && payload.new.answer && !pc.currentRemoteDescription) {
+                console.log("📥 Host detected viewer WebRTC answer payload! Applying...");
+                pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer))
+                  .catch(err => console.error("❌ Failed setting viewer Remote Description:", err));
               }
             })
-            .subscribe();
+            .subscribe((status) => console.log(`📡 Host Signaling Channel Status:`, status));
 
         } else {
-          // VIEWER LOGIC
+          // ================== VIEWER WORKFLOW ==================
+          console.log("Setting up viewer consumer stream...");
           pc.ontrack = (event) => {
-            console.log("Remote track received!");
+            console.log("🎬 SUCCESS: Remote video/audio track attached directly to viewer element!");
             if (videoRef.current) {
               videoRef.current.srcObject = event.streams[0];
             }
           };
 
-          // Get Host's offer from Supabase
-          const { data } = await supabase
+          // Fetch original offer from host
+          const { data, error } = await supabase
             .from('live_streams')
             .select('offer')
             .eq('id', streamId)
             .single();
 
+          if (error) console.error("❌ Viewer failed reading active host stream row:", error);
+
           if (data?.offer) {
+            console.log("🔥 Viewer found existing host offer in DB. Connecting...");
             await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
-            // Send answer back to host
-            await supabase
+            const { error: updateError } = await supabase
               .from('live_streams')
               .update({ answer: answer })
               .eq('id', streamId);
+            if (updateError) console.error("❌ Viewer failed writing WebRTC answer back to database:", updateError);
           }
 
-          // Realtime listener fallback for viewer if synchronization happens staggered
+          // Active fallback sync listener for viewers in case host re-generates mid-session
           streamChannel = supabase
-            .channel(`stream-viewer-${streamId}`)
+            .channel(`stream-viewer-signaling-${streamId}`)
             .on('postgres_changes', { 
               event: 'UPDATE', 
               schema: 'public', 
-              table: 'live_streams',
-              filter: `id=eq.${streamId}`
+              table: 'live_streams'
             }, 
             async (payload) => {
-              if (payload.new.offer && !pc.currentRemoteDescription) {
-                console.log("Viewer caught updated host WebRTC offer");
+              if (payload.new.id === streamId && payload.new.offer && !pc.currentRemoteDescription) {
+                console.log("📥 Viewer caught live host WebRTC offer update event!");
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.new.offer));
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
@@ -154,22 +169,11 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
                   .eq('id', streamId);
               }
             })
-            .subscribe();
+            .subscribe((status) => console.log(`📡 Viewer Signaling Channel Status:`, status));
         }
 
-        // Handle Local ICE Candidates generation (Saving them to database)
-        pc.onicecandidate = async (event) => {
-          if (event.candidate) {
-            await supabase.from('viewer_sessions').insert({
-              stream_id: streamId,
-              candidate: event.candidate,
-              type: isHost ? 'host' : 'viewer'
-            });
-          }
-        };
-
       } catch (err) {
-        console.error("WebRTC Error:", err);
+        console.error("💥 Critical WebRTC Initializer Exception:", err);
         setConnectionStatus("Connection Failed");
       }
     };
@@ -177,6 +181,7 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
     initializeConnection();
 
     return () => {
+      console.log("🧹 Cleaning up active stream audio/video tracks and open signaling channels.");
       if (localStream) localStream.getTracks().forEach(track => track.stop());
       if (pcRef.current) pcRef.current.close();
       if (streamChannel) supabase.removeChannel(streamChannel);
