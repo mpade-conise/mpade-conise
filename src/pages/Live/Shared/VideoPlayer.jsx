@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize, Volume2, Shield, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-// Ensure you import your webrtcConfig and supabase client
-// import { webrtcConfig } from '../config/webrtcConfig';
-// import { supabase } from '../lib/supabase';
+// Import your configured supabase client instance here
+import { supabase } from '../../../supabase';
 
 const VideoPlayer = ({ streamId, isHost = false }) => {
   const videoRef = useRef(null);
@@ -16,8 +15,17 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
 
     const initializeConnection = async () => {
       try {
-        // 1. Setup Peer Connection with your Metered TURN config
-        const pc = new RTCPeerConnection(webrtcConfig);
+        // Safe scope configuration check for both development and minified bundles
+        const activeConfig = typeof webrtcConfig !== 'undefined' 
+          ? webrtcConfig 
+          : (window.webrtcConfig || globalThis.webrtcConfig);
+
+        if (!activeConfig) {
+          throw new Error("WebRTC ICE configuration is missing from window context.");
+        }
+
+        // 1. Setup Peer Connection utilizing global or localized config safely
+        const pc = new RTCPeerConnection(activeConfig);
         pcRef.current = pc;
 
         // Debug Logs for Connection State
@@ -50,7 +58,7 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
             .update({ offer: offer, status: 'live' })
             .eq('id', streamId);
 
-          // Listen for Answer from viewers (simplified for 1-to-1 or broadcast)
+          // Listen for Answer from viewers
           supabase
             .channel(`stream-${streamId}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'live_streams' }, 
