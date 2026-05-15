@@ -51,7 +51,7 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
             console.log("🚀 Local ICE Candidate generated! Saving to DB...");
             const { error } = await supabase.from('viewer_sessions').insert({
               stream_id: streamId,
-              candidate: event.candidate,
+              candidate: event.candidate.toJSON(), // Map candidate details explicitly to JSON
               type: isHost ? 'host' : 'viewer'
             });
             if (error) console.error("❌ Error saving ICE candidate to Supabase:", error);
@@ -67,7 +67,6 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
             table: 'viewer_sessions'
           }, 
           payload => {
-            // Safe filter inside the callback to bypass Postgres string format errors
             if (payload.new.stream_id === streamId) {
               const targetType = isHost ? 'viewer' : 'host';
               if (payload.new.type === targetType && payload.new.candidate) {
@@ -94,11 +93,20 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
           await pc.setLocalDescription(offer);
           console.log("🔥 Host Local Description (Offer) set successfully.");
           
+          // CRITICAL FIX: Convert internal SDP classes explicitly into JSON format strings/objects
           const { error } = await supabase
             .from('live_streams')
-            .update({ offer: offer, status: 'live' })
+            .update({ 
+              offer: offer.toJSON(), 
+              status: 'live' 
+            })
             .eq('id', streamId);
-          if (error) console.error("❌ Host failed to write WebRTC offer to database:", error);
+            
+          if (error) {
+            console.error("❌ Host failed to write WebRTC offer to database:", error);
+          } else {
+            console.log("🚀 Success! Host offer written to Supabase without resolving to null.");
+          }
 
           // Listen for incoming Answer updates from viewers
           streamChannel = supabase
@@ -142,10 +150,12 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
+            // CRITICAL FIX: Convert Viewer Local Description to JSON structure 
             const { error: updateError } = await supabase
               .from('live_streams')
-              .update({ answer: answer })
+              .update({ answer: answer.toJSON() })
               .eq('id', streamId);
+              
             if (updateError) console.error("❌ Viewer failed writing WebRTC answer back to database:", updateError);
           }
 
@@ -163,9 +173,11 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.new.offer));
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
+                
+                // CRITICAL FIX: Staggered lifecycle updates mapped safely
                 await supabase
                   .from('live_streams')
-                  .update({ answer: answer })
+                  .update({ answer: answer.toJSON() })
                   .eq('id', streamId);
               }
             })
