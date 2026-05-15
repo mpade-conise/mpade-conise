@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize, Volume2, Shield, Zap } from 'lucide-react';
+import { Shield, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
 
@@ -9,13 +9,12 @@ const VideoPlayer = ({ streamId, isHost: initialIsHost = false }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing...');
 
-  // UNIVERSAL FIX: Auto-detect host mode if current window path is a dashboard URL
+  // Auto-detect host mode if current window path is a studio or dashboard URL
   const isHost = initialIsHost || window.location.pathname.includes('dashboard');
 
   useEffect(() => {
     let localStream = null;
-    let streamChannel = null;
-    let candidateChannel = null;
+    let signalingChannel = null;
 
     const initializeConnection = async () => {
       try {
@@ -29,24 +28,24 @@ const VideoPlayer = ({ streamId, isHost: initialIsHost = false }) => {
           iceCandidatePoolSize: 10
         };
 
-        console.log(`WebRTC Dynamic Initialization [Mode: ${isHost ? 'HOST' : 'VIEWER'}]:`, activeConfig);
+        console.log(`📡 Mpade WebRTC Pipeline [Mode: ${isHost ? 'HOST' : 'VIEWER'}]:`, activeConfig);
 
         const pc = new RTCPeerConnection(activeConfig);
         pcRef.current = pc;
 
-        // 1. Connection State Listeners
+        // 1. Connection State Monitor
         pc.oniceconnectionstatechange = () => {
-          console.log("👉 Connection State Changed to:", pc.iceConnectionState);
+          console.log("⚡ ICE State change noticed:", pc.iceConnectionState);
           setConnectionStatus(`State: ${pc.iceConnectionState}`);
           if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
             setIsConnected(true);
           }
         };
 
-        // 2. Candidate Creation Handler
+        // 2. Automated ICE Trickle Routing
         pc.onicecandidate = async (event) => {
           if (event.candidate) {
-            console.log("🚀 ICE Route Candidate found! Transmitting to signaling stream...");
+            console.log("🚀 Route Candidate harvested, trickling to session network...");
             await supabase.from('viewer_sessions').insert({
               stream_id: streamId,
               candidate: event.candidate.toJSON(),
@@ -55,30 +54,9 @@ const VideoPlayer = ({ streamId, isHost: initialIsHost = false }) => {
           }
         };
 
-        // 3. Realtime Mesh Signal Subscriptions
-        candidateChannel = supabase
-          .channel(`candidates-room-${streamId}`)
-          .on('postgres_changes', { 
-            event: 'INSERT', 
-            schema: 'public', 
-            table: 'viewer_sessions'
-          }, 
-          payload => {
-            if (payload.new.stream_id === streamId) {
-              const targetType = isHost ? 'viewer' : 'host';
-              if (payload.new.type === targetType && payload.new.candidate) {
-                console.log(`📥 Attaching received candidate data packet from target [${targetType}]`);
-                pc.addIceCandidate(new RTCIceCandidate(payload.new.candidate))
-                  .catch(e => console.error("❌ Failed to bind incoming route candidate:", e));
-              }
-            }
-          })
-          .subscribe();
-
         if (isHost) {
-          // ================== FORCE HOST WORKFLOW ==================
-          console.log("🎬 Host Workflow engaged. Gathering local multimedia tracks...");
-          
+          // ================== HOST HANDSHAKE WORKFLOW ==================
+          console.log("🎬 Grabbing hardware device access for host broadcast...");
           localStream = await navigator.mediaDevices.getUserMedia({ 
             video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
             audio: true 
@@ -87,94 +65,97 @@ const VideoPlayer = ({ streamId, isHost: initialIsHost = false }) => {
           if (videoRef.current) videoRef.current.srcObject = localStream;
           localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          console.log("✅ Host SDP Local Offer built successfully.");
+          // Monitor sessions room for any viewer requests
+          signalingChannel = supabase
+            .channel(`host-signaling-room-${streamId}`)
+            .on('postgres_changes', {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'viewer_sessions',
+              filter: `stream_id=eq.${streamId}`
+            }, async (payload) => {
+              // If a viewer initiates a session with a placeholder request, create a targeted offer
+              if (payload.new.type === 'viewer' && !payload.new.offer) {
+                console.log(`📥 New viewer detected (${payload.new.id}). Creating dedicated offer...`);
+                
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
 
-          const { error: offerWriteError } = await supabase
-            .from('live_streams')
-            .update({ 
-              offer: offer.toJSON(), 
-              status: 'live' 
+                await supabase
+                  .from('viewer_sessions')
+                  .update({ offer: offer.toJSON() })
+                  .eq('id', payload.new.id);
+              }
             })
-            .eq('id', streamId);
-
-          if (offerWriteError) {
-            console.error("❌ Host failed to write connection offer to DB:", offerWriteError);
-          } else {
-            console.log("🚀 SUCCESS: Connection configuration saved to database row.");
-          }
-
-          // Active listener tracking incoming viewer returns
-          streamChannel = supabase
-            .channel(`stream-host-signaling-${streamId}`)
-            .on('postgres_changes', { 
-              event: 'UPDATE', 
-              schema: 'public', 
-              table: 'live_streams'
-            }, 
-            payload => {
-              if (payload.new.id === streamId && payload.new.answer && !pc.currentRemoteDescription) {
-                console.log("📥 Viewer payload received! Completing WebRTC handshake...");
-                pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer))
-                  .catch(err => console.error("❌ Handshake execution error:", err));
+            .on('postgres_changes', {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'viewer_sessions',
+              filter: `stream_id=eq.${streamId}`
+            }, async (payload) => {
+              // When the specific viewer updates the row with an answer payload, wrap up the handshake
+              if (payload.new.type === 'viewer' && payload.new.answer && !pc.currentRemoteDescription) {
+                console.log("📥 Viewer answer payload received! Finalizing connection link...");
+                await pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer));
               }
             })
             .subscribe();
 
         } else {
-          // ================== VIEWER WORKFLOW ==================
-          console.log("🎬 Viewer Workflow engaged. Awaiting peer stream response matrix...");
-          
+          // ================== VIEWER HANDSHAKE WORKFLOW ==================
+          console.log("🎬 Viewer viewport mounting. Binding dynamic track assignments...");
           pc.ontrack = (event) => {
-            console.log("🎬 SUCCESS: Video signal attached directly to player element.");
+            console.log("🎬 SUCCESS: Media stream track fully received and bound to canvas component.");
             if (videoRef.current) {
               videoRef.current.srcObject = event.streams[0];
             }
           };
 
-          const { data } = await supabase
-            .from('live_streams')
-            .select('offer')
-            .eq('id', streamId)
+          // Step A: Create an entry in viewer_sessions to trigger the host update
+          console.log("📡 Registering live viewer handshake session token with database...");
+          const { data: sessionData, error: sessionError } = await supabase
+            .from('viewer_sessions')
+            .insert({
+              stream_id: streamId,
+              type: 'viewer'
+            })
+            .select()
             .single();
 
-          if (data?.offer) {
-            console.log("🔥 Offer discovered on initial load. Connecting...");
-            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-
-            await supabase
-              .from('live_streams')
-              .update({ answer: answer.toJSON() })
-              .eq('id', streamId);
+          if (sessionError) {
+            console.error("❌ Session token assignment failed:", sessionError);
+            return;
           }
 
-          streamChannel = supabase
-            .channel(`stream-viewer-signaling-${streamId}`)
-            .on('postgres_changes', { 
-              event: 'UPDATE', 
-              schema: 'public', 
-              table: 'live_streams'
-            }, 
-            async (payload) => {
-              if (payload.new.id === streamId && payload.new.offer && !pc.currentRemoteDescription) {
-                console.log("📥 Live host offer change caught via stream channel!");
+          const sessionId = sessionData.id;
+
+          // Step B: Listen specifically for the dedicated offer generated for this session
+          signalingChannel = supabase
+            .channel(`viewer-signaling-room-${sessionId}`)
+            .on('postgres_changes', {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'viewer_sessions',
+              filter: `id=eq.${sessionId}`
+            }, async (payload) => {
+              if (payload.new.offer && !pc.currentRemoteDescription) {
+                console.log("🔥 Target session offer detected. Building response handshake matrix...");
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.new.offer));
+                
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
+
                 await supabase
-                  .from('live_streams')
+                  .from('viewer_sessions')
                   .update({ answer: answer.toJSON() })
-                  .eq('id', streamId);
+                  .eq('id', sessionId);
               }
             })
             .subscribe();
         }
 
       } catch (err) {
-        console.error("💥 Core Initializer Error Stack:", err);
+        console.error("💥 Critical Handshake Exception:", err);
         setConnectionStatus("Connection Failed");
       }
     };
@@ -182,12 +163,12 @@ const VideoPlayer = ({ streamId, isHost: initialIsHost = false }) => {
     initializeConnection();
 
     return () => {
+      console.log("🧹 Tearing down media pipeline and closing active sockets.");
       if (localStream) localStream.getTracks().forEach(track => track.stop());
       if (pcRef.current) pcRef.current.close();
-      if (streamChannel) supabase.removeChannel(streamChannel);
-      if (candidateChannel) supabase.removeChannel(candidateChannel);
+      if (signalingChannel) supabase.removeChannel(signalingChannel);
     };
-  }, [isHost, streamId]);
+  }, [streamId]);
 
   return (
     <div className="relative w-full h-full bg-black group overflow-hidden flex items-center justify-center">
