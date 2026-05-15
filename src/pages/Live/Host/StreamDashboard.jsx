@@ -17,6 +17,20 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay'; // Split-Screen Battle Logic
 
+/**
+ * Local WebRTC Architecture Safety Configuration
+ * Ensures that if sub-components or signaling instances reference webrtcConfig 
+ * within the Host bundle scope, it resolves safely instead of triggering a ReferenceError.
+ */
+const webrtcConfig = window.webrtcConfig || {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' }
+  ],
+  iceCandidatePoolSize: 10
+};
+
 const StreamDashboard = () => {
   const { streamId } = useParams();
   const navigate = useNavigate();
@@ -236,7 +250,6 @@ const StreamDashboard = () => {
       </div>
 
       {/* --- 3. FLOATING OVERLAYS & ACTION COLUMN --- */}
-      {/* Vertical Tool Deck (Right Side Panel) */}
       <div className="absolute right-4 top-1/3 flex flex-col gap-4 z-30">
         {[
           { icon: <BarChart size={18}/>, label: 'POLL', active: !!activePoll },
@@ -254,7 +267,6 @@ const StreamDashboard = () => {
 
       {/* Dynamic Popups Container */}
       <div className="absolute inset-0 pointer-events-none z-40">
-        {/* Real-time Toast Entry Alerts */}
         <AnimatePresence>
           {joinAlert && (
             <motion.div initial={{ x: -100, opacity: 0 }} animate={{ x: 16, opacity: 1 }} exit={{ x: -100, opacity: 0 }}
@@ -264,7 +276,6 @@ const StreamDashboard = () => {
           )}
         </AnimatePresence>
 
-        {/* Animated System Gift Stream */}
         <AnimatePresence>
           {activeGift && <GiftAlertOverlay gift={activeGift} />}
         </AnimatePresence>
@@ -286,16 +297,12 @@ const StreamDashboard = () => {
 
       {/* --- 4. BOTTOM DOCK & STREAM CHAT INTERACTION SPACE --- */}
       <div className="absolute bottom-0 left-0 right-0 z-50 p-4 space-y-4 pointer-events-none">
-        
-        {/* Stream Transparent Floating Live Chat Container */}
         <div className="h-48 w-full max-w-[320px] pointer-events-auto mask-fade-top overflow-y-auto hide-scrollbar floating-chat-container">
           <ChatBox streamId={streamId} isHost={true} transparent={true} filter={chatFilter} />
         </div>
 
         {/* --- 5. THE ULTIMATE DOCK CONTROL COMMAND CONSOLE --- */}
         <div className="w-full bg-black/50 backdrop-blur-3xl rounded-[28px] border border-white/10 p-2 flex items-center justify-between pointer-events-auto shadow-[0_-20px_50px_rgba(0,0,0,0.6)]">
-          
-          {/* Hardware Peripherals Toggle Array */}
           <div className="flex items-center gap-1.5">
             <button 
               onClick={() => setIsMuted(!isMuted)} 
@@ -311,7 +318,6 @@ const StreamDashboard = () => {
             </button>
           </div>
 
-          {/* Interactive Modes Matrix Splitters */}
           <div className="flex bg-white/5 rounded-full p-1 border border-white/5 backdrop-blur-md">
             <button 
               onClick={() => { setIsBattleMode(!isBattleMode); setIsGuestMode(false); }}
@@ -329,7 +335,6 @@ const StreamDashboard = () => {
             </button>
           </div>
 
-          {/* Dashboard Telemetry Expansion Buttons */}
           <div className="flex items-center gap-1.5">
             <button 
               onClick={() => setActivePanel('analytics')}
@@ -351,13 +356,11 @@ const StreamDashboard = () => {
       <AnimatePresence>
         {activePanel && (
           <>
-            {/* Ambient Backdrop Mesh */}
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setActivePanel(null)}
               className="absolute inset-0 bg-black/70 backdrop-blur-sm z-[100]"
             />
-            {/* Sliding Subpanel Sheet */}
             <motion.div 
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 220 }}
@@ -385,7 +388,6 @@ const StreamDashboard = () => {
                        <SettingsCard icon={<Smile/>} title="Beauty" desc="Configure real-time face tracking" />
                     </div>
 
-                    {/* Fallback Embed for the low-level management logic */}
                     <div className="pt-4 bg-zinc-900/50 p-2 rounded-2xl border border-white/5">
                       <HostControls streamId={streamId} />
                     </div>
@@ -401,7 +403,6 @@ const StreamDashboard = () => {
   );
 };
 
-// Sub-component for Settings Drawer Actions
 const SettingsCard = ({ icon, title, desc }) => (
   <button className="flex flex-col gap-3 p-5 bg-white/5 rounded-2xl border border-white/5 hover:border-red-500/50 transition-all text-left group">
     <div className="p-3 bg-red-500/10 rounded-xl text-red-500 group-hover:bg-red-500 group-hover:text-white transition-colors w-fit">
