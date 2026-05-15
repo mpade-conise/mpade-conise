@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 // Import your configured supabase client instance here
 import { supabase } from '../../../supabaseClient';
 
-
 const VideoPlayer = ({ streamId, isHost = false }) => {
   const videoRef = useRef(null);
   const pcRef = useRef(null);
@@ -13,6 +12,8 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
 
   useEffect(() => {
     let localStream = null;
+    let streamChannel = null;
+    let candidateChannel = null;
 
     const initializeConnection = async () => {
       try {
@@ -38,6 +39,26 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
           }
         };
 
+        // --- 2. ICE CANDIDATE EXCHANGE CHANNEL (CRITICAL FOR INITIALIZING FIX) ---
+        // Listen live for incoming ICE network pathways from the opposite user type
+        candidateChannel = supabase
+          .channel(`candidates-${streamId}`)
+          .on('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'viewer_sessions',
+            filter: `stream_id=eq.${streamId}`
+          }, 
+          payload => {
+            const targetType = isHost ? 'viewer' : 'host';
+            if (payload.new.type === targetType && payload.new.candidate) {
+              console.log(`Adding received ICE candidate from ${targetType}`);
+              pc.addIceCandidate(new RTCIceCandidate(payload.new.candidate))
+                .catch(e => console.error("Error setting remote ICE candidate:", e));
+            }
+          })
+          .subscribe();
+
         if (isHost) {
           // HOST LOGIC
           localStream = await navigator.mediaDevices.getUserMedia({ 
@@ -59,14 +80,20 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
             .update({ offer: offer, status: 'live' })
             .eq('id', streamId);
 
-          // Listen for Answer from viewers
-          supabase
-            .channel(`stream-${streamId}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'live_streams' }, 
-              payload => {
-                if (payload.new.answer && !pc.currentRemoteDescription) {
-                  pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer));
-                }
+          // Listen for Answer updates from viewers
+          streamChannel = supabase
+            .channel(`stream-host-${streamId}`)
+            .on('postgres_changes', { 
+              event: 'UPDATE', 
+              schema: 'public', 
+              table: 'live_streams',
+              filter: `id=eq.${streamId}`
+            }, 
+            payload => {
+              if (payload.new.answer && !pc.currentRemoteDescription) {
+                console.log("Host received viewer WebRTC answer");
+                pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer));
+              }
             })
             .subscribe();
 
@@ -91,15 +118,38 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
-            // Send answer back
+            // Send answer back to host
             await supabase
               .from('live_streams')
               .update({ answer: answer })
               .eq('id', streamId);
           }
+
+          // Realtime listener fallback for viewer if synchronization happens staggered
+          streamChannel = supabase
+            .channel(`stream-viewer-${streamId}`)
+            .on('postgres_changes', { 
+              event: 'UPDATE', 
+              schema: 'public', 
+              table: 'live_streams',
+              filter: `id=eq.${streamId}`
+            }, 
+            async (payload) => {
+              if (payload.new.offer && !pc.currentRemoteDescription) {
+                console.log("Viewer caught updated host WebRTC offer");
+                await pc.setRemoteDescription(new RTCSessionDescription(payload.new.offer));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                await supabase
+                  .from('live_streams')
+                  .update({ answer: answer })
+                  .eq('id', streamId);
+              }
+            })
+            .subscribe();
         }
 
-        // Handle ICE Candidates (The "Handshake")
+        // Handle Local ICE Candidates generation (Saving them to database)
         pc.onicecandidate = async (event) => {
           if (event.candidate) {
             await supabase.from('viewer_sessions').insert({
@@ -121,6 +171,8 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
     return () => {
       if (localStream) localStream.getTracks().forEach(track => track.stop());
       if (pcRef.current) pcRef.current.close();
+      if (streamChannel) supabase.removeChannel(streamChannel);
+      if (candidateChannel) supabase.removeChannel(candidateChannel);
     };
   }, [isHost, streamId]);
 
