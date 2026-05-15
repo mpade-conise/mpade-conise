@@ -17,16 +17,24 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
 
     const initializeConnection = async () => {
       try {
-        // Safe scope configuration check for both development and minified bundles
-        const activeConfig = typeof webrtcConfig !== 'undefined' 
-          ? webrtcConfig 
-          : (window.webrtcConfig || globalThis.webrtcConfig);
+        // 1. Force explicit global lookup to bypass production minifier scope issues
+        const globalIce = window.webrtcConfig || globalThis.webrtcConfig;
 
-        if (!activeConfig) {
-          throw new Error("WebRTC ICE configuration is missing from window context.");
+        if (!globalIce) {
+          console.warn("window.webrtcConfig not found. Falling back to public Google STUN server.");
         }
 
-        // 1. Setup Peer Connection utilizing global or localized config safely
+        // Use your specialized TURN config if found; otherwise fallback to basic STUN to prevent crashes
+        const activeConfig = globalIce || {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        };
+
+        console.log("WebRTC PeerConnection initializing with config:", activeConfig);
+
+        // 2. Setup Peer Connection safely
         const pc = new RTCPeerConnection(activeConfig);
         pcRef.current = pc;
 
@@ -39,7 +47,7 @@ const VideoPlayer = ({ streamId, isHost = false }) => {
           }
         };
 
-        // --- 2. ICE CANDIDATE EXCHANGE CHANNEL (CRITICAL FOR INITIALIZING FIX) ---
+        // --- 3. ICE CANDIDATE EXCHANGE CHANNEL ---
         // Listen live for incoming ICE network pathways from the opposite user type
         candidateChannel = supabase
           .channel(`candidates-${streamId}`)
