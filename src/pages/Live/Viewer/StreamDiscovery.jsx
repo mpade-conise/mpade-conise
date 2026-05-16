@@ -11,6 +11,23 @@ const StreamDiscovery = () => {
 
   useEffect(() => {
     let isMounted = true;
+    let realtimeChannel = null;
+
+    // Helper function to fetch full host metadata for a specific user ID
+    const fetchHostProfile = async (hostId) => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles') // Adjust table name if your user meta is named differently (e.g., 'users')
+          .select('id, username, avatar_url')
+          .eq('id', hostId)
+          .single();
+        if (error) throw error;
+        return data;
+      } catch (err) {
+        console.error("⚠️ Failed to append real-time host profiles:", err.message);
+        return { id: hostId, username: 'Universe Host', avatar_url: null };
+      }
+    };
 
     const fetchUserAndStreams = async () => {
       try {
@@ -26,7 +43,7 @@ const StreamDiscovery = () => {
           console.warn("⚠️ No user logged in.");
         }
 
-        console.log("🛠️ Supabase: Fetching live streams...");
+        console.log("🛠️ Supabase: Fetching initial live streams...");
         const { data, error } = await supabase
           .from('live_streams')
           .select('*, host:host_id(id, username, avatar_url)')
@@ -35,13 +52,71 @@ const StreamDiscovery = () => {
         if (error) throw error;
         
         if (isMounted) {
-          console.log("📊 Streams loaded:", data);
+          console.log("📊 Initial streams loaded:", data);
           setStreams(data || []);
+          setLoading(false);
         }
+
+        // ==========================================
+        // REAL-TIME SYNC SUBSCRIPTION LOOP
+        // ==========================================
+        console.log("📡 Turning on live room stream listening matrix...");
+        realtimeChannel = supabase
+          .channel('public-live-stream-feed')
+          .on('postgres_changes', {
+            event: '*', // Listen to row creation, updates, and deletes
+            schema: 'public',
+            table: 'live_streams'
+          }, async (payload) => {
+            console.log("📥 Realtime stream event captured:", payload.event, payload);
+
+            // Handle Row Insertions (New Broadcast started)
+            if (payload.event === 'INSERT' && payload.new.status === 'live') {
+              const profile = await fetchHostProfile(payload.new.host_id);
+              const consolidatedStream = { ...payload.new, host: profile };
+              
+              if (isMounted) {
+                setStreams((prev) => {
+                  if (prev.some(s => s.id === payload.new.id)) return prev;
+                  return [consolidatedStream, ...prev];
+                });
+              }
+            }
+
+            // Handle Row Updates (Stream status changed to ended, or modified)
+            if (payload.event === 'UPDATE') {
+              if (payload.new.status !== 'live') {
+                // If a stream goes offline, remove it from view
+                if (isMounted) {
+                  setStreams(prev => prev.filter(s => s.id === payload.new.id));
+                }
+              } else {
+                // If metadata changes but remains live, preserve original host metadata while updating fields
+                if (isMounted) {
+                  setStreams(prev => prev.map(s => {
+                    if (s.id === payload.new.id) {
+                      return { ...s, ...payload.new, host: s.host };
+                    }
+                    return s;
+                  }));
+                }
+              }
+            }
+
+            // Handle Row Deletions (Record wiped from table completely)
+            if (payload.event === 'DELETE') {
+              if (isMounted) {
+                setStreams(prev => prev.filter(s => s.id === payload.old.id));
+              }
+            }
+          })
+          .subscribe();
+
       } catch (err) {
-        if (isMounted) console.error("❌ Universe Sync Error:", err.message);
-      } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          console.error("❌ Universe Sync Error:", err.message);
+          setLoading(false);
+        }
       }
     };
 
@@ -49,6 +124,10 @@ const StreamDiscovery = () => {
 
     return () => {
       isMounted = false;
+      if (realtimeChannel) {
+        console.log("🧹 Tearing down real-time grid stream listeners...");
+        supabase.removeChannel(realtimeChannel);
+      }
     };
   }, []);
 
