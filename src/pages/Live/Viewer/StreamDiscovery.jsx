@@ -13,11 +13,11 @@ const StreamDiscovery = () => {
     let isMounted = true;
     let realtimeChannel = null;
 
-    // Helper function to fetch full host metadata for a specific user ID
+    // Helper function to fetch host metadata dynamically when a live event lands
     const fetchHostProfile = async (hostId) => {
       try {
         const { data, error } = await supabase
-          .from('profiles') // Adjust table name if your user meta is named differently (e.g., 'users')
+          .from('profiles') // Make sure this matches your profile table name
           .select('id, username, avatar_url')
           .eq('id', hostId)
           .single();
@@ -58,20 +58,22 @@ const StreamDiscovery = () => {
         }
 
         // ==========================================
-        // REAL-TIME SYNC SUBSCRIPTION LOOP
+        // REAL-TIME SYNC SUBSCRIPTION LAYER
         // ==========================================
         console.log("📡 Turning on live room stream listening matrix...");
         realtimeChannel = supabase
           .channel('public-live-stream-feed')
           .on('postgres_changes', {
-            event: '*', // Listen to row creation, updates, and deletes
+            event: '*', 
             schema: 'public',
             table: 'live_streams'
           }, async (payload) => {
-            console.log("📥 Realtime stream event captured:", payload.event, payload);
+            // FIX: Safely merge variable key variations between client engine updates
+            const currentEvent = payload.event || payload.eventType;
+            console.log(`📥 Realtime stream event captured [${currentEvent}]:`, payload);
 
-            // Handle Row Insertions (New Broadcast started)
-            if (payload.event === 'INSERT' && payload.new.status === 'live') {
+            // 1. Handle New Broadcast Additions
+            if (currentEvent === 'INSERT' && payload.new.status === 'live') {
               const profile = await fetchHostProfile(payload.new.host_id);
               const consolidatedStream = { ...payload.new, host: profile };
               
@@ -83,15 +85,15 @@ const StreamDiscovery = () => {
               }
             }
 
-            // Handle Row Updates (Stream status changed to ended, or modified)
-            if (payload.event === 'UPDATE') {
+            // 2. Handle State Transitions / Metadata Adjustments
+            if (currentEvent === 'UPDATE') {
               if (payload.new.status !== 'live') {
-                // If a stream goes offline, remove it from view
+                // Remove stream card seamlessly if status transitions to anything else
                 if (isMounted) {
                   setStreams(prev => prev.filter(s => s.id === payload.new.id));
                 }
               } else {
-                // If metadata changes but remains live, preserve original host metadata while updating fields
+                // If stream details adapt but remain live, map changes while preserving the user profile object
                 if (isMounted) {
                   setStreams(prev => prev.map(s => {
                     if (s.id === payload.new.id) {
@@ -103,10 +105,11 @@ const StreamDiscovery = () => {
               }
             }
 
-            // Handle Row Deletions (Record wiped from table completely)
-            if (payload.event === 'DELETE') {
-              if (isMounted) {
-                setStreams(prev => prev.filter(s => s.id === payload.old.id));
+            // 3. Handle Complete Table Row Removals
+            if (currentEvent === 'DELETE') {
+              const oldId = payload.old ? payload.old.id : null;
+              if (isMounted && oldId) {
+                setStreams(prev => prev.filter(s => s.id === oldId));
               }
             }
           })
