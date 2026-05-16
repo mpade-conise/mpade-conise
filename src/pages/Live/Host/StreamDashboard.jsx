@@ -5,7 +5,7 @@ import {
   Users, Gift, BarChart3, Share2, Clock, 
   MessageCircle, Settings, ShieldAlert, List, 
   HelpCircle, BarChart, Heart, Smile, X, Check,
-  UserPlus, Swords, Mic, MicOff, Video, VideoOff, Layers
+  UserPlus, Swords, Mic, MicOff, Video, VideoOff, Layers, Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -45,7 +45,7 @@ const StreamDashboard = () => {
   const [activeCoHost, setActiveCoHost] = useState(null); // Real-time opponent profile
   
   // --- UI, DRAWER, & FEATURE MODES ---
-  const [activePanel, setActivePanel] = useState(null); // 'analytics', 'settings', 'guests'
+  const [activePanel, setActivePanel] = useState(null); // 'analytics', 'settings', 'invite'
   const [isBattleMode, setIsBattleMode] = useState(false);
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -301,7 +301,8 @@ const StreamDashboard = () => {
                 <BattleOverlay 
                   score={battleScores} 
                   hostProfile={streamData?.host} 
-                  coHost={activeCoHost} 
+                  coHost={activeCoHost}
+                  onInviteClick={() => setActivePanel('invite')}
                 />
               )}
             </motion.div>
@@ -434,6 +435,7 @@ const StreamDashboard = () => {
                     <LiveAnalyticsPanel streamId={streamId} />
                   </div>
                 )}
+                
                 {activePanel === 'settings' && (
                   <div className="space-y-6 pb-12">
                     <div className="flex items-center justify-between">
@@ -444,12 +446,62 @@ const StreamDashboard = () => {
                     <div className="grid grid-cols-2 gap-4">
                        <SettingsCard icon={<ShieldAlert/>} title="Moderation" desc="Blocked words & safety filters" />
                        <SettingsCard icon={<List/>} title="Polls" desc="Configure viewer micro-voting" />
-                       <SettingsCard icon={<Layers/>} title="Chat Filter" desc="Sort by priority or viewer tier" />
+                       <SettingsCard icon={<Layers/>} title="Invite Opponent" desc="Co-host matching rooms" onClick={() => setActivePanel('invite')} />
                        <SettingsCard icon={<Smile/>} title="Beauty" desc="Configure real-time face tracking" />
                     </div>
 
                     <div className="pt-4 bg-zinc-900/50 p-2 rounded-2xl border border-white/5">
                       <HostControls streamId={streamId} />
+                    </div>
+                  </div>
+                )}
+
+                {/* --- CO-HOST / CREATOR INVITE DRAWER INTERFACE --- */}
+                {activePanel === 'invite' && (
+                  <div className="space-y-5 pb-12">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-xl font-black italic tracking-widest uppercase text-cyan-400">Battle Matchmaking</h2>
+                        <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Invite live creators to battle arena</p>
+                      </div>
+                      <button onClick={() => setActivePanel('settings')} className="p-2 bg-white/5 rounded-full text-zinc-400 hover:text-white"><X size={16}/></button>
+                    </div>
+
+                    <div className="relative">
+                      <Search size={14} className="absolute left-4 top-3.5 text-zinc-500" />
+                      <input 
+                        type="text" 
+                        placeholder="SEARCH ACTIVE CREATORS..." 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-xs font-bold tracking-wider uppercase text-white focus:outline-none focus:border-cyan-500/50 transition-colors placeholder:text-zinc-600"
+                      />
+                    </div>
+
+                    {/* Mock Creator Invite Active Roster List */}
+                    <div className="space-y-2">
+                      <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 px-1">Recommended Competitors</div>
+                      {[
+                        { name: 'X_Challenger_Dev', tag: 'Top Match', avatar: 'https://via.placeholder.com/150' },
+                        { name: 'Alpha_Streamer', tag: 'Trending', avatar: 'https://via.placeholder.com/150' },
+                      ].map((creator, index) => (
+                        <div key={index} className="flex items-center justify-between bg-white/5 border border-white/5 rounded-2xl p-3 hover:border-white/10 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <img src={creator.avatar} className="w-8 h-8 rounded-full object-cover border border-zinc-800" alt="" />
+                            <div>
+                              <div className="text-xs font-black tracking-wide text-zinc-200">{creator.name}</div>
+                              <div className="text-[9px] font-bold text-cyan-500 uppercase tracking-tighter">{creator.tag}</div>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => {
+                              // Action to ping invite payload via Supabase can be added here
+                              setActivePanel(null);
+                            }}
+                            className="bg-cyan-500 hover:bg-cyan-400 text-black px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-transform active:scale-95"
+                          >
+                            Invite
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -463,8 +515,11 @@ const StreamDashboard = () => {
   );
 };
 
-const SettingsCard = ({ icon, title, desc }) => (
-  <button className="flex flex-col gap-3 p-5 bg-white/5 rounded-2xl border border-white/5 hover:border-red-500/50 transition-all text-left group">
+const SettingsCard = ({ icon, title, desc, onClick }) => (
+  <button 
+    onClick={onClick}
+    className="flex flex-col gap-3 p-5 bg-white/5 rounded-2xl border border-white/5 hover:border-red-500/50 transition-all text-left group w-full"
+  >
     <div className="p-3 bg-red-500/10 rounded-xl text-red-500 group-hover:bg-red-500 group-hover:text-white transition-colors w-fit">
       {React.cloneElement(icon, { size: 20 })}
     </div>
