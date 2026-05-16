@@ -62,6 +62,9 @@ const StreamDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingHosts, setIsLoadingHosts] = useState(false);
 
+  // --- MATCHMAKING STATE LINK ---
+  const [incomingInvite, setIncomingInvite] = useState(null); // Tracks active incoming challenges
+
   // Helper function to resolve dynamic co-host profiles on payload updates
   const fetchCoHostProfile = async (coHostId) => {
     if (!coHostId) return null;
@@ -158,7 +161,10 @@ const StreamDashboard = () => {
         
         if (data.co_host_id) {
           const profile = await fetchCoHostProfile(data.co_host_id);
-          if (isMounted) setActiveCoHost(profile);
+          if (isMounted) {
+            setActiveCoHost(profile);
+            setIsBattleMode(true);
+          }
         }
       }
 
@@ -180,9 +186,13 @@ const StreamDashboard = () => {
           if (payload.new.co_host_id !== payload.old.co_host_id) {
             if (payload.new.co_host_id) {
               const profile = await fetchCoHostProfile(payload.new.co_host_id);
-              if (isMounted) setActiveCoHost(profile);
+              if (isMounted) {
+                setActiveCoHost(profile);
+                setIsBattleMode(true);
+              }
             } else {
               setActiveCoHost(null);
+              setIsBattleMode(false);
             }
           }
         })
@@ -196,6 +206,13 @@ const StreamDashboard = () => {
         })
         .on('broadcast', { event: 'reaction' }, ({ payload }) => {
           if (isMounted) handleNewReaction(payload.type);
+        })
+        // Real-Time Incoming Invite Handler Link
+        .on('broadcast', { event: 'battle_invite_received' }, ({ payload }) => {
+          if (isMounted) {
+            console.log("⚔️ Incoming match invitation received via broadcast:", payload);
+            setIncomingInvite(payload);
+          }
         })
         .on('presence', { event: 'sync' }, () => {
           if (!isMounted) return;
@@ -273,14 +290,65 @@ const StreamDashboard = () => {
 
   const handleSendInvite = async (targetHost) => {
     try {
-      // Custom business logic for invitations (e.g., table insert, RPC, or broadcast transaction)
-      console.log(`Sending battle invite to stream session: ${targetHost.stream_id}`);
+      // 1. Initialize temporary communication link to the other host's active workspace channel
+      const targetChannel = supabase.channel(`live_room_${targetHost.stream_id}`);
       
-      // Example: Update target stream or insert into live_invites table if applicable
-      // Close panel on successful production handoff
+      // 2. Complete instant pipeline subscription to transmit broadcast events safely
+      targetChannel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          // 3. Push real-time invite descriptor payload across the wire
+          await targetChannel.send({
+            type: 'broadcast',
+            event: 'battle_invite_received',
+            payload: {
+              senderStreamId: streamId,
+              senderHostId: streamData.host_id,
+              senderUsername: streamData.host?.username || 'A Creator',
+              senderAvatar: streamData.host?.avatar_url
+            }
+          });
+          
+          console.log(`✈️ Battle invite successfully transmitted to target stream: ${targetHost.stream_id}`);
+          
+          // 4. Tear down temporary channel hook from memory allocation
+          supabase.removeChannel(targetChannel);
+        }
+      });
+
+      // Clear layout sheet focus gracefully
       setActivePanel(null);
     } catch (err) {
-      console.error("Failed to send live invite:", err.message);
+      console.error("⚠️ Failed to transmit real-time broadcast invite:", err.message);
+    }
+  };
+
+  const handleAcceptInvite = async () => {
+    if (!incomingInvite) return;
+    
+    try {
+      // 1. Complete table update on sender's room record to declare co-host binding
+      const { error: senderRoomError } = await supabase
+        .from('live_streams')
+        .update({ co_host_id: streamData.host_id }) 
+        .eq('id', incomingInvite.senderStreamId);
+
+      if (senderRoomError) throw senderRoomError;
+
+      // 2. Complete table update on local stream record to align state tracking architecture
+      const { error: localRoomError } = await supabase
+        .from('live_streams')
+        .update({ co_host_id: incomingInvite.senderHostId })
+        .eq('id', streamId);
+
+      if (localRoomError) throw localRoomError;
+
+      // 3. Fire layout engine triggers locally across state variables
+      setIsBattleMode(true);
+      setIncomingInvite(null);
+      
+      console.log("🔥 Co-host pairing handshake completed successfully. Split screen active.");
+    } catch (err) {
+      console.error("⚠️ Failed to process room pairing handshake:", err.message);
     }
   };
 
@@ -411,6 +479,49 @@ const StreamDashboard = () => {
         <AnimatePresence>
           {activeGift && <GiftAlertOverlay gift={activeGift} />}
         </AnimatePresence>
+
+        {/* --- INCOMING CHALLENGE POPUP OVERLAY MODAL --- */}
+        <AnimatePresence>
+          {incomingInvite && (
+            <motion.div 
+              initial={{ y: -50, opacity: 0 }} 
+              animate={{ y: 0, opacity: 1 }} 
+              exit={{ y: -50, opacity: 0 }}
+              className="absolute top-24 left-1/2 -translate-x-1/2 bg-zinc-950/95 backdrop-blur-2xl border-2 border-cyan-500/50 px-5 py-4 rounded-2xl z-[200] w-[90%] max-w-[340px] flex flex-col gap-4 shadow-[0_20px_50px_rgba(0,0,0,0.8)] pointer-events-auto"
+            >
+              <div className="flex items-center gap-3">
+                {incomingInvite.senderAvatar ? (
+                  <img src={incomingInvite.senderAvatar} className="w-10 h-10 rounded-full object-cover border border-cyan-500/30" alt="" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center border border-cyan-500/30 text-cyan-400 font-black text-sm">
+                    {incomingInvite.senderUsername.substring(0,2).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-xs font-black tracking-widest text-cyan-400 uppercase">BATTLE CHALLENGE</h4>
+                  <p className="text-[11px] text-zinc-300 font-medium">
+                    <span className="font-bold text-white">@{incomingInvite.senderUsername}</span> wants to battle you live!
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 w-full pt-1">
+                <button 
+                  onClick={() => setIncomingInvite(null)}
+                  className="flex-1 bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-400 font-bold uppercase tracking-widest text-[9px] py-2.5 rounded-xl transition-colors"
+                >
+                  Decline
+                </button>
+                <button 
+                  onClick={handleAcceptInvite}
+                  className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black font-black uppercase tracking-widest text-[9px] py-2.5 rounded-xl transition-transform active:scale-95 shadow-lg shadow-cyan-500/20"
+                >
+                  Accept Live
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         
         {/* Heart Fountain Dynamics */}
         <div className="absolute bottom-44 right-6 h-80 w-16 flex flex-col-reverse items-center">
@@ -452,7 +563,7 @@ const StreamDashboard = () => {
 
           <div className="flex bg-white/5 rounded-full p-1 border border-white/5 backdrop-blur-md">
             <button 
-              onClick={() => { setIsBattleMode(!isBattleMode); setIsGuestMode(false); }}
+              onClick={() => { setIsBattleMode(!isBattleMode); setIsGuestMode(false); if(!isBattleMode) setActivePanel('invite'); }}
               className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${isBattleMode ? 'bg-[#fe2c55] text-white shadow-lg shadow-red-500/30 scale-105' : 'text-zinc-400 hover:text-white'}`}
             >
               <Swords size={15}/>
