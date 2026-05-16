@@ -1,8 +1,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Swords, Trophy, User } from 'lucide-react';
+import { Swords, Trophy, User, UserPlus } from 'lucide-react';
 
-const BattleOverlay = ({ score, hostProfile, coHost }) => {
+const BattleOverlay = ({ score, hostProfile, coHost, onInviteClick }) => {
   const total = (score.host + score.challenger) || 1;
   const hostWidth = (score.host / total) * 100;
 
@@ -44,15 +44,17 @@ const BattleOverlay = ({ score, hostProfile, coHost }) => {
                 />
               </motion.div>
             ) : (
-              <motion.div 
+              <motion.button 
                 key="waiting-opponent"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex items-center gap-1.5 text-rose-400 italic"
+                onClick={onInviteClick}
+                /* pointer-events-auto ensures this button remains clickable over the overlay track */
+                className="flex items-center gap-1.5 text-cyan-400 font-bold hover:text-cyan-300 transition-colors pointer-events-auto cursor-pointer"
               >
-                <span className="text-[9px] font-bold uppercase tracking-tight animate-pulse">Waiting for co-host...</span>
-                <User size={12} className="animate-pulse" />
-              </motion.div>
+                <span className="text-[9px] uppercase tracking-tight">Invite Creator</span>
+                <UserPlus size={12} className="animate-pulse" />
+              </motion.button>
             )}
           </AnimatePresence>
         </div>
@@ -85,7 +87,7 @@ const BattleOverlay = ({ score, hostProfile, coHost }) => {
         <Swords size={14} className="text-white" />
       </div>
 
-      {/* MATCH MATCH METADATA INDICATOR */}
+      {/* MATCH METADATA INDICATOR */}
       <div className="mt-4 bg-black/60 backdrop-blur-xl px-4 py-1 rounded-full border border-white/10 shadow-lg">
         <p className="text-[9px] font-black uppercase tracking-[3px] text-white flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping inline-block" />
