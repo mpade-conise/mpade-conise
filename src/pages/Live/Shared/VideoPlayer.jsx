@@ -8,12 +8,12 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   const pcRef = useRef(null);
   const channelRef = useRef(null);
   const localStreamRef = useRef(null);
-  const hasInitialized = useRef(false); // Prevents duplicate concurrent mounting loops
+  const hasInitialized = useRef(false);
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing...');
 
-  // Extract ID directly from path safely if prop is flaky
+  // Fallback URL parser to ensure IDs are synced across views
   const getStreamId = () => {
     if (propStreamId && propStreamId.length > 10) return propStreamId;
     const pathSegments = window.location.pathname.split('/');
@@ -25,12 +25,11 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   const isHost = initialIsHost || window.location.pathname.includes('dashboard');
 
   useEffect(() => {
-    // Structural guard clauses
     if (!streamId) {
       setConnectionStatus("Missing Identity");
       return;
     }
-    if (hasInitialized.current) return; // Break the infinite loop mount
+    if (hasInitialized.current) return;
     hasInitialized.current = true;
 
     const initializeConnection = async () => {
@@ -43,15 +42,14 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           iceCandidatePoolSize: 10
         };
 
-        console.log(`📡 [STREAM DICTIONARY] ID: ${streamId} | Role: ${isHost ? 'HOST' : 'VIEWER'}`);
+        console.log(`📡 [STREAM PIPELINE ENGINE] Target: ${streamId} | Active Role: ${isHost ? 'HOST' : 'VIEWER'}`);
 
         const pc = new RTCPeerConnection(activeConfig);
         pcRef.current = pc;
 
         pc.oniceconnectionstatechange = () => {
-          console.log("⚡ ICE Connection State Changed:", pc.iceConnectionState);
-          // Set state safely using a functional update or direct string
-          setConnectionStatus(prev => `State: ${pc.iceConnectionState}`);
+          console.log("⚡ ICE State Matrix Updated:", pc.iceConnectionState);
+          setConnectionStatus(`State: ${pc.iceConnectionState}`);
           if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
             setIsConnected(true);
           }
@@ -68,15 +66,29 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         };
 
         if (isHost) {
-          // ================== HOST PATHWAY ==================
+          // ================== HOST BROADCAST PATHWAY ==================
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           localStreamRef.current = stream;
           
           if (videoRef.current) videoRef.current.srcObject = stream;
           stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-          console.log("🟢 Host active. Subscribing to global viewer_sessions updates...");
+          // Generate Host master WebRTC connection offer profile
+          const hostOffer = await pc.createOffer();
+          await pc.setLocalDescription(hostOffer);
 
+          console.log(`🚀 Host uploading main signal description to stream row: ${streamId}`);
+          
+          // CRITICAL HOST SYNC FIX: Push the host's offer directly into the primary live_stream record
+          await supabase
+            .from('live_streams')
+            .update({ 
+              offer: hostOffer.toJSON(),
+              status: 'live'
+            })
+            .eq('id', streamId);
+
+          // Subscribing to global viewer handshake requests
           channelRef.current = supabase
             .channel(`host-global-room-${streamId}`)
             .on('postgres_changes', {
@@ -86,8 +98,9 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             }, async (payload) => {
               if (payload.new.stream_id !== streamId) return;
 
+              // If a viewer inserts a token, sign the local handshake offer
               if (payload.event === 'INSERT' && payload.new.type === 'viewer') {
-                console.log(`📥 Host answering incoming viewer token row: ${payload.new.id}`);
+                console.log(`📥 Answering incoming viewer signaling node: ${payload.new.id}`);
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
@@ -97,54 +110,58 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
                   .eq('id', payload.new.id);
               }
 
+              // Finalize handshake on answer return
               if (payload.event === 'UPDATE' && payload.new.type === 'viewer' && payload.new.answer && !pc.currentRemoteDescription) {
-                console.log("📥 Host caught viewer answer payload! Syncing description...");
+                console.log("📥 Handshake matching successful! Opening data sync streams...");
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer));
               }
             })
             .subscribe();
 
         } else {
-          // ================== VIEWER PATHWAY ==================
+          // ================== VIEWER VIEWPORT PATHWAY ==================
           pc.ontrack = (event) => {
-            console.log("🎬 SUCCESS: Media track attached to viewer video layout.");
+            console.log("🎬 SUCCESS: Video feed stream connected to canvas.");
             if (videoRef.current) videoRef.current.srcObject = event.streams[0];
           };
 
-          console.log("📡 Viewer inserting handshake token row...");
+          // Step 1: Fetch the Host's existing offer directly from the master live_streams row if available
+          const { data: streamRecord } = await supabase
+            .from('live_streams')
+            .select('offer')
+            .eq('id', streamId)
+            .single();
+
+          if (streamRecord && streamRecord.offer) {
+            console.log("🔥 Host signal found directly on stream row metadata! Initializing connection setup...");
+            await pc.setRemoteDescription(new RTCSessionDescription(streamRecord.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            // Step 2: Write our response back down into a clean session token
+            const { data: directSession } = await supabase
+              .from('viewer_sessions')
+              .insert({
+                stream_id: streamId,
+                type: 'viewer',
+                answer: answer.toJSON()
+              })
+              .select();
+              
+            console.log("✅ Connection token uploaded to handshake mesh.");
+            return;
+          }
+
+          // Step 3: Fallback if host hasn't populated data yet (standard setup loop)
+          console.log("📡 Host metadata empty. Creating secondary viewer handshake token...");
           const { data, error: sessionError } = await supabase
             .from('viewer_sessions')
             .insert({ stream_id: streamId, type: 'viewer' })
             .select();
 
-          if (sessionError) {
-            console.error("❌ Viewer insert failure:", sessionError.message);
-            return;
-          }
+          if (sessionError || !data?.[0]) return;
+          const sessionId = data[0].id;
 
-          const insertedRow = data && data[0];
-          if (!insertedRow) return;
-
-          const sessionId = insertedRow.id;
-          console.log(`✅ Row verified! ID: ${sessionId}. Core signaling loop online.`);
-
-          // Fallback parsing engine
-          if (insertedRow.offer && insertedRow.offer.sdp && insertedRow.offer.sdp.length > 50) {
-            try {
-              await pc.setRemoteDescription(new RTCSessionDescription(insertedRow.offer));
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-
-              await supabase
-                .from('viewer_sessions')
-                .update({ answer: answer.toJSON() })
-                .eq('id', sessionId);
-            } catch (sdpErr) {
-              console.log("ℹ️ Standard initialization skipped. Awaiting live host broadcast offer stream...");
-            }
-          }
-
-          // Listen for the Host over-writing the row with a real WebRTC offer session description
           channelRef.current = supabase
             .channel(`viewer-isolated-${sessionId}`)
             .on('postgres_changes', {
@@ -154,7 +171,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               filter: `id=eq.${sessionId}`
             }, async (payload) => {
               if (payload.new.offer && payload.new.offer.sdp && payload.new.offer.sdp.length > 50 && !pc.currentRemoteDescription) {
-                console.log("📥 True Host WebRTC Offer captured! Negotiating local answer keys...");
+                console.log("📥 Host WebRTC Offer captured via Realtime socket.");
                 try {
                   await pc.setRemoteDescription(new RTCSessionDescription(payload.new.offer));
                   const answer = await pc.createAnswer();
@@ -164,8 +181,8 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
                     .from('viewer_sessions')
                     .update({ answer: answer.toJSON() })
                     .eq('id', sessionId);
-                } catch (negotiationError) {
-                  console.error("❌ SDP Peer Handshake matching failed:", negotiationError);
+                } catch (err) {
+                  console.error("❌ Handshake sync failed:", err);
                 }
               }
             })
@@ -173,21 +190,18 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         }
 
       } catch (err) {
-        console.error("💥 Execution Block Exception caught:", err);
+        console.error("💥 Core Execution Exception caught:", err);
       }
     };
 
     initializeConnection();
 
     return () => {
-      console.log("🧹 Cleaning signaling instances...");
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
+      if (localStreamRef.current) localStreamRef.current.getTracks().forEach(track => track.stop());
       if (pcRef.current) pcRef.current.close();
       if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
-  }, [streamId]); // Stable dynamic bindings
+  }, [streamId]);
 
   return (
     <div className="relative w-full h-full bg-black flex items-center justify-center">
