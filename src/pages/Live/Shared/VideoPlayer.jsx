@@ -6,9 +6,14 @@ import { supabase } from '../../../supabaseClient';
 const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) => {
   const videoRef = useRef(null);
   const pcRef = useRef(null);
+  const channelRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const hasInitialized = useRef(false); // Prevents duplicate concurrent mounting loops
+
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing...');
 
+  // Extract ID directly from path safely if prop is flaky
   const getStreamId = () => {
     if (propStreamId && propStreamId.length > 10) return propStreamId;
     const pathSegments = window.location.pathname.split('/');
@@ -20,14 +25,13 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   const isHost = initialIsHost || window.location.pathname.includes('dashboard');
 
   useEffect(() => {
-    let localStream = null;
-    let signalingChannel = null;
-
+    // Structural guard clauses
     if (!streamId) {
-      console.error("❌ CRITICAL: No streamId found!");
-      setConnectionStatus("Missing Stream ID");
+      setConnectionStatus("Missing Identity");
       return;
     }
+    if (hasInitialized.current) return; // Break the infinite loop mount
+    hasInitialized.current = true;
 
     const initializeConnection = async () => {
       try {
@@ -46,7 +50,8 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
         pc.oniceconnectionstatechange = () => {
           console.log("⚡ ICE Connection State Changed:", pc.iceConnectionState);
-          setConnectionStatus(`State: ${pc.iceConnectionState}`);
+          // Set state safely using a functional update or direct string
+          setConnectionStatus(prev => `State: ${pc.iceConnectionState}`);
           if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
             setIsConnected(true);
           }
@@ -64,13 +69,15 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
         if (isHost) {
           // ================== HOST PATHWAY ==================
-          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-          if (videoRef.current) videoRef.current.srcObject = localStream;
-          localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          localStreamRef.current = stream;
+          
+          if (videoRef.current) videoRef.current.srcObject = stream;
+          stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
           console.log("🟢 Host active. Subscribing to global viewer_sessions updates...");
 
-          signalingChannel = supabase
+          channelRef.current = supabase
             .channel(`host-global-room-${streamId}`)
             .on('postgres_changes', {
               event: '*',
@@ -80,7 +87,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               if (payload.new.stream_id !== streamId) return;
 
               if (payload.event === 'INSERT' && payload.new.type === 'viewer') {
-                console.log(`📥 Host detected new viewer insertion (${payload.new.id}). Dispatching offer...`);
+                console.log(`📥 Host answering incoming viewer token row: ${payload.new.id}`);
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
@@ -91,7 +98,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               }
 
               if (payload.event === 'UPDATE' && payload.new.type === 'viewer' && payload.new.answer && !pc.currentRemoteDescription) {
-                console.log("📥 Host caught viewer answer handshake!");
+                console.log("📥 Host caught viewer answer payload! Syncing description...");
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer));
               }
             })
@@ -100,39 +107,29 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         } else {
           // ================== VIEWER PATHWAY ==================
           pc.ontrack = (event) => {
-            console.log("🎬 SUCCESS: Media track attached to viewer video element.");
+            console.log("🎬 SUCCESS: Media track attached to viewer video layout.");
             if (videoRef.current) videoRef.current.srcObject = event.streams[0];
           };
 
           console.log("📡 Viewer inserting handshake token row...");
-          
-          // CRITICAL FIXED BLOCK: Removed .single() to avoid formatting object layout crash
           const { data, error: sessionError } = await supabase
             .from('viewer_sessions')
-            .insert({
-              stream_id: streamId,
-              type: 'viewer'
-            })
+            .insert({ stream_id: streamId, type: 'viewer' })
             .select();
 
           if (sessionError) {
-            console.error("❌ Viewer failed to insert row into viewer_sessions:", sessionError.message);
-            setConnectionStatus(`Database Error: ${sessionError.message}`);
+            console.error("❌ Viewer insert failure:", sessionError.message);
             return;
           }
 
           const insertedRow = data && data[0];
-          if (!insertedRow) {
-            console.error("❌ Empty response array returned from session insertion.");
-            setConnectionStatus("Handshake Stalled");
-            return;
-          }
+          if (!insertedRow) return;
 
           const sessionId = insertedRow.id;
-          console.log(`✅ Row created successfully! ID: ${sessionId}. processing connection...`, insertedRow);
+          console.log(`✅ Row verified! ID: ${sessionId}. Core signaling loop online.`);
 
-          if (insertedRow.offer) {
-            console.log("🔥 Offer found in database row instantly. Attaching session description...");
+          // Fallback parsing engine
+          if (insertedRow.offer && insertedRow.offer.sdp && insertedRow.offer.sdp.length > 50) {
             try {
               await pc.setRemoteDescription(new RTCSessionDescription(insertedRow.offer));
               const answer = await pc.createAnswer();
@@ -142,13 +139,13 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
                 .from('viewer_sessions')
                 .update({ answer: answer.toJSON() })
                 .eq('id', sessionId);
-            } catch (webrtcSdpError) {
-              console.error("⚠️ Local WebRTC SDP compilation skipped: Using fallback mode.");
+            } catch (sdpErr) {
+              console.log("ℹ️ Standard initialization skipped. Awaiting live host broadcast offer stream...");
             }
           }
 
-          // Fallback realtime subscription room to update changes dynamically
-          signalingChannel = supabase
+          // Listen for the Host over-writing the row with a real WebRTC offer session description
+          channelRef.current = supabase
             .channel(`viewer-isolated-${sessionId}`)
             .on('postgres_changes', {
               event: 'UPDATE',
@@ -156,42 +153,54 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               table: 'viewer_sessions',
               filter: `id=eq.${sessionId}`
             }, async (payload) => {
-              if (payload.new.offer && !pc.currentRemoteDescription) {
-                console.log("📥 Received updated offer from live host channel via Realtime.");
-                await pc.setRemoteDescription(new RTCSessionDescription(payload.new.offer));
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
+              if (payload.new.offer && payload.new.offer.sdp && payload.new.offer.sdp.length > 50 && !pc.currentRemoteDescription) {
+                console.log("📥 True Host WebRTC Offer captured! Negotiating local answer keys...");
+                try {
+                  await pc.setRemoteDescription(new RTCSessionDescription(payload.new.offer));
+                  const answer = await pc.createAnswer();
+                  await pc.setLocalDescription(answer);
 
-                await supabase
-                  .from('viewer_sessions')
-                  .update({ answer: answer.toJSON() })
-                  .eq('id', sessionId);
+                  await supabase
+                    .from('viewer_sessions')
+                    .update({ answer: answer.toJSON() })
+                    .eq('id', sessionId);
+                } catch (negotiationError) {
+                  console.error("❌ SDP Peer Handshake matching failed:", negotiationError);
+                }
               }
             })
             .subscribe();
         }
 
       } catch (err) {
-        console.error("💥 Handshake Core Loop Crash Exception:", err);
-        setConnectionStatus("Runtime Error Encountered");
+        console.error("💥 Execution Block Exception caught:", err);
       }
     };
 
     initializeConnection();
 
     return () => {
-      if (localStream) localStream.getTracks().forEach(track => track.stop());
+      console.log("🧹 Cleaning signaling instances...");
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+      }
       if (pcRef.current) pcRef.current.close();
-      if (signalingChannel) supabase.removeChannel(signalingChannel);
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
-  }, [streamId]);
+  }, [streamId]); // Stable dynamic bindings
 
   return (
     <div className="relative w-full h-full bg-black flex items-center justify-center">
-      <video ref={videoRef} autoPlay playsInline muted={isHost} className={`w-full h-full object-cover ${isConnected || isHost ? 'opacity-100' : 'opacity-50'} ${isHost ? 'scale-x-[-1]' : ''}`} />
+      <video 
+        ref={videoRef} 
+        autoPlay 
+        playsInline 
+        muted={isHost} 
+        className={`w-full h-full object-cover transition-opacity duration-500 ${isConnected || isHost ? 'opacity-100' : 'opacity-40'} ${isHost ? 'scale-x-[-1]' : ''}`} 
+      />
       {!isConnected && !isHost && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-zinc-950">
-          <div className="w-12 h-12 border-4 border-t-[#fe2c55] rounded-full animate-spin" />
+          <div className="w-12 h-12 border-4 border-t-[#fe2c55] border-zinc-800 rounded-full animate-spin" />
           <p className="text-[10px] font-black uppercase tracking-widest text-white/40">{connectionStatus}</p>
         </div>
       )}
