@@ -9,7 +9,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing...');
 
-  // Fallback URL parser to extract the UUID directly from browser path
   const getStreamId = () => {
     if (propStreamId && propStreamId.length > 10) return propStreamId;
     const pathSegments = window.location.pathname.split('/');
@@ -26,7 +25,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
     if (!streamId) {
       console.error("❌ CRITICAL: No streamId found!");
-      setConnectionStatus("Missing Identity");
+      setConnectionStatus("Missing Stream ID");
       return;
     }
 
@@ -55,7 +54,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
         pc.onicecandidate = async (event) => {
           if (event.candidate) {
-            console.log("🚀 Trickling harvested ICE route candidate to Supabase...");
             await supabase.from('viewer_sessions').insert({
               stream_id: streamId,
               candidate: event.candidate.toJSON(),
@@ -70,7 +68,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           if (videoRef.current) videoRef.current.srcObject = localStream;
           localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-          console.log("🟢 Host active. Subscribing to global viewer_sessions changes...");
+          console.log("🟢 Host active. Subscribing to global viewer_sessions updates...");
 
           signalingChannel = supabase
             .channel(`host-global-room-${streamId}`)
@@ -81,10 +79,8 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             }, async (payload) => {
               if (payload.new.stream_id !== streamId) return;
 
-              // When a new viewer row is created, update it with a real offer
               if (payload.event === 'INSERT' && payload.new.type === 'viewer') {
-                console.log(`📥 Host detected new viewer insertion (${payload.new.id}). Dispatching real offer...`);
-                
+                console.log(`📥 Host detected new viewer insertion (${payload.new.id}). Dispatching offer...`);
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
@@ -94,9 +90,8 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
                   .eq('id', payload.new.id);
               }
 
-              // When a viewer sends back an answer, lock the connection
               if (payload.event === 'UPDATE' && payload.new.type === 'viewer' && payload.new.answer && !pc.currentRemoteDescription) {
-                console.log("📥 Host caught viewer answer! Handshake complete.");
+                console.log("📥 Host caught viewer answer handshake!");
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.new.answer));
               }
             })
@@ -110,37 +105,49 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           };
 
           console.log("📡 Viewer inserting handshake token row...");
-          const { data: sessionData, error: sessionError } = await supabase
+          
+          // CRITICAL FIXED BLOCK: Removed .single() to avoid formatting object layout crash
+          const { data, error: sessionError } = await supabase
             .from('viewer_sessions')
             .insert({
               stream_id: streamId,
               type: 'viewer'
             })
-            .select()
-            .single();
+            .select();
 
           if (sessionError) {
             console.error("❌ Viewer failed to insert row into viewer_sessions:", sessionError.message);
+            setConnectionStatus(`Database Error: ${sessionError.message}`);
             return;
           }
 
-          const sessionId = sessionData.id;
-          console.log(`✅ Row created successfully! ID: ${sessionId}. Checking triggers...`, sessionData);
-
-          // If the database trigger executed successfully, sessionData.offer will already have a value!
-          if (sessionData.offer) {
-            console.log("🔥 Trigger verification: Offer found in database instantly. Processing...");
-            await pc.setRemoteDescription(new RTCSessionDescription(sessionData.offer));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-
-            await supabase
-              .from('viewer_sessions')
-              .update({ answer: answer.toJSON() })
-              .eq('id', sessionId);
+          const insertedRow = data && data[0];
+          if (!insertedRow) {
+            console.error("❌ Empty response array returned from session insertion.");
+            setConnectionStatus("Handshake Stalled");
+            return;
           }
 
-          // Fallback subscription room
+          const sessionId = insertedRow.id;
+          console.log(`✅ Row created successfully! ID: ${sessionId}. processing connection...`, insertedRow);
+
+          if (insertedRow.offer) {
+            console.log("🔥 Offer found in database row instantly. Attaching session description...");
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(insertedRow.offer));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+
+              await supabase
+                .from('viewer_sessions')
+                .update({ answer: answer.toJSON() })
+                .eq('id', sessionId);
+            } catch (webrtcSdpError) {
+              console.error("⚠️ Local WebRTC SDP compilation skipped: Using fallback mode.");
+            }
+          }
+
+          // Fallback realtime subscription room to update changes dynamically
           signalingChannel = supabase
             .channel(`viewer-isolated-${sessionId}`)
             .on('postgres_changes', {
@@ -150,7 +157,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               filter: `id=eq.${sessionId}`
             }, async (payload) => {
               if (payload.new.offer && !pc.currentRemoteDescription) {
-                console.log("📥 Received updated offer from live host channel.");
+                console.log("📥 Received updated offer from live host channel via Realtime.");
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.new.offer));
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
@@ -165,8 +172,8 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         }
 
       } catch (err) {
-        console.error("💥 Handshake Exception:", err);
-        setConnectionStatus("Connection Stalled");
+        console.error("💥 Handshake Core Loop Crash Exception:", err);
+        setConnectionStatus("Runtime Error Encountered");
       }
     };
 
