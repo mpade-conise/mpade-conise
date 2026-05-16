@@ -41,6 +41,8 @@ const StreamDashboard = () => {
   const [viewers, setViewers] = useState([]);
   const [reactions, setReactions] = useState([]); 
   const [activeGift, setActiveGift] = useState(null);
+  const [battleScores, setBattleScores] = useState({ host: 0, challenger: 0 });
+  const [activeCoHost, setActiveCoHost] = useState(null); // Real-time opponent profile
   
   // --- UI, DRAWER, & FEATURE MODES ---
   const [activePanel, setActivePanel] = useState(null); // 'analytics', 'settings', 'guests'
@@ -55,7 +57,24 @@ const StreamDashboard = () => {
   const [isSlowMode, setIsSlowMode] = useState(false);
   const [chatFilter, setChatFilter] = useState('all');
 
-  // 1. DATA & REALTIME SUBSCRIPTIONS (Preserved from original logic)
+  // Helper function to resolve dynamic co-host profiles on payload updates
+  const fetchCoHostProfile = async (coHostId) => {
+    if (!coHostId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url')
+        .eq('id', coHostId)
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error("⚠️ Failed to append cohost profile:", err.message);
+      return { id: coHostId, username: 'Opponent Creator', avatar_url: null };
+    }
+  };
+
+  // 1. DATA & REALTIME SUBSCRIPTIONS
   useEffect(() => {
     let isMounted = true;
     const channel = supabase.channel(`live_room_${streamId}`);
@@ -70,6 +89,16 @@ const StreamDashboard = () => {
       if (data && isMounted) {
         setStreamData(data);
         setIsSlowMode(data.slow_mode_enabled || false);
+        setBattleScores({
+          host: data.host_battle_points || 0,
+          challenger: data.challenger_battle_points || 0
+        });
+        
+        // Check if there is an active co-host sitting in the DB row on initial mount
+        if (data.co_host_id) {
+          const profile = await fetchCoHostProfile(data.co_host_id);
+          if (isMounted) setActiveCoHost(profile);
+        }
       }
 
       channel
@@ -78,8 +107,24 @@ const StreamDashboard = () => {
           schema: 'public', 
           table: 'live_streams', 
           filter: `id=eq.${streamId}` 
-        }, (payload) => {
-          if (isMounted) setStreamData(payload.new);
+        }, async (payload) => {
+          if (!isMounted) return;
+          
+          setStreamData(payload.new);
+          setBattleScores({
+            host: payload.new.host_battle_points || 0,
+            challenger: payload.new.challenger_battle_points || 0
+          });
+
+          // Watch cohost state shifts natively
+          if (payload.new.co_host_id !== payload.old.co_host_id) {
+            if (payload.new.co_host_id) {
+              const profile = await fetchCoHostProfile(payload.new.co_host_id);
+              if (isMounted) setActiveCoHost(profile);
+            } else {
+              setActiveCoHost(null);
+            }
+          }
         })
         .on('postgres_changes', {
           event: 'INSERT',
@@ -177,7 +222,6 @@ const StreamDashboard = () => {
   return (
     <div className="h-[100dvh] w-full bg-zinc-950 text-white overflow-hidden relative font-sans">
       
-      {/* GLOBAL SCROLLBAR SNIPPETS */}
       <style>
         {`
           .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -195,7 +239,6 @@ const StreamDashboard = () => {
           onLeave={() => navigate('/live')}
         />
         
-        {/* Secondary Info Pill Bar */}
         <div className="flex justify-between items-center px-1">
           <div className="flex gap-2">
             <div className="bg-yellow-500/20 backdrop-blur-md px-3 py-1.5 rounded-xl border border-yellow-500/30 flex items-center gap-2">
@@ -239,11 +282,28 @@ const StreamDashboard = () => {
               className="w-1/2 h-full bg-zinc-900 relative"
             >
               <div className="absolute inset-0 flex items-center justify-center border-l border-cyan-500/30 bg-zinc-950">
-                <p className="text-[10px] font-black uppercase text-zinc-600 tracking-wider animate-pulse">
-                  {isBattleMode ? "Waiting for Opponent..." : "Waiting for Guest..."}
-                </p>
+                {activeCoHost ? (
+                  /* WebRTC Remote Sub-Track Stream Video element renders here */
+                  <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center">
+                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
+                      Live Video Active ({activeCoHost.username})
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[10px] font-black uppercase text-zinc-600 tracking-wider animate-pulse">
+                    {isBattleMode ? "Waiting for Opponent..." : "Waiting for Guest..."}
+                  </p>
+                )}
               </div>
-              {isBattleMode && <BattleOverlay score={{ host: 450, challenger: 120 }} />}
+              
+              {/* Overlay Engine Layer */}
+              {isBattleMode && (
+                <BattleOverlay 
+                  score={battleScores} 
+                  hostProfile={streamData?.host} 
+                  coHost={activeCoHost} 
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>
