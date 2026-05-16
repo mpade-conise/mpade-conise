@@ -51,7 +51,7 @@ const StreamDashboard = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   
-  // --- SUB-FEATURES FROM FILE 2 ---
+  // --- SUB-FEATURES ---
   const [joinAlert, setJoinAlert] = useState(null);
   const [activePoll, setActivePoll] = useState(null); 
   const [isSlowMode, setIsSlowMode] = useState(false);
@@ -83,11 +83,10 @@ const StreamDashboard = () => {
   };
 
   // Fetch online creators/hosts from the database
-  const fetchLiveHosts = async () => {
+  const fetchLiveHosts = async (isMounted = true) => {
     if (!streamData) return;
-    setIsLoadingHosts(true);
+    if (isMounted) setIsLoadingHosts(true);
     try {
-      // Queries active streams, excluding the current stream session and the current host
       let query = supabase
         .from('live_streams')
         .select(`
@@ -104,16 +103,13 @@ const StreamDashboard = () => {
         .not('id', 'eq', streamId)
         .not('host_id', 'eq', streamData.host_id);
 
-      // Apply search filter natively to the profiles foreign table if text is entered
       if (searchQuery.trim() !== '') {
         query = query.ilike('host.username', `%${searchQuery}%`);
       }
 
       const { data, error } = await query.limit(10);
-      
       if (error) throw error;
 
-      // Filter out records where the inner profile join didn't match or resolve
       const formattedHosts = (data || [])
         .filter(item => item.host)
         .map(item => ({
@@ -124,19 +120,21 @@ const StreamDashboard = () => {
           tag: 'Live Now'
         }));
 
-      setLiveHosts(formattedHosts);
+      if (isMounted) setLiveHosts(formattedHosts);
     } catch (err) {
       console.error("⚠️ Error fetching production live hosts:", err.message);
     } finally {
-      setIsLoadingHosts(false);
+      if (isMounted) setIsLoadingHosts(false);
     }
   };
 
   // Trigger live host fetching whenever the panel opens or search query changes
   useEffect(() => {
+    let isMounted = true;
     if (activePanel === 'invite' && streamData) {
-      fetchLiveHosts();
+      fetchLiveHosts(isMounted);
     }
+    return () => { isMounted = false; };
   }, [activePanel, searchQuery, streamData]);
 
   // 1. DATA & REALTIME SUBSCRIPTIONS
@@ -207,7 +205,6 @@ const StreamDashboard = () => {
         .on('broadcast', { event: 'reaction' }, ({ payload }) => {
           if (isMounted) handleNewReaction(payload.type);
         })
-        // Real-Time Incoming Invite Handler Link
         .on('broadcast', { event: 'battle_invite_received' }, ({ payload }) => {
           if (isMounted) {
             console.log("⚔️ Incoming match invitation received via broadcast:", payload);
@@ -290,13 +287,10 @@ const StreamDashboard = () => {
 
   const handleSendInvite = async (targetHost) => {
     try {
-      // 1. Initialize temporary communication link to the other host's active workspace channel
       const targetChannel = supabase.channel(`live_room_${targetHost.stream_id}`);
       
-      // 2. Complete instant pipeline subscription to transmit broadcast events safely
       targetChannel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          // 3. Push real-time invite descriptor payload across the wire
           await targetChannel.send({
             type: 'broadcast',
             event: 'battle_invite_received',
@@ -309,13 +303,10 @@ const StreamDashboard = () => {
           });
           
           console.log(`✈️ Battle invite successfully transmitted to target stream: ${targetHost.stream_id}`);
-          
-          // 4. Tear down temporary channel hook from memory allocation
           supabase.removeChannel(targetChannel);
         }
       });
 
-      // Clear layout sheet focus gracefully
       setActivePanel(null);
     } catch (err) {
       console.error("⚠️ Failed to transmit real-time broadcast invite:", err.message);
@@ -326,7 +317,6 @@ const StreamDashboard = () => {
     if (!incomingInvite) return;
     
     try {
-      // 1. Complete table update on sender's room record to declare co-host binding
       const { error: senderRoomError } = await supabase
         .from('live_streams')
         .update({ co_host_id: streamData.host_id }) 
@@ -334,7 +324,6 @@ const StreamDashboard = () => {
 
       if (senderRoomError) throw senderRoomError;
 
-      // 2. Complete table update on local stream record to align state tracking architecture
       const { error: localRoomError } = await supabase
         .from('live_streams')
         .update({ co_host_id: incomingInvite.senderHostId })
@@ -342,7 +331,6 @@ const StreamDashboard = () => {
 
       if (localRoomError) throw localRoomError;
 
-      // 3. Fire layout engine triggers locally across state variables
       setIsBattleMode(true);
       setIncomingInvite(null);
       
