@@ -68,39 +68,54 @@ const StreamDiscovery = () => {
             schema: 'public',
             table: 'live_streams'
           }, async (payload) => {
-            // FIX: Safely merge variable key variations between client engine updates
+            // Safely merge variable key variations between client engine updates
             const currentEvent = payload.event || payload.eventType;
             console.log(`📥 Realtime stream event captured [${currentEvent}]:`, payload);
 
             // 1. Handle New Broadcast Additions
-            if (currentEvent === 'INSERT' && payload.new.status === 'live') {
-              const profile = await fetchHostProfile(payload.new.host_id);
-              const consolidatedStream = { ...payload.new, host: profile };
-              
-              if (isMounted) {
-                setStreams((prev) => {
-                  if (prev.some(s => s.id === payload.new.id)) return prev;
-                  return [consolidatedStream, ...prev];
-                });
+            if (currentEvent === 'INSERT') {
+              if (payload.new.status === 'live') {
+                const profile = await fetchHostProfile(payload.new.host_id);
+                const consolidatedStream = { ...payload.new, host: profile };
+                
+                if (isMounted) {
+                  setStreams((prev) => {
+                    if (prev.some(s => s.id === payload.new.id)) return prev;
+                    return [consolidatedStream, ...prev];
+                  });
+                }
               }
             }
 
-            // 2. Handle State Transitions / Metadata Adjustments
+            // 2. Handle State Transitions / Metadata Adjustments Safely
             if (currentEvent === 'UPDATE') {
-              if (payload.new.status !== 'live') {
-                // Remove stream card seamlessly if status transitions to anything else
+              if (payload.new.status === 'ended' || payload.new.status === 'offline') {
+                // Clear the layout container IMMEDIATELY only if explicitly closed
                 if (isMounted) {
-                  setStreams(prev => prev.filter(s => s.id === payload.new.id));
+                  setStreams(prev => prev.filter(s => s.id !== payload.new.id));
                 }
               } else {
-                // If stream details adapt but remain live, map changes while preserving the user profile object
+                // Stream updated parameter properties (WebRTC strings, details, etc.) but remains active
                 if (isMounted) {
-                  setStreams(prev => prev.map(s => {
-                    if (s.id === payload.new.id) {
-                      return { ...s, ...payload.new, host: s.host };
+                  setStreams((prev) => {
+                    const exists = prev.some(s => s.id === payload.new.id);
+                    
+                    if (exists) {
+                      // Map state data while carefully retaining original host user profile object context
+                      return prev.map(s => s.id === payload.new.id ? { ...s, ...payload.new, host: s.host } : s);
+                    } else if (payload.new.status === 'live') {
+                      // Fallback check: If it was skipped earlier but is now fully set to live, fetch and slide it in
+                      fetchHostProfile(payload.new.host_id).then((profile) => {
+                        if (isMounted) {
+                          setStreams(current => {
+                            if (current.some(s => s.id === payload.new.id)) return current;
+                            return [{ ...payload.new, host: profile }, ...current];
+                          });
+                        }
+                      });
                     }
-                    return s;
-                  }));
+                    return prev;
+                  });
                 }
               }
             }
@@ -109,7 +124,7 @@ const StreamDiscovery = () => {
             if (currentEvent === 'DELETE') {
               const oldId = payload.old ? payload.old.id : null;
               if (isMounted && oldId) {
-                setStreams(prev => prev.filter(s => s.id === oldId));
+                setStreams(prev => prev.filter(s => s.id !== oldId));
               }
             }
           })
