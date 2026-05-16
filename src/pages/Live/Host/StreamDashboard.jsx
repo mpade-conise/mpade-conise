@@ -57,6 +57,11 @@ const StreamDashboard = () => {
   const [isSlowMode, setIsSlowMode] = useState(false);
   const [chatFilter, setChatFilter] = useState('all');
 
+  // --- LIVE PRODUCTION HOSTS STATE ---
+  const [liveHosts, setLiveHosts] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoadingHosts, setIsLoadingHosts] = useState(false);
+
   // Helper function to resolve dynamic co-host profiles on payload updates
   const fetchCoHostProfile = async (coHostId) => {
     if (!coHostId) return null;
@@ -73,6 +78,63 @@ const StreamDashboard = () => {
       return { id: coHostId, username: 'Opponent Creator', avatar_url: null };
     }
   };
+
+  // Fetch online creators/hosts from the database
+  const fetchLiveHosts = async () => {
+    if (!streamData) return;
+    setIsLoadingHosts(true);
+    try {
+      // Queries active streams, excluding the current stream session and the current host
+      let query = supabase
+        .from('live_streams')
+        .select(`
+          id,
+          host_id,
+          status,
+          host:host_id (
+            id,
+            username,
+            avatar_url
+          )
+        `)
+        .eq('status', 'live')
+        .not('id', 'eq', streamId)
+        .not('host_id', 'eq', streamData.host_id);
+
+      // Apply search filter natively to the profiles foreign table if text is entered
+      if (searchQuery.trim() !== '') {
+        query = query.ilike('host.username', `%${searchQuery}%`);
+      }
+
+      const { data, error } = await query.limit(10);
+      
+      if (error) throw error;
+
+      // Filter out records where the inner profile join didn't match or resolve
+      const formattedHosts = (data || [])
+        .filter(item => item.host)
+        .map(item => ({
+          stream_id: item.id,
+          id: item.host.id,
+          username: item.host.username,
+          avatar_url: item.host.avatar_url,
+          tag: 'Live Now'
+        }));
+
+      setLiveHosts(formattedHosts);
+    } catch (err) {
+      console.error("⚠️ Error fetching production live hosts:", err.message);
+    } finally {
+      setIsLoadingHosts(false);
+    }
+  };
+
+  // Trigger live host fetching whenever the panel opens or search query changes
+  useEffect(() => {
+    if (activePanel === 'invite' && streamData) {
+      fetchLiveHosts();
+    }
+  }, [activePanel, searchQuery, streamData]);
 
   // 1. DATA & REALTIME SUBSCRIPTIONS
   useEffect(() => {
@@ -94,7 +156,6 @@ const StreamDashboard = () => {
           challenger: data.challenger_battle_points || 0
         });
         
-        // Check if there is an active co-host sitting in the DB row on initial mount
         if (data.co_host_id) {
           const profile = await fetchCoHostProfile(data.co_host_id);
           if (isMounted) setActiveCoHost(profile);
@@ -116,7 +177,6 @@ const StreamDashboard = () => {
             challenger: payload.new.challenger_battle_points || 0
           });
 
-          // Watch cohost state shifts natively
           if (payload.new.co_host_id !== payload.old.co_host_id) {
             if (payload.new.co_host_id) {
               const profile = await fetchCoHostProfile(payload.new.co_host_id);
@@ -211,6 +271,19 @@ const StreamDashboard = () => {
     setTimeout(() => setActiveGift(null), 5000);
   };
 
+  const handleSendInvite = async (targetHost) => {
+    try {
+      // Custom business logic for invitations (e.g., table insert, RPC, or broadcast transaction)
+      console.log(`Sending battle invite to stream session: ${targetHost.stream_id}`);
+      
+      // Example: Update target stream or insert into live_invites table if applicable
+      // Close panel on successful production handoff
+      setActivePanel(null);
+    } catch (err) {
+      console.error("Failed to send live invite:", err.message);
+    }
+  };
+
   if (!streamData) {
     return (
       <div className="h-screen bg-black flex items-center justify-center font-black italic text-red-500 underline decoration-red-500/50 animate-pulse tracking-widest">
@@ -283,7 +356,6 @@ const StreamDashboard = () => {
             >
               <div className="absolute inset-0 flex items-center justify-center border-l border-cyan-500/30 bg-zinc-950">
                 {activeCoHost ? (
-                  /* WebRTC Remote Sub-Track Stream Video element renders here */
                   <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center">
                     <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
                       Live Video Active ({activeCoHost.username})
@@ -296,7 +368,6 @@ const StreamDashboard = () => {
                 )}
               </div>
               
-              {/* Overlay Engine Layer */}
               {isBattleMode && (
                 <BattleOverlay 
                   score={battleScores} 
@@ -471,37 +542,52 @@ const StreamDashboard = () => {
                       <Search size={14} className="absolute left-4 top-3.5 text-zinc-500" />
                       <input 
                         type="text" 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="SEARCH ACTIVE CREATORS..." 
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-xs font-bold tracking-wider uppercase text-white focus:outline-none focus:border-cyan-500/50 transition-colors placeholder:text-zinc-600"
                       />
                     </div>
 
-                    {/* Mock Creator Invite Active Roster List */}
+                    {/* Production Creator Invite Roster List */}
                     <div className="space-y-2">
-                      <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 px-1">Recommended Competitors</div>
-                      {[
-                        { name: 'X_Challenger_Dev', tag: 'Top Match', avatar: 'https://via.placeholder.com/150' },
-                        { name: 'Alpha_Streamer', tag: 'Trending', avatar: 'https://via.placeholder.com/150' },
-                      ].map((creator, index) => (
-                        <div key={index} className="flex items-center justify-between bg-white/5 border border-white/5 rounded-2xl p-3 hover:border-white/10 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <img src={creator.avatar} className="w-8 h-8 rounded-full object-cover border border-zinc-800" alt="" />
-                            <div>
-                              <div className="text-xs font-black tracking-wide text-zinc-200">{creator.name}</div>
-                              <div className="text-[9px] font-bold text-cyan-500 uppercase tracking-tighter">{creator.tag}</div>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => {
-                              // Action to ping invite payload via Supabase can be added here
-                              setActivePanel(null);
-                            }}
-                            className="bg-cyan-500 hover:bg-cyan-400 text-black px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-transform active:scale-95"
-                          >
-                            Invite
-                          </button>
+                      <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 px-1">
+                        {searchQuery ? "Search Results" : "Recommended Competitors"}
+                      </div>
+
+                      {isLoadingHosts ? (
+                        <div className="text-center py-6 text-xs font-bold tracking-widest text-zinc-600 animate-pulse uppercase">
+                          Scanning Database Tracks...
                         </div>
-                      ))}
+                      ) : liveHosts.length === 0 ? (
+                        <div className="text-center py-6 text-xs font-bold tracking-widest text-zinc-600 uppercase">
+                          No foreign hosts are live right now.
+                        </div>
+                      ) : (
+                        liveHosts.map((creator) => (
+                          <div key={creator.id} className="flex items-center justify-between bg-white/5 border border-white/5 rounded-2xl p-3 hover:border-white/10 transition-colors">
+                            <div className="flex items-center gap-3">
+                              {creator.avatar_url ? (
+                                <img src={creator.avatar_url} className="w-8 h-8 rounded-full object-cover border border-zinc-800" alt="" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700 text-[10px] font-bold text-zinc-400">
+                                  {creator.username?.substring(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div>
+                                <div className="text-xs font-black tracking-wide text-zinc-200">{creator.username}</div>
+                                <div className="text-[9px] font-bold text-cyan-500 uppercase tracking-tighter">{creator.tag}</div>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => handleSendInvite(creator)}
+                              className="bg-cyan-500 hover:bg-cyan-400 text-black px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-transform active:scale-95"
+                            >
+                              Invite
+                            </button>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 )}
