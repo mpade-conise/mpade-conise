@@ -19,7 +19,7 @@ import StreamHeader from '../Shared/StreamHeader';
 import BattleOverlay from './BattleOverlay';
 
 // Change this URL to your live Node.js deployment (Render, Railway, etc.)
-const SOCKET_SERVER_URL = "https://your-socket-backend.onrender.com";
+const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
