@@ -19,8 +19,6 @@ import BattleOverlay from './BattleOverlay'; // Split-Screen Battle Logic
 
 /**
  * Local WebRTC Architecture Safety Configuration
- * Ensures that if sub-components or signaling instances reference webrtcConfig 
- * within the Host bundle scope, it resolves safely instead of triggering a ReferenceError.
  */
 const webrtcConfig = window.webrtcConfig || {
   iceServers: [
@@ -34,7 +32,13 @@ const webrtcConfig = window.webrtcConfig || {
 const StreamDashboard = () => {
   const { streamId } = useParams();
   const navigate = useNavigate();
-  const videoRef = useRef(null);
+  
+  // --- MEDIA STREAMS & WEBRTC DOM REFERENCES ---
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const pcRef = useRef(null);
+  const roomChannelRef = useRef(null);
   
   // --- CORE STATE ---
   const [streamData, setStreamData] = useState(null);
@@ -124,7 +128,9 @@ const StreamDashboard = () => {
     } catch (err) {
       console.error("⚠️ Error fetching production live hosts:", err.message);
     } finally {
-      if (isMounted) setIsLoadingHosts(false);
+      if (isMounted) {
+        setIsLoadingHosts(false);
+      }
     }
   };
 
@@ -137,10 +143,74 @@ const StreamDashboard = () => {
     return () => { isMounted = false; };
   }, [activePanel, searchQuery, streamData]);
 
+  // Clean initialization helper for WebRTC Peer Connections
+  const closePeerConnection = () => {
+    if (pcRef.current) {
+      pcRef.current.getSenders().forEach(sender => pcRef.current.removeTrack(sender));
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+  };
+
+  // WebRTC Negotiator: Initialization, ICE routing, and Offer/Answer handshakes
+  const initializePeerConnection = async (isInitiator) => {
+    closePeerConnection();
+
+    const pc = new RTCPeerConnection(webrtcConfig);
+    pcRef.current = pc;
+
+    // Attach local multimedia streaming tracks down the WebRTC route pipe
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current);
+      });
+    }
+
+    // Capture incoming remote stream tracks from peer and map to downstream target viewport
+    pc.ontrack = (event) => {
+      console.log("🔥 WebRTC Receiver Engine: Appending incoming remote media stream tracks.");
+      if (remoteVideoRef.current && event.streams[0]) {
+        remoteVideoRef.current.srcObject = event.streams[0];
+      }
+    };
+
+    // Forward localized candidate vectors outwards across standard Broadcast pipeline routing
+    pc.onicecandidate = (event) => {
+      if (event.candidate && roomChannelRef.current) {
+        roomChannelRef.current.send({
+          type: 'broadcast',
+          event: 'webrtc_ice_candidate',
+          payload: { candidate: event.candidate }
+        });
+      }
+    };
+
+    // Structural generation and execution of handshake pipelines
+    if (isInitiator) {
+      try {
+        console.log("✈️ Signaling Initiator: Generating Local WebRTC Session Offer.");
+        const offer = await pc.createOffer({ offerToReceiveVideo: true, offerToReceiveAudio: true });
+        await pc.setLocalDescription(offer);
+        
+        roomChannelRef.current.send({
+          type: 'broadcast',
+          event: 'webrtc_session_offer',
+          payload: { sdp: offer }
+        });
+      } catch (err) {
+        console.error("❌ Failed to instantiate WebRTC outbox offer:", err);
+      }
+    }
+  };
+
   // 1. DATA & REALTIME SUBSCRIPTIONS
   useEffect(() => {
     let isMounted = true;
     const channel = supabase.channel(`live_room_${streamId}`);
+    roomChannelRef.current = channel;
 
     const fetchAndSubscribe = async () => {
       const { data } = await supabase
@@ -162,6 +232,8 @@ const StreamDashboard = () => {
           if (isMounted) {
             setActiveCoHost(profile);
             setIsBattleMode(true);
+            // Fallback setup if room states are active on initial page loading sequence
+            setTimeout(() => initializePeerConnection(true), 1500);
           }
         }
       }
@@ -189,8 +261,11 @@ const StreamDashboard = () => {
                 setIsBattleMode(true);
               }
             } else {
-              setActiveCoHost(null);
-              setIsBattleMode(false);
+              if (isMounted) {
+                setActiveCoHost(null);
+                setIsBattleMode(false);
+                closePeerConnection();
+              }
             }
           }
         })
@@ -209,6 +284,44 @@ const StreamDashboard = () => {
           if (isMounted) {
             console.log("⚔️ Incoming match invitation received via broadcast:", payload);
             setIncomingInvite(payload);
+          }
+        })
+        // --- LIVE SIGNALS INTERCEPTORS ---
+        .on('broadcast', { event: 'webrtc_session_offer' }, async ({ payload }) => {
+          if (!pcRef.current) await initializePeerConnection(false);
+          try {
+            console.log("📥 Intercepted WebRTC Offer. Synchronizing remote description vectors.");
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            
+            const answer = await pcRef.current.createAnswer();
+            await pcRef.current.setLocalDescription(answer);
+            
+            channel.send({
+              type: 'broadcast',
+              event: 'webrtc_session_answer',
+              payload: { sdp: answer }
+            });
+          } catch (err) {
+            console.error("❌ Handshake failure mapping inbound Remote Session Offer:", err);
+          }
+        })
+        .on('broadcast', { event: 'webrtc_session_answer' }, async ({ payload }) => {
+          if (pcRef.current) {
+            try {
+              console.log("📥 Intercepted WebRTC Answer. Completing dynamic transport configuration pipelines.");
+              await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+            } catch (err) {
+              console.error("❌ Handshake failure resolving targeted Remote Session Answer:", err);
+            }
+          }
+        })
+        .on('broadcast', { event: 'webrtc_ice_candidate' }, async ({ payload }) => {
+          if (pcRef.current && payload.candidate) {
+            try {
+              await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            } catch (err) {
+              console.error("⚠️ Error processing injected ICE Candidate vector:", err);
+            }
           }
         })
         .on('presence', { event: 'sync' }, () => {
@@ -240,6 +353,7 @@ const StreamDashboard = () => {
 
     return () => {
       isMounted = false;
+      closePeerConnection();
       supabase.removeChannel(channel);
     };
   }, [streamId]);
@@ -253,7 +367,8 @@ const StreamDashboard = () => {
           video: { width: 1280, height: 720 }, 
           audio: true 
         });
-        if (videoRef.current) videoRef.current.srcObject = mediaStream;
+        localStreamRef.current = mediaStream;
+        if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
       } catch (err) { 
         console.error("Broadcasting failed", err); 
       }
@@ -266,6 +381,19 @@ const StreamDashboard = () => {
       }
     };
   }, []);
+
+  // Sync dynamic user hardware mutations over live RTC channels
+  useEffect(() => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
+    }
+  }, [isMuted]);
+
+  useEffect(() => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => { track.enabled = !isCameraOff; });
+    }
+  }, [isCameraOff]);
 
   // 3. UTILITY EVENT HANDLERS
   const handleNewReaction = (type) => {
@@ -334,7 +462,8 @@ const StreamDashboard = () => {
       setIsBattleMode(true);
       setIncomingInvite(null);
       
-      console.log("🔥 Co-host pairing handshake completed successfully. Split screen active.");
+      console.log("🔥 Co-host pairing handshake completed successfully. Spawning WebRTC offer sequences...");
+      setTimeout(() => initializePeerConnection(true), 800);
     } catch (err) {
       console.error("⚠️ Failed to process room pairing handshake:", err.message);
     }
@@ -391,7 +520,7 @@ const StreamDashboard = () => {
           className="relative h-full overflow-hidden border-r border-white/5"
         >
           <video 
-            ref={videoRef} autoPlay muted playsInline 
+            ref={localVideoRef} autoPlay muted playsInline 
             className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} 
           />
           {isCameraOff && (
@@ -411,16 +540,27 @@ const StreamDashboard = () => {
               className="w-1/2 h-full bg-zinc-900 relative"
             >
               <div className="absolute inset-0 flex items-center justify-center border-l border-cyan-500/30 bg-zinc-950">
+                
+                {/* Dynamically mounted fallback video wrapper tag */}
+                <video 
+                  ref={remoteVideoRef} 
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-full object-cover bg-zinc-950"
+                />
+
                 {activeCoHost ? (
-                  <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center">
-                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
-                      Live Video Active ({activeCoHost.username})
+                  <div className="absolute top-4 left-4 z-10 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/5">
+                    <p className="text-[9px] text-zinc-300 font-bold uppercase tracking-widest">
+                      LIVE: {activeCoHost.username}
                     </p>
                   </div>
                 ) : (
-                  <p className="text-[10px] font-black uppercase text-zinc-600 tracking-wider animate-pulse">
-                    {isBattleMode ? "Waiting for Opponent..." : "Waiting for Guest..."}
-                  </p>
+                  <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 z-20 pointer-events-none">
+                    <p className="text-[10px] font-black uppercase text-zinc-600 tracking-wider animate-pulse">
+                      {isBattleMode ? "Waiting for Opponent..." : "Waiting for Guest..."}
+                    </p>
+                  </div>
                 )}
               </div>
               
