@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
-import { io } from 'socket.io-client'; // Import Socket.io Client
 import { 
   Users, Gift, BarChart3, Share2, Clock, 
   MessageCircle, Settings, ShieldAlert, List, 
@@ -18,7 +17,7 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
 
-// Change this URL to your live Node.js deployment (Render, Railway, etc.)
+// Change this URL to your live Node.js deployment
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
 const StreamDashboard = () => {
@@ -54,41 +53,56 @@ const StreamDashboard = () => {
   const [isLoadingHosts, setIsLoadingHosts] = useState(false);
   const [incomingInvite, setIncomingInvite] = useState(null);
 
-  // 1. INITIALIZE SOCKET.IO CONNECTION
+  // 1. INITIALIZE SOCKET.IO CONNECTION WITH DYNAMIC IMPORT FALLBACK
   useEffect(() => {
     let isMounted = true;
+    let ioInstance = null;
 
-    // Connect to the external Node.js socket server
-    const socket = io(SOCKET_SERVER_URL, {
-      transports: ['websocket'],
-      query: { room: streamId, role: 'host' }
-    });
-    socketRef.current = socket;
+    const initSocket = async () => {
+      try {
+        // Dynamically importing to completely bypass Vite compile-time resolution checks
+        const socketModule = await import('socket.io-client');
+        const io = socketModule.io || socketModule.default;
 
-    // Socket Event: Client Joined Room
-    socket.on('viewer_joined', (data) => {
-      if (!isMounted) return;
-      setJoinAlert(`${data.username || 'A viewer'} joined the stream!`);
-      setTimeout(() => { if (isMounted) setJoinAlert(null); }, 3000);
-    });
+        if (!isMounted) return;
 
-    // Socket Event: Real-time Live Reaction Received
-    socket.on('received_reaction', (data) => {
-      if (isMounted) handleNewReaction(data.type);
-    });
+        // Connect to the external Node.js socket server
+        const socket = io(SOCKET_SERVER_URL, {
+          transports: ['websocket'],
+          query: { room: streamId, role: 'host' }
+        });
+        socketRef.current = socket;
+        ioInstance = socket;
 
-    // Socket Event: Incoming Battle Challenge Request
-    socket.on('battle_invite_received', (payload) => {
-      if (isMounted) {
-        console.log("⚔️ Incoming battle invite via Socket.io:", payload);
-        setIncomingInvite(payload);
+        // Socket Event: Client Joined Room
+        socket.on('viewer_joined', (data) => {
+          if (!isMounted) return;
+          setJoinAlert(`${data.username || 'A viewer'} joined the stream!`);
+          setTimeout(() => { if (isMounted) setJoinAlert(null); }, 3000);
+        });
+
+        // Socket Event: Real-time Live Reaction Received
+        socket.on('received_reaction', (data) => {
+          if (isMounted) handleNewReaction(data.type);
+        });
+
+        // Socket Event: Incoming Battle Challenge Request
+        socket.on('battle_invite_received', (payload) => {
+          if (isMounted) {
+            console.log("⚔️ Incoming battle invite via Socket.io:", payload);
+            setIncomingInvite(payload);
+          }
+        });
+
+        // Socket Event: Update Active Viewer Counts
+        socket.on('room_presence_update', (users) => {
+          if (isMounted) setViewers(users);
+        });
+
+      } catch (err) {
+        console.error("Failed to initialize client socket interface:", err);
       }
-    });
-
-    // Socket Event: Update Active Viewer Counts
-    socket.on('room_presence_update', (users) => {
-      if (isMounted) setViewers(users);
-    });
+    };
 
     // Fetch Base Stream Configurations from Supabase Meta Layer
     const fetchStreamMeta = async () => {
@@ -107,11 +121,12 @@ const StreamDashboard = () => {
       }
     };
 
+    initSocket();
     fetchStreamMeta();
 
     return () => {
       isMounted = false;
-      if (socketRef.current) socketRef.current.disconnect();
+      if (ioInstance) ioInstance.disconnect();
     };
   }, [streamId]);
 
@@ -162,7 +177,6 @@ const StreamDashboard = () => {
   const handleSendInvite = (targetHost) => {
     if (!socketRef.current || !streamData) return;
 
-    // Send the match invite instantly through the socket router instead of writing rows
     socketRef.current.emit('send_battle_invite', {
       targetRoomId: targetHost.stream_id,
       senderStreamId: streamId,
@@ -178,13 +192,11 @@ const StreamDashboard = () => {
     if (!incomingInvite || !socketRef.current) return;
     
     try {
-      // Update data states globally
       await supabase
         .from('live_streams')
         .update({ co_host_id: incomingInvite.senderHostId })
         .eq('id', streamId);
 
-      // Tell the socket server both streams are now locked in battle
       socketRef.current.emit('accept_battle_invite', {
         hostRoomId: streamId,
         challengerRoomId: incomingInvite.senderStreamId
