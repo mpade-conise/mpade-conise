@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Heart, Share2, MoreVertical, X, CheckCircle2, Plus, Trophy, Target, Wifi, WifiOff } from 'lucide-react';
+import { Users, Heart, Share2, X, CheckCircle2, Plus, Trophy, Target, WifiOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
 
 const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [duration, setDuration] = useState('00:00:00');
-  const [isConnected, setIsConnected] = useState(true); // Pro: Connection Guard
+  const [isConnected, setIsConnected] = useState(true);
   
   const [liveMetrics, setLiveMetrics] = useState({
     likes: data?.likes || 0,
@@ -15,7 +15,7 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
   });
   const [topGifters, setTopGifters] = useState([]);
 
-  // 1. Improved Timer with Day Support (For Long Streams)
+  // Stream Duration Timer
   useEffect(() => {
     if (!data?.created_at) return;
     const timer = setInterval(() => {
@@ -63,7 +63,7 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
     }
   };
 
-  // 2. REAL-TIME DATA & WEBHOOKS
+  // Real-time Database Updates
   useEffect(() => {
     if (!data?.id) return;
 
@@ -113,7 +113,7 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
         if (!profileError) {
           const merged = sortedUnique.map((gift, index) => ({
             ...gift,
-            rank: index + 1, // Added rank index
+            rank: index + 1,
             profiles: profiles.find(p => p.id === gift.sender_id)
           }));
           setTopGifters(merged);
@@ -124,9 +124,6 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
     fetchTopGifters();
     fetchStreamMetrics();
 
-    // Listen for connection changes
-    const channel = supabase.channel(`stream-status-${data.id}`);
-    
     const streamSub = supabase
       .channel(`stream-${data.id}`)
       .on('postgres_changes', {
@@ -164,7 +161,6 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
     };
   }, [data?.id]);
 
-  // Logic for Unlimited Goal
   const goalPercent = useMemo(() => {
     const effectiveTotalGoal = liveMetrics.total_goal || 1;
     return Math.min((liveMetrics.current_goal / effectiveTotalGoal) * 100, 100);
@@ -173,140 +169,144 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
   const isGoalExceeded = liveMetrics.current_goal >= liveMetrics.total_goal;
 
   return (
-    <header className="absolute top-0 left-0 right-0 p-3 flex flex-col gap-3 z-50 bg-gradient-to-b from-black/90 via-black/20 to-transparent pointer-events-none">
+    <header className="absolute top-0 left-0 right-0 p-4 flex flex-col gap-2.5 z-50 bg-gradient-to-b from-black/40 via-transparent to-transparent pointer-events-none select-none">
       
-      {/* Header Info Row */}
+      {/* ================= MAIN HEADER ROW ================= */}
       <div className="flex justify-between items-center w-full">
-        <div className="flex items-center gap-2 pointer-events-auto">
-          {/* Host Info */}
-          <div className="flex items-center gap-2 bg-black/40 backdrop-blur-3xl p-1 pr-3 rounded-full border border-white/10 shadow-2xl">
-            <div className={`w-9 h-9 rounded-full bg-zinc-800 border-2 ${isHost ? 'border-cyan-400' : 'border-[#fe2c55]'} overflow-hidden relative`}>
+        
+        {/* LEFT COLUMN: Host Bubble & Viewer Count Block */}
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          
+          {/* Host Info Profile Container */}
+          <div className="flex items-center gap-1.5 bg-black/25 backdrop-blur-md p-1 pr-2.5 rounded-full border border-white/10">
+            <div className="w-8 h-8 rounded-full bg-zinc-800 border border-white/20 overflow-hidden relative">
               <img 
                 src={data?.host?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data?.host_id}`} 
                 className="w-full h-full object-cover"
                 alt="host"
               />
             </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1">
-                <h1 className="text-[10px] font-black text-white uppercase truncate max-w-[70px]">
+            
+            <div className="flex flex-col max-w-[75px]">
+              <div className="flex items-center gap-0.5">
+                <span className="text-[10px] font-bold text-white truncate">
                   {data?.host?.username || 'Creator'}
-                </h1>
-                <CheckCircle2 size={10} className="text-blue-400 fill-blue-400" />
+                </span>
+                <CheckCircle2 size={9} className="text-blue-400 fill-blue-400 flex-shrink-0" />
               </div>
-              <p className={`text-[8px] font-bold ${isHost ? 'text-cyan-400' : 'text-[#fe2c55]'} uppercase tracking-widest leading-none`}>
-                {isHost ? 'MY STUDIO' : 'LIVE'}
-              </p>
+              <span className="text-[8px] font-medium text-white/70 leading-none">
+                {liveMetrics.likes >= 1000 ? `${(liveMetrics.likes / 1000).toFixed(1)}k` : liveMetrics.likes} Likes
+              </span>
             </div>
+
             {!isHost && (
               <motion.button 
                 whileTap={{ scale: 0.9 }}
                 onClick={handleToggleFollow}
-                className={`ml-1 w-6 h-6 rounded-full flex items-center justify-center transition-all ${isFollowing ? 'bg-white/10 text-zinc-400' : 'bg-[#fe2c55] text-white shadow-lg shadow-[#fe2c55]/20'}`}
+                className={`ml-1 w-5 h-5 rounded-full flex items-center justify-center transition-all ${
+                  isFollowing ? 'bg-white/10 text-white/60' : 'bg-[#fe2c55] text-white'
+                }`}
               >
-                {isFollowing ? <CheckCircle2 size={12} /> : <Plus size={14} />}
+                {isFollowing ? <CheckCircle2 size={10} /> : <Plus size={11} className="stroke-[3]" />}
               </motion.button>
             )}
           </div>
 
-          {/* Stats Bubble */}
-          <div className="flex items-center gap-1 bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
-            <div className="flex items-center gap-1.5 border-r border-white/10 pr-2">
-              <Users size={12} className="text-white/70" />
-              <span className="text-[10px] font-black text-white">{viewerCount?.toLocaleString() || '0'}</span>
-            </div>
-            <div className="flex items-center gap-1.5 pl-1.5">
-              <Heart size={12} className="text-[#fe2c55] fill-[#fe2c55] animate-pulse" />
-              <span className="text-[10px] font-black text-white">{liveMetrics.likes?.toLocaleString()}</span>
-            </div>
+          {/* Active Viewer Count Badge */}
+          <div className="flex items-center gap-1 bg-black/25 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-white/10 h-[38px]">
+            <Users size={11} className="text-white/90" />
+            <span className="text-[10px] font-bold text-white tracking-wide">
+              {viewerCount >= 1000 ? `${(viewerCount / 1000).toFixed(1)}k` : viewerCount || '0'}
+            </span>
           </div>
         </div>
 
-        {/* Right Actions & Gifter Rank */}
+        {/* RIGHT COLUMN: Top Gifters list & Stream Control Actions */}
         <div className="flex items-center gap-2 pointer-events-auto">
-          <div className="flex items-center -space-x-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 mr-1 shadow-lg">
+          
+          {/* Top Gifters Avatars Array */}
+          <div className="flex items-center -space-x-1.5 bg-black/25 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 h-[38px]">
             {topGifters.map((gifter, i) => (
-              <motion.div 
-                initial={{ x: 10, opacity: 0 }} 
-                animate={{ x: 0, opacity: 1 }} 
+              <div 
                 key={gifter.sender_id} 
-                className={`w-7 h-7 rounded-full border-2 relative transition-transform hover:scale-110 z-[${3-i}]
-                  ${i === 0 ? 'border-yellow-400 shadow-[0_0_12px_rgba(250,204,21,0.5)]' : 
-                    i === 1 ? 'border-zinc-300' : 'border-orange-400'} bg-zinc-900 overflow-hidden`}
+                className={`w-6 h-6 rounded-full border relative z-[${3-i}] bg-zinc-900 overflow-hidden ${
+                  i === 0 ? 'border-yellow-400' : i === 1 ? 'border-zinc-300' : 'border-amber-600'
+                }`}
               >
                 <img 
                   src={gifter.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${gifter.sender_id}`} 
                   className="w-full h-full object-cover"
-                  alt="top gifter" 
+                  alt="top-gifter" 
                 />
-              </motion.div>
-            ))}
-            {topGifters.length > 0 && (
-              <div className="pl-3 pr-1 flex items-center">
-                <Trophy size={12} className="text-yellow-400 drop-shadow-[0_0_5px_rgba(250,204,21,0.5)] animate-bounce" />
               </div>
+            ))}
+            {topGifters.length === 0 && (
+              <span className="text-[9px] text-white/40 px-1 font-medium">No Gifters</span>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <button className="p-2 bg-black/30 hover:bg-black/50 transition-colors rounded-full text-white border border-white/5"><Share2 size={16} /></button>
-            <button onClick={onLeave} className="p-2 bg-[#fe2c55] active:scale-90 transition-all rounded-full text-white shadow-lg shadow-[#fe2c55]/30"><X size={18} /></button>
-          </div>
+
+          {/* Core Controls */}
+          <button className="w-[38px] h-[38px] flex items-center justify-center bg-black/25 hover:bg-black/40 transition-colors rounded-full text-white border border-white/10">
+            <Share2 size={14} />
+          </button>
+          <button 
+            onClick={onLeave} 
+            className="w-[38px] h-[38px] flex items-center justify-center bg-black/40 hover:bg-zinc-900/60 active:scale-95 transition-all rounded-full text-white border border-white/10"
+          >
+            <X size={16} />
+          </button>
         </div>
       </div>
 
-      {/* Goal Progress Section */}
-      <div className="w-full max-w-[240px] pointer-events-auto group">
-        <div className="flex justify-between items-end mb-1 px-1">
-          <div className="flex items-center gap-1.5 text-yellow-400">
-            <Target size={12} className={isGoalExceeded ? 'animate-spin' : ''} />
-            <span className="text-[9px] font-black uppercase tracking-[2px]">
-              {isGoalExceeded ? 'Goal Reached!' : 'Live Goal'}
+      {/* ================= SECONDARY SYSTEM METRICS ROW ================= */}
+      <div className="flex flex-col gap-1.5 mt-0.5">
+        
+        {/* Stream Run Duration Block */}
+        <div className="flex items-center gap-1.5 pointer-events-auto self-start">
+          <div className="bg-black/25 backdrop-blur-md px-2.5 py-0.5 rounded border border-white/5 flex items-center gap-1.5">
+            <div className={`w-1 h-1 rounded-full ${isConnected ? 'bg-[#fe2c55]' : 'bg-zinc-500'} animate-pulse`} />
+            <span className="text-[9px] font-bold text-white/90 font-mono tracking-wider">{duration}</span>
+          </div>
+
+          <AnimatePresence>
+            {!isConnected && (
+              <motion.div 
+                initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -5 }}
+                className="bg-amber-500/20 backdrop-blur-md px-1.5 py-0.5 rounded border border-amber-500/30 flex items-center gap-1"
+              >
+                <WifiOff size={9} className="text-amber-400" />
+                <span className="text-[8px] font-bold text-amber-400 uppercase tracking-tight">Reconnecting...</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Live Gift Goal Indicator Panel */}
+        <div className="w-full max-w-[180px] bg-black/25 backdrop-blur-md p-1.5 rounded-lg border border-white/5 pointer-events-auto">
+          <div className="flex justify-between items-center mb-1 px-0.5">
+            <div className="flex items-center gap-1 text-yellow-400">
+              <Target size={10} />
+              <span className="text-[8px] font-bold uppercase tracking-wider">
+                {isGoalExceeded ? 'Goal Reached!' : 'Live Goal'}
+              </span>
+            </div>
+            <span className="text-[8px] font-bold text-white/90 font-mono">
+              {liveMetrics.current_goal}/{liveMetrics.total_goal}
             </span>
           </div>
-          <span className="text-[9px] font-black text-white/90 font-mono">
-            {liveMetrics.current_goal} <span className="text-white/30">/</span> {liveMetrics.total_goal}
-          </span>
-        </div>
-        <div className="h-2 w-full bg-black/60 rounded-full border border-white/10 overflow-hidden p-[1px] relative">
-          <motion.div 
-            initial={{ width: 0 }}
-            animate={{ width: `${goalPercent}%` }}
-            transition={{ type: 'spring', stiffness: 40, damping: 15 }}
-            className={`h-full rounded-full relative z-10 
-              ${isGoalExceeded ? 
-                'bg-gradient-to-r from-yellow-400 via-white to-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.8)]' : 
-                'bg-gradient-to-r from-yellow-600 via-yellow-400 to-yellow-200'}`}
-          >
-            {isGoalExceeded && (
-              <motion.div 
-                animate={{ x: ['-100%', '200%'] }} 
-                transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent w-1/2"
-              />
-            )}
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Bottom Status Row */}
-      <div className="flex items-center gap-2 px-1">
-        <div className="bg-black/60 backdrop-blur-2xl px-2.5 py-1 rounded-lg border border-white/10 flex items-center gap-2 shadow-2xl">
-          <div className={`w-1.5 h-1.5 rounded-full shadow-[0_0_8px] ${isConnected ? 'bg-[#fe2c55] shadow-[#fe2c55]' : 'bg-zinc-500 shadow-zinc-500'} animate-pulse`} />
-          <span className="text-[10px] font-black text-white/90 tracking-widest font-mono uppercase">{duration}</span>
-        </div>
-        
-        {/* Pro Feature: Network Health Indicator */}
-        <AnimatePresence>
-          {!isConnected && (
+          
+          <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden relative">
             <motion.div 
-              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
-              className="bg-amber-500/20 backdrop-blur-xl px-2 py-1 rounded-lg border border-amber-500/50 flex items-center gap-2"
-            >
-              <WifiOff size={10} className="text-amber-500" />
-              <span className="text-[8px] font-black text-amber-500 uppercase tracking-tighter">Connecting...</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              initial={{ width: 0 }}
+              animate={{ width: `${goalPercent}%` }}
+              transition={{ type: 'spring', stiffness: 50, damping: 15 }}
+              className={`h-full rounded-full ${
+                isGoalExceeded ? 'bg-yellow-400 shadow-[0_0_8px_#facc15]' : 'bg-gradient-to-r from-yellow-500 to-yellow-300'
+              }`}
+            />
+          </div>
+        </div>
+
       </div>
     </header>
   );
