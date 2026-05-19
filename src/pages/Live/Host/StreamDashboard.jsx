@@ -181,7 +181,6 @@ const StreamDashboard = () => {
     pc.onicecandidate = async (event) => {
       if (event.candidate) {
         try {
-          // Fetch existing candidates first to prevent overwrite data race mutations
           const { data } = await supabase
             .from('live_streams')
             .select('ice_candidates')
@@ -205,16 +204,15 @@ const StreamDashboard = () => {
     // Structural generation and execution of handshake pipelines
     if (isInitiator) {
       try {
-        console.log("✈ *Signaling Initiator: Generating and Writing WebRTC Session Offer to Table.");
+        console.log("✈️ Signaling Initiator: Generating and Writing WebRTC Session Offer to Table.");
         const offer = await pc.createOffer({ offerToReceiveVideo: true, offerToReceiveAudio: true });
         await pc.setLocalDescription(offer);
         
-        // Push offer to database row directly so viewer initialization successfully triggers
         await supabase
           .from('live_streams')
           .update({
             offer: JSON.stringify(offer),
-            answer: null // Flush any stale answer states out
+            answer: null 
           })
           .eq('id', streamId);
 
@@ -250,9 +248,13 @@ const StreamDashboard = () => {
           if (isMounted) {
             setActiveCoHost(profile);
             setIsBattleMode(true);
-            setTimeout(() => initializePeerConnection(true), 1500);
           }
         }
+
+        // FIX: Trigger immediate WebRTC initialization so standard viewers can latch on
+        setTimeout(() => {
+          if (isMounted) initializePeerConnection(true);
+        }, 1500);
       }
 
       channel
@@ -270,7 +272,6 @@ const StreamDashboard = () => {
             challenger: payload.new.challenger_battle_points || 0
           });
 
-          // Check if an answer string has returned to the table from the receiver client
           if (payload.new.answer && pcRef.current && !pcRef.current.remoteDescription) {
             try {
               console.log("📥 Inbound Answer payload processed. Finalizing handshake configurations.");
@@ -287,12 +288,16 @@ const StreamDashboard = () => {
               if (isMounted) {
                 setActiveCoHost(profile);
                 setIsBattleMode(true);
+                // Re-initialize peer connection as initiator for the incoming battle co-host
+                setTimeout(() => initializePeerConnection(true), 800);
               }
             } else {
               if (isMounted) {
                 setActiveCoHost(null);
                 setIsBattleMode(false);
                 closePeerConnection();
+                // Re-initialize standard stream offer for general audience tracking
+                setTimeout(() => initializePeerConnection(true), 800);
               }
             }
           }
@@ -451,9 +456,6 @@ const StreamDashboard = () => {
 
       setIsBattleMode(true);
       setIncomingInvite(null);
-      
-      console.log("🔥 Co-host pairing handshake completed successfully. Spawning WebRTC offer sequences...");
-      setTimeout(() => initializePeerConnection(true), 800);
     } catch (err) {
       console.error("⚠️ Failed to process room pairing handshake:", err.message);
     }
@@ -820,7 +822,6 @@ const StreamDashboard = () => {
   );
 };
 
-// Lightweight sub-interface card component helper
 const SettingsCard = ({ icon, title, desc, onClick }) => (
   <div 
     onClick={onClick}
