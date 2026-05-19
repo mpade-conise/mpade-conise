@@ -177,29 +177,47 @@ const StreamDashboard = () => {
       }
     };
 
-    // Forward localized candidate vectors outwards across standard Broadcast pipeline routing
-    pc.onicecandidate = (event) => {
-      if (event.candidate && roomChannelRef.current) {
-        roomChannelRef.current.send({
-          type: 'broadcast',
-          event: 'webrtc_ice_candidate',
-          payload: { candidate: event.candidate }
-        });
+    // Forward localized candidate vectors outwards across database sync pipelines
+    pc.onicecandidate = async (event) => {
+      if (event.candidate) {
+        try {
+          // Fetch existing candidates first to prevent overwrite data race mutations
+          const { data } = await supabase
+            .from('live_streams')
+            .select('ice_candidates')
+            .eq('id', streamId)
+            .single();
+
+          const currentCandidates = Array.isArray(data?.ice_candidates) ? data.ice_candidates : [];
+          
+          await supabase
+            .from('live_streams')
+            .update({
+              ice_candidates: [...currentCandidates, event.candidate]
+            })
+            .eq('id', streamId);
+        } catch (err) {
+          console.error("⚠️ Failed to append localized ICE Candidate to row:", err);
+        }
       }
     };
 
     // Structural generation and execution of handshake pipelines
     if (isInitiator) {
       try {
-        console.log("✈️ Signaling Initiator: Generating Local WebRTC Session Offer.");
+        console.log("✈ *Signaling Initiator: Generating and Writing WebRTC Session Offer to Table.");
         const offer = await pc.createOffer({ offerToReceiveVideo: true, offerToReceiveAudio: true });
         await pc.setLocalDescription(offer);
         
-        roomChannelRef.current.send({
-          type: 'broadcast',
-          event: 'webrtc_session_offer',
-          payload: { sdp: offer }
-        });
+        // Push offer to database row directly so viewer initialization successfully triggers
+        await supabase
+          .from('live_streams')
+          .update({
+            offer: JSON.stringify(offer),
+            answer: null // Flush any stale answer states out
+          })
+          .eq('id', streamId);
+
       } catch (err) {
         console.error("❌ Failed to instantiate WebRTC outbox offer:", err);
       }
@@ -232,7 +250,6 @@ const StreamDashboard = () => {
           if (isMounted) {
             setActiveCoHost(profile);
             setIsBattleMode(true);
-            // Fallback setup if room states are active on initial page loading sequence
             setTimeout(() => initializePeerConnection(true), 1500);
           }
         }
@@ -252,6 +269,17 @@ const StreamDashboard = () => {
             host: payload.new.host_battle_points || 0,
             challenger: payload.new.challenger_battle_points || 0
           });
+
+          // Check if an answer string has returned to the table from the receiver client
+          if (payload.new.answer && pcRef.current && !pcRef.current.remoteDescription) {
+            try {
+              console.log("📥 Inbound Answer payload processed. Finalizing handshake configurations.");
+              const parsedAnswer = new RTCSessionDescription(JSON.parse(payload.new.answer));
+              await pcRef.current.setRemoteDescription(parsedAnswer);
+            } catch (err) {
+              console.error("❌ Failed mapping inbound table Session Answer:", err);
+            }
+          }
 
           if (payload.new.co_host_id !== payload.old.co_host_id) {
             if (payload.new.co_host_id) {
@@ -284,44 +312,6 @@ const StreamDashboard = () => {
           if (isMounted) {
             console.log("⚔️ Incoming match invitation received via broadcast:", payload);
             setIncomingInvite(payload);
-          }
-        })
-        // --- LIVE SIGNALS INTERCEPTORS ---
-        .on('broadcast', { event: 'webrtc_session_offer' }, async ({ payload }) => {
-          if (!pcRef.current) await initializePeerConnection(false);
-          try {
-            console.log("📥 Intercepted WebRTC Offer. Synchronizing remote description vectors.");
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-            
-            const answer = await pcRef.current.createAnswer();
-            await pcRef.current.setLocalDescription(answer);
-            
-            channel.send({
-              type: 'broadcast',
-              event: 'webrtc_session_answer',
-              payload: { sdp: answer }
-            });
-          } catch (err) {
-            console.error("❌ Handshake failure mapping inbound Remote Session Offer:", err);
-          }
-        })
-        .on('broadcast', { event: 'webrtc_session_answer' }, async ({ payload }) => {
-          if (pcRef.current) {
-            try {
-              console.log("📥 Intercepted WebRTC Answer. Completing dynamic transport configuration pipelines.");
-              await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-            } catch (err) {
-              console.error("❌ Handshake failure resolving targeted Remote Session Answer:", err);
-            }
-          }
-        })
-        .on('broadcast', { event: 'webrtc_ice_candidate' }, async ({ payload }) => {
-          if (pcRef.current && payload.candidate) {
-            try {
-              await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
-            } catch (err) {
-              console.error("⚠️ Error processing injected ICE Candidate vector:", err);
-            }
           }
         })
         .on('presence', { event: 'sync' }, () => {
@@ -778,51 +768,42 @@ const StreamDashboard = () => {
                     </div>
 
                     <div className="relative">
-                      <Search size={14} className="absolute left-4 top-3.5 text-zinc-500" />
+                      <Search className="absolute left-4 top-3.5 text-zinc-500" size={16} />
                       <input 
                         type="text" 
+                        placeholder="SEARCH CREATORS..." 
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="SEARCH ACTIVE CREATORS..." 
-                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-xs font-bold tracking-wider uppercase text-white focus:outline-none focus:border-cyan-500/50 transition-colors placeholder:text-zinc-600"
+                        className="w-full bg-zinc-900 border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-xs font-bold tracking-wider text-white placeholder-zinc-600 focus:outline-none focus:border-cyan-500/50 uppercase transition-colors"
                       />
                     </div>
 
-                    {/* Production Creator Invite Roster List */}
-                    <div className="space-y-2">
-                      <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 px-1">
-                        {searchQuery ? "Search Results" : "Recommended Competitors"}
-                      </div>
-
+                    <div className="space-y-2 max-h-[40vh] overflow-y-auto hide-scrollbar pt-2">
                       {isLoadingHosts ? (
-                        <div className="text-center py-6 text-xs font-bold tracking-widest text-zinc-600 animate-pulse uppercase">
-                          Scanning Database Tracks...
-                        </div>
+                        <div className="text-center py-6 text-[10px] font-black uppercase text-zinc-600 tracking-widest animate-pulse">Scanning live servers...</div>
                       ) : liveHosts.length === 0 ? (
-                        <div className="text-center py-6 text-xs font-bold tracking-widest text-zinc-600 uppercase">
-                          No foreign hosts are live right now.
-                        </div>
+                        <div className="text-center py-6 text-[10px] font-black uppercase text-zinc-600 tracking-widest">No active hosts found</div>
                       ) : (
-                        liveHosts.map((creator) => (
-                          <div key={creator.id} className="flex items-center justify-between bg-white/5 border border-white/5 rounded-2xl p-3 hover:border-white/10 transition-colors">
+                        liveHosts.map((host) => (
+                          <div key={host.id} className="flex items-center justify-between bg-zinc-900/40 border border-white/5 p-3 rounded-2xl hover:border-white/10 transition-colors">
                             <div className="flex items-center gap-3">
-                              {creator.avatar_url ? (
-                                <img src={creator.avatar_url} className="w-8 h-8 rounded-full object-cover border border-zinc-800" alt="" />
+                              {host.avatar_url ? (
+                                <img src={host.avatar_url} className="w-9 h-9 rounded-full object-cover border border-white/10" alt="" />
                               ) : (
-                                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700 text-[10px] font-bold text-zinc-400">
-                                  {creator.username?.substring(0, 2).toUpperCase()}
+                                <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center font-black text-xs text-zinc-400 uppercase">
+                                  {host.username.substring(0,2)}
                                 </div>
                               )}
                               <div>
-                                <div className="text-xs font-black tracking-wide text-zinc-200">{creator.username}</div>
-                                <div className="text-[9px] font-bold text-cyan-500 uppercase tracking-tighter">{creator.tag}</div>
+                                <h4 className="text-xs font-black tracking-wide text-white">@{host.username}</h4>
+                                <span className="text-[8px] font-black uppercase bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded border border-cyan-500/20 tracking-widest">{host.tag}</span>
                               </div>
                             </div>
                             <button 
-                              onClick={() => handleSendInvite(creator)}
-                              className="bg-cyan-500 hover:bg-cyan-400 text-black px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-transform active:scale-95"
+                              onClick={() => handleSendInvite(host)}
+                              className="bg-cyan-500 hover:bg-cyan-400 text-black font-black uppercase tracking-widest text-[9px] px-4 py-2 rounded-xl active:scale-95 transition-all shadow-lg shadow-cyan-500/10"
                             >
-                              Invite
+                              CHALLENGE
                             </button>
                           </div>
                         ))
@@ -835,24 +816,22 @@ const StreamDashboard = () => {
           </>
         )}
       </AnimatePresence>
-
     </div>
   );
 };
 
+// Lightweight sub-interface card component helper
 const SettingsCard = ({ icon, title, desc, onClick }) => (
-  <button 
+  <div 
     onClick={onClick}
-    className="flex flex-col gap-3 p-5 bg-white/5 rounded-2xl border border-white/5 hover:border-red-500/50 transition-all text-left group w-full"
+    className="bg-zinc-900/60 hover:bg-zinc-900 border border-white/5 hover:border-white/10 p-4 rounded-2xl flex flex-col gap-2 transition-all cursor-pointer group active:scale-[0.98]"
   >
-    <div className="p-3 bg-red-500/10 rounded-xl text-red-500 group-hover:bg-red-500 group-hover:text-white transition-colors w-fit">
-      {React.cloneElement(icon, { size: 20 })}
-    </div>
+    <div className="text-zinc-400 group-hover:text-red-500 transition-colors">{icon}</div>
     <div>
-      <h3 className="text-xs font-black uppercase tracking-widest mb-1">{title}</h3>
-      <p className="text-[10px] text-zinc-500 leading-tight">{desc}</p>
+      <h3 className="text-xs font-black uppercase tracking-wider text-white">{title}</h3>
+      <p className="text-[9px] text-zinc-500 font-medium leading-tight mt-0.5">{desc}</p>
     </div>
-  </button>
+  </div>
 );
 
 export default StreamDashboard;
