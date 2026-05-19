@@ -17,7 +17,6 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
 
-// Change this URL to your live Node.js deployment
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
 const StreamDashboard = () => {
@@ -53,56 +52,50 @@ const StreamDashboard = () => {
   const [isLoadingHosts, setIsLoadingHosts] = useState(false);
   const [incomingInvite, setIncomingInvite] = useState(null);
 
-  // 1. INITIALIZE SOCKET.IO CONNECTION WITH DYNAMIC IMPORT FALLBACK
+  // 1. INITIALIZE GLOBAL SOCKET.IO ENGINE
   useEffect(() => {
     let isMounted = true;
     let ioInstance = null;
 
-    const initSocket = async () => {
-      try {
-        // Dynamically importing to completely bypass Vite compile-time resolution checks
-        const socketModule = await import('socket.io-client');
-        const io = socketModule.io || socketModule.default;
+    // Direct look-up inside global window context to bypass compiler checks
+    const globalIo = typeof window !== 'undefined' ? window.io : null;
 
+    if (globalIo && isMounted) {
+      // Connect to the external Node.js socket server
+      const socket = globalIo(SOCKET_SERVER_URL, {
+        transports: ['websocket'],
+        query: { room: streamId, role: 'host' }
+      });
+      socketRef.current = socket;
+      ioInstance = socket;
+
+      // Socket Event: Client Joined Room
+      socket.on('viewer_joined', (data) => {
         if (!isMounted) return;
+        setJoinAlert(`${data.username || 'A viewer'} joined the stream!`);
+        setTimeout(() => { if (isMounted) setJoinAlert(null); }, 3000);
+      });
 
-        // Connect to the external Node.js socket server
-        const socket = io(SOCKET_SERVER_URL, {
-          transports: ['websocket'],
-          query: { room: streamId, role: 'host' }
-        });
-        socketRef.current = socket;
-        ioInstance = socket;
+      // Socket Event: Real-time Live Reaction Received
+      socket.on('received_reaction', (data) => {
+        if (isMounted) handleNewReaction(data.type);
+      });
 
-        // Socket Event: Client Joined Room
-        socket.on('viewer_joined', (data) => {
-          if (!isMounted) return;
-          setJoinAlert(`${data.username || 'A viewer'} joined the stream!`);
-          setTimeout(() => { if (isMounted) setJoinAlert(null); }, 3000);
-        });
+      // Socket Event: Incoming Battle Challenge Request
+      socket.on('battle_invite_received', (payload) => {
+        if (isMounted) {
+          console.log("⚔️ Incoming battle invite via Socket.io:", payload);
+          setIncomingInvite(payload);
+        }
+      });
 
-        // Socket Event: Real-time Live Reaction Received
-        socket.on('received_reaction', (data) => {
-          if (isMounted) handleNewReaction(data.type);
-        });
-
-        // Socket Event: Incoming Battle Challenge Request
-        socket.on('battle_invite_received', (payload) => {
-          if (isMounted) {
-            console.log("⚔️ Incoming battle invite via Socket.io:", payload);
-            setIncomingInvite(payload);
-          }
-        });
-
-        // Socket Event: Update Active Viewer Counts
-        socket.on('room_presence_update', (users) => {
-          if (isMounted) setViewers(users);
-        });
-
-      } catch (err) {
-        console.error("Failed to initialize client socket interface:", err);
-      }
-    };
+      // Socket Event: Update Active Viewer Counts
+      socket.on('room_presence_update', (users) => {
+        if (isMounted) setViewers(users);
+      });
+    } else {
+      console.warn("🌐 Application initialized without active streaming pipeline connection.");
+    }
 
     // Fetch Base Stream Configurations from Supabase Meta Layer
     const fetchStreamMeta = async () => {
@@ -121,7 +114,6 @@ const StreamDashboard = () => {
       }
     };
 
-    initSocket();
     fetchStreamMeta();
 
     return () => {
