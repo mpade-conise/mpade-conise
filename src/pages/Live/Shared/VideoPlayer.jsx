@@ -50,12 +50,15 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           iceCandidatePoolSize: 10
         };
 
-        console.log(`📡 [RTC STREAM INTERFACE] Connecting ID: ${streamId} | Role: ${isHost ? 'HOST' : 'VIEWER'}`);
+        console.log(`📡 [RTC STREAM INTERFACE] Connecting ID: ${streamId} | Role: ${isHost ? 'host' : 'viewer'}`);
 
         // Initialize dedicated WebRTC pipeline signaling connection
         const socket = globalIo(SOCKET_SERVER_URL, {
           transports: ['polling', 'websocket'], // Robust fallback logic for cold Render containers
-          query: { room: streamId, role: isHost ? 'signal-host' : 'signal-viewer' },
+          query: { 
+            room: streamId, 
+            role: isHost ? 'host' : 'viewer' // Synchronized directly with backend server expectations
+          },
           forceNew: true
         });
         socketRef.current = socket;
@@ -166,7 +169,8 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
         // 3. SHARED SYNCED ICE RECEIVER
         socket.on('incoming_ice_candidate', async (payload) => {
-          if (payload.senderType !== (isHost ? 'host' : 'viewer')) {
+          const expectedSenderType = isHost ? 'viewer' : 'host';
+          if (payload.senderType === expectedSenderType) {
             try {
               console.log("📥 Adding incoming remote ICE candidate...");
               await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
@@ -182,6 +186,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
       }
     };
 
+    initializeMediaAndSignaling = initializeMediaAndSignaling;
     initializeMediaAndSignaling();
 
     return () => {
