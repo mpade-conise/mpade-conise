@@ -9,7 +9,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   const pcRef = useRef(null);
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
-  const hasInitialized = useRef(false);
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing Socket...');
@@ -30,9 +29,9 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
       setConnectionStatus("Missing Identity");
       return;
     }
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
 
+    // Flag to manage component state safely across strict-mode remounts
+    let isComponentMounted = true;
     const globalIo = typeof window !== 'undefined' ? window.io : null;
 
     if (!globalIo) {
@@ -51,21 +50,36 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           iceCandidatePoolSize: 10
         };
 
-        console.log(`📡 [RTC STREAM INTERFACE] ID: ${streamId} | Role: ${isHost ? 'HOST' : 'VIEWER'}`);
+        console.log(`📡 [RTC STREAM INTERFACE] Connecting ID: ${streamId} | Role: ${isHost ? 'HOST' : 'VIEWER'}`);
 
         // Initialize dedicated WebRTC pipeline signaling connection
         const socket = globalIo(SOCKET_SERVER_URL, {
           transports: ['polling', 'websocket'], // Robust fallback logic for cold Render containers
-          query: { room: streamId, role: isHost ? 'signal-host' : 'signal-viewer' }
+          query: { room: streamId, role: isHost ? 'signal-host' : 'signal-viewer' },
+          forceNew: true
         });
         socketRef.current = socket;
 
         const pc = new RTCPeerConnection(iceConfig);
         pcRef.current = pc;
 
+        // Sync connection UI status dynamically with the Socket handshake state
+        socket.on('connect', () => {
+          if (isComponentMounted) {
+            console.log("🟢 Socket pipeline online! Socket ID:", socket.id);
+            setConnectionStatus(isHost ? "Streaming Live" : "Awaiting Host Stream...");
+            if (isHost) setIsConnected(true);
+            
+            // Viewers request stream immediately upon socket confirmation
+            if (!isHost) {
+              socket.emit('request_host_stream', { streamId });
+            }
+          }
+        });
+
         // 1. ICE CANDIDATE SIGNAL MANAGEMENT
         pc.onicecandidate = (event) => {
-          if (event.candidate && socketRef.current) {
+          if (event.candidate && socketRef.current && socketRef.current.connected) {
             console.log("📤 Sending ICE Candidate via Socket channel...");
             socketRef.current.emit('webrtc_ice_candidate', {
               streamId,
@@ -76,6 +90,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         };
 
         pc.oniceconnectionstatechange = () => {
+          if (!isComponentMounted) return;
           console.log("⚡ ICE Connection State Changed:", pc.iceConnectionState);
           setConnectionStatus(`State: ${pc.iceConnectionState}`);
           if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
@@ -87,8 +102,13 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         if (isHost) {
           // ================== PRODUCTION HOST PATHWAY ==================
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-          localStreamRef.current = stream;
           
+          if (!isComponentMounted) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+          }
+
+          localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
           stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
@@ -118,10 +138,13 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           pc.ontrack = (event) => {
             console.log("🎬 SUCCESS: Media track attached to viewer video layout.");
             if (videoRef.current) videoRef.current.srcObject = event.streams[0];
+            if (isComponentMounted) setIsConnected(true);
           };
 
-          // Ask the host to generate an offer for us
-          socket.emit('request_host_stream', { streamId });
+          // If socket connected instantly before tracking listener registered, catch it here
+          if (socket.connected) {
+            socket.emit('request_host_stream', { streamId });
+          }
 
           // Intercept incoming WebRTC offers from the active broadcasting host
           socket.on('webrtc_offer_received', async (payload) => {
@@ -155,13 +178,14 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
       } catch (err) {
         console.error("💥 Execution Block Exception caught:", err);
-        setConnectionStatus("Media Blocked");
+        if (isComponentMounted) setConnectionStatus("Media Blocked");
       }
     };
 
     initializeMediaAndSignaling();
 
     return () => {
+      isComponentMounted = false;
       console.log("🧹 Cleaning signaling and media instances...");
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
