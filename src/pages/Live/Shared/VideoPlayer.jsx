@@ -186,7 +186,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
       }
     };
 
-    initializeMediaAndSignaling = initializeMediaAndSignaling;
+    // Trigger initialization loop cleanly
     initializeMediaAndSignaling();
 
     return () => {
