@@ -4,9 +4,12 @@ const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
 const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) => {
   const videoRef = useRef(null);
-  const pcRef = useRef(null);
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
+  
+  // CRUCIAL: Track peer connections dynamically per viewer ID to stop cross-talk collapse
+  const peerConnectionsRef = useRef({}); 
+  const singleViewerPcRef = useRef(null); // Used exclusively if this component instance runs as a viewer
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing Socket...');
@@ -22,7 +25,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   const isHost = initialIsHost || window.location.pathname.includes('dashboard');
 
   useEffect(() => {
-    // 1. Guard clause to prevent premature connections or fast remount teardowns
     if (!streamId || streamId === "undefined" || streamId.length < 10) {
       setConnectionStatus("Awaiting Stream Setup...");
       return;
@@ -50,7 +52,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         console.log(`📡 [RTC STREAM INTERFACE] Connecting ID: ${streamId} | Role: ${isHost ? 'host' : 'viewer'}`);
 
         const socket = globalIo(SOCKET_SERVER_URL, {
-          transports: ['websocket', 'polling'], // Allow fallback for cold Render servers
+          transports: ['websocket', 'polling'],
           query: { 
             room: streamId, 
             role: isHost ? 'host' : 'viewer'
@@ -60,9 +62,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         });
         socketRef.current = socket;
 
-        const pc = new RTCPeerConnection(iceConfig);
-        pcRef.current = pc;
-
         socket.on('connect', () => {
           if (isComponentMounted) {
             console.log("🟢 Socket pipeline online! Socket ID:", socket.id);
@@ -71,33 +70,14 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             if (isHost) {
               setIsConnected(true);
             } else {
-              // Explicitly ask the host to send over the stream offers
               socket.emit('request_host_stream', { streamId });
             }
           }
         });
 
-        // 1. ICE CANDIDATE SIGNAL CHANNELS
-        pc.onicecandidate = (event) => {
-          if (event.candidate && socketRef.current?.connected) {
-            socketRef.current.emit('webrtc_ice_candidate', {
-              streamId,
-              candidate: event.candidate,
-              senderType: isHost ? 'host' : 'viewer'
-            });
-          }
-        };
-
-        pc.oniceconnectionstatechange = () => {
-          if (!isComponentMounted) return;
-          console.log("⚡ ICE Connection State Changed:", pc.iceConnectionState);
-          if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-            setIsConnected(true);
-            setConnectionStatus("Live");
-          }
-        };
-
-        // 2. DISPATCHING PATHWAYS
+        // ==========================================
+        // 🛠️ HOST-SPECIFIC PIPELINE (ONE-TO-MANY)
+        // ==========================================
         if (isHost) {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           if (!isComponentMounted) {
@@ -106,57 +86,130 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           }
           localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
-          stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
+          // Triggered every single time a unique viewer walks onto the page
           socket.on('viewer_requesting_stream', async (payload) => {
-            console.log(`📥 Viewer requested stream. Generating SDP Offer...`);
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit('send_webrtc_offer', {
-              streamId,
-              offer,
-              targetViewerId: payload.viewerSocketId
-            });
+            const viewerId = payload.viewerSocketId;
+            console.log(`📥 Separate request received from viewer [${viewerId}]. Allocating distinct connection...`);
+
+            // Instantiation of a clean, isolated connection channel map
+            const pc = new RTCPeerConnection(iceConfig);
+            peerConnectionsRef.current[viewerId] = pc;
+
+            // Feed the shared host video tracks straight into this viewer node
+            stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+            // Target the specific viewer with host's ICE configurations
+            pc.onicecandidate = (event) => {
+              if (event.candidate && socketRef.current?.connected) {
+                socketRef.current.emit('webrtc_ice_candidate', {
+                  streamId,
+                  candidate: event.candidate,
+                  targetSocketId: viewerId,
+                  senderType: 'host'
+                });
+              }
+            };
+
+            try {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              
+              socket.emit('send_webrtc_offer', {
+                streamId,
+                offer,
+                targetViewerId: viewerId
+              });
+            } catch (err) {
+              console.error("❌ Failed to orchestrate individual offer matrix:", err);
+            }
           });
 
+          // Process answers from targeted viewers mapping directly back to their reference entry
           socket.on('webrtc_answer_received', async (payload) => {
-            if (!pc.currentRemoteDescription) {
+            const pc = peerConnectionsRef.current[payload.viewerSocketId];
+            if (pc && !pc.currentRemoteDescription) {
               await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+              console.log(`✅ Connection stabilized directly for viewer: ${payload.viewerSocketId}`);
             }
           });
+
+        // ==========================================
+        // 👁️ VIEWER-SPECIFIC PIPELINE
+        // ==========================================
         } else {
-          // VIEWER ROUTE
+          const pc = new RTCPeerConnection(iceConfig);
+          singleViewerPcRef.current = pc;
+
           pc.ontrack = (event) => {
-            console.log("🎬 Media track successfully bound to element.");
-            if (videoRef.current) {
-              videoRef.current.srcObject = event.streams[0];
-            }
+            console.log("🎬 Media track successfully bound to viewer element.");
+            if (videoRef.current) videoRef.current.srcObject = event.streams[0];
             if (isComponentMounted) {
               setIsConnected(true);
-              setConnectionStatus("Connected");
+              setConnectionStatus("Live");
             }
           };
 
           socket.on('webrtc_offer_received', async (payload) => {
-            console.log("📥 Host WebRTC Offer captured. Sending Answer configuration...");
+            console.log("📥 Host WebRTC Offer captured via direct route. Compiling answer...");
             try {
+              // Extract the host pipeline ID to correctly reply to the direct candidate channel later
+              socket.hostSocketId = payload.hostSocketId; 
+
               await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
+              
               socket.emit('send_webrtc_answer', { streamId, answer });
             } catch (err) {
               console.error("❌ Handshake failure:", err);
             }
           });
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate && socketRef.current?.connected) {
+              socketRef.current.emit('webrtc_ice_candidate', {
+                streamId,
+                candidate: event.candidate,
+                targetSocketId: socketRef.current.hostSocketId, // Route it straight to the active host
+                senderType: 'viewer'
+              });
+            }
+          };
+
+          pc.oniceconnectionstatechange = () => {
+            if (!isComponentMounted) return;
+            console.log("⚡ Viewer ICE Connection State Changed:", pc.iceConnectionState);
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+              setIsConnected(true);
+              setConnectionStatus("Live");
+            }
+          };
         }
 
+        // ==========================================
+        // ❄️ CENTRAL INTERCONNECTED ICE ROUTING MODULE
+        // ==========================================
         socket.on('incoming_ice_candidate', async (payload) => {
-          const targetType = isHost ? 'viewer' : 'host';
-          if (payload.senderType === targetType && pc.remoteDescription) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-            } catch (e) {
-              console.warn("ICE candidate skipped during assembly step:", e);
+          if (isHost) {
+            // Host pulls the caller connection map from the tracking index dictionary
+            const pc = peerConnectionsRef.current[payload.senderSocketId];
+            if (payload.senderType === 'viewer' && pc && pc.remoteDescription) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              } catch (e) {
+                console.warn("Host skipped structural candidate segment layout:", e);
+              }
+            }
+          } else {
+            // Viewer targets their unique baseline connection directly
+            const pc = singleViewerPcRef.current;
+            if (payload.senderType === 'host' && pc && pc.remoteDescription) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              } catch (e) {
+                console.warn("Viewer skipped structural candidate segment layout:", e);
+              }
             }
           }
         });
@@ -175,10 +228,15 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (pcRef.current) pcRef.current.close();
+      
+      // Clear out the host mapping matrix references cleanly on route exits
+      Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
+      peerConnectionsRef.current = {};
+
+      if (singleViewerPcRef.current) singleViewerPcRef.current.close();
       if (socketRef.current) socketRef.current.disconnect();
     };
-  }, [streamId]); // Tracks changes to streamId safely
+  }, [streamId]);
 
   return (
     <div className="relative w-full h-full bg-black flex items-center justify-center">
