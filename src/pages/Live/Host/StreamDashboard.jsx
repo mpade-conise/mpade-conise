@@ -27,6 +27,7 @@ const StreamDashboard = () => {
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const socketRef = useRef(null);
+  const pcRef = useRef(null); // Reference to hold our core WebRTC instance safely
   
   // --- CORE STATE ---
   const [streamData, setStreamData] = useState(null);
@@ -59,7 +60,7 @@ const StreamDashboard = () => {
 
     if (globalIo && isMounted) {
       const socket = globalIo(SOCKET_SERVER_URL, {
-        transports: ['polling', 'websocket'],
+        transports: ['websocket', 'polling'],
         query: { room: streamId, role: 'host' },
         forceNew: true
       });
@@ -91,8 +92,33 @@ const StreamDashboard = () => {
       socket.on('incoming_gift_alert', (giftData) => {
         if (isMounted) {
           setActiveGift(giftData);
-          // Auto-clear gift overlay banner after 4 seconds
           setTimeout(() => { if (isMounted) setActiveGift(null); }, 4000);
+        }
+      });
+
+      // Handle raw incoming socket viewer media stream requests fallback
+      socket.on('viewer_requesting_stream', async (payload) => {
+        if (pcRef.current && isMounted) {
+          console.log(`📥 Socket handshake requested from viewer ${payload.viewerSocketId}. Dispatching supplementary offer...`);
+          try {
+            const offer = await pcRef.current.createOffer();
+            await pcRef.current.setLocalDescription(offer);
+            socket.emit('send_webrtc_offer', {
+              streamId,
+              offer,
+              targetViewerId: payload.viewerSocketId
+            });
+          } catch (e) {
+            console.error("Failed to process inline socket stream request offer:", e);
+          }
+        }
+      });
+
+      // Process returning response answers from viewing clients over socket
+      socket.on('webrtc_answer_received', async (payload) => {
+        if (pcRef.current && !pcRef.current.currentRemoteDescription && isMounted) {
+          console.log("📥 Viewer SDP Answer captured via socket. Finalizing lifecycle tracks...");
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
         }
       });
     }
@@ -121,29 +147,98 @@ const StreamDashboard = () => {
     };
   }, [streamId]);
 
-  // 2. HARDWARE / MULTIMEDIA STREAM SETUP
+  // 2. HARDWARE / MULTIMEDIA STREAM SETUP WITH INTEGRATED WEBTRC BASELINE WRITING
   useEffect(() => {
     let mediaStream = null;
-    async function startBroadcasting() {
+    let isMounted = true;
+
+    async function startBroadcastingAndPublishSignaling() {
       try {
+        // A. Capture host camera and mic devices
         mediaStream = await navigator.mediaDevices.getUserMedia({ 
           video: { width: 1280, height: 720 }, 
           audio: true 
         });
+        
+        if (!isMounted) {
+          mediaStream.getTracks().forEach(track => track.stop());
+          return;
+        }
+
         localStreamRef.current = mediaStream;
         if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
+
+        // B. Instantiate standard WebRTC connection profile
+        const iceConfig = {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ],
+          iceCandidatePoolSize: 10
+        };
+        
+        const pc = new RTCPeerConnection(iceConfig);
+        pcRef.current = pc;
+
+        // Feed tracking variables to the pipeline
+        mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream));
+
+        // C. Track, bundle, and push emerging network ICE candidates to Supabase column
+        let gatheredCandidates = [];
+        pc.onicecandidate = async (event) => {
+          if (event.candidate && isMounted) {
+            gatheredCandidates.push(event.candidate.toJSON());
+            await supabase
+              .from('live_streams')
+              .update({ ice_candidates: JSON.stringify(gatheredCandidates) })
+              .eq('id', streamId);
+          }
+        };
+
+        // D. Construct local Session Description Protocol Offer
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        if (!isMounted) return;
+
+        console.log("💾 Executing transactional payload update containing WebRTC Offer keys...");
+        
+        // E. Perform the transactional update to wipe out the null states
+        const { error } = await supabase
+          .from('live_streams')
+          .update({
+            offer: JSON.stringify(offer),
+            status: 'live',
+            is_muted: false,
+            is_video_off: false
+          })
+          .eq('id', streamId);
+
+        if (error) {
+          console.error("❌ Failed to commit connection token configuration keys to row:", error.message);
+        } else {
+          console.log("🚀 Signaling matrix is stable! Viewers can now query structural tracks.");
+        }
+
       } catch (err) { 
-        console.error("Broadcasting multimedia stream capture failed:", err); 
+        console.error("Broadcasting multimedia stream capture or signaling initialization failed:", err); 
       }
     }
-    startBroadcasting();
+
+    if (streamId) {
+      startBroadcastingAndPublishSignaling();
+    }
 
     return () => {
+      isMounted = false;
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
       }
+      if (pcRef.current) {
+        pcRef.current.close();
+      }
     };
-  }, []);
+  }, [streamId]);
 
   // Sync dynamic hardware track changes
   useEffect(() => {
@@ -177,7 +272,6 @@ const StreamDashboard = () => {
         challengerRoomId: incomingInvite.senderStreamId
       });
 
-      // Auto add to multi-guest array cluster for live split tracking
       setCoHosts([{ id: incomingInvite.senderHostId, username: incomingInvite.senderUsername }]);
       setIsBattleMode(true);
       setIncomingInvite(null);
@@ -186,7 +280,6 @@ const StreamDashboard = () => {
     }
   };
 
-  // Compute targeted grid sizing architecture based on total occupants
   const totalOccupants = 1 + coHosts.length;
   const getGridClass = () => {
     if (totalOccupants === 1) return 'grid-cols-1';
@@ -258,7 +351,6 @@ const StreamDashboard = () => {
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60 pointer-events-none" />
           
-          {/* Internal Battle Overlay logic when constraints match exactly 2 creators */}
           {isBattleMode && totalOccupants === 2 && (
             <BattleOverlay 
               score={battleScores} 
@@ -275,7 +367,6 @@ const StreamDashboard = () => {
             <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 animate-pulse">
               <Radio size={24} className="text-cyan-500/40 animate-bounce" />
             </div>
-            {/* Remote WebRTC video pipeline elements would mount srcObject here */}
             <video autoPlay playsInline className="absolute inset-0 w-full h-full object-cover z-10" />
             
             <div className="absolute bottom-4 left-4 z-20 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 text-[10px] font-bold text-cyan-400">
@@ -301,7 +392,7 @@ const StreamDashboard = () => {
         ))}
       </div>
 
-      {/* --- DYNAMIC SLIDE PANELS CONFIGURATION (SETTINGS / ANALYTICS) --- */}
+      {/* --- DYNAMIC SLIDE PANELS CONFIGURATION --- */}
       <AnimatePresence>
         {activePanel && (
           <motion.div 
@@ -329,7 +420,6 @@ const StreamDashboard = () => {
                   </div>
                 </div>
 
-                {/* --- END LIVE ACTION DIRECT BUTTON --- */}
                 <button 
                   onClick={() => navigate('./endlive')}
                   className="w-full bg-red-500 hover:bg-red-600 active:scale-[0.99] text-white font-black uppercase tracking-widest text-xs py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-500/20"
@@ -352,7 +442,7 @@ const StreamDashboard = () => {
           <ChatBox streamId={streamId} isHost={true} transparent={true} filter={chatFilter} />
         </div>
 
-        {/* --- OPTIMIZED COMPACT INLINE LIST CONTROL CONSOLE --- */}
+        {/* --- CONTROL CONSOLE --- */}
         <nav className="w-full max-w-xl mx-auto bg-zinc-950/80 backdrop-blur-2xl rounded-full border border-white/10 p-1.5 pointer-events-auto shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
           <ul className="flex items-center justify-between w-full px-1">
             
@@ -364,9 +454,6 @@ const StreamDashboard = () => {
               >
                 {isCameraOff ? <VideoOff size={16}/> : <Video size={16}/>}
               </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
-                {isCameraOff ? "Turn On Cam" : "Turn Off Cam"}
-              </div>
             </li>
 
             {/* MIC TOGGLE */}
@@ -377,9 +464,6 @@ const StreamDashboard = () => {
               >
                 {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
               </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
-                {isMuted ? "Unmute Mic" : "Mute Mic"}
-              </div>
             </li>
 
             {/* BATTLE TOGGLE */}
@@ -390,9 +474,6 @@ const StreamDashboard = () => {
               >
                 <Swords size={16}/>
               </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
-                Battle Mode
-              </div>
             </li>
 
             {/* CO-HOST SYSTEM */}
@@ -403,9 +484,6 @@ const StreamDashboard = () => {
               >
                 <UserPlus size={16}/>
               </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
-                Invite Co-Host
-              </div>
             </li>
 
             {/* GO WITH GUESTS */}
@@ -416,9 +494,6 @@ const StreamDashboard = () => {
               >
                 <Users size={16}/>
               </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
-                Go with Guests
-              </div>
             </li>
 
             {/* LIVE ANALYTICS */}
@@ -429,9 +504,6 @@ const StreamDashboard = () => {
               >
                 <BarChart3 size={16}/>
               </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
-                Stream Analytics
-              </div>
             </li>
 
             {/* CONFIGURATION SETTINGS */}
@@ -442,9 +514,6 @@ const StreamDashboard = () => {
               >
                 <Settings size={16}/>
               </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
-                Stream Settings
-              </div>
             </li>
 
             {/* GIFTS AND WALLET */}
@@ -455,9 +524,6 @@ const StreamDashboard = () => {
               >
                 <Gift size={16}/>
               </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
-                Gifts Showcase
-              </div>
             </li>
 
           </ul>
