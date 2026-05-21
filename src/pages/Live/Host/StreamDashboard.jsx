@@ -471,7 +471,7 @@ const StreamDashboard = () => {
             {/* BATTLE TOGGLE */}
             <li className="relative group">
               <button 
-                onClick={() => { setIsBattleMode(!isBattleMode); if(!isBattleMode) navigate('./battle'); }} 
+                onClick={() => { setIsBattleMode(!isBattleMode); if(!isBattleMode) navigate('./BattleOverlay'); }} 
                 className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${isBattleMode ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
               >
                 <Swords size={16}/>
@@ -501,7 +501,7 @@ const StreamDashboard = () => {
             {/* LIVE ANALYTICS */}
             <li className="relative group">
               <button 
-                onClick={() => { setActivePanel('analytics'); navigate('./analytics'); }} 
+                onClick={() => { setActivePanel('analytics'); navigate('./HostAnalytics'); }} 
                 className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${activePanel === 'analytics' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
               >
                 <BarChart3 size={16}/>
@@ -521,7 +521,7 @@ const StreamDashboard = () => {
             {/* GIFTS AND WALLET */}
             <li className="relative group">
               <button 
-                onClick={() => navigate('./gifts')}
+                onClick={() => navigate('./GiftsPanel')}
                 className="p-2.5 rounded-full bg-white/5 text-zinc-300 hover:bg-white/10 transition-all duration-200 active:scale-90"
               >
                 <Gift size={16}/>
