@@ -1,6 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Shield, Zap } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -13,7 +11,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing Socket...');
 
-  // Extract ID directly from path safely if prop is flaky
   const getStreamId = () => {
     if (propStreamId && propStreamId.length > 10) return propStreamId;
     const pathSegments = window.location.pathname.split('/');
@@ -25,22 +22,22 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   const isHost = initialIsHost || window.location.pathname.includes('dashboard');
 
   useEffect(() => {
-    if (!streamId) {
-      setConnectionStatus("Missing Identity");
+    // 1. Guard clause to prevent premature connections or fast remount teardowns
+    if (!streamId || streamId === "undefined" || streamId.length < 10) {
+      setConnectionStatus("Awaiting Stream Setup...");
       return;
     }
 
-    // Flag to manage component state safely across strict-mode remounts
     let isComponentMounted = true;
     const globalIo = typeof window !== 'undefined' ? window.io : null;
 
     if (!globalIo) {
-      console.error("❌ Socket.io CDN script missing or uninitialized in window global namespace.");
+      console.error("❌ Socket.io CDN script missing from global context.");
       setConnectionStatus("Engine Missing");
       return;
     }
 
-    const initializeMediaAndSignaling = async () => {
+    async function initializeMediaAndSignaling() {
       try {
         const iceConfig = {
           iceServers: [
@@ -52,38 +49,37 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
         console.log(`📡 [RTC STREAM INTERFACE] Connecting ID: ${streamId} | Role: ${isHost ? 'host' : 'viewer'}`);
 
-        // Initialize dedicated WebRTC pipeline signaling connection
         const socket = globalIo(SOCKET_SERVER_URL, {
-          transports: ['polling', 'websocket'], // Robust fallback logic for cold Render containers
+          transports: ['websocket', 'polling'], // Allow fallback for cold Render servers
           query: { 
             room: streamId, 
-            role: isHost ? 'host' : 'viewer' // Synchronized directly with backend server expectations
+            role: isHost ? 'host' : 'viewer'
           },
-          forceNew: true
+          forceNew: true,
+          reconnectionAttempts: 5
         });
         socketRef.current = socket;
 
         const pc = new RTCPeerConnection(iceConfig);
         pcRef.current = pc;
 
-        // Sync connection UI status dynamically with the Socket handshake state
         socket.on('connect', () => {
           if (isComponentMounted) {
             console.log("🟢 Socket pipeline online! Socket ID:", socket.id);
-            setConnectionStatus(isHost ? "Streaming Live" : "Awaiting Host Stream...");
-            if (isHost) setIsConnected(true);
+            setConnectionStatus(isHost ? "Streaming Live" : "Negotiating Media Stream...");
             
-            // Viewers request stream immediately upon socket confirmation
-            if (!isHost) {
+            if (isHost) {
+              setIsConnected(true);
+            } else {
+              // Explicitly ask the host to send over the stream offers
               socket.emit('request_host_stream', { streamId });
             }
           }
         });
 
-        // 1. ICE CANDIDATE SIGNAL MANAGEMENT
+        // 1. ICE CANDIDATE SIGNAL CHANNELS
         pc.onicecandidate = (event) => {
-          if (event.candidate && socketRef.current && socketRef.current.connected) {
-            console.log("📤 Sending ICE Candidate via Socket channel...");
+          if (event.candidate && socketRef.current?.connected) {
             socketRef.current.emit('webrtc_ice_candidate', {
               streamId,
               candidate: event.candidate,
@@ -95,32 +91,27 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         pc.oniceconnectionstatechange = () => {
           if (!isComponentMounted) return;
           console.log("⚡ ICE Connection State Changed:", pc.iceConnectionState);
-          setConnectionStatus(`State: ${pc.iceConnectionState}`);
           if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
             setIsConnected(true);
+            setConnectionStatus("Live");
           }
         };
 
-        // 2. PATHWAY ROUTING ENGINES
+        // 2. DISPATCHING PATHWAYS
         if (isHost) {
-          // ================== PRODUCTION HOST PATHWAY ==================
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-          
           if (!isComponentMounted) {
             stream.getTracks().forEach(track => track.stop());
             return;
           }
-
           localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
           stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-          // Listen for arriving viewing peers who need a media offer
           socket.on('viewer_requesting_stream', async (payload) => {
-            console.log(`📥 Viewer (${payload.viewerSocketId}) joined. Generating target SDP Offer...`);
+            console.log(`📥 Viewer requested stream. Generating SDP Offer...`);
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-
             socket.emit('send_webrtc_offer', {
               streamId,
               offer,
@@ -128,65 +119,54 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             });
           });
 
-          // Process returning response answers from viewing clients
           socket.on('webrtc_answer_received', async (payload) => {
-            console.log("📥 Viewer SDP Answer received! Binding remote session definitions...");
             if (!pc.currentRemoteDescription) {
               await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
             }
           });
-
         } else {
-          // ================== PRODUCTION VIEWER PATHWAY ==================
+          // VIEWER ROUTE
           pc.ontrack = (event) => {
-            console.log("🎬 SUCCESS: Media track attached to viewer video layout.");
-            if (videoRef.current) videoRef.current.srcObject = event.streams[0];
-            if (isComponentMounted) setIsConnected(true);
+            console.log("🎬 Media track successfully bound to element.");
+            if (videoRef.current) {
+              videoRef.current.srcObject = event.streams[0];
+            }
+            if (isComponentMounted) {
+              setIsConnected(true);
+              setConnectionStatus("Connected");
+            }
           };
 
-          // If socket connected instantly before tracking listener registered, catch it here
-          if (socket.connected) {
-            socket.emit('request_host_stream', { streamId });
-          }
-
-          // Intercept incoming WebRTC offers from the active broadcasting host
           socket.on('webrtc_offer_received', async (payload) => {
-            console.log("📥 Host WebRTC Offer captured! Negotiating local answer keys...");
+            console.log("📥 Host WebRTC Offer captured. Sending Answer configuration...");
             try {
               await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
-
-              socket.emit('send_webrtc_answer', {
-                streamId,
-                answer
-              });
-            } catch (negotiationError) {
-              console.error("❌ SDP Peer Handshake matching failed:", negotiationError);
+              socket.emit('send_webrtc_answer', { streamId, answer });
+            } catch (err) {
+              console.error("❌ Handshake failure:", err);
             }
           });
         }
 
-        // 3. SHARED SYNCED ICE RECEIVER
         socket.on('incoming_ice_candidate', async (payload) => {
-          const expectedSenderType = isHost ? 'viewer' : 'host';
-          if (payload.senderType === expectedSenderType) {
+          const targetType = isHost ? 'viewer' : 'host';
+          if (payload.senderType === targetType && pc.remoteDescription) {
             try {
-              console.log("📥 Adding incoming remote ICE candidate...");
               await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
             } catch (e) {
-              console.error("Error adding received ICE candidate", e);
+              console.warn("ICE candidate skipped during assembly step:", e);
             }
           }
         });
 
       } catch (err) {
-        console.error("💥 Execution Block Exception caught:", err);
+        console.error("💥 Handshake execution exception:", err);
         if (isComponentMounted) setConnectionStatus("Media Blocked");
       }
-    };
+    }
 
-    // Trigger initialization loop cleanly
     initializeMediaAndSignaling();
 
     return () => {
@@ -196,11 +176,9 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         localStreamRef.current.getTracks().forEach(track => track.stop());
       }
       if (pcRef.current) pcRef.current.close();
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      if (socketRef.current) socketRef.current.disconnect();
     };
-  }, [streamId]);
+  }, [streamId]); // Tracks changes to streamId safely
 
   return (
     <div className="relative w-full h-full bg-black flex items-center justify-center">
@@ -213,7 +191,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
       />
       {!isConnected && !isHost && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-zinc-950">
-          <div className="w-12 h-12 border-4 border-t-[#fe2c55] border-zinc-800 rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-t-[#fe2c55] border-zinc-800 rounded-full animate-spin" />
           <p className="text-[10px] font-black uppercase tracking-widest text-white/40">{connectionStatus}</p>
         </div>
       )}
