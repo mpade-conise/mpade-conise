@@ -27,7 +27,9 @@ const StreamDashboard = () => {
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const socketRef = useRef(null);
-  const pcRef = useRef(null); // Reference to hold our core WebRTC instance safely
+  
+  // CRUCIAL: Tracks active viewer connections dynamically to support independent data streaming lines
+  const peerConnectionsRef = useRef({}); 
   
   // --- CORE STATE ---
   const [streamData, setStreamData] = useState(null);
@@ -51,7 +53,7 @@ const StreamDashboard = () => {
   const [chatFilter, setChatFilter] = useState('all');
   const [incomingInvite, setIncomingInvite] = useState(null);
 
-  // 1. INITIALIZE GLOBAL SOCKET.IO ENGINE
+  // 1. INITIALIZE GLOBAL SOCKET.IO ENGINE & WEBTRC EVENT MATRIX
   useEffect(() => {
     let isMounted = true;
     let ioInstance = null;
@@ -88,7 +90,6 @@ const StreamDashboard = () => {
         if (isMounted) setViewers(users);
       });
 
-      // Listen for incoming simulated live gifts
       socket.on('incoming_gift_alert', (giftData) => {
         if (isMounted) {
           setActiveGift(giftData);
@@ -96,29 +97,74 @@ const StreamDashboard = () => {
         }
       });
 
-      // Handle raw incoming socket viewer media stream requests fallback
+      // MULTI-PEER CONCURRENT HANDSHAKE GENERATION LAYER
       socket.on('viewer_requesting_stream', async (payload) => {
-        if (pcRef.current && isMounted) {
-          console.log(`📥 Socket handshake requested from viewer ${payload.viewerSocketId}. Dispatching supplementary offer...`);
-          try {
-            const offer = await pcRef.current.createOffer();
-            await pcRef.current.setLocalDescription(offer);
-            socket.emit('send_webrtc_offer', {
-              streamId,
-              offer,
-              targetViewerId: payload.viewerSocketId
-            });
-          } catch (e) {
-            console.error("Failed to process inline socket stream request offer:", e);
-          }
+        const viewerId = payload.viewerSocketId;
+        if (!isMounted || !localStreamRef.current) return;
+
+        console.log(`📥 Socket handshake requested from viewer [${viewerId}]. Dispatching custom offer line...`);
+        
+        try {
+          const iceConfig = {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+          };
+
+          // Build a brand-new, isolated track interface line for this viewer segment
+          const pc = new RTCPeerConnection(iceConfig);
+          peerConnectionsRef.current[viewerId] = pc;
+
+          // Inject local camera track layouts straight into this viewer track instance
+          localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
+
+          // Forward specific host network details directly to the viewer's endpoint
+          pc.onicecandidate = (event) => {
+            if (event.candidate && socketRef.current?.connected) {
+              socketRef.current.emit('webrtc_ice_candidate', {
+                streamId,
+                candidate: event.candidate,
+                targetSocketId: viewerId,
+                senderType: 'host'
+              });
+            }
+          };
+
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          socket.emit('send_webrtc_offer', {
+            streamId,
+            offer,
+            targetViewerId: viewerId
+          });
+
+        } catch (e) {
+          console.error("❌ Failed to process inline multi-peer viewer offer configuration:", e);
         }
       });
 
-      // Process returning response answers from viewing clients over socket
+      // Map targeted answers back to the isolated user connection dictionary
       socket.on('webrtc_answer_received', async (payload) => {
-        if (pcRef.current && !pcRef.current.currentRemoteDescription && isMounted) {
-          console.log("📥 Viewer SDP Answer captured via socket. Finalizing lifecycle tracks...");
-          await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+        const pc = peerConnectionsRef.current[payload.viewerSocketId];
+        if (pc && !pc.currentRemoteDescription && isMounted) {
+          console.log(`📥 Targeted viewer answer captured for [${payload.viewerSocketId}]. Stabilizing tracks...`);
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+        }
+      });
+
+      // Stream unique client candidate components into matching dictionary tracks
+      socket.on('incoming_ice_candidate', async (payload) => {
+        if (payload.senderType === 'viewer' && isMounted) {
+          const pc = peerConnectionsRef.current[payload.senderSocketId];
+          if (pc && pc.remoteDescription) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            } catch (e) {
+              console.warn("Host skipped structural candidate segment layout:", e);
+            }
+          }
         }
       });
     }
@@ -147,14 +193,14 @@ const StreamDashboard = () => {
     };
   }, [streamId]);
 
-  // 2. HARDWARE / MULTIMEDIA STREAM SETUP WITH INTEGRATED WEBTRC BASELINE WRITING
+  // 2. HARDWARE / MULTIMEDIA STREAM SETUP
   useEffect(() => {
     let mediaStream = null;
     let isMounted = true;
 
-    async function startBroadcastingAndPublishSignaling() {
+    async function startBroadcasting() {
       try {
-        // A. Capture host camera and mic devices
+        console.log("🎥 Accessing media hardware devices...");
         mediaStream = await navigator.mediaDevices.getUserMedia({ 
           video: { width: 1280, height: 720 }, 
           audio: true 
@@ -168,65 +214,21 @@ const StreamDashboard = () => {
         localStreamRef.current = mediaStream;
         if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
 
-        // B. Instantiate standard WebRTC connection profile
-        const iceConfig = {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ],
-          iceCandidatePoolSize: 10
-        };
-        
-        const pc = new RTCPeerConnection(iceConfig);
-        pcRef.current = pc;
-
-        // Feed tracking variables to the pipeline
-        mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream));
-
-        // C. Track, bundle, and push emerging network ICE candidates to Supabase column
-        let gatheredCandidates = [];
-        pc.onicecandidate = async (event) => {
-          if (event.candidate && isMounted) {
-            gatheredCandidates.push(event.candidate.toJSON());
-            await supabase
-              .from('live_streams')
-              .update({ ice_candidates: JSON.stringify(gatheredCandidates) })
-              .eq('id', streamId);
-          }
-        };
-
-        // D. Construct local Session Description Protocol Offer
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        if (!isMounted) return;
-
-        console.log("💾 Executing transactional payload update containing WebRTC Offer keys...");
-        
-        // E. Perform the transactional update to wipe out the null states
-        const { error } = await supabase
+        // Perform a quick database status update to signal that the room is active
+        await supabase
           .from('live_streams')
-          .update({
-            offer: JSON.stringify(offer),
-            status: 'live',
-            is_muted: false,
-            is_video_off: false
-          })
+          .update({ status: 'live' })
           .eq('id', streamId);
 
-        if (error) {
-          console.error("❌ Failed to commit connection token configuration keys to row:", error.message);
-        } else {
-          console.log("🚀 Signaling matrix is stable! Viewers can now query structural tracks.");
-        }
+        console.log("🚀 Media pipeline is live. Handshake channels are ready to receive users.");
 
       } catch (err) { 
-        console.error("Broadcasting multimedia stream capture or signaling initialization failed:", err); 
+        console.error("Broadcasting multimedia stream capture hardware failure:", err); 
       }
     }
 
     if (streamId) {
-      startBroadcastingAndPublishSignaling();
+      startBroadcasting();
     }
 
     return () => {
@@ -234,9 +236,9 @@ const StreamDashboard = () => {
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
       }
-      if (pcRef.current) {
-        pcRef.current.close();
-      }
+      // Loop and close down all open individual peer lines on teardown
+      Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
+      peerConnectionsRef.current = {};
     };
   }, [streamId]);
 
@@ -336,7 +338,7 @@ const StreamDashboard = () => {
         </div>
       </div>
 
-      {/* --- DYNAMIC STAGE CONTAINER (SPLITS ACCORDING TO OCCUPANTS COUNT) --- */}
+      {/* --- DYNAMIC STAGE CONTAINER --- */}
       <div className={`absolute inset-0 z-0 grid ${getGridClass()} transition-all duration-500 bg-zinc-900`}>
         {/* HOST PRIMARY SCREEN FRAME */}
         <div className="relative h-full w-full overflow-hidden border-r border-b border-white/5 bg-zinc-950">
