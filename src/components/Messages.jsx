@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../supabaseClient';
+import { supabase } from '../supabaseClient';
 import { io } from 'socket.io-client';
 import { Send, Image, Smile, CheckCheck, Circle, MessageSquare } from 'lucide-react';
 
