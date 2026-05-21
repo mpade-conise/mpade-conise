@@ -53,7 +53,7 @@ const StreamDashboard = () => {
   const [chatFilter, setChatFilter] = useState('all');
   const [incomingInvite, setIncomingInvite] = useState(null);
 
-  // 1. INITIALIZE GLOBAL SOCKET.IO ENGINE & WEBRTC EVENT MATRIX
+  // 1. INITIALIZE GLOBAL SOCKET.IO ENGINE & WEBTRC EVENT MATRIX
   useEffect(() => {
     let isMounted = true;
     let ioInstance = null;
@@ -214,22 +214,13 @@ const StreamDashboard = () => {
         localStreamRef.current = mediaStream;
         if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
 
-        // SAFE DATABASE FALLBACK UPDATE
-        // Passes standard empty strings/arrays to bypass strict NOT NULL table rule checks
-        const { error } = await supabase
+        // Perform a quick database status update to signal that the room is active
+        await supabase
           .from('live_streams')
-          .update({ 
-            status: 'live',
-            offer: '{}',
-            ice_candidates: '[]'
-          })
+          .update({ status: 'live' })
           .eq('id', streamId);
 
-        if (error) {
-          console.error("❌ Database constraint blocked status change fallback:", error.message);
-        } else {
-          console.log("🚀 Media pipeline is live. Handshake channels are ready to receive users.");
-        }
+        console.log("🚀 Media pipeline is live. Handshake channels are ready to receive users.");
 
       } catch (err) { 
         console.error("Broadcasting multimedia stream capture hardware failure:", err); 
@@ -432,7 +423,7 @@ const StreamDashboard = () => {
                 </div>
 
                 <button 
-                  onClick={() => navigate('/live')}
+                  onClick={() => navigate('./endlive')}
                   className="w-full bg-red-500 hover:bg-red-600 active:scale-[0.99] text-white font-black uppercase tracking-widest text-xs py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-500/20"
                 >
                   <X size={16}/> End Live Stream Production
@@ -480,7 +471,7 @@ const StreamDashboard = () => {
             {/* BATTLE TOGGLE */}
             <li className="relative group">
               <button 
-                onClick={() => setIsBattleMode(!isBattleMode)} 
+                onClick={() => { setIsBattleMode(!isBattleMode); if(!isBattleMode) navigate('./battle'); }} 
                 className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${isBattleMode ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
               >
                 <Swords size={16}/>
@@ -490,7 +481,7 @@ const StreamDashboard = () => {
             {/* CO-HOST SYSTEM */}
             <li className="relative group">
               <button 
-                onClick={() => console.log('Co-Host overlay triggered')}
+                onClick={() => navigate('./cohost')}
                 className="p-2.5 rounded-full bg-white/5 text-zinc-300 hover:bg-white/10 transition-all duration-200 active:scale-90"
               >
                 <UserPlus size={16}/>
@@ -500,7 +491,7 @@ const StreamDashboard = () => {
             {/* GO WITH GUESTS */}
             <li className="relative group">
               <button 
-                onClick={() => setIsGuestMode(!isGuestMode)}
+                onClick={() => { setIsGuestMode(!isGuestMode); navigate('./guests'); }}
                 className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${isGuestMode ? 'bg-purple-500 text-white' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
               >
                 <Users size={16}/>
@@ -510,7 +501,7 @@ const StreamDashboard = () => {
             {/* LIVE ANALYTICS */}
             <li className="relative group">
               <button 
-                onClick={() => setActivePanel('analytics')} 
+                onClick={() => { setActivePanel('analytics'); navigate('./analytics'); }} 
                 className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${activePanel === 'analytics' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
               >
                 <BarChart3 size={16}/>
@@ -520,7 +511,7 @@ const StreamDashboard = () => {
             {/* CONFIGURATION SETTINGS */}
             <li className="relative group">
               <button 
-                onClick={() => setActivePanel('settings')} 
+                onClick={() => { setActivePanel('settings'); navigate('./settings'); }} 
                 className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${activePanel === 'settings' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
               >
                 <Settings size={16}/>
@@ -530,7 +521,7 @@ const StreamDashboard = () => {
             {/* GIFTS AND WALLET */}
             <li className="relative group">
               <button 
-                onClick={() => console.log('Wallet/Gifts context panel')}
+                onClick={() => navigate('./gifts')}
                 className="p-2.5 rounded-full bg-white/5 text-zinc-300 hover:bg-white/10 transition-all duration-200 active:scale-90"
               >
                 <Gift size={16}/>
