@@ -5,7 +5,7 @@ import {
   Users, Gift, BarChart3, Share2, Clock, 
   MessageCircle, Settings, ShieldAlert, List, 
   HelpCircle, BarChart, Heart, Smile, X, Check,
-  UserPlus, Swords, Mic, MicOff, Video, VideoOff, Layers, Search
+  UserPlus, Swords, Mic, MicOff, Video, VideoOff, Layers, Search, Radio
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -25,7 +25,6 @@ const StreamDashboard = () => {
   
   // --- MEDIA & SOCKET REFERENCES ---
   const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const socketRef = useRef(null);
   
@@ -35,7 +34,9 @@ const StreamDashboard = () => {
   const [reactions, setReactions] = useState([]); 
   const [activeGift, setActiveGift] = useState(null);
   const [battleScores, setBattleScores] = useState({ host: 0, challenger: 0 });
-  const [activeCoHost, setActiveCoHost] = useState(null); 
+  
+  // Array of active remote streams for multi-guest layout slicing
+  const [coHosts, setCoHosts] = useState([]); 
   
   // --- UI MODES ---
   const [activePanel, setActivePanel] = useState(null); 
@@ -47,9 +48,6 @@ const StreamDashboard = () => {
   const [joinAlert, setJoinAlert] = useState(null);
   const [activePoll, setActivePoll] = useState(null); 
   const [chatFilter, setChatFilter] = useState('all');
-  const [liveHosts, setLiveHosts] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isLoadingHosts, setIsLoadingHosts] = useState(false);
   const [incomingInvite, setIncomingInvite] = useState(null);
 
   // 1. INITIALIZE GLOBAL SOCKET.IO ENGINE
@@ -57,31 +55,27 @@ const StreamDashboard = () => {
     let isMounted = true;
     let ioInstance = null;
 
-    // Direct look-up inside global window context to bypass compiler checks
     const globalIo = typeof window !== 'undefined' ? window.io : null;
 
     if (globalIo && isMounted) {
-      // Connect to the external Node.js socket server
       const socket = globalIo(SOCKET_SERVER_URL, {
-        transports: ['websocket'],
-        query: { room: streamId, role: 'host' }
+        transports: ['polling', 'websocket'],
+        query: { room: streamId, role: 'host' },
+        forceNew: true
       });
       socketRef.current = socket;
       ioInstance = socket;
 
-      // Socket Event: Client Joined Room
       socket.on('viewer_joined', (data) => {
         if (!isMounted) return;
         setJoinAlert(`${data.username || 'A viewer'} joined the stream!`);
         setTimeout(() => { if (isMounted) setJoinAlert(null); }, 3000);
       });
 
-      // Socket Event: Real-time Live Reaction Received
       socket.on('received_reaction', (data) => {
         if (isMounted) handleNewReaction(data.type);
       });
 
-      // Socket Event: Incoming Battle Challenge Request
       socket.on('battle_invite_received', (payload) => {
         if (isMounted) {
           console.log("⚔️ Incoming battle invite via Socket.io:", payload);
@@ -89,15 +83,20 @@ const StreamDashboard = () => {
         }
       });
 
-      // Socket Event: Update Active Viewer Counts
       socket.on('room_presence_update', (users) => {
         if (isMounted) setViewers(users);
       });
-    } else {
-      console.warn("🌐 Application initialized without active streaming pipeline connection.");
+
+      // Listen for incoming simulated live gifts
+      socket.on('incoming_gift_alert', (giftData) => {
+        if (isMounted) {
+          setActiveGift(giftData);
+          // Auto-clear gift overlay banner after 4 seconds
+          setTimeout(() => { if (isMounted) setActiveGift(null); }, 4000);
+        }
+      });
     }
 
-    // Fetch Base Stream Configurations from Supabase Meta Layer
     const fetchStreamMeta = async () => {
       const { data } = await supabase
         .from('live_streams')
@@ -159,30 +158,14 @@ const StreamDashboard = () => {
     }
   }, [isCameraOff]);
 
-  // 3. EVENT HANDLERS
   const handleNewReaction = (type) => {
     const id = Date.now();
     setReactions(prev => [...prev, { id, type }]);
     setTimeout(() => setReactions(prev => prev.filter(r => r.id !== id)), 2000);
   };
 
-  const handleSendInvite = (targetHost) => {
-    if (!socketRef.current || !streamData) return;
-
-    socketRef.current.emit('send_battle_invite', {
-      targetRoomId: targetHost.stream_id,
-      senderStreamId: streamId,
-      senderHostId: streamData.host_id,
-      senderUsername: streamData.host?.username || 'Host Creator',
-      senderAvatar: streamData.host?.avatar_url
-    });
-
-    setActivePanel(null);
-  };
-
   const handleAcceptInvite = async () => {
     if (!incomingInvite || !socketRef.current) return;
-    
     try {
       await supabase
         .from('live_streams')
@@ -194,11 +177,21 @@ const StreamDashboard = () => {
         challengerRoomId: incomingInvite.senderStreamId
       });
 
+      // Auto add to multi-guest array cluster for live split tracking
+      setCoHosts([{ id: incomingInvite.senderHostId, username: incomingInvite.senderUsername }]);
       setIsBattleMode(true);
       setIncomingInvite(null);
     } catch (err) {
       console.error("⚠️ Failed to accept battle via sockets:", err.message);
     }
+  };
+
+  // Compute targeted grid sizing architecture based on total occupants
+  const totalOccupants = 1 + coHosts.length;
+  const getGridClass = () => {
+    if (totalOccupants === 1) return 'grid-cols-1';
+    if (totalOccupants === 2) return 'grid-cols-2';
+    return 'grid-cols-2 grid-rows-2';
   };
 
   if (!streamData) {
@@ -218,6 +211,13 @@ const StreamDashboard = () => {
           .floating-chat-container { background: transparent !important; border: none !important; }
         `}
       </style>
+
+      {/* --- GIFT BANNER ALERT OVERLAY --- */}
+      <AnimatePresence>
+        {activeGift && (
+          <GiftAlertOverlay gift={activeGift} />
+        )}
+      </AnimatePresence>
 
       {/* --- TOP STATUS BAR AREA --- */}
       <div className="absolute top-0 left-0 right-0 z-[60] p-4 pt-10 bg-gradient-to-b from-black/80 to-transparent flex flex-col gap-3">
@@ -243,55 +243,49 @@ const StreamDashboard = () => {
         </div>
       </div>
 
-      {/* --- DYNAMIC STAGE CONTAINER --- */}
-      <div className="absolute inset-0 z-0 flex transition-all duration-500 bg-zinc-900">
-        <motion.div 
-          animate={{ width: (isBattleMode || isGuestMode) ? '50%' : '100%' }}
-          className="relative h-full overflow-hidden border-r border-white/5"
-        >
+      {/* --- DYNAMIC STAGE CONTAINER (SPLITS ACCORDING TO OCCUPANTS COUNT) --- */}
+      <div className={`absolute inset-0 z-0 grid ${getGridClass()} transition-all duration-500 bg-zinc-900`}>
+        {/* HOST PRIMARY SCREEN FRAME */}
+        <div className="relative h-full w-full overflow-hidden border-r border-b border-white/5 bg-zinc-950">
           <video 
             ref={localVideoRef} autoPlay muted playsInline 
             className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} 
           />
           {isCameraOff && (
-            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-zinc-700 font-black tracking-widest uppercase italic">
+            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 text-zinc-700 font-black tracking-widest uppercase text-xs italic">
               Camera Off
             </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60 pointer-events-none" />
-        </motion.div>
-
-        {/* Dynamic Secondary Screen Block */}
-        <AnimatePresence>
-          {(isBattleMode || isGuestMode) && (
-            <motion.div 
-              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-              className="w-1/2 h-full bg-zinc-900 relative"
-            >
-              <div className="absolute inset-0 flex items-center justify-center border-l border-cyan-500/30 bg-zinc-950">
-                <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover bg-zinc-950" />
-                <div className="absolute inset-0 flex items-center justify-center bg-zinc-950 z-20 pointer-events-none">
-                  <p className="text-[10px] font-black uppercase text-cyan-500 tracking-wider animate-pulse">
-                    Socket Connected Stream Pipeline
-                  </p>
-                </div>
-              </div>
-              
-              {isBattleMode && (
-                <BattleOverlay 
-                  score={battleScores} 
-                  hostProfile={streamData?.host} 
-                  coHost={activeCoHost}
-                  onInviteClick={() => setActivePanel('invite')}
-                />
-              )}
-            </motion.div>
+          
+          {/* Internal Battle Overlay logic when constraints match exactly 2 creators */}
+          {isBattleMode && totalOccupants === 2 && (
+            <BattleOverlay 
+              score={battleScores} 
+              hostProfile={streamData?.host} 
+              coHost={coHosts[0]}
+              onInviteClick={() => setActivePanel('invite')}
+            />
           )}
-        </AnimatePresence>
+        </div>
+
+        {/* MULTI-GUEST SECONDARY SCREEN BLOCKS */}
+        {coHosts.map((guest, idx) => (
+          <div key={guest.id || idx} className="relative h-full w-full bg-zinc-950 border-l border-b border-cyan-500/20">
+            <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 animate-pulse">
+              <Radio size={24} className="text-cyan-500/40 animate-bounce" />
+            </div>
+            {/* Remote WebRTC video pipeline elements would mount srcObject here */}
+            <video autoPlay playsInline className="absolute inset-0 w-full h-full object-cover z-10" />
+            
+            <div className="absolute bottom-4 left-4 z-20 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 text-[10px] font-bold text-cyan-400">
+              @{guest.username || 'CoHost'}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* --- FLOATING OVERLAYS & ACTION COLUMN --- */}
+      {/* --- FLOATING ACTIONS COLUMN --- */}
       <div className="absolute right-4 top-1/3 flex flex-col gap-4 z-30">
         {[
           { icon: <BarChart size={18}/>, label: 'POLL', active: !!activePoll },
@@ -307,23 +301,176 @@ const StreamDashboard = () => {
         ))}
       </div>
 
-      {/* Dynamic Popups Container */}
-      <div className="absolute inset-0 pointer-events-none z-40">
-        <AnimatePresence>
-          {joinAlert && (
-            <motion.div initial={{ x: -100, opacity: 0 }} animate={{ x: 16, opacity: 1 }} exit={{ x: -100, opacity: 0 }}
-              className="absolute top-44 left-4 bg-gradient-to-r from-cyan-500/20 to-black/40 backdrop-blur-xl px-4 py-2 rounded-xl border border-cyan-500/30 text-[10px] font-black uppercase tracking-widest text-cyan-400 shadow-lg">
-              ⚡ {joinAlert}
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* --- DYNAMIC SLIDE PANELS CONFIGURATION (SETTINGS / ANALYTICS) --- */}
+      <AnimatePresence>
+        {activePanel && (
+          <motion.div 
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="absolute bottom-0 left-0 right-0 h-[45vh] bg-zinc-950/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[32px] z-[100] p-6 pointer-events-auto shadow-[0_-15px_40px_rgba(0,0,0,0.6)]"
+          >
+            <div className="w-12 h-1 bg-zinc-800 rounded-full mx-auto mb-5" onClick={() => setActivePanel(null)} />
+            
+            {activePanel === 'settings' && (
+              <div className="flex flex-col h-full justify-between pb-6">
+                <div>
+                  <h3 className="text-sm font-black tracking-wider uppercase text-zinc-400 mb-4 flex items-center gap-2">
+                    <Settings size={16}/> Stream Settings Configuration
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button className="p-4 bg-white/5 border border-white/5 rounded-2xl text-left hover:bg-white/10 transition-colors">
+                      <p className="text-xs font-bold">Comments Privacy</p>
+                      <span className="text-[10px] text-zinc-500">Manage stream interactions</span>
+                    </button>
+                    <button className="p-4 bg-white/5 border border-white/5 rounded-2xl text-left hover:bg-white/10 transition-colors">
+                      <p className="text-xs font-bold">Mirror Camera Layout</p>
+                      <span className="text-[10px] text-zinc-500">Flip streaming orientation</span>
+                    </button>
+                  </div>
+                </div>
 
-        {/* INCOMING CHALLENGE MODAL */}
-        <AnimatePresence>
-          {incomingInvite && (
+                {/* --- END LIVE ACTION DIRECT BUTTON --- */}
+                <button 
+                  onClick={() => navigate('./endlive')}
+                  className="w-full bg-red-500 hover:bg-red-600 active:scale-[0.99] text-white font-black uppercase tracking-widest text-xs py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-500/20"
+                >
+                  <X size={16}/> End Live Stream Production
+                </button>
+              </div>
+            )}
+
+            {activePanel === 'analytics' && (
+              <LiveAnalyticsPanel streamId={streamId} onClose={() => setActivePanel(null)} />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- BOTTOM DOCK & CHAT INTERACTION SPACE --- */}
+      <div className="absolute bottom-0 left-0 right-0 z-50 p-4 space-y-4 pointer-events-none">
+        <div className="h-48 w-full max-w-[320px] pointer-events-auto mask-fade-top overflow-y-auto hide-scrollbar floating-chat-container">
+          <ChatBox streamId={streamId} isHost={true} transparent={true} filter={chatFilter} />
+        </div>
+
+        {/* --- OPTIMIZED COMPACT INLINE LIST CONTROL CONSOLE --- */}
+        <nav className="w-full max-w-xl mx-auto bg-zinc-950/80 backdrop-blur-2xl rounded-full border border-white/10 p-1.5 pointer-events-auto shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+          <ul className="flex items-center justify-between w-full px-1">
+            
+            {/* CAMERA TOGGLE */}
+            <li className="relative group">
+              <button 
+                onClick={() => setIsCameraOff(!isCameraOff)} 
+                className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${isCameraOff ? 'bg-red-500 text-white' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+              >
+                {isCameraOff ? <VideoOff size={16}/> : <Video size={16}/>}
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
+                {isCameraOff ? "Turn On Cam" : "Turn Off Cam"}
+              </div>
+            </li>
+
+            {/* MIC TOGGLE */}
+            <li className="relative group">
+              <button 
+                onClick={() => setIsMuted(!isMuted)} 
+                className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${isMuted ? 'bg-red-500 text-white' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+              >
+                {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
+                {isMuted ? "Unmute Mic" : "Mute Mic"}
+              </div>
+            </li>
+
+            {/* BATTLE TOGGLE */}
+            <li className="relative group">
+              <button 
+                onClick={() => { setIsBattleMode(!isBattleMode); if(!isBattleMode) navigate('./battle'); }} 
+                className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${isBattleMode ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+              >
+                <Swords size={16}/>
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
+                Battle Mode
+              </div>
+            </li>
+
+            {/* CO-HOST SYSTEM */}
+            <li className="relative group">
+              <button 
+                onClick={() => navigate('./cohost')}
+                className="p-2.5 rounded-full bg-white/5 text-zinc-300 hover:bg-white/10 transition-all duration-200 active:scale-90"
+              >
+                <UserPlus size={16}/>
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
+                Invite Co-Host
+              </div>
+            </li>
+
+            {/* GO WITH GUESTS */}
+            <li className="relative group">
+              <button 
+                onClick={() => { setIsGuestMode(!isGuestMode); navigate('./guests'); }}
+                className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${isGuestMode ? 'bg-purple-500 text-white' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+              >
+                <Users size={16}/>
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
+                Go with Guests
+              </div>
+            </li>
+
+            {/* LIVE ANALYTICS */}
+            <li className="relative group">
+              <button 
+                onClick={() => { setActivePanel('analytics'); navigate('./analytics'); }} 
+                className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${activePanel === 'analytics' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+              >
+                <BarChart3 size={16}/>
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
+                Stream Analytics
+              </div>
+            </li>
+
+            {/* CONFIGURATION SETTINGS */}
+            <li className="relative group">
+              <button 
+                onClick={() => { setActivePanel('settings'); navigate('./settings'); }} 
+                className={`p-2.5 rounded-full transition-all duration-200 active:scale-90 ${activePanel === 'settings' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+              >
+                <Settings size={16}/>
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
+                Stream Settings
+              </div>
+            </li>
+
+            {/* GIFTS AND WALLET */}
+            <li className="relative group">
+              <button 
+                onClick={() => navigate('./gifts')}
+                className="p-2.5 rounded-full bg-white/5 text-zinc-300 hover:bg-white/10 transition-all duration-200 active:scale-90"
+              >
+                <Gift size={16}/>
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black border border-white/10 text-[9px] font-black tracking-widest uppercase px-2 py-1 rounded shadow-xl whitespace-nowrap z-50">
+                Gifts Showcase
+              </div>
+            </li>
+
+          </ul>
+        </nav>
+      </div>
+
+      {/* --- INCOMING CHALLENGE OVERLAY NOTIFIER --- */}
+      <AnimatePresence>
+        {incomingInvite && (
+          <div className="absolute inset-0 pointer-events-none z-[70] flex items-center justify-center">
             <motion.div 
               initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }}
-              className="absolute top-24 left-1/2 -translate-x-1/2 bg-zinc-950/95 backdrop-blur-2xl border-2 border-cyan-500/50 px-5 py-4 rounded-2xl z-[200] w-[90%] max-w-[340px] flex flex-col gap-4 shadow-[0_20px_50px_rgba(0,0,0,0.8)] pointer-events-auto"
+              className="bg-zinc-950/95 backdrop-blur-2xl border-2 border-cyan-500/50 px-5 py-4 rounded-2xl w-[90%] max-w-[340px] flex flex-col gap-4 shadow-[0_20px_50px_rgba(0,0,0,0.8)] pointer-events-auto"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center border border-cyan-500/30 text-cyan-400 font-black text-sm">
@@ -341,43 +488,9 @@ const StreamDashboard = () => {
                 <button onClick={handleAcceptInvite} className="flex-1 bg-cyan-500 text-black font-black uppercase tracking-widest text-[9px] py-2.5 rounded-xl shadow-lg shadow-cyan-500/20">Accept Live</button>
               </div>
             </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* --- BOTTOM DOCK & STREAM CHAT INTERACTION SPACE --- */}
-      <div className="absolute bottom-0 left-0 right-0 z-50 p-4 space-y-4 pointer-events-none">
-        <div className="h-48 w-full max-w-[320px] pointer-events-auto mask-fade-top overflow-y-auto hide-scrollbar floating-chat-container">
-          <ChatBox streamId={streamId} isHost={true} transparent={true} filter={chatFilter} />
-        </div>
-
-        {/* --- THE CONTROL COMMAND CONSOLE --- */}
-        <div className="w-full bg-black/50 backdrop-blur-3xl rounded-[28px] border border-white/10 p-2 flex items-center justify-between pointer-events-auto">
-          <div className="flex items-center gap-1.5">
-            <button onClick={() => setIsMuted(!isMuted)} className={`p-3 rounded-full ${isMuted ? 'bg-red-500 text-white' : 'bg-white/5 text-zinc-300'}`}>
-              {isMuted ? <MicOff size={18}/> : <Mic size={18}/>}
-            </button>
-            <button onClick={() => setIsCameraOff(!isCameraOff)} className={`p-3 rounded-full ${isCameraOff ? 'bg-red-500 text-white' : 'bg-white/5 text-zinc-300'}`}>
-              {isCameraOff ? <VideoOff size={18}/> : <Video size={18}/>}
-            </button>
           </div>
-
-          <div className="flex bg-white/5 rounded-full p-1 border border-white/5">
-            <button 
-              onClick={() => { setIsBattleMode(!isBattleMode); if(!isBattleMode) setActivePanel('invite'); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${isBattleMode ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/30' : 'text-zinc-400'}`}
-            >
-              <Swords size={15}/>
-              <span className="text-[9px] font-black uppercase tracking-widest">Battle</span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button onClick={() => setActivePanel('analytics')} className="p-3 rounded-full bg-white/5 text-zinc-300"><BarChart3 size={18}/></button>
-            <button onClick={() => setActivePanel('settings')} className="p-3 rounded-full bg-white/5 text-zinc-300"><Settings size={18}/></button>
-          </div>
-        </div>
-      </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
