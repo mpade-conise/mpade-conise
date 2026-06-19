@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+// Upgraded with Open Relay Project STUN + TURN configurations 
 const ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -74,7 +75,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       console.log("🔗 Late-binding active stream to visual DOM video node.");
       localVideoRef.current.srcObject = localStreamRef.current;
     }
-  }, [hardwareReady, streamDataLoadedWatch = !!localVideoRef.current]);
+  }, [hardwareReady, localVideoRef.current]); // Cleaned up the tracking reference error here!
 
   // 2. Sync Hardware Track States
   useEffect(() => {
