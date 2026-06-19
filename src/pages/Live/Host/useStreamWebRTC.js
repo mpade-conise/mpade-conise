@@ -1,22 +1,35 @@
 // hooks/useStreamWebRTC.js
 import { useEffect, useRef, useState } from 'react';
 
+// Upgraded with Open Relay Project STUN + TURN configurations 
+// Moved outside the hook function to guarantee a stable reference point
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    {
+      urls: 'turn:staticauth.openrelay.metered.ca:443',
+      username: 'openrelayprojectsecret',
+      credential: 'openrelayprojectsecret'
+    },
+    {
+      urls: 'turn:staticauth.openrelay.metered.ca:80',
+      username: 'openrelayprojectsecret',
+      credential: 'openrelayprojectsecret'
+    }
+  ]
+};
+
 export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const [hardwareReady, setHardwareReady] = useState(false);
 
-  const iceConfig = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
-  };
-
-  // Hardware Initialization
+  // 1. Hardware Initialization
   useEffect(() => {
     let mediaStream = null;
+    let isMounted = true;
 
     async function initMedia() {
       try {
@@ -26,6 +39,11 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
           audio: true 
         });
         
+        if (!isMounted) {
+          mediaStream.getTracks().forEach(track => track.stop());
+          return;
+        }
+
         localStreamRef.current = mediaStream;
         if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
         setHardwareReady(true);
@@ -37,15 +55,17 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
     initMedia();
 
     return () => {
+      isMounted = false;
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
       }
+      // Safely close all concurrent active peer pipelines
       Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
       peerConnectionsRef.current = {};
     };
   }, [streamId]);
 
-  // Sync Hardware Track States
+  // 2. Sync Hardware Track States
   useEffect(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
@@ -58,20 +78,22 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
     }
   }, [isCameraOff]);
 
-  // WebRTC Live Peer Management Event Listeners
+  // 3. WebRTC Live Peer Management Event Listeners
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('viewer_requesting_stream', async (payload) => {
+    // Handle incoming viewers requesting handshakes
+    const handleViewerRequest = async (payload) => {
       const viewerId = payload.viewerSocketId;
       if (!localStreamRef.current) return;
 
       console.log(`📥 Handshake requested from [${viewerId}]. Dispatching offer...`);
       
       try {
-        const pc = new RTCPeerConnection(iceConfig);
+        const pc = new RTCPeerConnection(ICE_CONFIG);
         peerConnectionsRef.current[viewerId] = pc;
 
+        // Push local webcam and microphone tracks to this specific remote connection line
         localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
 
         pc.onicecandidate = (event) => {
@@ -96,16 +118,18 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       } catch (e) {
         console.error("❌ Multi-peer offer configuration error:", e);
       }
-    });
+    };
 
-    socket.on('webrtc_answer_received', async (payload) => {
+    // Stabilize WebRTC tracks when viewer responds with an answer
+    const handleAnswerReceived = async (payload) => {
       const pc = peerConnectionsRef.current[payload.viewerSocketId];
       if (pc && !pc.currentRemoteDescription) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
       }
-    });
+    };
 
-    socket.on('incoming_ice_candidate', async (payload) => {
+    // Inject incoming connection route components
+    const handleIncomingIceCandidate = async (payload) => {
       if (payload.senderType === 'viewer') {
         const pc = peerConnectionsRef.current[payload.senderSocketId];
         if (pc && pc.remoteDescription) {
@@ -116,12 +140,18 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
           }
         }
       }
-    });
+    };
 
+    // Bind dedicated socket listeners
+    socket.on('viewer_requesting_stream', handleViewerRequest);
+    socket.on('webrtc_answer_received', handleAnswerReceived);
+    socket.on('incoming_ice_candidate', handleIncomingIceCandidate);
+
+    // Clean up cleanly on dependency mutations or unmounting
     return () => {
-      socket.off('viewer_requesting_stream');
-      socket.off('webrtc_answer_received');
-      socket.off('incoming_ice_candidate');
+      socket.off('viewer_requesting_stream', handleViewerRequest);
+      socket.off('webrtc_answer_received', handleAnswerReceived);
+      socket.off('incoming_ice_candidate', handleIncomingIceCandidate);
     };
   }, [socket, streamId]);
 
