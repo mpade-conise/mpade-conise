@@ -2,14 +2,32 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
+// UPGRADE: Define Open Relay STUN + TURN configurations outside to ensure stability
+const UPGRADED_ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    {
+      urls: 'turn:staticauth.openrelay.metered.ca:443',
+      username: 'openrelayprojectsecret',
+      credential: 'openrelayprojectsecret'
+    },
+    {
+      urls: 'turn:staticauth.openrelay.metered.ca:80',
+      username: 'openrelayprojectsecret',
+      credential: 'openrelayprojectsecret'
+    }
+  ],
+  iceCandidatePoolSize: 10
+};
+
 const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) => {
   const videoRef = useRef(null);
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
   
-  // CRUCIAL: Track peer connections dynamically per viewer ID to stop cross-talk collapse
   const peerConnectionsRef = useRef({}); 
-  const singleViewerPcRef = useRef(null); // Used exclusively if this component instance runs as a viewer
+  const singleViewerPcRef = useRef(null); 
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing Socket...');
@@ -41,14 +59,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
     async function initializeMediaAndSignaling() {
       try {
-        const iceConfig = {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ],
-          iceCandidatePoolSize: 10
-        };
-
         console.log(`📡 [RTC STREAM INTERFACE] Connecting ID: ${streamId} | Role: ${isHost ? 'host' : 'viewer'}`);
 
         const socket = globalIo(SOCKET_SERVER_URL, {
@@ -87,19 +97,16 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
 
-          // Triggered every single time a unique viewer walks onto the page
           socket.on('viewer_requesting_stream', async (payload) => {
             const viewerId = payload.viewerSocketId;
             console.log(`📥 Separate request received from viewer [${viewerId}]. Allocating distinct connection...`);
 
-            // Instantiation of a clean, isolated connection channel map
-            const pc = new RTCPeerConnection(iceConfig);
+            // Use the updated ICE config
+            const pc = new RTCPeerConnection(UPGRADED_ICE_CONFIG);
             peerConnectionsRef.current[viewerId] = pc;
 
-            // Feed the shared host video tracks straight into this viewer node
             stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-            // Target the specific viewer with host's ICE configurations
             pc.onicecandidate = (event) => {
               if (event.candidate && socketRef.current?.connected) {
                 socketRef.current.emit('webrtc_ice_candidate', {
@@ -125,7 +132,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             }
           });
 
-          // Process answers from targeted viewers mapping directly back to their reference entry
           socket.on('webrtc_answer_received', async (payload) => {
             const pc = peerConnectionsRef.current[payload.viewerSocketId];
             if (pc && !pc.currentRemoteDescription) {
@@ -138,7 +144,8 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         // 👁️ VIEWER-SPECIFIC PIPELINE
         // ==========================================
         } else {
-          const pc = new RTCPeerConnection(iceConfig);
+          // Use the updated ICE config here too
+          const pc = new RTCPeerConnection(UPGRADED_ICE_CONFIG);
           singleViewerPcRef.current = pc;
 
           pc.ontrack = (event) => {
@@ -153,7 +160,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           socket.on('webrtc_offer_received', async (payload) => {
             console.log("📥 Host WebRTC Offer captured via direct route. Compiling answer...");
             try {
-              // Extract the host pipeline ID to correctly reply to the direct candidate channel later
               socket.hostSocketId = payload.hostSocketId; 
 
               await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
@@ -171,7 +177,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               socketRef.current.emit('webrtc_ice_candidate', {
                 streamId,
                 candidate: event.candidate,
-                targetSocketId: socketRef.current.hostSocketId, // Route it straight to the active host
+                targetSocketId: socketRef.current.hostSocketId, 
                 senderType: 'viewer'
               });
             }
@@ -192,7 +198,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         // ==========================================
         socket.on('incoming_ice_candidate', async (payload) => {
           if (isHost) {
-            // Host pulls the caller connection map from the tracking index dictionary
             const pc = peerConnectionsRef.current[payload.senderSocketId];
             if (payload.senderType === 'viewer' && pc && pc.remoteDescription) {
               try {
@@ -202,7 +207,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               }
             }
           } else {
-            // Viewer targets their unique baseline connection directly
             const pc = singleViewerPcRef.current;
             if (payload.senderType === 'host' && pc && pc.remoteDescription) {
               try {
@@ -229,7 +233,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         localStreamRef.current.getTracks().forEach(track => track.stop());
       }
       
-      // Clear out the host mapping matrix references cleanly on route exits
       Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
       peerConnectionsRef.current = {};
 
