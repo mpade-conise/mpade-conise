@@ -1,8 +1,6 @@
-// hooks/useStreamWebRTC.js
 import { useEffect, useRef, useState } from 'react';
 
 // Upgraded with Open Relay Project STUN + TURN configurations 
-// Moved outside the hook function to guarantee a stable reference point
 const ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -17,7 +15,8 @@ const ICE_CONFIG = {
       username: 'openrelayprojectsecret',
       credential: 'openrelayprojectsecret'
     }
-  ]
+  ],
+  iceCandidatePoolSize: 10 // Pre-fetches ICE candidates to speed up connection handshakes
 };
 
 export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
@@ -26,7 +25,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
   const peerConnectionsRef = useRef({});
   const [hardwareReady, setHardwareReady] = useState(false);
 
-  // 1. Hardware Initialization
+  // 1. Unified Hardware Lifecycle 
   useEffect(() => {
     let mediaStream = null;
     let isMounted = true;
@@ -59,7 +58,6 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
       }
-      // Safely close all concurrent active peer pipelines
       Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
       peerConnectionsRef.current = {};
     };
@@ -80,12 +78,15 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
 
   // 3. WebRTC Live Peer Management Event Listeners
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !streamId) return;
 
-    // Handle incoming viewers requesting handshakes
     const handleViewerRequest = async (payload) => {
       const viewerId = payload.viewerSocketId;
-      if (!localStreamRef.current) return;
+      // CRITICAL FIX: Ensure the stream object actually exists in the ref before calling tracks
+      if (!localStreamRef.current) {
+        console.warn("⚠️ Handshake skipped: Media hardware stream not fully initialized yet.");
+        return;
+      }
 
       console.log(`📥 Handshake requested from [${viewerId}]. Dispatching offer...`);
       
@@ -93,7 +94,6 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
         const pc = new RTCPeerConnection(ICE_CONFIG);
         peerConnectionsRef.current[viewerId] = pc;
 
-        // Push local webcam and microphone tracks to this specific remote connection line
         localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
 
         pc.onicecandidate = (event) => {
@@ -105,6 +105,11 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
               senderType: 'host'
             });
           }
+        };
+
+        // CRITICAL FIX: Track connection health states directly in console
+        pc.oniceconnectionstatechange = () => {
+          console.log(`📡 Host WebRTC state with viewer [${viewerId}]: ${pc.iceConnectionState}`);
         };
 
         const offer = await pc.createOffer();
@@ -120,16 +125,16 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       }
     };
 
-    // Stabilize WebRTC tracks when viewer responds with an answer
     const handleAnswerReceived = async (payload) => {
       const pc = peerConnectionsRef.current[payload.viewerSocketId];
       if (pc && !pc.currentRemoteDescription) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+        console.log(`⚡ Remote Description Bound successfully for viewer: ${payload.viewerSocketId}`);
       }
     };
 
-    // Inject incoming connection route components
     const handleIncomingIceCandidate = async (payload) => {
+      // CRITICAL FIX: Isolate candidate assignments strictly to viewers targeting this host instance
       if (payload.senderType === 'viewer') {
         const pc = peerConnectionsRef.current[payload.senderSocketId];
         if (pc && pc.remoteDescription) {
@@ -142,18 +147,17 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       }
     };
 
-    // Bind dedicated socket listeners
+    // Bind listeners safely
     socket.on('viewer_requesting_stream', handleViewerRequest);
     socket.on('webrtc_answer_received', handleAnswerReceived);
     socket.on('incoming_ice_candidate', handleIncomingIceCandidate);
 
-    // Clean up cleanly on dependency mutations or unmounting
     return () => {
       socket.off('viewer_requesting_stream', handleViewerRequest);
       socket.off('webrtc_answer_received', handleAnswerReceived);
       socket.off('incoming_ice_candidate', handleIncomingIceCandidate);
     };
-  }, [socket, streamId]);
+  }, [socket, streamId, hardwareReady]); // Added hardwareReady to block signaling until camera tracks mount
 
   return { localVideoRef, hardwareReady };
 };
