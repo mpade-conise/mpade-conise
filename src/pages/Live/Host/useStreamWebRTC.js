@@ -1,20 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
-// Upgraded with Open Relay Project STUN + TURN configurations 
-const ICE_CONFIG = {
+// Stripped down completely: No third party APIs, no paid TURN servers.
+// Relying 100% on pure direct peer-to-peer WebRTC via Google STUN.
+const PURE_STUN_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    {
-      urls: 'turn:staticauth.openrelay.metered.ca:443',
-      username: 'openrelayprojectsecret',
-      credential: 'openrelayprojectsecret'
-    },
-    {
-      urls: 'turn:staticauth.openrelay.metered.ca:80',
-      username: 'openrelayprojectsecret',
-      credential: 'openrelayprojectsecret'
-    }
+    { urls: 'stun:stun2.l.google.com:19302' }
   ],
   iceCandidatePoolSize: 10
 };
@@ -23,7 +15,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef({});
-  const iceCandidatesQueueRef = useRef({}); // Queues early candidates safely
+  const iceCandidatesQueueRef = useRef({}); 
   const [hardwareReady, setHardwareReady] = useState(false);
 
   // 1. Hardware Stream Capturing
@@ -45,15 +37,12 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
         }
 
         localStreamRef.current = mediaStream;
-        
-        // Safe Binding Assessment
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = mediaStream;
         }
-        
         setHardwareReady(true);
       } catch (err) {
-        console.error("Broadcasting multimedia hardware failure:", err);
+        console.error("Broadcasting hardware failure:", err);
       }
     }
 
@@ -69,15 +58,14 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
     };
   }, [streamId]);
 
-  // FIX: Late-binding fallback for when StreamDashboard exits the loading matrix screen
+  // Late-binding stream video DOM attachment
   useEffect(() => {
     if (hardwareReady && localStreamRef.current && localVideoRef.current && !localVideoRef.current.srcObject) {
-      console.log("🔗 Late-binding active stream to visual DOM video node.");
       localVideoRef.current.srcObject = localStreamRef.current;
     }
-  }, [hardwareReady, localVideoRef.current]); // Cleaned up the tracking reference error here!
+  }, [hardwareReady, localVideoRef.current]);
 
-  // 2. Sync Hardware Track States
+  // Sync Hardware Track States
   useEffect(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
@@ -90,7 +78,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
     }
   }, [isCameraOff]);
 
-  // 3. Signaling Matrix Pipeline Router
+  // 2. Signaling Matrix Pipeline via Socket.io
   useEffect(() => {
     if (!socket || !streamId || !hardwareReady) return;
 
@@ -102,7 +90,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       iceCandidatesQueueRef.current[viewerId] = [];
       
       try {
-        const pc = new RTCPeerConnection(ICE_CONFIG);
+        const pc = new RTCPeerConnection(PURE_STUN_CONFIG);
         peerConnectionsRef.current[viewerId] = pc;
 
         localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
@@ -127,7 +115,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
           targetViewerId: viewerId
         });
       } catch (e) {
-        console.error("❌ Multi-peer offer configuration error:", e);
+        console.error("❌ Multi-peer offer error:", e);
       }
     };
 
@@ -140,7 +128,6 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
           await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
           console.log(`⚡ Connection stabilized for viewer: ${viewerId}`);
           
-          // Flush any queued candidates that arrived early
           if (iceCandidatesQueueRef.current[viewerId]) {
             for (const candidate of iceCandidatesQueueRef.current[viewerId]) {
               await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
@@ -166,7 +153,6 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
               console.warn("Skipped candidate insertion:", e);
             }
           } else {
-            // Queue candidate if remote description isn't ready yet
             if (!iceCandidatesQueueRef.current[viewerId]) {
               iceCandidatesQueueRef.current[viewerId] = [];
             }
