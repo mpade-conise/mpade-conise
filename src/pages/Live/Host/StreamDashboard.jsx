@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 // Isolated Logic Hook Injectors
-import { useStreamSocket } from './hooks/useStreamSocket';
+import { useStreamSocket } from './useStreamSocket';
 import { useStreamWebRTC } from './useStreamWebRTC';
 
 // Subcomponents
