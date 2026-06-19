@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 
-// Upgraded with Open Relay Project STUN + TURN configurations 
 const ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -16,16 +15,17 @@ const ICE_CONFIG = {
       credential: 'openrelayprojectsecret'
     }
   ],
-  iceCandidatePoolSize: 10 // Pre-fetches ICE candidates to speed up connection handshakes
+  iceCandidatePoolSize: 10
 };
 
 export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef({});
+  const iceCandidatesQueueRef = useRef({}); // Queues early candidates safely
   const [hardwareReady, setHardwareReady] = useState(false);
 
-  // 1. Unified Hardware Lifecycle 
+  // 1. Hardware Stream Capturing
   useEffect(() => {
     let mediaStream = null;
     let isMounted = true;
@@ -44,7 +44,12 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
         }
 
         localStreamRef.current = mediaStream;
-        if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
+        
+        // Safe Binding Assessment
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = mediaStream;
+        }
+        
         setHardwareReady(true);
       } catch (err) {
         console.error("Broadcasting multimedia hardware failure:", err);
@@ -63,6 +68,14 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
     };
   }, [streamId]);
 
+  // FIX: Late-binding fallback for when StreamDashboard exits the loading matrix screen
+  useEffect(() => {
+    if (hardwareReady && localStreamRef.current && localVideoRef.current && !localVideoRef.current.srcObject) {
+      console.log("🔗 Late-binding active stream to visual DOM video node.");
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
+  }, [hardwareReady, streamDataLoadedWatch = !!localVideoRef.current]);
+
   // 2. Sync Hardware Track States
   useEffect(() => {
     if (localStreamRef.current) {
@@ -76,19 +89,16 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
     }
   }, [isCameraOff]);
 
-  // 3. WebRTC Live Peer Management Event Listeners
+  // 3. Signaling Matrix Pipeline Router
   useEffect(() => {
-    if (!socket || !streamId) return;
+    if (!socket || !streamId || !hardwareReady) return;
 
     const handleViewerRequest = async (payload) => {
       const viewerId = payload.viewerSocketId;
-      // CRITICAL FIX: Ensure the stream object actually exists in the ref before calling tracks
-      if (!localStreamRef.current) {
-        console.warn("⚠️ Handshake skipped: Media hardware stream not fully initialized yet.");
-        return;
-      }
+      if (!localStreamRef.current) return;
 
       console.log(`📥 Handshake requested from [${viewerId}]. Dispatching offer...`);
+      iceCandidatesQueueRef.current[viewerId] = [];
       
       try {
         const pc = new RTCPeerConnection(ICE_CONFIG);
@@ -107,11 +117,6 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
           }
         };
 
-        // CRITICAL FIX: Track connection health states directly in console
-        pc.oniceconnectionstatechange = () => {
-          console.log(`📡 Host WebRTC state with viewer [${viewerId}]: ${pc.iceConnectionState}`);
-        };
-
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
@@ -126,28 +131,50 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
     };
 
     const handleAnswerReceived = async (payload) => {
-      const pc = peerConnectionsRef.current[payload.viewerSocketId];
+      const viewerId = payload.viewerSocketId;
+      const pc = peerConnectionsRef.current[viewerId];
+      
       if (pc && !pc.currentRemoteDescription) {
-        await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-        console.log(`⚡ Remote Description Bound successfully for viewer: ${payload.viewerSocketId}`);
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+          console.log(`⚡ Connection stabilized for viewer: ${viewerId}`);
+          
+          // Flush any queued candidates that arrived early
+          if (iceCandidatesQueueRef.current[viewerId]) {
+            for (const candidate of iceCandidatesQueueRef.current[viewerId]) {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
+            }
+            delete iceCandidatesQueueRef.current[viewerId];
+          }
+        } catch (err) {
+          console.error("Failed to apply remote answer:", err);
+        }
       }
     };
 
     const handleIncomingIceCandidate = async (payload) => {
-      // CRITICAL FIX: Isolate candidate assignments strictly to viewers targeting this host instance
       if (payload.senderType === 'viewer') {
-        const pc = peerConnectionsRef.current[payload.senderSocketId];
-        if (pc && pc.remoteDescription) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-          } catch (e) {
-            console.warn("Host skipped candidate insertion:", e);
+        const viewerId = payload.senderSocketId;
+        const pc = peerConnectionsRef.current[viewerId];
+        
+        if (pc) {
+          if (pc.remoteDescription) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            } catch (e) {
+              console.warn("Skipped candidate insertion:", e);
+            }
+          } else {
+            // Queue candidate if remote description isn't ready yet
+            if (!iceCandidatesQueueRef.current[viewerId]) {
+              iceCandidatesQueueRef.current[viewerId] = [];
+            }
+            iceCandidatesQueueRef.current[viewerId].push(payload.candidate);
           }
         }
       }
     };
 
-    // Bind listeners safely
     socket.on('viewer_requesting_stream', handleViewerRequest);
     socket.on('webrtc_answer_received', handleAnswerReceived);
     socket.on('incoming_ice_candidate', handleIncomingIceCandidate);
@@ -157,7 +184,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       socket.off('webrtc_answer_received', handleAnswerReceived);
       socket.off('incoming_ice_candidate', handleIncomingIceCandidate);
     };
-  }, [socket, streamId, hardwareReady]); // Added hardwareReady to block signaling until camera tracks mount
+  }, [socket, streamId, hardwareReady]);
 
   return { localVideoRef, hardwareReady };
 };
