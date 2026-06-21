@@ -1,12 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 
-// Stripped down completely: No third party APIs, no paid TURN servers.
-// Relying 100% on pure direct peer-to-peer WebRTC via Google STUN.
-const PURE_STUN_CONFIG = {
+// Dedicated Metered TURN + STUN configuration to bridge cross-network connections
+const GLOBAL_ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    {
+      urls: 'turn:mpade-universe.metered.live:443',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn'
+    },
+    {
+      urls: 'turn:mpade-universe.metered.live:80?transport=udp',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn'
+    },
+    {
+      urls: 'turn:mpade-universe.metered.live:443?transport=tcp',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn'
+    }
   ],
   iceCandidatePoolSize: 10
 };
@@ -90,7 +104,8 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       iceCandidatesQueueRef.current[viewerId] = [];
       
       try {
-        const pc = new RTCPeerConnection(PURE_STUN_CONFIG);
+        // UPGRADED: Passing the complete TURN profile directly into initialization
+        const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
         peerConnectionsRef.current[viewerId] = pc;
 
         localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
