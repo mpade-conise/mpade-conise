@@ -2,26 +2,29 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
-// Upgraded with your active Metered TURN details to crack through cross-network firewalls
+// CORRECTED GLOBAL ICE CONFIG MATCHING METERED METRICS
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: "stun:stun.relay.metered.ca:80" },
     {
-      urls: 'turn:mpade-universe.metered.live:443',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
+      urls: "turn:global.relay.metered.ca:80",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
     },
     {
-      urls: 'turn:mpade-universe.metered.live:80?transport=udp',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
     },
     {
-      urls: 'turn:mpade-universe.metered.live:443?transport=tcp',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
+      urls: "turn:global.relay.metered.ca:443",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
     }
   ],
   iceCandidatePoolSize: 10
@@ -109,7 +112,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             console.log(`📥 Separate request received from viewer [${viewerId}]. Allocating connection...`);
 
             iceCandidatesQueueRef.current[viewerId] = [];
-            // UPGRADED: Using full dynamic TURN profile settings
             const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
             peerConnectionsRef.current[viewerId] = pc;
 
@@ -165,7 +167,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         // 👁️ VIEWER-SPECIFIC PIPELINE
         // ==========================================
         } else {
-          // UPGRADED: Using full dynamic TURN profile settings
           const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
           singleViewerPcRef.current = pc;
           iceCandidatesQueueRef.current['host_queue'] = [];
