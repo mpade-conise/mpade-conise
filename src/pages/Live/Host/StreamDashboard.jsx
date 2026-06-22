@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,13 +37,16 @@ const StreamDashboard = () => {
   const [reactions, setReactions] = useState([]); 
   const [battleScores, setBattleScores] = useState({ host: 0, challenger: 0 });
 
+  // DOM node link to explicitly bind remote challenger streams from the WebRTC hook
+  const challengerVideoRef = useRef(null);
+
   // 1. EXECUTE ABSTRACTED WEBSOCKET NETWORK CONTROLLER
   const {
     socket, viewers, joinAlert, activeGift, setActiveGift, incomingInvite, setIncomingInvite, reactionTrigger
   } = useStreamSocket(streamId, true);
 
-  // 2. EXECUTE ABSTRACTED WEBRTC HARDWARE CONTROLLER
-  const { localVideoRef, hardwareReady } = useStreamWebRTC(streamId, socket, isCameraOff, isMuted);
+  // 2. EXECUTE ABSTRACTED WEBRTC HARDWARE CONTROLLER (Passing challengerVideoRef)
+  const { localVideoRef, hardwareReady } = useStreamWebRTC(streamId, socket, isCameraOff, isMuted, challengerVideoRef);
 
   // Fetch Metadata & Sync Database Lifecycle Status
   useEffect(() => {
@@ -139,19 +142,28 @@ const StreamDashboard = () => {
           )}
         </div>
 
-        {/* PANEL B: THE PK CHALLENGER / GUEST SPLIT (RENDERED AUTOMATICALLY ON BATTLE MODE OR ACTIVE JOINS) */}
+        {/* PANEL B: THE PK CHALLENGER / GUEST SPLIT */}
         {(isBattleMode || coHosts.length > 0) && (
-          <div className="relative h-full w-full overflow-hidden bg-zinc-900 border-l border-white/5 flex items-center justify-center">
-            {/* Real WebRTC track placeholder binds inside this component element structure */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950">
+          <div className="relative h-full w-full overflow-hidden bg-zinc-950 border-l border-white/5">
+            
+            {/* Live active peer playback rendering stream layout */}
+            <video 
+              ref={challengerVideoRef}
+              autoPlay 
+              playsInline 
+              className="w-full h-full object-cover bg-zinc-950 position-relative z-10"
+            />
+
+            {/* Absolute backdrop layout placeholder during handshake initialization */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 z-0">
               <div className="w-6 h-6 border-2 border-t-cyan-400 border-white/10 rounded-full animate-spin mb-2" />
               <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest animate-pulse">
-                Connecting Challenger...
+                Syncing Challenger...
               </p>
             </div>
             
             {/* Tag Badge Display for the Opponent */}
-            <div className="absolute bottom-20 right-4 bg-black/40 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-bold text-cyan-400 z-10 border border-cyan-500/20">
+            <div className="absolute bottom-20 left-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-bold text-cyan-400 z-20 border border-cyan-500/20">
               @{coHosts[0]?.username || 'Challenger'}
             </div>
           </div>
