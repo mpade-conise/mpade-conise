@@ -95,6 +95,33 @@ const StreamDashboard = () => {
     }
   };
 
+  // --- ADDED SYSTEM CONTROLLERS LINKED VIA GLOBAL WINDOW BROADCASTING ---
+  useEffect(() => {
+    const handleFilterChange = (e) => {
+      const videoElement = localVideoRef.current;
+      if (!videoElement) return;
+
+      const { type, value } = e.detail;
+
+      if (type === 'beautify') {
+        videoElement.style.filter = `blur(${value * 0.18}px) contrast(${100 + (value * 1.5)}%) brightness(${100 + (value * 1.2)}%)`;
+      } 
+      
+      if (type === 'lut') {
+        if (value === 'retro') {
+          videoElement.style.filter = 'sepia(35%) contrast(110%) saturate(90%) hue-rotate(-5deg)';
+        } else if (value === 'cyberpunk') {
+          videoElement.style.filter = 'hue-rotate(135deg) saturate(150%) contrast(115%)';
+        } else {
+          videoElement.style.filter = 'none';
+        }
+      }
+    };
+
+    window.addEventListener('mpade-video-filter', handleFilterChange);
+    return () => window.removeEventListener('mpade-video-filter', handleFilterChange);
+  }, [localVideoRef]);
+
   if (!streamData) {
     return (
       <div className="h-screen bg-black flex items-center justify-center font-black italic text-cyan-400 underline animate-pulse tracking-widest">
