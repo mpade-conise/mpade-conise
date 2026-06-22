@@ -18,6 +18,7 @@ import LiveAnalyticsPanel from './HostAnalytics';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
+import SettingsPanel from '../Shared/Settings'; // 👈 Imported settings feature panel
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
@@ -103,111 +104,144 @@ const StreamDashboard = () => {
   }
 
   return (
-    <div className="h-[100dvh] w-full bg-zinc-950 text-white overflow-hidden relative font-sans">
+    <div className="h-[100dvh] w-full bg-zinc-950 text-white overflow-hidden relative font-sans flex flex-row">
       
-      {/* 1. DYNAMIC GIFT ALERTS INTERFACE OVERLAY */}
-      <GiftAlertOverlay activeGift={activeGift} setActiveGift={setActiveGift} />
-
-      {/* Header Overlay Panel */}
-      <div className="absolute top-0 left-0 right-0 z-[60] p-4 pt-10 bg-gradient-to-b from-black/80 to-transparent flex flex-col gap-3">
-        <StreamHeader data={streamData} isHost={true} viewerCount={viewers.length} onLeave={() => navigate('/live')} />
-      </div>
-
-      {/* 2. LIVE STAGE VIEWPORT MATRIX (DYNAMICS CO-HOST SPLIT SCREEN CONFIG) */}
-      <div className={`absolute inset-0 z-0 grid ${(!isBattleMode && coHosts.length === 0) ? 'grid-cols-1' : 'grid-cols-2'} gap-0.5 transition-all duration-500 bg-zinc-900`}>
+      {/* MAIN VIEWPORT MATRIX DOCK CONTAINER */}
+      <div className="relative flex-1 h-full overflow-hidden">
         
-        {/* PANEL A: THE PRIMARY HOST (YOU) */}
-        <div className="relative h-full w-full overflow-hidden bg-zinc-950">
-          <video 
-            ref={localVideoRef} 
-            autoPlay 
-            muted 
-            playsInline 
-            className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} 
-          />
-          {isCameraOff && (
-            <div className="absolute inset-0 flex items-center justify-center text-zinc-500 bg-zinc-900 font-black tracking-widest text-xs italic">
-              Camera Off
-            </div>
-          )}
+        {/* 1. DYNAMIC GIFT ALERTS INTERFACE OVERLAY */}
+        <GiftAlertOverlay activeGift={activeGift} setActiveGift={setActiveGift} />
+
+        {/* Header Overlay Panel */}
+        <div className="absolute top-0 left-0 right-0 z-[60] p-4 pt-10 bg-gradient-to-b from-black/80 to-transparent flex flex-col gap-3">
+          <StreamHeader data={streamData} isHost={true} viewerCount={viewers.length} onLeave={() => navigate('/live')} />
+        </div>
+
+        {/* 2. LIVE STAGE VIEWPORT MATRIX (DYNAMICS CO-HOST SPLIT SCREEN CONFIG) */}
+        <div className={`absolute inset-0 z-0 grid ${(!isBattleMode && coHosts.length === 0) ? 'grid-cols-1' : 'grid-cols-2'} gap-0.5 transition-all duration-500 bg-zinc-900`}>
           
-          {/* Universal Overlay Widget Layout */}
-          {isBattleMode && (
-            <BattleOverlay 
-              score={battleScores} 
-              hostProfile={streamData?.host} 
-              coHost={coHosts[0] || { username: 'Challenger' }} 
-              onInviteClick={() => setActivePanel('invite')} 
+          {/* PANEL A: THE PRIMARY HOST (YOU) */}
+          <div className="relative h-full w-full overflow-hidden bg-zinc-950">
+            <video 
+              ref={localVideoRef} 
+              autoPlay 
+              muted 
+              playsInline 
+              className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} 
             />
+            {isCameraOff && (
+              <div className="absolute inset-0 flex items-center justify-center text-zinc-500 bg-zinc-900 font-black tracking-widest text-xs italic">
+                Camera Off
+              </div>
+            )}
+            
+            {/* Universal Overlay Widget Layout */}
+            {isBattleMode && (
+              <BattleOverlay 
+                score={battleScores} 
+                hostProfile={streamData?.host} 
+                coHost={coHosts[0] || { username: 'Challenger' }} 
+                onInviteClick={() => setActivePanel('invite')} 
+              />
+            )}
+          </div>
+
+          {/* PANEL B: THE PK CHALLENGER / GUEST SPLIT */}
+          {(isBattleMode || coHosts.length > 0) && (
+            <div className="relative h-full w-full overflow-hidden bg-zinc-950 border-l border-white/5">
+              
+              {/* Live active peer playback rendering stream layout */}
+              <video 
+                ref={challengerVideoRef}
+                autoPlay 
+                playsInline 
+                className="w-full h-full object-cover bg-zinc-950 position-relative z-10"
+              />
+
+              {/* Absolute backdrop layout placeholder during handshake initialization */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 z-0">
+                <div className="w-6 h-6 border-2 border-t-cyan-400 border-white/10 rounded-full animate-spin mb-2" />
+                <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest animate-pulse">
+                  Syncing Challenger...
+                </p>
+              </div>
+              
+              {/* Tag Badge Display for the Opponent */}
+              <div className="absolute bottom-20 left-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-bold text-cyan-400 z-20 border border-cyan-500/20">
+                @{coHosts[0]?.username || 'Challenger'}
+              </div>
+            </div>
           )}
         </div>
 
-        {/* PANEL B: THE PK CHALLENGER / GUEST SPLIT */}
-        {(isBattleMode || coHosts.length > 0) && (
-          <div className="relative h-full w-full overflow-hidden bg-zinc-950 border-l border-white/5">
-            
-            {/* Live active peer playback rendering stream layout */}
-            <video 
-              ref={challengerVideoRef}
-              autoPlay 
-              playsInline 
-              className="w-full h-full object-cover bg-zinc-950 position-relative z-10"
-            />
-
-            {/* Absolute backdrop layout placeholder during handshake initialization */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 z-0">
-              <div className="w-6 h-6 border-2 border-t-cyan-400 border-white/10 rounded-full animate-spin mb-2" />
-              <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest animate-pulse">
-                Syncing Challenger...
-              </p>
-            </div>
-            
-            {/* Tag Badge Display for the Opponent */}
-            <div className="absolute bottom-20 left-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-bold text-cyan-400 z-20 border border-cyan-500/20">
-              @{coHosts[0]?.username || 'Challenger'}
-            </div>
+        {/* Control Console Dock Bar at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 z-50 p-4 space-y-4 pointer-events-none">
+          {/* UPGRADED CHAT BOX STREAM PANEL FEATURE */}
+          <div className="h-48 w-full max-w-[320px] pointer-events-auto overflow-y-auto floating-chat-container">
+            <ChatBox streamId={streamId} isHost={true} transparent={true} filter={chatFilter} />
           </div>
-        )}
-      </div>
-
-      {/* Control Console Dock Bar at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 z-50 p-4 space-y-4 pointer-events-none">
-        <div className="h-48 w-full max-w-[320px] pointer-events-auto overflow-y-auto floating-chat-container">
-          <ChatBox streamId={streamId} isHost={true} transparent={true} filter={chatFilter} />
+          
+          <nav className="w-full max-w-xl mx-auto bg-zinc-950/80 backdrop-blur-2xl rounded-full border border-white/10 p-1.5 pointer-events-auto">
+            <ul className="flex items-center justify-between w-full px-1">
+              <li>
+                <button onClick={() => setIsCameraOff(!isCameraOff)} className={`p-2.5 rounded-full text-white transition-colors ${isCameraOff ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
+                  {isCameraOff ? <VideoOff size={16}/> : <Video size={16}/>}
+                </button>
+              </li>
+              <li>
+                <button onClick={() => setIsMuted(!isMuted)} className={`p-2.5 rounded-full text-white transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
+                  {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
+                </button>
+              </li>
+              <li>
+                <button onClick={() => setIsBattleMode(!isBattleMode)} className={`p-2.5 rounded-full transition-colors ${isBattleMode ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}>
+                  <Swords size={16}/>
+                </button>
+              </li>
+              {/* SETTINGS ICON ACTION DOCK BUTTON ELEMENT */}
+              <li>
+                <button 
+                  onClick={() => setActivePanel(activePanel === 'settings' ? null : 'settings')} 
+                  className={`p-2.5 rounded-full transition-colors ${activePanel === 'settings' ? 'bg-white text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                >
+                  <Settings size={16}/>
+                </button>
+              </li>
+            </ul>
+          </nav>
         </div>
-        
-        <nav className="w-full max-w-xl mx-auto bg-zinc-950/80 backdrop-blur-2xl rounded-full border border-white/10 p-1.5 pointer-events-auto">
-          <ul className="flex items-center justify-between w-full px-1">
-            <li>
-              <button onClick={() => setIsCameraOff(!isCameraOff)} className={`p-2.5 rounded-full text-white transition-colors ${isCameraOff ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
-                {isCameraOff ? <VideoOff size={16}/> : <Video size={16}/>}
-              </button>
-            </li>
-            <li>
-              <button onClick={() => setIsMuted(!isMuted)} className={`p-2.5 rounded-full text-white transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
-                {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
-              </button>
-            </li>
-            <li>
-              <button onClick={() => setIsBattleMode(!isBattleMode)} className={`p-2.5 rounded-full transition-colors ${isBattleMode ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}>
-                <Swords size={16}/>
-              </button>
-            </li>
-          </ul>
-        </nav>
+
+        {/* Pop-up Invite Manager Alerts */}
+        <AnimatePresence>
+          {incomingInvite && (
+            <div className="absolute inset-0 pointer-events-none z-[70] flex items-center justify-center">
+              <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }} className="bg-zinc-950/95 border-2 border-cyan-500/50 p-4 rounded-2xl pointer-events-auto text-center shadow-2xl">
+                <p className="text-[11px] font-bold">@{incomingInvite.senderUsername} challenges you!</p>
+                <button onClick={handleAcceptInvite} className="bg-cyan-500 text-black px-4 py-2 mt-2 rounded-xl text-xs font-black tracking-wide hover:bg-cyan-400 transition-colors">
+                  Accept Live
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Pop-up Invite Manager Alerts */}
+      {/* 3. SETTINGS INTERACTIVE DRAWER OVERLAY PANEL SIDEBAR */}
       <AnimatePresence>
-        {incomingInvite && (
-          <div className="absolute inset-0 pointer-events-none z-[70] flex items-center justify-center">
-            <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }} className="bg-zinc-950/95 border-2 border-cyan-500/50 p-4 rounded-2xl pointer-events-auto text-center shadow-2xl">
-              <p className="text-[11px] font-bold">@{incomingInvite.senderUsername} challenges you!</p>
-              <button onClick={handleAcceptInvite} className="bg-cyan-500 text-black px-4 py-2 mt-2 rounded-xl text-xs font-black tracking-wide hover:bg-cyan-400 transition-colors">
-                Accept Live
-              </button>
-            </motion.div>
-          </div>
+        {activePanel === 'settings' && (
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+            className="w-80 h-full bg-zinc-950 border-l border-white/10 z-[100] relative pointer-events-auto"
+          >
+            <SettingsPanel 
+              streamId={streamId} 
+              streamData={streamData} 
+              onClose={() => setActivePanel(null)} 
+            />
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
