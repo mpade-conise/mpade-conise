@@ -97,25 +97,50 @@ const StreamDashboard = () => {
 
   // --- ADDED SYSTEM CONTROLLERS LINKED VIA GLOBAL WINDOW BROADCASTING ---
   useEffect(() => {
+    const fxState = {
+      smoothing: 3, jawline: 0, eyes: 0, slim: 0,
+      lut: 'none', fx: 'none'
+    };
+
     const handleFilterChange = (e) => {
       const videoElement = localVideoRef.current;
       if (!videoElement) return;
 
-      const { type, value } = e.detail;
+      const { type, key, value } = e.detail;
 
-      if (type === 'beautify') {
-        videoElement.style.filter = `blur(${value * 0.18}px) contrast(${100 + (value * 1.5)}%) brightness(${100 + (value * 1.2)}%)`;
-      } 
-      
-      if (type === 'lut') {
-        if (value === 'retro') {
-          videoElement.style.filter = 'sepia(35%) contrast(110%) saturate(90%) hue-rotate(-5deg)';
-        } else if (value === 'cyberpunk') {
-          videoElement.style.filter = 'hue-rotate(135deg) saturate(150%) contrast(115%)';
-        } else {
-          videoElement.style.filter = 'none';
-        }
+      if (type === 'beautify') fxState.smoothing = parseFloat(value);
+      if (type === 'morph') fxState[key] = parseFloat(value);
+      if (type === 'lut') fxState.lut = key;
+      if (type === 'fx') fxState.fx = key;
+
+      let filterString = '';
+      let transformString = 'scale-x(-1)';
+
+      if (fxState.lut === 'retro') filterString += 'sepia(35%) contrast(110%) saturate(90%) hue-rotate(-5deg) ';
+      if (fxState.lut === 'cyberpunk') filterString += 'hue-rotate(135deg) saturate(165%) contrast(115%) ';
+      if (fxState.lut === 'noir') filterString += 'grayscale(100%) contrast(140%) brightness(95%) ';
+      if (fxState.lut === 'golden') filterString += 'sepia(20%) saturate(140%) brightness(105%) hue-rotate(10deg) ';
+      if (fxState.lut === 'tropic') filterString += 'saturate(180%) contrast(105%) hue-rotate(-5deg) ';
+
+      if (fxState.fx === 'vhs') filterString += 'contrast(120%) saturate(130%) hue-rotate(15deg) brightness(105%) ';
+      if (fxState.fx === 'manga') filterString += 'grayscale(100%) contrast(300%) ';
+      if (fxState.fx === 'thermal') filterString += 'hue-rotate(240deg) saturate(200%) invert(100%) ';
+
+      if (fxState.smoothing > 0) {
+        filterString += `blur(${fxState.smoothing * 0.15}px) contrast(${100 + (fxState.smoothing * 1.5)}%) brightness(${100 + (fxState.smoothing * 1.2)}%) `;
       }
+
+      if (fxState.slim > 0 || fxState.jawline > 0) {
+        const horizontalCompression = 1 - (fxState.slim * 0.015) - (fxState.jawline * 0.008);
+        transformString += ` scaleX(${horizontalCompression})`;
+      }
+      if (fxState.eyes > 0) {
+        const eyeExpansion = 1 + (fxState.eyes * 0.012);
+        transformString += ` scaleY(${eyeExpansion})`;
+      }
+
+      videoElement.style.filter = filterString.trim() || 'none';
+      videoElement.style.transform = transformString;
     };
 
     window.addEventListener('mpade-video-filter', handleFilterChange);
