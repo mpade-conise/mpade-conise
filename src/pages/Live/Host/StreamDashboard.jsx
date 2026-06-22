@@ -18,7 +18,7 @@ import LiveAnalyticsPanel from './HostAnalytics';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
-import SettingsPanel from '../Shared/Settings'; // 👈 Imported settings feature panel
+import SettingsPanel from '../Shared/settings'; // 👈 Imported settings feature panel
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
