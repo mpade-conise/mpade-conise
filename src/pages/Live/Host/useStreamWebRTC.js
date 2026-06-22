@@ -1,31 +1,34 @@
 import { useEffect, useRef, useState } from 'react';
 
-// Dedicated Metered TURN + STUN configuration to bridge cross-network connections
+// CORRECTED GLOBAL ICE CONFIG MATCHING METERED METRICS
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: "stun:stun.relay.metered.ca:80" },
     {
-      urls: 'turn:mpade-universe.metered.live:443',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
+      urls: "turn:global.relay.metered.ca:80",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
     },
     {
-      urls: 'turn:mpade-universe.metered.live:80?transport=udp',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
     },
     {
-      urls: 'turn:mpade-universe.metered.live:443?transport=tcp',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
+      urls: "turn:global.relay.metered.ca:443",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
     }
   ],
   iceCandidatePoolSize: 10
 };
 
-export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
+export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challengerVideoRef = null) => {
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef({});
@@ -104,11 +107,18 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted) => {
       iceCandidatesQueueRef.current[viewerId] = [];
       
       try {
-        // UPGRADED: Passing the complete TURN profile directly into initialization
         const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
         peerConnectionsRef.current[viewerId] = pc;
 
         localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
+
+        // Listen for incoming remote streams (from challengers joining into the host room)
+        pc.ontrack = (event) => {
+          console.log("🌐 Remote battle track received from peer connection.");
+          if (challengerVideoRef && challengerVideoRef.current && event.streams[0]) {
+            challengerVideoRef.current.srcObject = event.streams[0];
+          }
+        };
 
         pc.onicecandidate = (event) => {
           if (event.candidate) {
