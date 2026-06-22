@@ -10,7 +10,7 @@ import CoHostManager from './CoHostManager';
 import GuestManager from './GuestManager';
 import GiftSender from './GiftSender';
 import BattleController from './BattleController';
-import EndLiveSession from './EndStream';
+import EndLiveSession from '../EndStream';
 import AIVoiceEffects from './AIVoiceEffects';
 import BackgroundChanger from './BackgroundChanger';
 import AIFilters from './AIFilters';
