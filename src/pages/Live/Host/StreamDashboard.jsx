@@ -1,3 +1,4 @@
+// src/pages/Live/Host/StreamDashboard.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
@@ -94,10 +95,37 @@ const StreamDashboard = () => {
   const handleAcceptInvite = async () => {
     if (!incomingInvite || !socket) return;
     try {
-      const appendedSquad = [...coHosts, { id: incomingInvite.senderHostId, username: incomingInvite.senderUsername, streamId: incomingInvite.senderStreamId }];
+      // Standardize input fields across variant backend signaling keys
+      const peerId = incomingInvite.senderHostId || incomingInvite.host_id || '';
+      const peerUsername = incomingInvite.senderUsername || 'Guest Host';
+      const peerStreamId = incomingInvite.senderStreamId || incomingInvite.hostRoomId || '';
+
+      if (!peerId) {
+        console.error("❌ Cannot accept battle invite: Missing identifier key string inside payload.");
+        return;
+      }
+
+      const newPeerNode = {
+        id: peerId,
+        username: peerUsername,
+        streamId: peerStreamId
+      };
+
+      const appendedSquad = [...coHosts, newPeerNode];
       
-      await supabase.from('live_streams').update({ co_host_matrix_nodes: appendedSquad }).eq('id', streamId);
-      socket.emit('accept_battle_invite', { hostRoomId: streamId, challengerRoomId: incomingInvite.senderStreamId });
+      console.log("📡 Pushing updated matrix payload to Supabase:", appendedSquad);
+      
+      const { error } = await supabase
+        .from('live_streams')
+        .update({ co_host_matrix_nodes: appendedSquad })
+        .eq('id', streamId);
+
+      if (error) throw error;
+
+      socket.emit('accept_battle_invite', { 
+        hostRoomId: streamId, 
+        challengerRoomId: peerStreamId 
+      });
       
       setCoHosts(appendedSquad);
       setIsBattleMode(true);
@@ -296,96 +324,4 @@ const StreamDashboard = () => {
             <ul className="flex items-center justify-between w-full px-1">
               <li>
                 <button onClick={() => setIsCameraOff(!isCameraOff)} className={`p-2.5 rounded-full text-white transition-colors ${isCameraOff ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
-                  {isCameraOff ? <VideoOff size={16}/> : <Video size={16}/>}
-                </button>
-              </li>
-              <li>
-                <button onClick={() => setIsMuted(!isMuted)} className={`p-2.5 rounded-full text-white transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
-                  {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
-                </button>
-              </li>
-              {/* TRIGGER CONSOLE REMAPPED TO MANAGE THE LIVE DISCOVERY HUB MULTIPLEX CHANNELS */}
-              <li>
-                <button 
-                  onClick={() => setActivePanel(activePanel === 'cohost_manager' ? null : 'cohost_manager')} 
-                  className={`p-2.5 rounded-full transition-colors ${activePanel === 'cohost_manager' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}
-                >
-                  <Users size={16}/>
-                </button>
-              </li>
-              {/* SETTINGS ICON ACTION DOCK BUTTON ELEMENT */}
-              <li>
-                <button 
-                  onClick={() => setActivePanel(activePanel === 'settings' ? null : 'settings')} 
-                  className={`p-2.5 rounded-full transition-colors ${activePanel === 'settings' ? 'bg-white text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}
-                >
-                  <Settings size={16}/>
-                </button>
-              </li>
-            </ul>
-          </nav>
-        </div>
-
-        {/* Pop-up Invite Manager Alerts */}
-        <AnimatePresence>
-          {incomingInvite && (
-            <div className="absolute inset-0 pointer-events-none z-[70] flex items-center justify-center">
-              <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }} className="bg-zinc-950/95 border-2 border-cyan-500/50 p-4 rounded-2xl pointer-events-auto text-center shadow-2xl">
-                <p className="text-[11px] font-bold">@{incomingInvite.senderUsername} challenges you!</p>
-                <button onClick={handleAcceptInvite} className="bg-cyan-500 text-black px-4 py-2 mt-2 rounded-xl text-xs font-black tracking-wide hover:bg-cyan-400 transition-colors">
-                  Accept Live
-                </button>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* 3. SETTINGS INTERACTIVE DRAWER OVERLAY PANEL SIDEBAR */}
-      <AnimatePresence>
-        {activePanel === 'settings' && (
-          <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-            className="w-80 h-full bg-zinc-950 border-l border-white/10 z-[100] relative pointer-events-auto"
-          >
-            <SettingsPanel 
-              streamId={streamId} 
-              streamData={streamData} 
-              socket={socket}
-              currentCoHosts={coHosts}
-              onDropUser={dropCoHostUser}
-              onDropAll={dropAllCoHosts}
-              onClose={() => setActivePanel(null)} 
-            />
-          </motion.div>
-        )}
-
-        {/* INJECTED DYNAMIC CO-HOST ALLIANCE ROOM DISCOVERY PANEL */}
-        {activePanel === 'cohost_manager' && (
-          <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-            className="w-80 h-full bg-zinc-950 border-l border-white/10 z-[100] relative pointer-events-auto p-4 space-y-4"
-          >
-            <CoHostManager 
-              streamId={streamId}
-              currentCoHosts={coHosts}
-              socket={socket} 
-              currentHostProfile={streamData?.host} // 👈 PASSED PROFILE DATA OBJECT SECURELY
-              onBack={() => setActivePanel(null)}
-              onDropUser={dropCoHostUser}
-              onDropAll={dropAllCoHosts}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
-
-export default StreamDashboard;
+                  {
