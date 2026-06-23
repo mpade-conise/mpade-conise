@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Users, UserPlus, Layers, ShieldAlert, LogOut } from 'lucide-react';
+import { ArrowLeft, Users, UserPlus, Layers, ShieldAlert, LogOut, Loader2 } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 
 const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, onDropAll }) => {
   const [activeCreators, setActiveCreators] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Track ongoing socket events by storing stream IDs currently being invited/requested
+  const [pendingActions, setPendingActions] = useState({});
 
   // Fetch all active live hosts on Mpade platform
   useEffect(() => {
@@ -39,26 +41,42 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
     };
   }, [streamId]);
 
-  const handleAction = (creatorStream) => {
+  const handleAction = async (creatorStream) => {
     if (!socket || !creatorStream) return;
 
-    // Check if they already have co-hosts attached via the aligned matrix nodes array
+    const targetId = creatorStream.id;
+    
+    // Prevent double clicking if an action is already processing
+    if (pendingActions[targetId]) return;
+
+    // Set this specific stream's button state to pending
+    setPendingActions(prev => ({ ...prev, [targetId]: true }));
+
     const currentGroupSize = creatorStream.co_host_matrix_nodes ? creatorStream.co_host_matrix_nodes.length : 0;
 
-    if (currentGroupSize > 0) {
-      // SCENARIO B: Host is already co-hosting -> Send a request to JOIN their active session
-      socket.emit('send_join_group_request', {
-        targetStreamId: creatorStream.id,
-        senderStreamId: streamId
-      });
-      alert(`Request sent to join @${creatorStream.host?.username || 'Creator'}'s active group panel!`);
-    } else {
-      // SCENARIO A: Host is completely alone -> Send a standard invite to form a co-host link
-      socket.emit('send_cohost_invite', {
-        targetStreamId: creatorStream.id,
-        senderStreamId: streamId
-      });
-      alert(`Direct invitation transmitted to @${creatorStream.host?.username || 'Creator'}`);
+    try {
+      if (currentGroupSize > 0) {
+        // SCENARIO B: Host is already co-hosting -> Send a request to JOIN their active session
+        socket.emit('send_join_group_request', {
+          targetStreamId: targetId,
+          senderStreamId: streamId
+        });
+      } else {
+        // SCENARIO A: Host is completely alone -> Send a standard invite to form a co-host link
+        socket.emit('send_cohost_invite', {
+          targetStreamId: targetId,
+          senderStreamId: streamId
+        });
+      }
+      
+      // Keep it in a temporary local "Sent" state for a few seconds as visual confirmation
+      setTimeout(() => {
+        setPendingActions(prev => ({ ...prev, [targetId]: false }));
+      }, 4000);
+
+    } catch (error) {
+      console.error("Failed to transmit signaling action:", error);
+      setPendingActions(prev => ({ ...prev, [targetId]: false }));
     }
   };
 
@@ -109,7 +127,8 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
             {activeCreators.map((creator) => {
               const groupCount = creator.co_host_matrix_nodes ? creator.co_host_matrix_nodes.length : 0;
               const isGrouped = groupCount > 0;
-              const isFull = groupCount >= 3; // Host + 3 co-hosts maxes out at 4 panels
+              const isFull = groupCount >= 3; 
+              const isPending = pendingActions[creator.id];
 
               return (
                 <div key={creator.id} className="p-3 bg-zinc-900/50 rounded-xl border border-white/5 flex items-center justify-between transition-all hover:border-white/10">
@@ -122,18 +141,29 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
                   </div>
 
                   <button
-                    disabled={isFull}
+                    disabled={isFull || isPending}
                     onClick={() => handleAction(creator)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center gap-1 ${
                       isFull 
                         ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
-                        : isGrouped 
-                          ? 'bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500 hover:text-white'
-                          : 'bg-cyan-500 text-black hover:bg-cyan-400'
+                        : isPending
+                          ? 'bg-zinc-700 text-zinc-400 cursor-wait animate-pulse'
+                          : isGrouped 
+                            ? 'bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500 hover:text-white'
+                            : 'bg-cyan-500 text-black hover:bg-cyan-400'
                     }`}
                   >
-                    <UserPlus size={12} />
-                    {isFull ? 'Panel Full' : isGrouped ? 'Request Join' : 'Invite'}
+                    {isPending ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" />
+                        <span>Sent...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus size={12} />
+                        <span>{isFull ? 'Panel Full' : isGrouped ? 'Request Join' : 'Invite'}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               );
