@@ -376,6 +376,7 @@ const StreamDashboard = () => {
               streamId={streamId}
               currentCoHosts={coHosts}
               socket={socket} 
+              currentHostProfile={streamData?.host} // 👈 PASSED PROFILE DATA OBJECT SECURELY
               onBack={() => setActivePanel(null)}
               onDropUser={dropCoHostUser}
               onDropAll={dropAllCoHosts}
