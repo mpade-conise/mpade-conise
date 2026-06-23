@@ -40,6 +40,9 @@ const StreamDashboard = () => {
 
   // DOM node link to explicitly bind remote challenger streams from the WebRTC hook
   const challengerVideoRef = useRef(null);
+  
+  // Multiplexing reference cache mapping dynamic co-host tracks explicitly to distinct layout viewports
+  const remoteStreamsRef = useRef({});
 
   // 1. EXECUTE ABSTRACTED WEBSOCKET NETWORK CONTROLLER
   const {
@@ -61,6 +64,11 @@ const StreamDashboard = () => {
       if (data) {
         setStreamData(data);
         setBattleScores({ host: data.host_battle_points || 0, challenger: data.challenger_battle_points || 0 });
+        
+        // Sync active panel list arrays structural payload elements if they exist inside table records
+        if (data.co_host_matrix_nodes) {
+          setCoHosts(data.co_host_matrix_nodes);
+        }
       }
     }
     fetchMeta();
@@ -85,13 +93,44 @@ const StreamDashboard = () => {
   const handleAcceptInvite = async () => {
     if (!incomingInvite || !socket) return;
     try {
-      await supabase.from('live_streams').update({ co_host_id: incomingInvite.senderHostId }).eq('id', streamId);
+      const appendedSquad = [...coHosts, { id: incomingInvite.senderHostId, username: incomingInvite.senderUsername, streamId: incomingInvite.senderStreamId }];
+      
+      await supabase.from('live_streams').update({ co_host_matrix_nodes: appendedSquad }).eq('id', streamId);
       socket.emit('accept_battle_invite', { hostRoomId: streamId, challengerRoomId: incomingInvite.senderStreamId });
-      setCoHosts([{ id: incomingInvite.senderHostId, username: incomingInvite.senderUsername }]);
+      
+      setCoHosts(appendedSquad);
       setIsBattleMode(true);
       setIncomingInvite(null);
     } catch (err) {
       console.error("⚠️ Battle connection setup failed:", err);
+    }
+  };
+
+  // --- MULTI-HOST PANEL KICK MANAGEMENT DISPATCH ENGINE ---
+  const dropCoHostUser = async (peerId) => {
+    try {
+      const updatedSquad = coHosts.filter(user => user.id !== peerId);
+      await supabase.from('live_streams').update({ co_host_matrix_nodes: updatedSquad }).eq('id', streamId);
+      
+      if (socket) {
+        socket.emit('host_terminate_peer_panel', { hostRoomId: streamId, targetPeerId: peerId });
+      }
+      setCoHosts(updatedSquad);
+    } catch (err) {
+      console.error("Failed to drop selected co-host:", err);
+    }
+  };
+
+  const dropAllCoHosts = async () => {
+    try {
+      await supabase.from('live_streams').update({ co_host_matrix_nodes: [] }).eq('id', streamId);
+      
+      if (socket) {
+        socket.emit('host_terminate_all_panels', { hostRoomId: streamId });
+      }
+      setCoHosts([]);
+    } catch (err) {
+      console.error("Failed to completely drop co-host pool:", err);
     }
   };
 
@@ -147,6 +186,14 @@ const StreamDashboard = () => {
     return () => window.removeEventListener('mpade-video-filter', handleFilterChange);
   }, [localVideoRef]);
 
+  // --- DYNAMIC MATRIX SPLIT DESIGN RULES ENGINE ---
+  const getMatrixGridStyles = () => {
+    const totalNodes = coHosts.length + 1;
+    if (totalNodes === 1) return 'grid-cols-1 grid-rows-1';
+    if (totalNodes === 2) return 'grid-cols-1 grid-rows-2'; // Split horizontally into 2 equal panels
+    return 'grid-cols-2 grid-rows-2'; // Perfect 4 panel quad-split viewports
+  };
+
   if (!streamData) {
     return (
       <div className="h-screen bg-black flex items-center justify-center font-black italic text-cyan-400 underline animate-pulse tracking-widest">
@@ -169,10 +216,10 @@ const StreamDashboard = () => {
           <StreamHeader data={streamData} isHost={true} viewerCount={viewers.length} onLeave={() => navigate('/live')} />
         </div>
 
-        {/* 2. LIVE STAGE VIEWPORT MATRIX (DYNAMICS CO-HOST SPLIT SCREEN CONFIG) */}
-        <div className={`absolute inset-0 z-0 grid ${(!isBattleMode && coHosts.length === 0) ? 'grid-cols-1' : 'grid-cols-2'} gap-0.5 transition-all duration-500 bg-zinc-900`}>
+        {/* 2. LIVE STAGE MULTIPLEX VIEWPORT MATRIX */}
+        <div className={`absolute inset-0 z-0 grid ${getMatrixGridStyles()} gap-0.5 transition-all duration-500 bg-zinc-900`}>
           
-          {/* PANEL A: THE PRIMARY HOST (YOU) */}
+          {/* PANEL A: THE PRIMARY MAIN HOST (YOU) */}
           <div className="relative h-full w-full overflow-hidden bg-zinc-950">
             <video 
               ref={localVideoRef} 
@@ -186,6 +233,11 @@ const StreamDashboard = () => {
                 Camera Off
               </div>
             )}
+
+            {/* Absolute Identity Floating Tag Indicator */}
+            <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2 py-1 rounded border border-white/5 text-[10px] uppercase font-bold tracking-wider">
+              @{streamData?.host?.username} <span className="text-cyan-400 font-black ml-1">● Host</span>
+            </div>
             
             {/* Universal Overlay Widget Layout */}
             {isBattleMode && (
@@ -193,18 +245,18 @@ const StreamDashboard = () => {
                 score={battleScores} 
                 hostProfile={streamData?.host} 
                 coHost={coHosts[0] || { username: 'Challenger' }} 
-                onInviteClick={() => setActivePanel('invite')} 
+                onInviteClick={() => setActivePanel('cohost_manager')} 
               />
             )}
           </div>
 
-          {/* PANEL B: THE PK CHALLENGER / GUEST SPLIT */}
-          {(isBattleMode || coHosts.length > 0) && (
-            <div className="relative h-full w-full overflow-hidden bg-zinc-950 border-l border-white/5">
+          {/* GENERATE EXTRA SIMULTANEOUS ACTIVE CO-HOST CO-STAGES */}
+          {coHosts.map((peer, index) => (
+            <div key={peer.id || index} className="relative h-full w-full overflow-hidden bg-zinc-950 border-t md:border-t-0 border-white/5">
               
-              {/* Live active peer playback rendering stream layout */}
+              {/* Dynamic Ref Capture binding the respective stream track directly down into the view node */}
               <video 
-                ref={challengerVideoRef}
+                ref={(el) => { if (el) remoteStreamsRef.current[peer.id] = el; }}
                 autoPlay 
                 playsInline 
                 className="w-full h-full object-cover bg-zinc-950 position-relative z-10"
@@ -214,16 +266,22 @@ const StreamDashboard = () => {
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 z-0">
                 <div className="w-6 h-6 border-2 border-t-cyan-400 border-white/10 rounded-full animate-spin mb-2" />
                 <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest animate-pulse">
-                  Syncing Challenger...
+                  Syncing Live Node...
                 </p>
               </div>
               
-              {/* Tag Badge Display for the Opponent */}
-              <div className="absolute bottom-20 left-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-bold text-cyan-400 z-20 border border-cyan-500/20">
-                @{coHosts[0]?.username || 'Challenger'}
+              {/* Individual Tag Identity Badge Display & Action Panel Controls for Host */}
+              <div className="absolute bottom-3 left-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-bold text-cyan-400 z-20 border border-cyan-500/20 flex items-center gap-2">
+                <span>@{peer.username || 'Co-Host'}</span>
+                <button 
+                  onClick={() => dropCoHostUser(peer.id)}
+                  className="ml-1 bg-red-500 hover:bg-red-600 text-white font-sans font-black px-1 rounded transition-colors text-[8px]"
+                >
+                  DROP
+                </button>
               </div>
             </div>
-          )}
+          ))}
         </div>
 
         {/* Control Console Dock Bar at bottom */}
@@ -245,9 +303,13 @@ const StreamDashboard = () => {
                   {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
                 </button>
               </li>
+              {/* TRIGGER CONSOLE REMAPPED TO MANAGE THE LIVE DISCOVERY HUB MULTIPLEX CHANNELS */}
               <li>
-                <button onClick={() => setIsBattleMode(!isBattleMode)} className={`p-2.5 rounded-full transition-colors ${isBattleMode ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}>
-                  <Swords size={16}/>
+                <button 
+                  onClick={() => setActivePanel(activePanel === 'cohost_manager' ? null : 'cohost_manager')} 
+                  className={`p-2.5 rounded-full transition-colors ${activePanel === 'cohost_manager' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                >
+                  <Users size={16}/>
                 </button>
               </li>
               {/* SETTINGS ICON ACTION DOCK BUTTON ELEMENT */}
@@ -293,6 +355,43 @@ const StreamDashboard = () => {
               streamData={streamData} 
               onClose={() => setActivePanel(null)} 
             />
+          </motion.div>
+        )}
+
+        {/* INJECTED DYNAMIC CO-HOST ALLIANCE ROOM DISCOVERY PANEL */}
+        {activePanel === 'cohost_manager' && (
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+            className="w-80 h-full bg-zinc-950 border-l border-white/10 z-[100] relative pointer-events-auto p-4 space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                <Users size={14} className="text-cyan-400" /> Co-Host Panelist Engine
+              </h3>
+              <button onClick={() => setActivePanel(null)} className="text-zinc-500 hover:text-white transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {coHosts.length > 0 && (
+              <div className="bg-white/5 rounded-xl p-2.5 border border-white/5 space-y-2">
+                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest">Active Squad Link</p>
+                <button 
+                  onClick={dropAllCoHosts}
+                  className="w-full text-center bg-red-500/10 hover:bg-red-600 hover:text-white border border-red-500/20 py-1 rounded text-[10px] font-black transition-colors"
+                >
+                  DROP ALL SQUAD MEMBERS
+                </button>
+              </div>
+            )}
+
+            {/* Multi-Peer Dynamic Query Lookup Loop Engine goes inside your subcomponent route rendering */}
+            <div className="text-[10px] text-zinc-500 italic text-center pt-8">
+              Polling global live cluster for open channels...
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
