@@ -22,7 +22,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
       } catch (err) {
         console.error("Error checking live creators:", err);
       } finally {
-        setLoading(false);
+        loading(false);
       }
     };
 
@@ -34,8 +34,8 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
   const handleAction = (creatorStream) => {
     if (!socket) return;
 
-    // Check if they already have co-hosts attached (Dynamic Array structure check)
-    const currentGroupSize = creatorStream.co_host_ids ? creatorStream.co_host_ids.length : 0;
+    // Check if they already have co-hosts attached (Aligned to dynamic matrix nodes structure)
+    const currentGroupSize = creatorStream.co_host_matrix_nodes ? creatorStream.co_host_matrix_nodes.length : 0;
 
     if (currentGroupSize > 0) {
       // SCENARIO B: Host is already co-hosting -> Send a request to JOIN their active session
@@ -61,7 +61,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
       </button>
 
       {/* ACTIVE MANAGED LIVE PANEL SQUAD */}
-      {currentCoHosts.length > 0 && (
+      {currentCoHosts?.length > 0 && (
         <div className="space-y-2 p-3 bg-white/5 rounded-xl border border-white/5">
           <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider flex items-center gap-1">
             <Users size={12} className="text-cyan-400" /> Active Panel Squad ({currentCoHosts.length + 1}/4)
@@ -99,7 +99,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
         ) : (
           <div className="space-y-2">
             {activeCreators.map((creator) => {
-              const groupCount = creator.co_host_ids ? creator.co_host_ids.length : 0;
+              const groupCount = creator.co_host_matrix_nodes ? creator.co_host_matrix_nodes.length : 0;
               const isGrouped = groupCount > 0;
               const isFull = groupCount >= 3; // Host + 3 co-hosts maxes out at 4 panels
 
