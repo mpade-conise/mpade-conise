@@ -14,20 +14,19 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
     async function loadLeaderboardData() {
       setLoading(true);
       try {
-        // --- PIPELINE 1: SAFE SEPARATED QUERY FOR GIFTERS ---
+        // --- PIPELINE 1: ALIGNED PRODUCTION QUERY FOR GIFTERS ---
         try {
           const { data: giftData, error: giftError } = await supabase
-            .from('gift_logs')
+            .from('live_gifts') // Updated to match your actual schema
             .select(`
               sender_id,
-              gift_points,
+              price_total,
               profiles:sender_id (username, avatar_url)
             `)
             .eq('stream_id', streamId);
 
           if (giftError) {
-            // Log quietly so it doesn't interrupt the user experience execution
-            console.warn("⚠️ gift_logs table query skipped or unresolvable:", giftError.message);
+            console.warn("⚠️ live_gifts table query unresolvable:", giftError.message);
             setGifters([]);
           } else if (giftData) {
             const userMap = {};
@@ -35,7 +34,7 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
               const userId = log.sender_id;
               const username = log.profiles?.username || 'anonymous';
               const avatar = log.profiles?.avatar_url || '👤';
-              const points = parseInt(log.gift_points || 0, 10);
+              const points = parseInt(log.price_total || 0, 10); // Updated to match price_total column
 
               if (!userMap[userId]) {
                 userMap[userId] = { username, avatar, points: 0 };
@@ -97,7 +96,7 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
         }
       } catch (err) {
         console.error("❌ General fatal matrix component fetch failed:", err);
-      } finally {
+      } finaly {
         setLoading(false);
       }
     }
@@ -162,7 +161,7 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
         </button>
       </div>
 
-      {/* Loader UI state rendering wrapper */}
+      {/* Loader UI wrapper */}
       {loading ? (
         <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-2">
           <Loader2 size={20} className="animate-spin text-cyan-400" />
@@ -208,7 +207,7 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
                         @{item.username}
                       </p>
                       <p className="text-[9px] text-zinc-500 uppercase tracking-tight">
-                        {activeTab === 'gifters' ? 'Contributed' : 'Viewers'}
+                        {activeTab === 'gifters' ? 'Coins' : 'Viewers'}
                       </p>
                     </div>
                   </div>
