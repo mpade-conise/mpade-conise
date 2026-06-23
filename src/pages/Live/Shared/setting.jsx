@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 
 // --- MODULAR COMPONENT IMPORTS ---
-// Functionality is decoupled and maintained within these respective files
 import CoHostManager from './CoHostManager';
 import GuestManager from './GuestManager';
 import GiftSender from './GiftSender';
@@ -22,9 +21,21 @@ import LeaderboardPanel from './LeaderboardPanel';
  * SettingsPanel - Modular Live Streaming Feature Hub
  * @param {string} streamId - The active live room unique identifier
  * @param {object} streamData - Supabase stream metadata payload
+ * @param {object} socket - The active WebSockets instance passed from the root room hook
+ * @param {array} currentCoHosts - Collection of active panel peers
+ * @param {function} onDropUser - Handler to eject a co-host
+ * @param {function} onDropAll - Handler to terminate all co-hosts
  * @param {function} onClose - React state callback to toggle panel drawer visibility
  */
-const SettingsPanel = ({ streamId, streamData, onClose }) => {
+const SettingsPanel = ({ 
+  streamId, 
+  streamData, 
+  socket, 
+  currentCoHosts, 
+  onDropUser, 
+  onDropAll, 
+  onClose 
+}) => {
   // Navigation switch to route inside the settings drawer panel
   const [currentTab, setCurrentTab] = useState('menu');
   const [isLivePaused, setIsLivePaused] = useState(false);
@@ -35,7 +46,17 @@ const SettingsPanel = ({ streamId, streamData, onClose }) => {
   // Sub-menu rendering director switch matrix
   const renderTabContent = () => {
     switch (currentTab) {
-      case 'cohost': return <CoHostManager streamId={streamId} onBack={() => setCurrentTab('menu')} />;
+      case 'cohost': 
+        return (
+          <CoHostManager 
+            streamId={streamId} 
+            socket={socket} 
+            currentCoHosts={currentCoHosts}
+            onDropUser={onDropUser}
+            onDropAll={onDropAll}
+            onBack={() => setCurrentTab('menu')} 
+          />
+        );
       case 'guest': return <GuestManager streamId={streamId} onBack={() => setCurrentTab('menu')} />;
       case 'gifts': return <GiftSender streamId={streamId} onBack={() => setCurrentTab('menu')} />;
       case 'battle': return <BattleController streamId={streamId} onBack={() => setCurrentTab('menu')} />;
@@ -67,7 +88,6 @@ const SettingsPanel = ({ streamId, streamData, onClose }) => {
         >
           {isLivePaused ? <Play size={16} /> : <Pause size={16} />}
           <span className="text-[11px] font-medium">{isLivePaused ? 'Resume Stream' : 'Pause Stream'}</span>
-          {/* PauseLiveSession executes globally under the hood based on this flag */}
           <PauseLiveSession streamId={streamId} isPaused={isLivePaused} />
         </button>
 
