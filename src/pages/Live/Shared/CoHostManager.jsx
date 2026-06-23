@@ -1,14 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Users, UserPlus, Layers, ShieldAlert, LogOut, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, UserPlus, Layers, LogOut, Loader2 } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 
 const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, onDropAll }) => {
   const [activeCreators, setActiveCreators] = useState([]);
   const [loading, setLoading] = useState(true);
-  // Track ongoing socket events by storing stream IDs currently being invited/requested
   const [pendingActions, setPendingActions] = useState({});
 
-  // Fetch all active live hosts on Mpade platform
   useEffect(() => {
     let isMounted = true;
     
@@ -20,7 +18,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
           .from('live_streams')
           .select('*, host:host_id(username, avatar_url)')
           .eq('status', 'live')
-          .not('id', 'eq', streamId); // Don't show myself
+          .not('id', 'eq', streamId);
 
         if (!error && data && isMounted) {
           setActiveCreators(data);
@@ -33,7 +31,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
     };
 
     fetchLiveCreators();
-    const interval = setInterval(fetchLiveCreators, 10000); // Poll every 10s
+    const interval = setInterval(fetchLiveCreators, 10000);
     
     return () => {
       isMounted = false;
@@ -42,34 +40,39 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
   }, [streamId]);
 
   const handleAction = async (creatorStream) => {
-    if (!socket || !creatorStream) return;
+    console.log("👉 Clicked invite action target stream:", creatorStream);
+
+    if (!socket) {
+      console.error("❌ SOCKET IS UNDEFINED inside CoHostManager!");
+      alert("System Connection Error: Socket instance not available in settings panel.");
+      return;
+    }
+
+    if (!creatorStream) return;
 
     const targetId = creatorStream.id;
-    
-    // Prevent double clicking if an action is already processing
     if (pendingActions[targetId]) return;
 
-    // Set this specific stream's button state to pending
     setPendingActions(prev => ({ ...prev, [targetId]: true }));
-
     const currentGroupSize = creatorStream.co_host_matrix_nodes ? creatorStream.co_host_matrix_nodes.length : 0;
 
     try {
       if (currentGroupSize > 0) {
-        // SCENARIO B: Host is already co-hosting -> Send a request to JOIN their active session
+        console.log(`📡 Emitting: send_join_group_request to stream ${targetId}`);
         socket.emit('send_join_group_request', {
           targetStreamId: targetId,
           senderStreamId: streamId
         });
+        alert(`Request broadcasted to join @${creatorStream.host?.username || 'Creator'}`);
       } else {
-        // SCENARIO A: Host is completely alone -> Send a standard invite to form a co-host link
+        console.log(`📡 Emitting: send_cohost_invite to stream ${targetId}`);
         socket.emit('send_cohost_invite', {
           targetStreamId: targetId,
           senderStreamId: streamId
         });
+        alert(`Direct invite emitted to @${creatorStream.host?.username || 'Creator'}`);
       }
       
-      // Keep it in a temporary local "Sent" state for a few seconds as visual confirmation
       setTimeout(() => {
         setPendingActions(prev => ({ ...prev, [targetId]: false }));
       }, 4000);
@@ -82,7 +85,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
 
   return (
     <div className="space-y-4 p-4 max-h-[calc(100vh-100px)] overflow-y-auto custom-scrollbar text-white">
-      <button onClick={onBack} className="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition-colors">
+      <button onClick={onBack} className="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition-colors relative z-50 pointer-events-auto">
         <ArrowLeft size={14} /> Back to Dashboard
       </button>
 
@@ -98,7 +101,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
                 <span className="text-xs text-zinc-200">@{peer.username}</span>
                 <button 
                   onClick={() => onDropUser && onDropUser(peer.id)}
-                  className="text-[10px] bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 px-2 py-1 rounded-md text-red-400 transition-all font-bold"
+                  className="text-[10px] bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 px-2 py-1 rounded-md text-red-400 transition-all font-bold relative z-50 pointer-events-auto"
                 >
                   Drop
                 </button>
@@ -106,7 +109,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
             ))}
             <button 
               onClick={onDropAll}
-              className="w-full mt-1 py-1.5 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1"
+              className="w-full mt-1 py-1.5 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 relative z-50 pointer-events-auto"
             >
               <LogOut size={12} /> Drop All Co-Hosts
             </button>
@@ -143,7 +146,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
                   <button
                     disabled={isFull || isPending}
                     onClick={() => handleAction(creator)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center gap-1 ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all flex items-center gap-1 relative z-50 pointer-events-auto ${
                       isFull 
                         ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
                         : isPending
