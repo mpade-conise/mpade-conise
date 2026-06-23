@@ -8,33 +8,41 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
 
   // Fetch all active live hosts on Mpade platform
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchLiveCreators = async () => {
       try {
+        if (!supabase || !streamId) return;
+
         const { data, error } = await supabase
           .from('live_streams')
           .select('*, host:host_id(username, avatar_url)')
           .eq('status', 'live')
           .not('id', 'eq', streamId); // Don't show myself
 
-        if (!error && data) {
+        if (!error && data && isMounted) {
           setActiveCreators(data);
         }
       } catch (err) {
         console.error("Error checking live creators:", err);
       } finally {
-        loading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchLiveCreators();
     const interval = setInterval(fetchLiveCreators, 10000); // Poll every 10s
-    return () => clearInterval(interval);
+    
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [streamId]);
 
   const handleAction = (creatorStream) => {
-    if (!socket) return;
+    if (!socket || !creatorStream) return;
 
-    // Check if they already have co-hosts attached (Aligned to dynamic matrix nodes structure)
+    // Check if they already have co-hosts attached via the aligned matrix nodes array
     const currentGroupSize = creatorStream.co_host_matrix_nodes ? creatorStream.co_host_matrix_nodes.length : 0;
 
     if (currentGroupSize > 0) {
@@ -43,14 +51,14 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
         targetStreamId: creatorStream.id,
         senderStreamId: streamId
       });
-      alert(`Request sent to join @${creatorStream.host?.username}'s active group panel!`);
+      alert(`Request sent to join @${creatorStream.host?.username || 'Creator'}'s active group panel!`);
     } else {
       // SCENARIO A: Host is completely alone -> Send a standard invite to form a co-host link
       socket.emit('send_cohost_invite', {
         targetStreamId: creatorStream.id,
         senderStreamId: streamId
       });
-      alert(`Direct invitation transmitted to @${creatorStream.host?.username}`);
+      alert(`Direct invitation transmitted to @${creatorStream.host?.username || 'Creator'}`);
     }
   };
 
@@ -61,7 +69,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
       </button>
 
       {/* ACTIVE MANAGED LIVE PANEL SQUAD */}
-      {currentCoHosts?.length > 0 && (
+      {currentCoHosts && currentCoHosts.length > 0 && (
         <div className="space-y-2 p-3 bg-white/5 rounded-xl border border-white/5">
           <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider flex items-center gap-1">
             <Users size={12} className="text-cyan-400" /> Active Panel Squad ({currentCoHosts.length + 1}/4)
@@ -71,7 +79,7 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
               <div key={peer.id} className="flex items-center justify-between bg-zinc-900 p-2 rounded-lg border border-white/5">
                 <span className="text-xs text-zinc-200">@{peer.username}</span>
                 <button 
-                  onClick={() => onDropUser(peer.id)}
+                  onClick={() => onDropUser && onDropUser(peer.id)}
                   className="text-[10px] bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 px-2 py-1 rounded-md text-red-400 transition-all font-bold"
                 >
                   Drop
