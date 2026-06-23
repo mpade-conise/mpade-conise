@@ -19,7 +19,7 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting'; // 👈 Imported settings feature panel
-import CoHostManager from './CoHostManager'; // 👈 Connected actual CoHostManager subcomponent
+import CoHostManager from '../Shared/CoHostManager'; // 👈 Connected actual CoHostManager subcomponent
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
