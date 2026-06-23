@@ -297,12 +297,12 @@ const StreamDashboard = () => {
                 <button onClick={() => setIsCameraOff(!isCameraOff)} className={`p-2.5 rounded-full text-white transition-colors ${isCameraOff ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
                   {isCameraOff ? <VideoOff size={16}/> : <Video size={16}/>}
                 </button>
-              </li>
+              </td>
               <li>
                 <button onClick={() => setIsMuted(!isMuted)} className={`p-2.5 rounded-full text-white transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
                   {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
                 </button>
-              </li>
+              </td>
               {/* TRIGGER CONSOLE REMAPPED TO MANAGE THE LIVE DISCOVERY HUB MULTIPLEX CHANNELS */}
               <li>
                 <button 
@@ -311,7 +311,7 @@ const StreamDashboard = () => {
                 >
                   <Users size={16}/>
                 </button>
-              </li>
+              </td>
               {/* SETTINGS ICON ACTION DOCK BUTTON ELEMENT */}
               <li>
                 <button 
@@ -320,7 +320,7 @@ const StreamDashboard = () => {
                 >
                   <Settings size={16}/>
                 </button>
-              </li>
+              </td>
             </ul>
           </nav>
         </div>
@@ -353,6 +353,10 @@ const StreamDashboard = () => {
             <SettingsPanel 
               streamId={streamId} 
               streamData={streamData} 
+              socket={socket}
+              currentCoHosts={coHosts}
+              onDropUser={dropCoHostUser}
+              onDropAll={dropAllCoHosts}
               onClose={() => setActivePanel(null)} 
             />
           </motion.div>
