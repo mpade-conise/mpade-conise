@@ -1,8 +1,10 @@
+// src/pages/Live/Host/CoHostManager.jsx
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Users, UserPlus, Layers, LogOut, Loader2 } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 
-const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, onDropAll }) => {
+// 1. Added currentHostProfile prop to pull up details of the person sending the invite
+const CoHostManager = ({ streamId, currentCoHosts, socket, currentHostProfile, onBack, onDropUser, onDropAll }) => {
   const [activeCreators, setActiveCreators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pendingActions, setPendingActions] = useState({});
@@ -57,18 +59,28 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, onBack, onDropUser, o
     const currentGroupSize = creatorStream.co_host_matrix_nodes ? creatorStream.co_host_matrix_nodes.length : 0;
 
     try {
+      // Fallback details if profile metadata fails to load down from props
+      const senderUsername = currentHostProfile?.username || 'Another Host';
+      const senderHostId = currentHostProfile?.id || currentHostProfile?.host_id || '';
+
       if (currentGroupSize > 0) {
         console.log(`📡 Emitting: send_join_group_request to stream ${targetId}`);
         socket.emit('send_join_group_request', {
           targetStreamId: targetId,
-          senderStreamId: streamId
+          senderStreamId: streamId,
+          senderUsername: senderUsername,
+          senderHostId: senderHostId
         });
         alert(`Request broadcasted to join @${creatorStream.host?.username || 'Creator'}`);
       } else {
         console.log(`📡 Emitting: send_cohost_invite to stream ${targetId}`);
+        
+        // 2. FIXED PAYLOAD KEYS: Structured perfectly to align with backend routing keys
         socket.emit('send_cohost_invite', {
           targetStreamId: targetId,
-          senderStreamId: streamId
+          hostRoomId: streamId, // Sent as hostRoomId to match server configuration
+          senderUsername: senderUsername,
+          senderHostId: senderHostId
         });
         alert(`Direct invite emitted to @${creatorStream.host?.username || 'Creator'}`);
       }
