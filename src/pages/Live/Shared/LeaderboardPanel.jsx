@@ -96,7 +96,7 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
         }
       } catch (err) {
         console.error("❌ General fatal matrix component fetch failed:", err);
-      } finaly {
+      } finally {
         setLoading(false);
       }
     }
