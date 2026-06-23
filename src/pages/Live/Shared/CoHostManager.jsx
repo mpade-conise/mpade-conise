@@ -59,28 +59,37 @@ const CoHostManager = ({ streamId, currentCoHosts, socket, currentHostProfile, o
     const currentGroupSize = creatorStream.co_host_matrix_nodes ? creatorStream.co_host_matrix_nodes.length : 0;
 
     try {
-      // Fallback details if profile metadata fails to load down from props
-      const senderUsername = currentHostProfile?.username || 'Another Host';
-      const senderHostId = currentHostProfile?.id || currentHostProfile?.host_id || '';
+      // 🚀 SAFE RECOVERY FALLBACK: If profile metadata properties are lagging, fall back to auth cache
+      let senderUsername = currentHostProfile?.username;
+      let senderHostId = currentHostProfile?.id || currentHostProfile?.host_id;
+
+      if (!senderUsername || !senderHostId) {
+        console.warn("⚠️ Stream profile data lagging inside state cache. Pulling secure emergency auth session...");
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          senderHostId = session.user.id;
+          senderUsername = session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'Host';
+        }
+      }
 
       if (currentGroupSize > 0) {
         console.log(`📡 Emitting: send_join_group_request to stream ${targetId}`);
         socket.emit('send_join_group_request', {
           targetStreamId: targetId,
           senderStreamId: streamId,
-          senderUsername: senderUsername,
-          senderHostId: senderHostId
+          senderUsername: senderUsername || 'Another Host',
+          senderHostId: senderHostId || ''
         });
         alert(`Request broadcasted to join @${creatorStream.host?.username || 'Creator'}`);
       } else {
         console.log(`📡 Emitting: send_cohost_invite to stream ${targetId}`);
         
-        // 2. FIXED PAYLOAD KEYS: Structured perfectly to align with backend routing keys
+        // 2. FIXED PAYLOAD KEYS: Structured perfectly to align with backend routing keys with absolute field assignment guarantee
         socket.emit('send_cohost_invite', {
           targetStreamId: targetId,
-          hostRoomId: streamId, // Sent as hostRoomId to match server configuration
-          senderUsername: senderUsername,
-          senderHostId: senderHostId
+          hostRoomId: streamId, 
+          senderUsername: senderUsername || 'Another Host',
+          senderHostId: senderHostId || ''
         });
         alert(`Direct invite emitted to @${creatorStream.host?.username || 'Creator'}`);
       }
