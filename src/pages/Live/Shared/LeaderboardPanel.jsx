@@ -14,45 +14,52 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
     async function loadLeaderboardData() {
       setLoading(true);
       try {
-        // 1. FETCH PRODUCTION REAL-TIME DATA: TOP GIFTERS FOR THIS STREAM
-        // Assumes a 'gift_logs' transaction table with an aggregation layout
-        const { data: giftData, error: giftError } = await supabase
-          .from('gift_logs')
-          .select(`
-            sender_id,
-            gift_points,
-            profiles:sender_id (username, avatar_url)
-          `)
-          .eq('stream_id', streamId);
+        // --- PIPELINE 1: SAFE SEPARATED QUERY FOR GIFTERS ---
+        try {
+          const { data: giftData, error: giftError } = await supabase
+            .from('gift_logs')
+            .select(`
+              sender_id,
+              gift_points,
+              profiles:sender_id (username, avatar_url)
+            `)
+            .eq('stream_id', streamId);
 
-        if (!giftError && giftData) {
-          // Aggregate points by unique user profiles safely
-          const userMap = {};
-          giftData.forEach(log => {
-            const userId = log.sender_id;
-            const username = log.profiles?.username || 'anonymous';
-            const avatar = log.profiles?.avatar_url || '👤';
-            const points = parseInt(log.gift_points || 0, 10);
+          if (giftError) {
+            // Log quietly so it doesn't interrupt the user experience execution
+            console.warn("⚠️ gift_logs table query skipped or unresolvable:", giftError.message);
+            setGifters([]);
+          } else if (giftData) {
+            const userMap = {};
+            giftData.forEach(log => {
+              const userId = log.sender_id;
+              const username = log.profiles?.username || 'anonymous';
+              const avatar = log.profiles?.avatar_url || '👤';
+              const points = parseInt(log.gift_points || 0, 10);
 
-            if (!userMap[userId]) {
-              userMap[userId] = { username, avatar, points: 0 };
-            }
-            userMap[userId].points += points;
-          });
+              if (!userMap[userId]) {
+                userMap[userId] = { username, avatar, points: 0 };
+              }
+              userMap[userId].points += points;
+            });
 
-          const sortedGifters = Object.values(userMap)
-            .sort((a, b) => b.points - a.points)
-            .map((item, index) => ({
-              rank: index + 1,
-              username: item.username,
-              points: item.points.toLocaleString(),
-              avatar: item.avatar.startsWith('http') ? '💎' : item.avatar
-            }));
-          
-          setGifters(sortedGifters.slice(0, 20)); // Cap viewport to top 20 nodes
+            const sortedGifters = Object.values(userMap)
+              .sort((a, b) => b.points - a.points)
+              .map((item, index) => ({
+                rank: index + 1,
+                username: item.username,
+                points: item.points.toLocaleString(),
+                avatar: item.avatar.startsWith('http') ? '💎' : item.avatar
+              }));
+            
+            setGifters(sortedGifters.slice(0, 20));
+          }
+        } catch (giftCatch) {
+          console.warn("⚠️ Gift aggregation network pipeline caught error:", giftCatch);
+          setGifters([]);
         }
 
-        // 2. FETCH PRODUCTION REAL-TIME DATA: TRENDING LIVE CHANNELS
+        // --- PIPELINE 2: FETCH REAL-TIME TRENDING LIVE CHANNELS ---
         const { data: streamRooms, error: streamError } = await supabase
           .from('live_streams')
           .select(`
@@ -85,9 +92,11 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
 
           setHosts(formattedHosts.slice(0, 20));
           setHostRank(targetedIndexPosition);
+        } else if (streamError) {
+          console.error("❌ Live stream trending tracking failed:", streamError.message);
         }
       } catch (err) {
-        console.error("❌ Failed to resolve pipeline nodes:", err);
+        console.error("❌ General fatal matrix component fetch failed:", err);
       } finally {
         setLoading(false);
       }
@@ -121,7 +130,7 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
             {hostRank ? (
               <>Ranked <span className="text-cyan-400 font-black">#{hostRank}</span> in Region</>
             ) : (
-              <span className="text-zinc-400 italic">Calculating stream rank...</span>
+              <span className="text-zinc-400 italic text-[11px]">Calculating stream position...</span>
             )}
           </p>
         </div>
@@ -153,18 +162,20 @@ const LeaderboardPanel = ({ streamId, onBack }) => {
         </button>
       </div>
 
-      {/* Loader Engine Viewport state tracking */}
+      {/* Loader UI state rendering wrapper */}
       {loading ? (
         <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-2">
           <Loader2 size={20} className="animate-spin text-cyan-400" />
-          <span className="text-[10px] font-bold uppercase tracking-widest">Querying Matrix Records...</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest">Updating Ledger Data...</span>
         </div>
       ) : (
-        /* Leaderboard Scroll List */
+        /* Leaderboard Scroll List Grid */
         <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
           {(activeTab === 'gifters' ? gifters : hosts).length === 0 ? (
-            <div className="text-center py-8 text-xs text-zinc-500 italic">
-              No metrics logged for this window yet.
+            <div className="text-center py-12 text-xs text-zinc-500 italic px-4">
+              {activeTab === 'gifters' 
+                ? "No gifts tracked for this stream session yet." 
+                : "No active live stream matrices found."}
             </div>
           ) : (
             (activeTab === 'gifters' ? gifters : hosts).map((item) => {
