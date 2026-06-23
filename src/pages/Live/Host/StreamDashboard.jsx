@@ -19,6 +19,7 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting'; // 👈 Imported settings feature panel
+import CoHostManager from './CoHostManager'; // 👈 Connected actual CoHostManager subcomponent
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
@@ -297,12 +298,12 @@ const StreamDashboard = () => {
                 <button onClick={() => setIsCameraOff(!isCameraOff)} className={`p-2.5 rounded-full text-white transition-colors ${isCameraOff ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
                   {isCameraOff ? <VideoOff size={16}/> : <Video size={16}/>}
                 </button>
-              </td>
+              </li>
               <li>
                 <button onClick={() => setIsMuted(!isMuted)} className={`p-2.5 rounded-full text-white transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
                   {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
                 </button>
-              </td>
+              </li>
               {/* TRIGGER CONSOLE REMAPPED TO MANAGE THE LIVE DISCOVERY HUB MULTIPLEX CHANNELS */}
               <li>
                 <button 
@@ -311,7 +312,7 @@ const StreamDashboard = () => {
                 >
                   <Users size={16}/>
                 </button>
-              </td>
+              </li>
               {/* SETTINGS ICON ACTION DOCK BUTTON ELEMENT */}
               <li>
                 <button 
@@ -320,7 +321,7 @@ const StreamDashboard = () => {
                 >
                   <Settings size={16}/>
                 </button>
-              </td>
+              </li>
             </ul>
           </nav>
         </div>
@@ -371,31 +372,14 @@ const StreamDashboard = () => {
             transition={{ type: 'spring', damping: 26, stiffness: 220 }}
             className="w-80 h-full bg-zinc-950 border-l border-white/10 z-[100] relative pointer-events-auto p-4 space-y-4"
           >
-            <div className="flex items-center justify-between border-b border-white/5 pb-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
-                <Users size={14} className="text-cyan-400" /> Co-Host Panelist Engine
-              </h3>
-              <button onClick={() => setActivePanel(null)} className="text-zinc-500 hover:text-white transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-
-            {coHosts.length > 0 && (
-              <div className="bg-white/5 rounded-xl p-2.5 border border-white/5 space-y-2">
-                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest">Active Squad Link</p>
-                <button 
-                  onClick={dropAllCoHosts}
-                  className="w-full text-center bg-red-500/10 hover:bg-red-600 hover:text-white border border-red-500/20 py-1 rounded text-[10px] font-black transition-colors"
-                >
-                  DROP ALL SQUAD MEMBERS
-                </button>
-              </div>
-            )}
-
-            {/* Multi-Peer Dynamic Query Lookup Loop Engine goes inside your subcomponent route rendering */}
-            <div className="text-[10px] text-zinc-500 italic text-center pt-8">
-              Polling global live cluster for open channels...
-            </div>
+            <CoHostManager 
+              streamId={streamId}
+              currentCoHosts={coHosts}
+              socket={socket} 
+              onBack={() => setActivePanel(null)}
+              onDropUser={dropCoHostUser}
+              onDropAll={dropAllCoHosts}
+            />
           </motion.div>
         )}
       </AnimatePresence>
