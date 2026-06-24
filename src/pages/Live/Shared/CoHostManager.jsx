@@ -110,15 +110,12 @@ const CoHostStage = () => {
     const payload = {
       room: streamId,                // Origin room
       targetRoomId: targetHostId,    // Target's room space identifier
-      targetUserId: targetHostId,    // Specific host entity string
+      targetUserId: targetHostId,    // Specific host entity string matched on the activeUsers backend key
       fromHostId: streamId,
       inviteFrom: 'Host Studio Stage'
     };
 
     socket.emit('send_cohost_invite', payload);
-    
-    // Fallback broadcast structure to maximize target delivery potential
-    socket.emit('broadcast_cohost_signal', payload);
 
     setTimeout(() => {
       setInviteLoading(prev => ({ ...prev, [targetHostId]: false }));
