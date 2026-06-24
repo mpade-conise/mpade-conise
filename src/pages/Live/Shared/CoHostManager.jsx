@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { io } from 'socket.io-client';
-import { LogOut, Users, Mic, MicOff, Video, VideoOff, ShieldAlert, UserPlus, Radio, Check, X } from 'lucide-react';
+import { LogOut, Users, Mic, MicOff, Video, VideoOff, ShieldAlert, UserPlus, Radio, Check, X, Bug } from 'lucide-react';
 
 const CoHostStage = () => {
   const { streamId } = useParams();
@@ -18,32 +18,43 @@ const CoHostStage = () => {
   const [inviteLoading, setInviteLoading] = useState({});
   
   // --- INCOMING INVITATION MODAL STATE ---
-  const [incomingInvite, setIncomingInvite] = useState(null); // Stores { room, fromHostId, inviteFrom }
+  const [incomingInvite, setIncomingInvite] = useState(null); 
   
   const localVideoRef = useRef(null);
-  const peerConnections = useRef({}); // Tracks active RTCPeerConnection objects instances
+  const peerConnections = useRef({}); 
 
   // 1. Initialize Isolated Signaling Channel for Multi-Broker sync
   useEffect(() => {
     const socketUrl = "https://mpade-backend.onrender.com";
+    
+    // Explicitly passing streamId AND role context so backend can globally index this socket instance
     const socketInstance = io(socketUrl, {
       transports: ['websocket', 'polling'],
-      query: { room: streamId, role: 'cohost_master' },
+      query: { 
+        room: streamId, 
+        role: 'cohost_master',
+        streamId: streamId
+      },
       forceNew: true
     });
     
     setSocket(socketInstance);
 
-    // LISTEN FOR INCOMING INVITATIONS FROM OTHER HOSTS
+    // SYSTEM ROUTER LISTENERS (Listens globally across all multi-room clusters)
     socketInstance.on('cohost_invite_received', (data) => {
-      // data contains: { room, fromHostId, inviteFrom }
+      console.log("🚀 Invitation caught successfully via Signaling System:", data);
       setIncomingInvite(data);
     });
 
-    // LISTEN FOR AN INVITATION RESPONSE (IF CHANNELS AGREE TO MERGE)
     socketInstance.on('cohost_invite_accepted', (data) => {
-      console.log("Co-host invitation accepted! Triggering WebRTC Handshake...", data);
-      // Your WebRTC signaling pipeline hooks in here to add the peer stream
+      console.log("✅ Target accepted invitation! Connecting WebRTC channels...", data);
+    });
+
+    // Backup global event receiver check
+    socketInstance.on('msg', (data) => {
+      if (data && data.type === 'cohost_invite') {
+        setIncomingInvite(data);
+      }
     });
 
     return () => {
@@ -56,7 +67,6 @@ const CoHostStage = () => {
   useEffect(() => {
     const fetchLiveCreators = async () => {
       try {
-        // Aligned perfectly with your SQL structure: table 'live_streams', filter status = 'live'
         const { data, error } = await supabase
           .from('live_streams')
           .select('id, host_id, title, status')
@@ -71,8 +81,6 @@ const CoHostStage = () => {
     };
 
     fetchLiveCreators();
-    
-    // Polling heartbeat interval to check for new live creators every 10 seconds
     const interval = setInterval(fetchLiveCreators, 10000);
     return () => clearInterval(interval);
   }, [streamId]);
@@ -98,16 +106,23 @@ const CoHostStage = () => {
     
     setInviteLoading(prev => ({ ...prev, [targetHostId]: true }));
     
-    // Dispatches signaling message targeting the creator's host_id room space
-    socket.emit('send_cohost_invite', {
-      room: streamId,
-      targetUserId: targetHostId,
+    // Dispatched message structure targeting both room contexts to bypass strict backend scoping
+    const payload = {
+      room: streamId,                // Origin room
+      targetRoomId: targetHostId,    // Target's room space identifier
+      targetUserId: targetHostId,    // Specific host entity string
+      fromHostId: streamId,
       inviteFrom: 'Host Studio Stage'
-    });
+    };
+
+    socket.emit('send_cohost_invite', payload);
+    
+    // Fallback broadcast structure to maximize target delivery potential
+    socket.emit('broadcast_cohost_signal', payload);
 
     setTimeout(() => {
       setInviteLoading(prev => ({ ...prev, [targetHostId]: false }));
-    }, 2000);
+    }, 1500);
   };
 
   // --- ACCEPT / DECLINE ACTIONS FOR TARGETED HOST ---
@@ -135,6 +150,15 @@ const CoHostStage = () => {
     setIncomingInvite(null);
   };
 
+  // --- LOCAL DEV TESTING SHORTCUTS ---
+  const simulateIncomingInvite = () => {
+    setIncomingInvite({
+      room: 'test-stream-id-12345',
+      fromHostId: 'mock-host-id',
+      inviteFrom: 'Simulated Creator Studio'
+    });
+  };
+
   // Dynamic panel math calculations based on total participant matrix capacity
   const getGridSizingClass = () => {
     const totalPanels = peers.length + 1;
@@ -151,21 +175,21 @@ const CoHostStage = () => {
           INCOMING INVITATION DIALOG ACTION TOAST MODAL
          ========================================================= */}
       {incomingInvite && (
-        <div className="absolute top-6 left-1/2 transform -translate-x-1/2 bg-zinc-900 border-2 border-red-500/40 shadow-2xl rounded-2xl p-4 flex items-center gap-4 z-[9999] backdrop-blur-xl animate-bounce">
+        <div className="absolute top-6 left-1/2 transform -translate-x-1/2 bg-zinc-900 border-2 border-emerald-500 shadow-2xl rounded-2xl p-4 flex items-center gap-4 z-[9999] backdrop-blur-xl animate-fade-in">
           <div className="flex flex-col">
-            <span className="text-xs font-black tracking-wider text-red-400">INCOMING FEED MERGE REQUEST</span>
-            <span className="text-[11px] text-zinc-300 mt-0.5">Stream ID: {String(incomingInvite.room).slice(0, 8)}... wants to join feeds.</span>
+            <span className="text-xs font-black tracking-wider text-emerald-400">INCOMING FEED MERGE REQUEST</span>
+            <span className="text-[11px] text-zinc-300 mt-0.5">Host Session: {String(incomingInvite.room).slice(0, 8)}... wants to split screens.</span>
           </div>
           <div className="flex items-center gap-1.5 ml-2">
             <button 
               onClick={handleAcceptInvite} 
-              className="bg-emerald-500 hover:bg-emerald-600 text-black p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+              className="bg-emerald-500 hover:bg-emerald-600 text-black px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
             >
               <Check size={12} /> Accept
             </button>
             <button 
               onClick={handleDeclineInvite} 
-              className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+              className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
             >
               <X size={12} /> Deny
             </button>
@@ -237,14 +261,13 @@ const CoHostStage = () => {
               </span>
             </div>
 
-            {peers.length > 0 && (
-              <button 
-                onClick={dropAllPeers}
-                className="bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 text-red-400 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-xl backdrop-blur-md transition-all flex items-center gap-1.5"
-              >
-                <ShieldAlert size={12} /> Purge Room Stage
-              </button>
-            )}
+            {/* Hidden Diagnostic Button for safe development validation tests */}
+            <button
+              onClick={simulateIncomingInvite}
+              className="bg-zinc-900 border border-white/10 hover:border-cyan-500/40 text-zinc-400 hover:text-cyan-400 p-1.5 rounded-xl backdrop-blur-md transition-all flex items-center gap-1.5 text-[10px]"
+            >
+              <Bug size={12} /> Test Overlay
+            </button>
           </header>
 
           {/* Bottom Hardware Toggle Tray Control Layout */}
