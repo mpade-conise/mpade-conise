@@ -20,7 +20,6 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting'; // 👈 Imported settings feature panel
-import CoHostManager from '../Shared/CoHostManager'; // 👈 Connected actual CoHostManager subcomponent
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
@@ -29,22 +28,17 @@ const StreamDashboard = () => {
   // --- UI SWITCHES & TOGGLES ---
   const [activePanel, setActivePanel] = useState(null); 
   const [isBattleMode, setIsBattleMode] = useState(false);
-  const [isGuestMode, setIsGuestMode] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [chatFilter, setChatFilter] = useState('all');
 
   // --- COMPONENT DATA STORAGE ---
   const [streamData, setStreamData] = useState(null);
-  const [coHosts, setCoHosts] = useState([]); 
   const [reactions, setReactions] = useState([]); 
   const [battleScores, setBattleScores] = useState({ host: 0, challenger: 0 });
 
   // DOM node link to explicitly bind remote challenger streams from the WebRTC hook
   const challengerVideoRef = useRef(null);
-  
-  // Multiplexing reference cache mapping dynamic co-host tracks explicitly to distinct layout viewports
-  const remoteStreamsRef = useRef({});
 
   // 1. EXECUTE ABSTRACTED WEBSOCKET NETWORK CONTROLLER
   const {
@@ -66,11 +60,6 @@ const StreamDashboard = () => {
       if (data) {
         setStreamData(data);
         setBattleScores({ host: data.host_battle_points || 0, challenger: data.challenger_battle_points || 0 });
-        
-        // Sync active panel list arrays structural payload elements if they exist inside table records
-        if (data.co_host_matrix_nodes) {
-          setCoHosts(data.co_host_matrix_nodes);
-        }
       }
     }
     fetchMeta();
@@ -97,7 +86,6 @@ const StreamDashboard = () => {
     try {
       // Standardize input fields across variant backend signaling keys
       const peerId = incomingInvite.senderHostId || incomingInvite.host_id || '';
-      const peerUsername = incomingInvite.senderUsername || 'Guest Host';
       const peerStreamId = incomingInvite.senderStreamId || incomingInvite.hostRoomId || '';
 
       if (!peerId) {
@@ -105,61 +93,15 @@ const StreamDashboard = () => {
         return;
       }
 
-      const newPeerNode = {
-        id: peerId,
-        username: peerUsername,
-        streamId: peerStreamId
-      };
-
-      const appendedSquad = [...coHosts, newPeerNode];
-      
-      console.log("📡 Pushing updated matrix payload to Supabase:", appendedSquad);
-      
-      const { error } = await supabase
-        .from('live_streams')
-        .update({ co_host_matrix_nodes: appendedSquad })
-        .eq('id', streamId);
-
-      if (error) throw error;
-
       socket.emit('accept_battle_invite', { 
         hostRoomId: streamId, 
         challengerRoomId: peerStreamId 
       });
       
-      setCoHosts(appendedSquad);
       setIsBattleMode(true);
       setIncomingInvite(null);
     } catch (err) {
       console.error("⚠️ Battle connection setup failed:", err);
-    }
-  };
-
-  // --- MULTI-HOST PANEL KICK MANAGEMENT DISPATCH ENGINE ---
-  const dropCoHostUser = async (peerId) => {
-    try {
-      const updatedSquad = coHosts.filter(user => user.id !== peerId);
-      await supabase.from('live_streams').update({ co_host_matrix_nodes: updatedSquad }).eq('id', streamId);
-      
-      if (socket) {
-        socket.emit('host_terminate_peer_panel', { hostRoomId: streamId, targetPeerId: peerId });
-      }
-      setCoHosts(updatedSquad);
-    } catch (err) {
-      console.error("Failed to drop selected co-host:", err);
-    }
-  };
-
-  const dropAllCoHosts = async () => {
-    try {
-      await supabase.from('live_streams').update({ co_host_matrix_nodes: [] }).eq('id', streamId);
-      
-      if (socket) {
-        socket.emit('host_terminate_all_panels', { hostRoomId: streamId });
-      }
-      setCoHosts([]);
-    } catch (err) {
-      console.error("Failed to completely drop co-host pool:", err);
     }
   };
 
@@ -215,14 +157,6 @@ const StreamDashboard = () => {
     return () => window.removeEventListener('mpade-video-filter', handleFilterChange);
   }, [localVideoRef]);
 
-  // --- DYNAMIC MATRIX SPLIT DESIGN RULES ENGINE ---
-  const getMatrixGridStyles = () => {
-    const totalNodes = coHosts.length + 1;
-    if (totalNodes === 1) return 'grid-cols-1 grid-rows-1';
-    if (totalNodes === 2) return 'grid-cols-1 grid-rows-2'; // Split horizontally into 2 equal panels
-    return 'grid-cols-2 grid-rows-2'; // Perfect 4 panel quad-split viewports
-  };
-
   if (!streamData) {
     return (
       <div className="h-screen bg-black flex items-center justify-center font-black italic text-cyan-400 underline animate-pulse tracking-widest">
@@ -246,7 +180,7 @@ const StreamDashboard = () => {
         </div>
 
         {/* 2. LIVE STAGE MULTIPLEX VIEWPORT MATRIX */}
-        <div className={`absolute inset-0 z-0 grid ${getMatrixGridStyles()} gap-0.5 transition-all duration-500 bg-zinc-900`}>
+        <div className="absolute inset-0 z-0 grid grid-cols-1 grid-rows-1 gap-0.5 transition-all duration-500 bg-zinc-900">
           
           {/* PANEL A: THE PRIMARY MAIN HOST (YOU) */}
           <div className="relative h-full w-full overflow-hidden bg-zinc-950">
@@ -273,44 +207,11 @@ const StreamDashboard = () => {
               <BattleOverlay 
                 score={battleScores} 
                 hostProfile={streamData?.host} 
-                coHost={coHosts[0] || { username: 'Challenger' }} 
-                onInviteClick={() => setActivePanel('cohost_manager')} 
+                coHost={{ username: 'Challenger' }} 
+                onInviteClick={() => {}} 
               />
             )}
           </div>
-
-          {/* GENERATE EXTRA SIMULTANEOUS ACTIVE CO-HOST CO-STAGES */}
-          {coHosts.map((peer, index) => (
-            <div key={peer.id || index} className="relative h-full w-full overflow-hidden bg-zinc-950 border-t md:border-t-0 border-white/5">
-              
-              {/* Dynamic Ref Capture binding the respective stream track directly down into the view node */}
-              <video 
-                ref={(el) => { if (el) remoteStreamsRef.current[peer.id] = el; }}
-                autoPlay 
-                playsInline 
-                className="w-full h-full object-cover bg-zinc-950 position-relative z-10"
-              />
-
-              {/* Absolute backdrop layout placeholder during handshake initialization */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 z-0">
-                <div className="w-6 h-6 border-2 border-t-cyan-400 border-white/10 rounded-full animate-spin mb-2" />
-                <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest animate-pulse">
-                  Syncing Live Node...
-                </p>
-              </div>
-              
-              {/* Individual Tag Identity Badge Display & Action Panel Controls for Host */}
-              <div className="absolute bottom-3 left-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-bold text-cyan-400 z-20 border border-cyan-500/20 flex items-center gap-2">
-                <span>@{peer.username || 'Co-Host'}</span>
-                <button 
-                  onClick={() => dropCoHostUser(peer.id)}
-                  className="ml-1 bg-red-500 hover:bg-red-600 text-white font-sans font-black px-1 rounded transition-colors text-[8px]"
-                >
-                  DROP
-                </button>
-              </div>
-            </div>
-          ))}
         </div>
 
         {/* Control Console Dock Bar at bottom */}
@@ -321,7 +222,7 @@ const StreamDashboard = () => {
           </div>
           
           <nav className="w-full max-w-xl mx-auto bg-zinc-950/80 backdrop-blur-2xl rounded-full border border-white/10 p-1.5 pointer-events-auto">
-            <ul className="flex items-center justify-between w-full px-1">
+            <ul className="flex items-center justify-between w-full px-4">
               <li>
                 <button onClick={() => setIsCameraOff(!isCameraOff)} className={`p-2.5 rounded-full text-white transition-colors ${isCameraOff ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
                   {isCameraOff ? <VideoOff size={16}/> : <Video size={16}/>}
@@ -330,15 +231,6 @@ const StreamDashboard = () => {
               <li>
                 <button onClick={() => setIsMuted(!isMuted)} className={`p-2.5 rounded-full text-white transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
                   {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
-                </button>
-              </li>
-              {/* TRIGGER CONSOLE REMAPPED TO MANAGE THE LIVE DISCOVERY HUB MULTIPLEX CHANNELS */}
-              <li>
-                <button 
-                  onClick={() => setActivePanel(activePanel === 'cohost_manager' ? null : 'cohost_manager')} 
-                  className={`p-2.5 rounded-full transition-colors ${activePanel === 'cohost_manager' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}
-                >
-                  <Users size={16}/>
                 </button>
               </li>
               {/* SETTINGS ICON ACTION DOCK BUTTON ELEMENT */}
@@ -383,31 +275,10 @@ const StreamDashboard = () => {
               streamId={streamId} 
               streamData={streamData} 
               socket={socket}
-              currentCoHosts={coHosts}
-              onDropUser={dropCoHostUser}
-              onDropAll={dropAllCoHosts}
+              currentCoHosts={[]}
+              onDropUser={() => {}}
+              onDropAll={() => {}}
               onClose={() => setActivePanel(null)} 
-            />
-          </motion.div>
-        )}
-
-        {/* INJECTED DYNAMIC CO-HOST ALLIANCE ROOM DISCOVERY PANEL */}
-        {activePanel === 'cohost_manager' && (
-          <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-            className="w-80 h-full bg-zinc-950 border-l border-white/10 z-[100] relative pointer-events-auto p-4 space-y-4"
-          >
-            <CoHostManager 
-              streamId={streamId}
-              currentCoHosts={coHosts}
-              socket={socket} 
-              currentHostProfile={streamData?.host} // 👈 PASSED PROFILE DATA OBJECT SECURELY
-              onBack={() => setActivePanel(null)}
-              onDropUser={dropCoHostUser}
-              onDropAll={dropAllCoHosts}
             />
           </motion.div>
         )}
