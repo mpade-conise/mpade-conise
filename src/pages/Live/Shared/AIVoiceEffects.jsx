@@ -3,40 +3,60 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Mic, AudioLines } from 'lucide-react';
 
 const AIVoiceEffects = ({ streamId, onBack, onSelectEffect }) => {
-  // Sync state with localStorage to allow dashboard audio hooks to consume choices seamlessly
   const [selectedFx, setSelectedFx] = useState(() => {
     return localStorage.getItem(`mpade_voice_fx_${streamId}`) || 'studio';
   });
 
+  // Explicit, audibly distinct base processing target frequencies (Hz) for the DSP matrix
   const voiceProfiles = [
-    { id: 'studio', name: 'Studio Pure', desc: 'Crystal clear, compressed room tone and vocal enhancement' },
-    { id: 'bass', name: 'Deep Bass Monster', desc: 'Pitch lowered sub-harmonic node for deep resonant vocal presence' },
-    { id: 'robot', name: 'Robot Network', desc: 'Ring-modulated metallic cybernetic synthesis' },
-    { id: 'helium', name: 'Helium Echo', desc: 'High pitch multiplier with rapid acoustic delay loop' },
-    
-    /* 🔥 11 NEW EXTRA VOICE EFFECT PROFILES 🔥 */
-    { id: 'autotune-major', name: 'AI Pitch Correct', desc: 'Real-time chromatic scale snapping and auto-tuning' },
-    { id: 'stadium', name: 'Arena Echo Arena', desc: 'Massive acoustic hall model with slow decay reverb trails' },
-    { id: 'radio-1930', name: 'Vintage AM Radio', desc: 'High bandpass audio filter with authentic crackle layer' },
-    { id: 'cyberpunk-glitch', name: 'Cyber Overdrive', desc: 'Slight bitcrushed distortion with robotic glitch intervals' },
-    { id: 'whisper-synth', name: 'Ghostly Whisper', desc: 'High-frequency harmonic exciter with ethereal noise trails' },
-    { id: 'chipmunk', name: 'Squeak Velocity', desc: 'Maximum format shifting up for localized high-frequency pitch' },
-    { id: 'space-captain', name: 'Cosmic Walkie-Talkie', desc: 'Astronaut comms emulation with periodic static beeps' },
-    { id: 'demon-lord', name: 'Underworld Dread', desc: 'Dual-pitch shifting engine combining sub-bass with distortion' },
-    { id: 'telephone', name: 'Legacy Landline', desc: 'Tight mid-range telephone telephone acoustics' },
-    { id: 'choir-ensemble', name: 'Synth Harmony', desc: 'Multi-voice pitch chorus simulating backing vocals' },
-    { id: 'reverse-texture', name: 'Dream Matrix Shift', desc: 'Psychedelic sub-delay phase reversing audio elements' }
+    { id: 'studio', name: 'Studio Pure', frequency: 1000, desc: 'Crystal clear vocal enhancement centered at 1.0 kHz' },
+    { id: 'bass', name: 'Deep Bass Monster', frequency: 120, desc: 'Sub-harmonic sub-bass voice modulation at 120 Hz' },
+    { id: 'robot', name: 'Robot Network', frequency: 440, desc: 'Metallic ring modulation centered at 440 Hz' },
+    { id: 'helium', name: 'Helium Echo', frequency: 2500, desc: 'High-frequency pitch multiplier scaled at 2.5 kHz' },
+    { id: 'autotune-major', name: 'AI Pitch Correct', frequency: 800, desc: 'Chromatic pitch tracking optimized at 800 Hz' },
+    { id: 'stadium', name: 'Arena Echo Arena', frequency: 350, desc: 'Spacious hall resonance tuned around 350 Hz' },
+    { id: 'radio-1930', name: 'Vintage AM Radio', frequency: 3000, desc: 'High bandpass crunch filter peaking at 3.0 kHz' },
+    { id: 'cyberpunk-glitch', name: 'Cyber Overdrive', frequency: 1500, desc: 'Bitcrushed phase distortion tracking at 1.5 kHz' },
+    { id: 'whisper-synth', name: 'Ghostly Whisper', frequency: 7000, desc: 'Ethereal air-noise excitation tracking at 7.0 kHz' },
+    { id: 'chipmunk', name: 'Squeak Velocity', frequency: 4000, desc: 'Ultra high-frequency pitch shifting peaking at 4.0 kHz' },
+    { id: 'space-captain', name: 'Cosmic Walkie-Talkie', frequency: 2200, desc: 'Radio communications filter bandpassing at 2.2 kHz' },
+    { id: 'demon-lord', name: 'Underworld Dread', frequency: 90, desc: 'Heavy dark-matter resonance drops down to 90 Hz' },
+    { id: 'telephone', name: 'Legacy Landline', frequency: 1800, desc: 'Narrow bandwidth vocal filter limited to 1.8 kHz' },
+    { id: 'choir-ensemble', name: 'Synth Harmony', frequency: 600, desc: 'Multi-voice chord oscillator modulating around 600 Hz' },
+    { id: 'reverse-texture', name: 'Dream Matrix Shift', frequency: 1200, desc: 'Psychedelic phase delays shifting patterns at 1.2 kHz' }
   ];
 
   useEffect(() => {
-    // Write choice directly into the local data layer context cache
+    // 1. Update the local context storage ledger
     localStorage.setItem(`mpade_voice_fx_${streamId}`, selectedFx);
+
+    const activeProfile = voiceProfiles.find(v => v.id === selectedFx);
+    
+    // 2. Assign configuration to the global window context layer instantly
+    if (activeProfile) {
+      window.mpadeActiveVoiceDSP = {
+        id: selectedFx,
+        frequency: activeProfile.frequency,
+        streamId: streamId
+      };
+
+      // 3. Fire a high-priority browser event that any active stream pipeline can catch
+      const dspEvent = new CustomEvent('mpade_voice_change', {
+        detail: { 
+          id: selectedFx, 
+          frequency: activeProfile.frequency, 
+          streamId: streamId 
+        }
+      });
+      window.dispatchEvent(dspEvent);
+    }
   }, [selectedFx, streamId]);
 
   const handleEffectSelect = (id) => {
     setSelectedFx(id);
     if (onSelectEffect) {
-      onSelectEffect(id); // Pipelines the DSP profile identifier up if connected via props
+      const selectedProfile = voiceProfiles.find(v => v.id === id);
+      onSelectEffect(id, selectedProfile?.frequency); 
     }
   };
 
@@ -68,7 +88,12 @@ const AIVoiceEffects = ({ streamId, onBack, onSelectEffect }) => {
               }`}
             >
               <div className="flex flex-col gap-0.5 truncate pr-4">
-                <span className="text-xs font-bold tracking-wide">{fx.name}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold tracking-wide">{fx.name}</span>
+                  <span className="text-[8px] font-mono opacity-50 px-1 bg-zinc-800 rounded text-zinc-400">
+                    {fx.frequency >= 1000 ? `${(fx.frequency / 1000).toFixed(1)}kHz` : `${fx.frequency}Hz`}
+                  </span>
+                </div>
                 <span className="text-[10px] text-zinc-500 font-normal whitespace-normal line-clamp-1 group-hover:text-zinc-400 transition-colors">
                   {fx.desc}
                 </span>
