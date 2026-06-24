@@ -184,7 +184,10 @@ const UniverseTools = () => {
                             src={video.thumbnail_url} 
                             className="w-full h-full object-cover" 
                             alt="Node thumbnail payload" 
-                            onError={(e) => { e.target.src = 'https://via.placeholder.com/150/111/fff?text=Mpade'; }}
+                            onError={(e) => { 
+                              e.target.onerror = null;
+                              e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150'; 
+                            }}
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-600">
@@ -222,8 +225,19 @@ const UniverseTools = () => {
                   </motion.button>
                 </div>
                 <div className="space-y-2.5">
-                  <ToolCard icon={<Crown size={18} className="text-purple-400" />} title="Creator Fund Pool" desc="Yield formulas evaluated out of organic aggregate video weight logs" badge="Eligible" />
-                  <ToolCard icon={<Gift size={18} className="text-pink-400" />} title="Virtual Gift Exchange" desc="Standard network conversions computed at a 1 Coin = 0.10 MWK target threshold" />
+                  <ToolCard 
+                    icon={<Crown size={18} className="text-purple-400" />} 
+                    title="Creator Fund Pool" 
+                    desc="Yield formulas evaluated out of organic aggregate video weight logs" 
+                    badge="Eligible" 
+                    onClick={() => navigate('./shared/creator-fund')}
+                  />
+                  <ToolCard 
+                    icon={<Gift size={18} className="text-pink-400" />} 
+                    title="Virtual Gift Exchange" 
+                    desc="Standard network conversions computed at a 1 Coin = 0.10 MWK target threshold" 
+                    onClick={() => navigate('./shared/gifts')}
+                  />
                 </div>
               </motion.div>
             )}
@@ -262,8 +276,20 @@ const UniverseTools = () => {
               
               {/* Drawer Identity Card Header */}
               <div className="flex items-start gap-4 mb-6 shrink-0 bg-white/[0.01] p-3 rounded-2xl border border-white/5">
-                <div className="w-14 h-20 bg-zinc-900 rounded-xl overflow-hidden shrink-0 border border-white/10 shadow-lg">
-                  <img src={selectedVideo.thumbnail_url || 'https://via.placeholder.com/150/111/fff?text=Mpade'} className="w-full h-full object-cover" alt="Selected model preview asset" />
+                <div className="w-14 h-20 bg-zinc-900 rounded-xl overflow-hidden shrink-0 border border-white/10 shadow-lg flex items-center justify-center relative">
+                  {selectedVideo.thumbnail_url ? (
+                    <img 
+                      src={selectedVideo.thumbnail_url} 
+                      className="w-full h-full object-cover" 
+                      alt="Selected model preview asset" 
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150';
+                      }}
+                    />
+                  ) : (
+                    <Play size={16} className="text-zinc-700" fill="currentColor" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-base font-black italic tracking-tight truncate text-zinc-100">{selectedVideo.caption || "Untitled Content Session"}</h2>
@@ -325,7 +351,15 @@ const UniverseTools = () => {
                         </div>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 z-0" />
                         {selectedVideo.thumbnail_url && (
-                          <img src={selectedVideo.thumbnail_url} className="absolute inset-0 w-full h-full object-cover opacity-30 z-0 blur-sm scale-105" alt="Blur layer design" />
+                          <img 
+                            src={selectedVideo.thumbnail_url} 
+                            className="absolute inset-0 w-full h-full object-cover opacity-30 z-0 blur-sm scale-105" 
+                            alt="Blur layer design" 
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150';
+                            }}
+                          />
                         )}
                       </div>
                     </motion.div>
@@ -390,8 +424,11 @@ const StatCard = ({ label, value, color, iconColor, icon }) => (
   </div>
 );
 
-const ToolCard = ({ icon, title, desc, badge }) => (
-  <div className="flex items-center gap-4 p-4 bg-zinc-900/20 border border-white/5 rounded-2xl hover:border-white/10 transition-all group">
+const ToolCard = ({ icon, title, desc, badge, onClick }) => (
+  <div 
+    onClick={onClick}
+    className="flex items-center gap-4 p-4 bg-zinc-900/20 border border-white/5 rounded-2xl hover:border-white/10 transition-all group cursor-pointer active:scale-[0.99]"
+  >
     <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center border border-white/10 shrink-0">
       {icon}
     </div>
