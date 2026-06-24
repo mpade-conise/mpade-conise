@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { io } from 'socket.io-client';
-import { LogOut, Users, Mic, MicOff, Video, VideoOff, ShieldAlert, UserPlus, Radio } from 'lucide-react';
+import { LogOut, Users, Mic, MicOff, Video, VideoOff, ShieldAlert, UserPlus, Radio, Check, X } from 'lucide-react';
 
 const CoHostStage = () => {
   const { streamId } = useParams();
@@ -16,6 +16,9 @@ const CoHostStage = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inviteLoading, setInviteLoading] = useState({});
+  
+  // --- INCOMING INVITATION MODAL STATE ---
+  const [incomingInvite, setIncomingInvite] = useState(null); // Stores { room, fromHostId, inviteFrom }
   
   const localVideoRef = useRef(null);
   const peerConnections = useRef({}); // Tracks active RTCPeerConnection objects instances
@@ -30,6 +33,18 @@ const CoHostStage = () => {
     });
     
     setSocket(socketInstance);
+
+    // LISTEN FOR INCOMING INVITATIONS FROM OTHER HOSTS
+    socketInstance.on('cohost_invite_received', (data) => {
+      // data contains: { room, fromHostId, inviteFrom }
+      setIncomingInvite(data);
+    });
+
+    // LISTEN FOR AN INVITATION RESPONSE (IF CHANNELS AGREE TO MERGE)
+    socketInstance.on('cohost_invite_accepted', (data) => {
+      console.log("Co-host invitation accepted! Triggering WebRTC Handshake...", data);
+      // Your WebRTC signaling pipeline hooks in here to add the peer stream
+    });
 
     return () => {
       if (socketInstance) socketInstance.disconnect();
@@ -95,6 +110,31 @@ const CoHostStage = () => {
     }, 2000);
   };
 
+  // --- ACCEPT / DECLINE ACTIONS FOR TARGETED HOST ---
+  const handleAcceptInvite = () => {
+    if (!socket || !incomingInvite) return;
+    
+    socket.emit('respond_cohost_invite', {
+      room: incomingInvite.room,
+      targetUserId: incomingInvite.fromHostId,
+      status: 'accepted'
+    });
+    
+    setIncomingInvite(null);
+  };
+
+  const handleDeclineInvite = () => {
+    if (!socket || !incomingInvite) return;
+
+    socket.emit('respond_cohost_invite', {
+      room: incomingInvite.room,
+      targetUserId: incomingInvite.fromHostId,
+      status: 'declined'
+    });
+
+    setIncomingInvite(null);
+  };
+
   // Dynamic panel math calculations based on total participant matrix capacity
   const getGridSizingClass = () => {
     const totalPanels = peers.length + 1;
@@ -107,6 +147,32 @@ const CoHostStage = () => {
   return (
     <div className="h-screen w-full bg-black text-white relative font-sans overflow-hidden flex">
       
+      {/* =========================================================
+          INCOMING INVITATION DIALOG ACTION TOAST MODAL
+         ========================================================= */}
+      {incomingInvite && (
+        <div className="absolute top-6 left-1/2 transform -translate-x-1/2 bg-zinc-900 border-2 border-red-500/40 shadow-2xl rounded-2xl p-4 flex items-center gap-4 z-[9999] backdrop-blur-xl animate-bounce">
+          <div className="flex flex-col">
+            <span className="text-xs font-black tracking-wider text-red-400">INCOMING FEED MERGE REQUEST</span>
+            <span className="text-[11px] text-zinc-300 mt-0.5">Stream ID: {String(incomingInvite.room).slice(0, 8)}... wants to join feeds.</span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-2">
+            <button 
+              onClick={handleAcceptInvite} 
+              className="bg-emerald-500 hover:bg-emerald-600 text-black p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+            >
+              <Check size={12} /> Accept
+            </button>
+            <button 
+              onClick={handleDeclineInvite} 
+              className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+            >
+              <X size={12} /> Deny
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* =========================================================
           STAGE WRAPPER: Viewers only see this clean layout section
          ========================================================= */}
