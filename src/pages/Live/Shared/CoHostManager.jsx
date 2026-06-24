@@ -20,16 +20,20 @@ const CoHostStage = () => {
 
   // Initialize Isolated Signaling Channel for Multi-Broker sync
   useEffect(() => {
-    const socketUrl = process.env.REACT_APP_SOCKET_URL || "http://localhost:4000";
+    // Points directly to the live production server on Render to avoid ERR_CONNECTION_REFUSED
+    const socketUrl = "https://mpade-backend.onrender.com";
+    
     const socketInstance = io(socketUrl, {
-      query: { room: streamId, role: 'cohost_master' }
+      transports: ['websocket', 'polling'],
+      query: { room: streamId, role: 'cohost_master' },
+      forceNew: true
     });
     
     setSocket(socketInstance);
 
     // Sync state configuration database cleanups
     return () => {
-      socketInstance.disconnect();
+      if (socketInstance) socketInstance.disconnect();
       Object.values(peerConnections.current).forEach(pc => pc.close());
     };
   }, [streamId]);
