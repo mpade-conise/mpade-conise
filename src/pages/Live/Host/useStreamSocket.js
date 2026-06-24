@@ -53,6 +53,14 @@ export const useStreamSocket = (streamId, isHost = true) => {
       setIncomingInvite(payload);
     });
 
+    // 3. Independent handler listener for multi-stage room evictions
+    socketInstance.on('cohost_eviction_notice', (payload) => {
+      console.warn("⚠️ CoHost Eviction Notice:", payload?.reason);
+      // Dispatches a native window event so independent layers can catch it and kick out cleanly
+      const evictionEvent = new CustomEvent('mpade_cohost_eviction', { detail: payload });
+      window.dispatchEvent(evictionEvent);
+    });
+
     return () => {
       if (socketInstance) socketInstance.disconnect();
     };
