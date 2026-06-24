@@ -12,7 +12,7 @@ const CoHostStage = () => {
   // --- HARDWARE & NETWORKING STATES ---
   const [socket, setSocket] = useState(null);
   const [peers, setPeers] = useState([]); // Array of active co-host objects [{id, username, stream}]
-  const [viewers, setViewers] = useState([]); // Array of active room users for host invitations
+  const [liveCreators, setLiveCreators] = useState([]); // Tracks other active live creators from DB
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [inviteLoading, setInviteLoading] = useState({});
@@ -20,9 +20,8 @@ const CoHostStage = () => {
   const localVideoRef = useRef(null);
   const peerConnections = useRef({}); // Tracks active RTCPeerConnection objects instances
 
-  // Initialize Isolated Signaling Channel for Multi-Broker sync
+  // 1. Initialize Isolated Signaling Channel for Multi-Broker sync
   useEffect(() => {
-    // Standardized live deployment URL targeting Render cluster
     const socketUrl = "https://mpade-backend.onrender.com";
     const socketInstance = io(socketUrl, {
       transports: ['websocket', 'polling'],
@@ -32,16 +31,35 @@ const CoHostStage = () => {
     
     setSocket(socketInstance);
 
-    // Track active presence updates to invite other users into remaining multi-video matrix panels
-    socketInstance.on('room_presence_update', (users) => {
-      setViewers(users);
-    });
-
-    // Sync state configuration database cleanups
     return () => {
       if (socketInstance) socketInstance.disconnect();
       Object.values(peerConnections.current).forEach(pc => pc.close());
     };
+  }, [streamId]);
+
+  // 2. Database Fetch: Query active live creators using exact live_streams schema rules
+  useEffect(() => {
+    const fetchLiveCreators = async () => {
+      try {
+        // Aligned perfectly with your SQL structure: table 'live_streams', filter status = 'live'
+        const { data, error } = await supabase
+          .from('live_streams')
+          .select('id, host_id, title, status')
+          .eq('status', 'live')
+          .not('id', 'eq', streamId);
+
+        if (error) throw error;
+        if (data) setLiveCreators(data);
+      } catch (err) {
+        console.error("Error pulling live creators from DB:", err.message);
+      }
+    };
+
+    fetchLiveCreators();
+    
+    // Polling heartbeat interval to check for new live creators every 10 seconds
+    const interval = setInterval(fetchLiveCreators, 10000);
+    return () => clearInterval(interval);
   }, [streamId]);
 
   // --- DISCONNECT / KICK MANAGEMENT HANDLERS ---
@@ -60,19 +78,20 @@ const CoHostStage = () => {
   };
 
   // --- CO-HOST INVITATION ROUTER DISPATCHER ---
-  const sendCoHostInvite = (targetUserId) => {
-    if (!socket) return;
+  const sendCoHostInvite = (targetHostId) => {
+    if (!socket || !targetHostId) return;
     
-    setInviteLoading(prev => ({ ...prev, [targetUserId]: true }));
+    setInviteLoading(prev => ({ ...prev, [targetHostId]: true }));
     
+    // Dispatches signaling message targeting the creator's host_id room space
     socket.emit('send_cohost_invite', {
       room: streamId,
-      targetUserId,
-      inviteFrom: 'Host Studio'
+      targetUserId: targetHostId,
+      inviteFrom: 'Host Studio Stage'
     });
 
     setTimeout(() => {
-      setInviteLoading(prev => ({ ...prev, [targetUserId]: false }));
+      setInviteLoading(prev => ({ ...prev, [targetHostId]: false }));
     }, 2000);
   };
 
@@ -125,7 +144,7 @@ const CoHostStage = () => {
                 className="w-full h-full object-cover"
               />
               <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-amber-400 border border-amber-500/10 flex items-center gap-2">
-                <span>@{peer.username}</span>
+                <span>@{peer.username || 'Co-Host'}</span>
                 <button 
                   onClick={() => dropPeer(peer.id)}
                   className="bg-red-600 hover:bg-red-700 text-white font-black px-1 rounded text-[8px] transition-colors"
@@ -195,37 +214,42 @@ const CoHostStage = () => {
       <div className="w-80 h-full bg-zinc-950 border-l border-white/10 flex flex-col p-4 z-[60]">
         <div className="border-b border-white/10 pb-3 mb-4">
           <h3 className="text-xs font-black tracking-widest text-zinc-400 uppercase flex items-center gap-2">
-            <Radio size={14} className="text-cyan-400 animate-pulse" /> Studio Dispatcher
+            <Radio size={14} className="text-red-500 animate-pulse" /> Live Creators
           </h3>
           <p className="text-[10px] text-zinc-500 mt-1">
-            Invite users below to utilize empty layout grids.
+            Invite active hosts to merge video stream setups.
           </p>
         </div>
 
         <div className="flex-1 overflow-y-auto flex flex-col gap-2">
-          {viewers.filter(v => v.role !== 'host' && v.role !== 'cohost_master').length === 0 ? (
+          {liveCreators.length === 0 ? (
             <div className="text-center text-zinc-600 text-xs py-12 font-mono border border-dashed border-white/5 rounded-xl">
-              No viewers in room
+              No other creators live
             </div>
           ) : (
-            viewers
-              .filter(v => v.role !== 'host' && v.role !== 'cohost_master')
-              .map((viewer) => (
-                <div key={viewer.id} className="flex items-center justify-between bg-zinc-900 border border-white/5 p-2 rounded-xl">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-zinc-300">@{viewer.username || 'User'}</span>
-                    <span className="text-[9px] text-zinc-500 font-mono">id: {viewer.id.slice(0, 6)}</span>
+            liveCreators.map((creator) => {
+              const targetId = creator.host_id || creator.id;
+              const shortId = String(targetId).slice(0, 6);
+
+              return (
+                <div key={creator.id} className="flex items-center justify-between bg-zinc-900 border border-white/5 p-2 rounded-xl">
+                  <div className="flex flex-col max-w-[60%]">
+                    <span className="text-xs font-bold text-zinc-300 truncate">
+                      {creator.title || 'Untitled Stream'}
+                    </span>
+                    <span className="text-[9px] text-zinc-500 font-mono">host: {shortId}</span>
                   </div>
                   <button
-                    onClick={() => sendCoHostInvite(viewer.id)}
-                    disabled={inviteLoading[viewer.id]}
-                    className="bg-cyan-500 hover:bg-cyan-600 disabled:bg-zinc-800 text-black disabled:text-zinc-600 px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all"
+                    onClick={() => sendCoHostInvite(targetId)}
+                    disabled={inviteLoading[targetId]}
+                    className="bg-red-500 hover:bg-red-600 disabled:bg-zinc-800 text-white disabled:text-zinc-600 px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all flex-shrink-0"
                   >
                     <UserPlus size={10} />
-                    {inviteLoading[viewer.id] ? "Invited" : "Add Feed"}
+                    {inviteLoading[targetId] ? "Invited" : "Merge Feed"}
                   </button>
                 </div>
-              ))
+              );
+            })
           )}
         </div>
       </div>
