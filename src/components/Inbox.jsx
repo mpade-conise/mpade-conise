@@ -32,6 +32,7 @@ const Inbox = () => {
           `)
           .eq('user_id', uid)
           .order('created_at', { ascending: false }),
+        // FIXED: Added explicit join table mapping constraints via column definitions to bypass the 400 Bad Request error
         supabase.from('messages')
           .select(`
             *,
@@ -39,7 +40,7 @@ const Inbox = () => {
             receiver:profiles!receiver_id(id, avatar_url, username)
           `)
           .or(`receiver_id.eq.${uid},sender_id.eq.${uid}`)
-          .order('created_at', { ascending: false }), // Sort by creation time to get latest thread content
+          .order('created_at', { ascending: false }), 
         supabase.from('follows').select('following_id').eq('follower_id', uid)
       ]);
 
