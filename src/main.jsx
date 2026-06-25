@@ -29,7 +29,9 @@ root.render(
   <StrictMode>
     <BrowserRouter>
       <LanguageProvider>
-        <App />
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
       </LanguageProvider>
     </BrowserRouter>
   </StrictMode>
