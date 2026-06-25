@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-// Change your lucide-react import at the top to this:
 import { 
   ChevronLeft, Camera, Check, Globe, 
   Zap, Fingerprint, Cpu, Share2, Eye, 
   Lock, Wallet, Award, Activity, Palette, 
   Music, Heart, MapPin, User, Film, HelpCircle, Calendar, Shield,
-  Sparkles // <-- ADD THIS ICON HERE
+  Smartphone, Sparkles // Added explicitly here to solve the reference errors
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
