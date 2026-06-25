@@ -100,11 +100,10 @@ const EditProfile = () => {
     } catch (err) {
       console.error("Error fetching data:", err);
     } finally {
-      setLoading(false);
+      loading && setLoading(false);
     }
   };
 
-  // Automated Supabase Storage Bucket Upload Pipeline
   const handleFileUpload = async (event, type) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -122,14 +121,12 @@ const EditProfile = () => {
       const bucketName = isAvatar ? 'avatars' : 'covers';
       const filePath = `${bucketName}/${fileName}`;
 
-      // Upload file directly into corresponding bucket
       const { error: uploadError } = await supabase.storage
         .from(bucketName)
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // Extract public URL asset vector route
       const { data: { publicUrl } } = supabase.storage
         .from(bucketName)
         .getPublicUrl(filePath);
@@ -211,8 +208,25 @@ const EditProfile = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#030303] text-zinc-100 font-sans pb-32 selection:bg-cyan-500 selection:text-black">
+    <div className="h-screen w-full bg-[#030303] text-zinc-100 font-sans overflow-y-auto selection:bg-cyan-500 selection:text-black style-scrollbar">
       
+      {/* INLINE CSS FOR PREMIUM MATRIX SCROLLBAR */}
+      <style>{`
+        .style-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .style-scrollbar::-webkit-scrollbar-track {
+          background: #030303;
+        }
+        .style-scrollbar::-webkit-scrollbar-thumb {
+          background: #1f1f23;
+          border-radius: 10px;
+        }
+        .style-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #06b6d4;
+        }
+      `}</style>
+
       {/* GLITCH SHIELD BACKGROUND ACCENTS */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[500px] bg-gradient-to-b from-cyan-950/10 via-transparent to-transparent blur-3xl pointer-events-none -z-10" />
 
@@ -234,7 +248,7 @@ const EditProfile = () => {
         </button>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-4 mt-8">
+      <div className="max-w-6xl mx-auto px-4 mt-8 pb-32">
         
         {/* PREMIUM VISUAL HERO MANAGER */}
         <div className="relative w-full rounded-3xl bg-zinc-950 border border-white/5 overflow-hidden mb-8 shadow-2xl">
@@ -302,7 +316,7 @@ const EditProfile = () => {
           </div>
         </div>
 
-        {/* DUAL CUBIC CONTEXT SEPARATOR - SMART ENGINEERING ARCHITECTURE */}
+        {/* DUAL CUBIC CONTEXT SEPARATOR */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* LEFT COMPONENT COLUMN: TEXT VECTOR INTERFACES */}
@@ -423,7 +437,7 @@ const EditProfile = () => {
               </div>
             </div>
 
-            {/* MATRICES MATRIX MATRIX DEPLOYMENT TAGS */}
+            {/* INTEREST ARRAYS */}
             <div className="bg-zinc-950 border border-white/5 rounded-3xl p-6 space-y-4">
               <h4 className="text-[10px] font-black uppercase tracking-[3px] text-zinc-400 mb-1 block">Interest Map Arrays</h4>
               <div className="flex flex-wrap gap-2">
@@ -447,7 +461,7 @@ const EditProfile = () => {
               </div>
             </div>
 
-            {/* ENGINE APPEARANCE AND GLOBAL LOOK THEMES */}
+            {/* ENGINE APPEARANCE AND GLOBAL THEMES */}
             <div className="bg-zinc-950 border border-white/5 rounded-3xl p-6 space-y-4">
               <h4 className="text-[10px] font-black uppercase tracking-[3px] text-zinc-400 block">Interface Environment</h4>
               
@@ -491,7 +505,7 @@ const EditProfile = () => {
               </div>
             </div>
 
-            {/* PRIVACY FRAMEWORKS & NETWORK SECURITY OVERRIDES */}
+            {/* PRIVACY FRAMEWORKS & OVERRIDES */}
             <div className="bg-zinc-950 border border-white/5 rounded-3xl p-6 space-y-4">
               <h4 className="text-[10px] font-black uppercase tracking-[3px] text-zinc-400 block">Security & Flags</h4>
               
@@ -572,7 +586,7 @@ const EditProfile = () => {
   );
 };
 
-/* SLEEK SUB-INTERFACES FOR MODERN INPUTS */
+/* INPUT FIELDS */
 const InputField = ({ label, value, onChange, placeholder, icon }) => (
   <div>
     <label className="text-[9px] font-black uppercase tracking-wider text-zinc-500 block mb-1.5">{label}</label>
