@@ -39,7 +39,7 @@ const Inbox = () => {
             receiver:profiles!receiver_id(id, avatar_url, username)
           `)
           .or(`receiver_id.eq.${uid},sender_id.eq.${uid}`)
-          .order('created_at', { ascending: false }), 
+          .order('updated_at', { ascending: false }), // Corrected ordering criteria string to updated_at
         supabase.from('follows').select('following_id').eq('follower_id', uid)
       ]);
 
@@ -167,10 +167,9 @@ const Inbox = () => {
           }
         })
         .on('postgres_changes', { 
-            event: 'INSERT', 
+            event: '*', // Listen to INSERTs & UPDATEs from messaging stream
             schema: 'public', 
-            table: 'messages', 
-            filter: `receiver_id=eq.${user.id}` 
+            table: 'messages'
         }, () => {
           if (mounted) fetchData(user.id);
         })
@@ -185,7 +184,7 @@ const Inbox = () => {
       mounted = false; 
       if (channelRef.current) supabase.removeChannel(channelRef.current); 
     };
-  }, []);
+  }, [fetchData]);
 
   const getActivityIcon = (type) => {
     switch (type) {
@@ -351,7 +350,8 @@ const Inbox = () => {
                 />
                 <div className="flex-1">
                   <p className="text-[15px] font-bold">@{msg.displayProfile?.username || 'user'}</p>
-                  <p className="text-[13px] text-zinc-500 truncate">{msg.content}</p>
+                  {/* Updated key extraction strategy from msg.content to msg.last_msg */}
+                  <p className="text-[13px] text-zinc-500 truncate">{msg.last_msg}</p>
                 </div>
              </div>
           ))}
