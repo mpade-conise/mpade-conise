@@ -17,22 +17,26 @@ const RealtimeChatEngine = ({ currentUserId, activeRoomId, peerUserMetadata }) =
 
   // --- 1. HISTORICAL BASE FETCH & SOCKET CONNECTION LOOP ---
   useEffect(() => {
-    if (!activeRoomId || !currentUserId) return;
+    if (!currentUserId || !peerUserMetadata?.id) return;
 
-    // Establish persistent, fast matrix socket connections
+    // Establish persistent socket connections
     socketRef.current = io(SOCKET_SERVER_URL);
 
     // Identify user profile to the node socket cluster map
     socketRef.current.emit('user_going_online', currentUserId);
-    socketRef.current.emit('join_chat_room', { roomId: activeRoomId });
+    
+    // We can continue to use activeRoomId for socket room scoping
+    if (activeRoomId) {
+      socketRef.current.emit('join_chat_room', { roomId: activeRoomId });
+    }
 
-    // Load old messages from Supabase
+    // Load old messages directly from the public.messages table
     const loadChatHistory = async () => {
       const { data, error } = await supabase
-        .from('chat_messages')
+        .from('messages')
         .select('*')
-        .eq('room_id', activeRoomId)
-        .order('created_at', { ascending: true });
+        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserMetadata.id}),and(sender_id.eq.${peerUserMetadata.id},receiver_id.eq.${currentUserId})`)
+        .order('updated_at', { ascending: true }); // Using updated_at or created_at sequence
 
       if (!error && data) setMessages(data);
     };
@@ -41,13 +45,17 @@ const RealtimeChatEngine = ({ currentUserId, activeRoomId, peerUserMetadata }) =
 
     // --- SOCKET EVENT INTERFACES INCOMING ---
     socketRef.current.on('received_chat_message', (incomingMessage) => {
-      if (incomingMessage.room_id === activeRoomId) {
+      // Ensure the incoming message belongs to this conversation pair
+      const isFromPeer = incomingMessage.sender_id === peerUserMetadata.id && incomingMessage.receiver_id === currentUserId;
+      const isFromMe = incomingMessage.sender_id === currentUserId && incomingMessage.receiver_id === peerUserMetadata.id;
+      
+      if (isFromPeer || isFromMe) {
         setMessages(prev => [...prev, incomingMessage]);
       }
     });
 
     socketRef.current.on('peer_typing_state_changed', ({ userId, isTyping }) => {
-      if (userId !== currentUserId) {
+      if (userId === peerUserMetadata.id) {
         setIsPeerTyping(isTyping);
       }
     });
@@ -59,9 +67,9 @@ const RealtimeChatEngine = ({ currentUserId, activeRoomId, peerUserMetadata }) =
     });
 
     return () => {
-      socketRef.current.disconnect();
+      if (socketRef.current) socketRef.current.disconnect();
     };
-  }, [activeRoomId, currentUserId, peerUserMetadata]);
+  }, [currentUserId, peerUserMetadata, activeRoomId]);
 
   // --- 2. AUTOMATIC SCROLL SYNC ---
   useEffect(() => {
@@ -71,34 +79,50 @@ const RealtimeChatEngine = ({ currentUserId, activeRoomId, peerUserMetadata }) =
   // --- 3. DISPATCH CHAT ACTION ---
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !peerUserMetadata?.id) return;
 
+    // Construct object to strictly match your table parameters
     const temporaryMessageObject = {
       id: crypto.randomUUID(),
-      room_id: activeRoomId,
+      updated_at: new Date().toISOString(),
+      user_name: peerUserMetadata.username || 'User',
+      last_msg: newMessage.trim(), // maps straight to last_msg text field
+      unread: true,
+      online: false,
+      receiver_id: peerUserMetadata.id,
       sender_id: currentUserId,
-      content: newMessage.trim(),
       type: 'text',
-      created_at: new Date().toISOString()
+      metadata: {},
+      media_url: null,
+      call_duration: 0
     };
 
-    // Optimistic UI updates (Facebook standard layout response speed)
+    // Optimistic UI updates
     setMessages(prev => [...prev, temporaryMessageObject]);
     setNewMessage("");
 
     // Halt typing states instantly on trigger submit
-    socketRef.current.emit('user_typing_state', { room_id: activeRoomId, userId: currentUserId, isTyping: false });
+    if (activeRoomId) {
+      socketRef.current.emit('user_typing_state', { room_id: activeRoomId, userId: currentUserId, isTyping: false });
+    }
 
-    // Broadcast live over modern WebSocket pipeline
+    // Broadcast live over WebSocket pipeline
     socketRef.current.emit('send_chat_message', temporaryMessageObject);
 
-    // Save permanently to deep database persistence layer in background
-    await supabase.from('chat_messages').insert({
+    // Save permanently to the actual production table
+    await supabase.from('messages').insert({
       id: temporaryMessageObject.id,
-      room_id: temporaryMessageObject.room_id,
+      updated_at: temporaryMessageObject.updated_at,
+      user_name: temporaryMessageObject.user_name,
+      last_msg: temporaryMessageObject.last_msg,
+      unread: temporaryMessageObject.unread,
+      online: temporaryMessageObject.online,
+      receiver_id: temporaryMessageObject.receiver_id,
       sender_id: temporaryMessageObject.sender_id,
-      content: temporaryMessageObject.content,
-      type: temporaryMessageObject.type
+      type: temporaryMessageObject.type,
+      metadata: temporaryMessageObject.metadata,
+      media_url: temporaryMessageObject.media_url,
+      call_duration: temporaryMessageObject.call_duration
     });
   };
 
@@ -106,13 +130,14 @@ const RealtimeChatEngine = ({ currentUserId, activeRoomId, peerUserMetadata }) =
   const handleInputChange = (textString) => {
     setNewMessage(textString);
 
-    socketRef.current.emit('user_typing_state', { room_id: activeRoomId, userId: currentUserId, isTyping: true });
-
-    // Debounce listener to clear indicator when user stops typing
-    clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      socketRef.current.emit('user_typing_state', { room_id: activeRoomId, userId: currentUserId, isTyping: false });
-    }, 2000);
+    if (activeRoomId) {
+      socketRef.current.emit('user_typing_state', { room_id: activeRoomId, userId: currentUserId, isTyping: true });
+      
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        socketRef.current.emit('user_typing_state', { room_id: activeRoomId, userId: currentUserId, isTyping: false });
+      }, 2000);
+    }
   };
 
   return (
@@ -147,10 +172,11 @@ const RealtimeChatEngine = ({ currentUserId, activeRoomId, peerUserMetadata }) =
                   ? 'bg-cyan-500 text-black font-medium rounded-br-none shadow-lg shadow-cyan-500/10' 
                   : 'bg-zinc-900 text-zinc-100 rounded-bl-none border border-white/5'
               }`}>
-                <p>{msg.content}</p>
+                {/* Content text pulled directly from last_msg schema key */}
+                <p>{msg.last_msg}</p>
                 <div className="flex items-center justify-end gap-1 mt-1">
                   <span className={`text-[8px] font-bold ${isMe ? 'text-black/60' : 'text-zinc-500'}`}>
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(msg.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   {isMe && <CheckCheck size={10} className="text-black/60" />}
                 </div>
