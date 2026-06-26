@@ -35,8 +35,8 @@ const Inbox = () => {
         supabase.from('messages')
           .select(`
             *,
-            sender:profiles!sender_id(id, avatar_url, username),
-            receiver:profiles!receiver_id(id, avatar_url, username)
+            sender:profiles(id, avatar_url, username),
+            receiver:profiles(id, avatar_url, username)
           `)
           .or(`receiver_id.eq.${uid},sender_id.eq.${uid}`)
           .order('updated_at', { ascending: false }), // Corrected ordering criteria string to updated_at
