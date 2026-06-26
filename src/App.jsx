@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import Auth from './components/Auth';
 import Feed from './components/Feed';
@@ -25,6 +25,10 @@ import LiveRouter from './pages/Live/LiveRouter';
 
 import { Home, Search, Plus, MessageSquare, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// --- CALL SYSTEM ROUTE EXTENSIONS ---
+const VideoCall = lazy(() => import('./components/VideoCall'));
+const VoiceCall = lazy(() => import('./components/VoiceCall'));
 
 function App() {
   const [session, setSession] = useState(null);
@@ -80,6 +84,8 @@ function App() {
     location.pathname.startsWith('/live') || 
     location.pathname.startsWith('/profile/') ||
     location.pathname.startsWith('/messaging') || // --- NEW: HIDE NAV FOR MESSAGING ---
+    location.pathname.startsWith('/video-call') || // --- CALL MASK ENGINE EXCLUSIONS ---
+    location.pathname.startsWith('/voice-call') ||
     [
       '/universe-tools', 
       '/edit-profile', 
@@ -111,32 +117,38 @@ function App() {
 
       <main className="h-screen pb-20 overflow-hidden relative">
         <AnimatePresence mode="wait">
-          <Routes location={location} key={location.pathname}>
-            <Route path="/" element={<Feed session={session} dataSaver={preferences.data_saver} />} />
-            <Route path="/discovery" element={<Discovery />} />
-            <Route path="/inbox" element={<Inbox />} />
-            <Route path="/messaging" element={<Messages currentUser={session.user} />} /> {/* --- NEW ROUTE --- */}
-            
-            <Route path="/profile" element={<Profile session={session} />} />
-            <Route path="/profile/:id" element={<Profile session={session} />} />
-            
-            <Route path="/edit-profile" element={<EditProfile />} />
-            <Route path="/share-profile" element={<ShareProfile />} />
-            <Route path="/universe-tools" element={<UniverseTools />} />
-            <Route path="/live-universe" element={<LiveUniverse />} />
-            <Route path="/payouts" element={<Payouts />} />
-            <Route path="/find-friends" element={<FindFriends />} />
+          <Suspense fallback={<div className="fixed inset-0 bg-[#08080a] flex items-center justify-center text-zinc-500 text-xs tracking-wider uppercase font-bold animate-pulse">Initializing Channel...</div>}>
+            <Routes location={location} key={location.pathname}>
+              <Route path="/" element={<Feed session={session} dataSaver={preferences.data_saver} />} />
+              <Route path="/discovery" element={<Discovery />} />
+              <Route path="/inbox" element={<Inbox />} />
+              <Route path="/messaging" element={<Messages currentUser={session.user} />} /> {/* --- NEW ROUTE --- */}
+              
+              {/* --- CALL MODULE TARGET ENGINES --- */}
+              <Route path="/video-call" element={<VideoCall />} />
+              <Route path="/voice-call" element={<VoiceCall />} />
+              
+              <Route path="/profile" element={<Profile session={session} />} />
+              <Route path="/profile/:id" element={<Profile session={session} />} />
+              
+              <Route path="/edit-profile" element={<EditProfile />} />
+              <Route path="/share-profile" element={<ShareProfile />} />
+              <Route path="/universe-tools" element={<UniverseTools />} />
+              <Route path="/live-universe" element={<LiveUniverse />} />
+              <Route path="/payouts" element={<Payouts />} />
+              <Route path="/find-friends" element={<FindFriends />} />
 
-            <Route path="/live/*" element={<LiveRouter />} />
-            
-            <Route path="/settings" element={<Settings preferences={preferences} />} />
-            <Route path="/settings/security" element={<Security />} />
-            <Route path="/settings/notifications" element={<Notifications />} />
-            <Route path="/settings/language" element={<Language />} />
-            <Route path="/settings/theme" element={<Theme currentTheme={preferences.visual_theme} />} />
+              <Route path="/live/*" element={<LiveRouter />} />
+              
+              <Route path="/settings" element={<Settings preferences={preferences} />} />
+              <Route path="/settings/security" element={<Security />} />
+              <Route path="/settings/notifications" element={<Notifications />} />
+              <Route path="/settings/language" element={<Language />} />
+              <Route path="/settings/theme" element={<Theme currentTheme={preferences.visual_theme} />} />
 
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
         </AnimatePresence>
       </main>
 
