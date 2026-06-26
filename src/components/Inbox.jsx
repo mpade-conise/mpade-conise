@@ -149,13 +149,31 @@ const Inbox = () => {
             schema: 'public', 
             table: 'activities', 
             filter: `user_id=eq.${user.id}` 
-        }, () => fetchData(user.id))
+        }, async (payload) => {
+          if (payload.new && mounted) {
+            // Fetch actor profile immediately for instant UI placement without full page refresh
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('id, avatar_url, username')
+              .eq('id', payload.new.actor_id)
+              .single();
+
+            const fullActivity = {
+              ...payload.new,
+              actor: profileData || null
+            };
+
+            setActivities(prev => [fullActivity, ...prev]);
+          }
+        })
         .on('postgres_changes', { 
             event: 'INSERT', 
             schema: 'public', 
             table: 'messages', 
             filter: `receiver_id=eq.${user.id}` 
-        }, () => fetchData(user.id))
+        }, () => {
+          if (mounted) fetchData(user.id);
+        })
         .subscribe();
 
       channelRef.current = channel;
@@ -167,7 +185,7 @@ const Inbox = () => {
       mounted = false; 
       if (channelRef.current) supabase.removeChannel(channelRef.current); 
     };
-  }, [fetchData]);
+  }, []);
 
   const getActivityIcon = (type) => {
     switch (type) {
