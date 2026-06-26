@@ -5,14 +5,40 @@ import { io } from 'socket.io-client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Phone, Video, MoreVertical, Send, Image, Smile, Mic, Paperclip, 
-  CornerUpLeft, Trash2, Edit2, Copy, Pin, Star, Languages, Shield, AlertTriangle, 
-  Trash, EyeOff, Radio, Users, Check, CheckCheck, Clock, Camera, FileText, MapPin, 
-  BarChart2, SmilePlus, X 
+  CornerUpLeft, Trash2, Edit2, Pin, Star, Shield, AlertTriangle, 
+  Trash, EyeOff, Check, CheckCheck, FileText, X, Play, Pause
 } from 'lucide-react';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
+
+const AudioPlayer = ({ url }) => {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  return (
+    <div className="flex items-center gap-3 bg-black/20 px-3 py-2 rounded-xl border border-white/5 min-w-[200px]">
+      <button type="button" onClick={togglePlay} className="p-2 bg-cyan-500 text-black rounded-full hover:bg-cyan-400 transition-colors">
+        {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+      </button>
+      <audio ref={audioRef} src={url} onEnded={() => setIsPlaying(false)} className="hidden" />
+      <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
+        <div className={`h-full bg-cyan-500 ${isPlaying ? 'w-full transition-all duration-[15s] linear' : 'w-0'}`} />
+      </div>
+    </div>
+  );
+};
 
 const Messaging = () => {
   const [searchParams] = useSearchParams();
@@ -37,6 +63,13 @@ const Messaging = () => {
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [showSearchInput, setShowSearchInput] = useState(false);
 
+  // Media Attachment Handling References
+  const imageInputRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -48,7 +81,6 @@ const Messaging = () => {
       if (!user) return;
       setCurrentUserId(user.id);
 
-    // Fetching user profiles concurrently
       const [myProf, individualProf] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('profiles').select('*').eq('id', peerUserId).single()
@@ -67,31 +99,22 @@ const Messaging = () => {
     socketRef.current = io(SOCKET_SERVER_URL);
     socketRef.current.emit('user_going_online', currentUserId);
 
+    // Initial query targeting direct communication match matrix
     const loadConversationStream = async () => {
-      // Query records matching either participant to bypass nested PostgREST syntax rules
       const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
-        .order('created_at', { ascending: true });
+        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},receiver_id.eq.${currentUserId})`)
+        .order('updated_at', { ascending: true });
 
       if (!error && data) {
-        // Enforce strict filter logic client-side 
-        const directConversationThread = data.filter(msg => 
-          (msg.sender_id === currentUserId && msg.receiver_id === peerUserId) ||
-          (msg.sender_id === peerUserId && msg.receiver_id === currentUserId)
-        );
-
-        setMessages(directConversationThread);
-
+        setMessages(data);
         // Mark messages as read when viewing conversation thread
         await supabase
           .from('messages')
           .update({ unread: false, status: 'read' })
           .eq('sender_id', peerUserId)
           .eq('receiver_id', currentUserId);
-      } else if (error) {
-        console.error("Supabase Stream Intercept Error: ", error.message);
       }
     };
 
@@ -157,53 +180,105 @@ const Messaging = () => {
     }, 2000);
   };
 
-  // --- Call Navigation Triggers ---
-  const handleInitiateVoiceCall = () => {
-    navigate(`/voicecall?userId=${peerUserId}`);
+  // --- Supabase Global Media File Streaming Upload Engine ---
+  const uploadMediaAttachment = async (file, bucketName = 'message-attachments') => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${crypto.randomUUID()}.${fileExt}`;
+      const filePath = `${currentUserId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(bucketName)
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from(bucketName)
+        .getPublicUrl(filePath);
+
+      return publicUrlData.publicUrl;
+    } catch (err) {
+      console.error("Storage upload failed:", err.message);
+      return null;
+    }
   };
 
-  const handleInitiateVideoCall = () => {
-    navigate(`/videocall?userId=${peerUserId}`);
+  const handleFileInputChange = async (e, messageType) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const uploadedUrl = await uploadMediaAttachment(file);
+    if (!uploadedUrl) return;
+
+    sendStructuredPayload(file.name, messageType, uploadedUrl);
   };
 
-  // --- Active Multimedia Injection Mechanics ---
-  const handleMediaUploadFile = async (type) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = type === 'image' ? 'image/*' : '*/*';
-    
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+  // --- Voice Note Capturing Streams ---
+  const handleToggleVoiceRecording = async () => {
+    if (isRecordingVoice) {
+      mediaRecorderRef.current?.stop();
+      setIsRecordingVoice(false);
+      triggerTypingState(false, 'audio');
+    } else {
+      audioChunksRef.current = [];
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = recorder;
 
-      const mockMediaUrl = URL.createObjectURL(file);
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
 
-      const payload = {
-        id: crypto.randomUUID(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        user_name: currentUserProfile?.username || 'User',
-        last_msg: type === 'image' ? '📷 Sent an image' : `📁 Sent a file: ${file.name}`,
-        unread: true,
-        online: false,
-        receiver_id: peerUserId,
-        sender_id: currentUserId,
-        type: type,
-        metadata: {},
-        media_url: mockMediaUrl,
-        call_duration: 0,
-        status: 'sent',
-        reactions: {}
-      };
+        recorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const audioFile = new File([audioBlob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
+          
+          const uploadedUrl = await uploadMediaAttachment(audioFile);
+          if (uploadedUrl) {
+            sendStructuredPayload("Voice Note", 'audio', uploadedUrl);
+          }
+          stream.getTracks().forEach(track => track.stop());
+        };
 
-      setMessages(prev => [...prev, payload]);
-      socketRef.current?.emit('send_chat_message', payload);
-      await supabase.from('messages').insert(payload);
+        recorder.start();
+        setIsRecordingVoice(true);
+        triggerTypingState(true, 'audio');
+      } catch (err) {
+        console.error("Microphone device access denied:", err);
+      }
+    }
+  };
+
+  // --- Unified Payload Dispatcher ---
+  const sendStructuredPayload = async (textText, messageType = 'text', mediaUrl = null) => {
+    const payload = {
+      id: crypto.randomUUID(),
+      updated_at: new Date().toISOString(),
+      user_name: currentUserProfile?.username || 'User',
+      last_msg: textText,
+      unread: true,
+      online: false,
+      receiver_id: peerUserId,
+      sender_id: currentUserId,
+      type: messageType,
+      metadata: replyingTo ? { reply_to_id: replyingTo.id, reply_body: replyingTo.last_msg } : {},
+      media_url: mediaUrl,
+      call_duration: 0,
+      status: 'sent',
+      reactions: {}
     };
-    input.click();
+
+    setMessages(prev => [...prev, payload]);
+    setNewMessage("");
+    setReplyingTo(null);
+    triggerTypingState(false, 'text');
+
+    socketRef.current?.emit('send_chat_message', payload);
+    await supabase.from('messages').insert(payload);
   };
 
-  // --- Dispatch Messages / Edits ---
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -225,31 +300,7 @@ const Messaging = () => {
       return;
     }
 
-    const payload = {
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      user_name: currentUserProfile?.username || 'User',
-      last_msg: newMessage.trim(),
-      unread: true,
-      online: false,
-      receiver_id: peerUserId,
-      sender_id: currentUserId,
-      type: 'text',
-      metadata: replyingTo ? { reply_to_id: replyingTo.id, reply_body: replyingTo.last_msg } : {},
-      media_url: null,
-      call_duration: 0,
-      status: 'sent',
-      reactions: {}
-    };
-
-    setMessages(prev => [...prev, payload]);
-    setNewMessage("");
-    setReplyingTo(null);
-    triggerTypingState(false, 'text');
-
-    socketRef.current?.emit('send_chat_message', payload);
-    await supabase.from('messages').insert(payload);
+    sendStructuredPayload(newMessage.trim(), 'text');
   };
 
   // --- Advanced Interactivity Matrix (Reactions, Delete, Star) ---
@@ -291,6 +342,10 @@ const Messaging = () => {
   return (
     <div className="fixed inset-0 bg-[#08080a] text-white flex flex-col font-sans overflow-hidden">
       
+      {/* HIDDEN MEDIA CORE HARDWARE INTERFACE DEVICE CAPTURING REFERENCE LABELS */}
+      <input type="file" ref={imageInputRef} accept="image/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'image')} />
+      <input type="file" ref={fileInputRef} accept="*/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'file')} />
+
       {/* 2. CHAT HEADER SECTION */}
       <header className="px-4 py-3 bg-zinc-950/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between z-50">
         <div className="flex items-center gap-3">
@@ -329,8 +384,8 @@ const Messaging = () => {
             />
           )}
           <button onClick={() => setShowSearchInput(!showSearchInput)} className="p-2 text-zinc-400 hover:text-white"><EyeOff size={18} /></button>
-          <button className="p-2 text-zinc-400 hover:text-white" onClick={handleInitiateVoiceCall}><Phone size={18} /></button>
-          <button className="p-2 text-zinc-400 hover:text-white" onClick={handleInitiateVideoCall}><Video size={18} /></button>
+          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => navigate(`/voice-call?userId=${peerUserId}`)}><Phone size={18} /></button>
+          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => navigate(`/video-call?userId=${peerUserId}`)}><Video size={18} /></button>
           
           <div className="relative">
             <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-zinc-400 hover:text-white"><MoreVertical size={18} /></button>
@@ -355,7 +410,6 @@ const Messaging = () => {
           return (
             <div key={msg.id} className={`flex w-full flex-col ${isMe ? 'items-end' : 'items-start'}`}>
               
-              {/* Parent Message Rendering Matrix for Nested Reply Sequences */}
               {msg.metadata?.reply_to_id && (
                 <div className="text-[11px] text-zinc-500 flex items-center gap-1 mb-1 px-2 opacity-60">
                   <CornerUpLeft size={10} />
@@ -364,22 +418,35 @@ const Messaging = () => {
               )}
 
               <div className="group relative flex flex-col max-w-[75%]">
-                {/* Micro Action Panel Layer for Advanced Interactions */}
                 <div className={`absolute -top-7 hidden group-hover:flex bg-zinc-900 border border-white/10 rounded-full px-2 py-1 gap-2 shadow-xl z-10 ${isMe ? 'right-0' : 'left-0'}`}>
                   <button onClick={() => setReplyingTo(msg)} className="text-zinc-400 hover:text-white"><CornerUpLeft size={12} /></button>
                   <button onClick={() => toggleStarMessage(msg)} className={`hover:text-amber-400 ${msg.is_starred ? 'text-amber-400' : 'text-zinc-400'}`}><Star size={12} /></button>
                   <button onClick={() => togglePinMessage(msg)} className={`hover:text-cyan-400 ${msg.is_pinned ? 'text-cyan-400' : 'text-zinc-400'}`}><Pin size={12} /></button>
-                  {isMe && <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.last_msg); }} className="text-zinc-400 hover:text-cyan-400"><Edit2 size={12} /></button>}
+                  {isMe && msg.type === 'text' && <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.last_msg); }} className="text-zinc-400 hover:text-cyan-400"><Edit2 size={12} /></button>}
                   {isMe && <button onClick={() => deleteMessage(msg.id)} className="text-zinc-400 hover:text-red-500"><Trash2 size={12} /></button>}
                 </div>
 
                 <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                   isMe ? 'bg-cyan-500 text-black font-semibold rounded-br-none' : 'bg-zinc-900 text-zinc-100 rounded-bl-none border border-white/5'
                 }`}>
-                  {msg.media_url && msg.type === 'image' && (
-                    <img src={msg.media_url} alt="Attached Media" className="rounded-xl max-w-full h-auto mb-2 border border-white/10" />
+                  
+                  {/* MULTIMEDIA RENDERING MATRIX ROUTERS */}
+                  {msg.type === 'image' && msg.media_url && (
+                    <img src={msg.media_url} crossOrigin="anonymous" referrerPolicy="no-referrer" alt="Attachment" className="max-w-full rounded-xl mb-1 object-cover max-h-60 border border-white/10 shadow-md" />
                   )}
-                  <p>{msg.last_msg}</p>
+
+                  {msg.type === 'file' && msg.media_url && (
+                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-black/10 px-3 py-2 rounded-xl mb-1 border border-white/5 text-xs font-bold tracking-tight hover:underline">
+                      <FileText size={16} className="text-cyan-400" />
+                      <span className="truncate max-w-[180px]">{msg.last_msg}</span>
+                    </a>
+                  )}
+
+                  {msg.type === 'audio' && msg.media_url && (
+                    <AudioPlayer url={msg.media_url} />
+                  )}
+
+                  {msg.type === 'text' && <p>{msg.last_msg}</p>}
                   
                   <div className="flex items-center justify-end gap-1 mt-1">
                     {msg.is_edited && <span className={`text-[8px] italic font-bold ${isMe ? 'text-black/40' : 'text-zinc-600'}`}>Edited</span>}
@@ -394,7 +461,6 @@ const Messaging = () => {
                   </div>
                 </div>
 
-                {/* Inline Emoji Custom Stack Render Container */}
                 <div className="flex items-center gap-1 mt-1">
                   <button onClick={() => addReaction(msg.id, '❤️')} className="text-[10px] opacity-40 hover:opacity-100">❤️</button>
                   <button onClick={() => addReaction(msg.id, '👍')} className="text-[10px] opacity-40 hover:opacity-100">👍</button>
@@ -411,7 +477,6 @@ const Messaging = () => {
           );
         })}
 
-        {/* Realtime Action Tracking Fields */}
         {isPeerTyping && (
           <div className="flex items-center gap-2 text-zinc-500 text-xs pl-2 italic animate-pulse">
             <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" />
@@ -430,7 +495,6 @@ const Messaging = () => {
       {/* 4. COMPOSER BOTTOM CONSOLE */}
       <footer className="p-4 bg-zinc-950 border-t border-white/5 flex flex-col gap-2 z-50">
         
-        {/* Active Structural Reply View Metadata Context Bar */}
         {replyingTo && (
           <div className="bg-zinc-900/50 border border-white/5 p-2 rounded-xl flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-zinc-400">
@@ -441,7 +505,6 @@ const Messaging = () => {
           </div>
         )}
 
-        {/* Active Structural Editing Tracking Context Bar */}
         {editingMessage && (
           <div className="bg-cyan-500/10 border border-cyan-500/20 p-2 rounded-xl flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-cyan-400">
@@ -454,9 +517,9 @@ const Messaging = () => {
 
         <form onSubmit={handleSendMessage} className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => handleMediaUploadFile('image')} className="p-2 text-zinc-400 hover:text-white"><Image size={20} /></button>
-            <button type="button" onClick={() => handleMediaUploadFile('file')} className="p-2 text-zinc-400 hover:text-white"><Paperclip size={20} /></button>
-            <button type="button" onMouseDown={() => triggerTypingState(true, 'audio')} onMouseUp={() => triggerTypingState(false, 'audio')} className="p-2 text-zinc-400 hover:text-[#fe2c55] active:scale-90 transition-transform"><Mic size={20} /></button>
+            <button type="button" onClick={() => imageInputRef.current?.click()} className="p-2 text-zinc-400 hover:text-white"><Image size={20} /></button>
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-zinc-400 hover:text-white"><Paperclip size={20} /></button>
+            <button type="button" onClick={handleToggleVoiceRecording} className={`p-2 transition-transform active:scale-90 ${isRecordingVoice ? 'text-[#fe2c55] animate-pulse scale-110' : 'text-zinc-400 hover:text-white'}`}><Mic size={20} /></button>
           </div>
 
           <div className="flex-1 relative">
@@ -464,17 +527,18 @@ const Messaging = () => {
               type="text"
               value={newMessage}
               onChange={(e) => handleInputChange(e.target.value)}
-              placeholder="Message..."
-              className="w-full bg-zinc-900 border border-white/5 rounded-full px-5 py-2.5 text-sm focus:outline-none focus:border-cyan-500/40 text-white placeholder-zinc-500 pr-10"
+              placeholder={isRecordingVoice ? "Recording voice note..." : "Message..."}
+              disabled={isRecordingVoice}
+              className="w-full bg-zinc-900 border border-white/5 rounded-full px-5 py-2.5 text-sm focus:outline-none focus:border-cyan-500/40 text-white placeholder-zinc-500 pr-10 disabled:opacity-50"
             />
-            <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white">
+            <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} disabled={isRecordingVoice} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white disabled:opacity-30">
               <Smile size={18} />
             </button>
           </div>
 
           <button 
             type="submit"
-            disabled={!newMessage.trim()}
+            disabled={!newMessage.trim() || isRecordingVoice}
             className="p-2.5 bg-cyan-500 text-black rounded-full hover:bg-cyan-400 disabled:opacity-30 disabled:hover:bg-cyan-500 transition-all shadow-lg shadow-cyan-500/10"
           >
             <Send size={16} className="fill-current" />
