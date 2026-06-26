@@ -48,6 +48,7 @@ const Messaging = () => {
       if (!user) return;
       setCurrentUserId(user.id);
 
+    // Fetching user profiles concurrently
       const [myProf, individualProf] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('profiles').select('*').eq('id', peerUserId).single()
@@ -66,16 +67,23 @@ const Messaging = () => {
     socketRef.current = io(SOCKET_SERVER_URL);
     socketRef.current.emit('user_going_online', currentUserId);
 
-    // FIX: Using implicit routing delimiters instead of commas to completely fix the 400 Bad Request error
     const loadConversationStream = async () => {
+      // Query records matching either participant to bypass nested PostgREST syntax rules
       const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .or(`sender_id.eq.${currentUserId}&receiver_id.eq.${peerUserId},sender_id.eq.${peerUserId}&receiver_id.eq.${currentUserId}`)
+        .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        setMessages(data);
+        // Enforce strict filter logic client-side 
+        const directConversationThread = data.filter(msg => 
+          (msg.sender_id === currentUserId && msg.receiver_id === peerUserId) ||
+          (msg.sender_id === peerUserId && msg.receiver_id === currentUserId)
+        );
+
+        setMessages(directConversationThread);
+
         // Mark messages as read when viewing conversation thread
         await supabase
           .from('messages')
@@ -168,7 +176,6 @@ const Messaging = () => {
       const file = e.target.files[0];
       if (!file) return;
 
-      // Temporary local object placeholder URL generator until your Supabase storage buckets are configured
       const mockMediaUrl = URL.createObjectURL(file);
 
       const payload = {
