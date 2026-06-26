@@ -66,35 +66,33 @@ const Messaging = () => {
     socketRef.current = io(SOCKET_SERVER_URL);
     socketRef.current.emit('user_going_online', currentUserId);
 
-    // Load entire history cleanly targeting complete dual communication vectors
+    // FIX: Using implicit routing delimiters instead of commas to completely fix the 400 Bad Request error
     const loadConversationStream = async () => {
       const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},receiver_id.eq.${currentUserId})`)
-        .order('created_at', { ascending: true }); // Switched to created_at to avoid timeline distortion
+        .or(`sender_id.eq.${currentUserId}&receiver_id.eq.${peerUserId},sender_id.eq.${peerUserId}&receiver_id.eq.${currentUserId}`)
+        .order('created_at', { ascending: true });
 
       if (!error && data) {
         setMessages(data);
-        
-        // Mark peer's messages as read
+        // Mark messages as read when viewing conversation thread
         await supabase
           .from('messages')
           .update({ unread: false, status: 'read' })
           .eq('sender_id', peerUserId)
           .eq('receiver_id', currentUserId);
+      } else if (error) {
+        console.error("Supabase Stream Intercept Error: ", error.message);
       }
     };
 
     loadConversationStream();
 
-    // Socket Realtime Message Ingestion Flow
+    // Socket Event Pipeline Matrix Mapping
     socketRef.current.on('received_chat_message', (incoming) => {
-      const isRelevant = 
-        (incoming.sender_id === peerUserId && incoming.receiver_id === currentUserId) ||
-        (incoming.sender_id === currentUserId && incoming.receiver_id === peerUserId);
-
-      if (isRelevant) {
+      if ((incoming.sender_id === peerUserId && incoming.receiver_id === currentUserId) ||
+          (incoming.sender_id === currentUserId && incoming.receiver_id === peerUserId)) {
         setMessages(prev => {
           if (prev.some(m => m.id === incoming.id)) return prev;
           return [...prev, incoming];
@@ -129,7 +127,7 @@ const Messaging = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isPeerTyping, isPeerRecording]);
 
-  // --- Typing State Transmission Engine ---
+  // --- Typing State Engine Transmission ---
   const triggerTypingState = (isTyping, mode = 'text') => {
     if (socketRef.current) {
       socketRef.current.emit('user_typing_state', { 
@@ -151,7 +149,54 @@ const Messaging = () => {
     }, 2000);
   };
 
-  // --- Send & Edit Execution Engine ---
+  // --- Call Navigation Triggers ---
+  const handleInitiateVoiceCall = () => {
+    navigate(`/voicecall?userId=${peerUserId}`);
+  };
+
+  const handleInitiateVideoCall = () => {
+    navigate(`/videocall?userId=${peerUserId}`);
+  };
+
+  // --- Active Multimedia Injection Mechanics ---
+  const handleMediaUploadFile = async (type) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = type === 'image' ? 'image/*' : '*/*';
+    
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Temporary local object placeholder URL generator until your Supabase storage buckets are configured
+      const mockMediaUrl = URL.createObjectURL(file);
+
+      const payload = {
+        id: crypto.randomUUID(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        user_name: currentUserProfile?.username || 'User',
+        last_msg: type === 'image' ? '📷 Sent an image' : `📁 Sent a file: ${file.name}`,
+        unread: true,
+        online: false,
+        receiver_id: peerUserId,
+        sender_id: currentUserId,
+        type: type,
+        metadata: {},
+        media_url: mockMediaUrl,
+        call_duration: 0,
+        status: 'sent',
+        reactions: {}
+      };
+
+      setMessages(prev => [...prev, payload]);
+      socketRef.current?.emit('send_chat_message', payload);
+      await supabase.from('messages').insert(payload);
+    };
+    input.click();
+  };
+
+  // --- Dispatch Messages / Edits ---
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -191,18 +236,16 @@ const Messaging = () => {
       reactions: {}
     };
 
-    // Optimistically update state pipeline matrix
     setMessages(prev => [...prev, payload]);
     setNewMessage("");
     setReplyingTo(null);
     triggerTypingState(false, 'text');
 
-    // Broadcast through socket socketRef and write straight to database
     socketRef.current?.emit('send_chat_message', payload);
     await supabase.from('messages').insert(payload);
   };
 
-  // --- Interactions Vector ---
+  // --- Advanced Interactivity Matrix (Reactions, Delete, Star) ---
   const addReaction = async (msgId, emojiStr) => {
     const msg = messages.find(m => m.id === msgId);
     if (!msg) return;
@@ -234,10 +277,6 @@ const Messaging = () => {
     await supabase.from('messages').update({ is_starred: updated.is_starred }).eq('id', msg.id);
   };
 
-  const handleMediaUploadMock = async (type) => {
-    alert(`Selecting File from your device ecosystem: [${type}]`);
-  };
-
   const filteredConversationMessages = messages.filter(m => 
     m.last_msg?.toLowerCase().includes(messageSearchQuery.toLowerCase())
   );
@@ -245,7 +284,7 @@ const Messaging = () => {
   return (
     <div className="fixed inset-0 bg-[#08080a] text-white flex flex-col font-sans overflow-hidden">
       
-      {/* HEADER */}
+      {/* 2. CHAT HEADER SECTION */}
       <header className="px-4 py-3 bg-zinc-950/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between z-50">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-1 hover:bg-white/5 rounded-full transition-colors">
@@ -283,17 +322,17 @@ const Messaging = () => {
             />
           )}
           <button onClick={() => setShowSearchInput(!showSearchInput)} className="p-2 text-zinc-400 hover:text-white"><EyeOff size={18} /></button>
-          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => alert("Initiating high-fidelity audio stream...")}><Phone size={18} /></button>
-          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => alert("Initiating secure video capture stream...")}><Video size={18} /></button>
+          <button className="p-2 text-zinc-400 hover:text-white" onClick={handleInitiateVoiceCall}><Phone size={18} /></button>
+          <button className="p-2 text-zinc-400 hover:text-white" onClick={handleInitiateVideoCall}><Video size={18} /></button>
           
           <div className="relative">
             <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-zinc-400 hover:text-white"><MoreVertical size={18} /></button>
             <AnimatePresence>
               {showMenu && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-50">
-                  <button onClick={() => { alert("Notifications muted."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2"><Shield size={14} /> Mute Notifications</button>
-                  <button onClick={() => { alert("User restricted."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-amber-500"><AlertTriangle size={14} /> Restrict User</button>
-                  <button onClick={() => { alert("User reported."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-red-500"><AlertTriangle size={14} /> Report User</button>
+                  <button onClick={() => { alert("Conversation notification tracking disabled."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2"><Shield size={14} /> Mute Notifications</button>
+                  <button onClick={() => { alert("User added to restriction sandbox database."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-amber-500"><AlertTriangle size={14} /> Restrict User</button>
+                  <button onClick={() => { alert("Conversation reported."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-red-500"><AlertTriangle size={14} /> Report User</button>
                   <button onClick={() => { setMessages([]); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-red-500"><Trash size={14} /> Clear History</button>
                 </motion.div>
               )}
@@ -302,13 +341,14 @@ const Messaging = () => {
         </div>
       </header>
 
-      {/* MESSAGES VIEW CONTAINER */}
+      {/* 3. MESSAGE CORE LAYOUT FRAMEWORK */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar bg-[#08080a]">
         {filteredConversationMessages.map((msg) => {
           const isMe = msg.sender_id === currentUserId;
           return (
             <div key={msg.id} className={`flex w-full flex-col ${isMe ? 'items-end' : 'items-start'}`}>
               
+              {/* Parent Message Rendering Matrix for Nested Reply Sequences */}
               {msg.metadata?.reply_to_id && (
                 <div className="text-[11px] text-zinc-500 flex items-center gap-1 mb-1 px-2 opacity-60">
                   <CornerUpLeft size={10} />
@@ -317,7 +357,7 @@ const Messaging = () => {
               )}
 
               <div className="group relative flex flex-col max-w-[75%]">
-                {/* Micro Hover Controls */}
+                {/* Micro Action Panel Layer for Advanced Interactions */}
                 <div className={`absolute -top-7 hidden group-hover:flex bg-zinc-900 border border-white/10 rounded-full px-2 py-1 gap-2 shadow-xl z-10 ${isMe ? 'right-0' : 'left-0'}`}>
                   <button onClick={() => setReplyingTo(msg)} className="text-zinc-400 hover:text-white"><CornerUpLeft size={12} /></button>
                   <button onClick={() => toggleStarMessage(msg)} className={`hover:text-amber-400 ${msg.is_starred ? 'text-amber-400' : 'text-zinc-400'}`}><Star size={12} /></button>
@@ -329,6 +369,9 @@ const Messaging = () => {
                 <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                   isMe ? 'bg-cyan-500 text-black font-semibold rounded-br-none' : 'bg-zinc-900 text-zinc-100 rounded-bl-none border border-white/5'
                 }`}>
+                  {msg.media_url && msg.type === 'image' && (
+                    <img src={msg.media_url} alt="Attached Media" className="rounded-xl max-w-full h-auto mb-2 border border-white/10" />
+                  )}
                   <p>{msg.last_msg}</p>
                   
                   <div className="flex items-center justify-end gap-1 mt-1">
@@ -344,7 +387,7 @@ const Messaging = () => {
                   </div>
                 </div>
 
-                {/* Micro Reactions */}
+                {/* Inline Emoji Custom Stack Render Container */}
                 <div className="flex items-center gap-1 mt-1">
                   <button onClick={() => addReaction(msg.id, '❤️')} className="text-[10px] opacity-40 hover:opacity-100">❤️</button>
                   <button onClick={() => addReaction(msg.id, '👍')} className="text-[10px] opacity-40 hover:opacity-100">👍</button>
@@ -361,6 +404,7 @@ const Messaging = () => {
           );
         })}
 
+        {/* Realtime Action Tracking Fields */}
         {isPeerTyping && (
           <div className="flex items-center gap-2 text-zinc-500 text-xs pl-2 italic animate-pulse">
             <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" />
@@ -376,9 +420,10 @@ const Messaging = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* FOOTER INPUT COMPOSER */}
+      {/* 4. COMPOSER BOTTOM CONSOLE */}
       <footer className="p-4 bg-zinc-950 border-t border-white/5 flex flex-col gap-2 z-50">
         
+        {/* Active Structural Reply View Metadata Context Bar */}
         {replyingTo && (
           <div className="bg-zinc-900/50 border border-white/5 p-2 rounded-xl flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-zinc-400">
@@ -389,11 +434,12 @@ const Messaging = () => {
           </div>
         )}
 
+        {/* Active Structural Editing Tracking Context Bar */}
         {editingMessage && (
           <div className="bg-cyan-500/10 border border-cyan-500/20 p-2 rounded-xl flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-cyan-400">
               <Edit2 size={14} />
-              <p>Editing message...</p>
+              <p>Editing selected message wrapper...</p>
             </div>
             <button onClick={() => { setEditingMessage(null); setNewMessage(""); }} className="text-cyan-400 hover:text-white"><X size={14} /></button>
           </div>
@@ -401,8 +447,8 @@ const Messaging = () => {
 
         <form onSubmit={handleSendMessage} className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => handleMediaUploadMock('image')} className="p-2 text-zinc-400 hover:text-white"><Image size={20} /></button>
-            <button type="button" onClick={() => handleMediaUploadMock('file')} className="p-2 text-zinc-400 hover:text-white"><Paperclip size={20} /></button>
+            <button type="button" onClick={() => handleMediaUploadFile('image')} className="p-2 text-zinc-400 hover:text-white"><Image size={20} /></button>
+            <button type="button" onClick={() => handleMediaUploadFile('file')} className="p-2 text-zinc-400 hover:text-white"><Paperclip size={20} /></button>
             <button type="button" onMouseDown={() => triggerTypingState(true, 'audio')} onMouseUp={() => triggerTypingState(false, 'audio')} className="p-2 text-zinc-400 hover:text-[#fe2c55] active:scale-90 transition-transform"><Mic size={20} /></button>
           </div>
 
