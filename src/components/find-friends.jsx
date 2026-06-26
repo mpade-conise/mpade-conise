@@ -172,8 +172,9 @@ const FindFriends = () => {
                     <div className="flex gap-2">
                       {isFollowing ? (
                         <>
+                          {/* UPDATED: Navigates straight to your messages routing core panel */}
                           <button 
-                           onClick={() => navigate(`/inbox?openChat=${u.id}`)}
+                            onClick={() => navigate(`/messaging?userId=${u.id}`)}
                             className="bg-zinc-800 p-2.5 rounded-full text-white active:scale-90 transition-transform"
                           >
                             <MessageSquare size={16} />
