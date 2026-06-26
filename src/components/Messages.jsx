@@ -5,40 +5,14 @@ import { io } from 'socket.io-client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Phone, Video, MoreVertical, Send, Image, Smile, Mic, Paperclip, 
-  CornerUpLeft, Trash2, Edit2, Pin, Star, Shield, AlertTriangle, 
-  Trash, EyeOff, Check, CheckCheck, FileText, X, Play, Pause
+  CornerUpLeft, Trash2, Edit2, Copy, Pin, Star, Languages, Shield, AlertTriangle, 
+  Trash, EyeOff, Radio, Users, Check, CheckCheck, Clock, Camera, FileText, MapPin, 
+  BarChart2, SmilePlus, X 
 } from 'lucide-react';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
-
-const AudioPlayer = ({ url }) => {
-  const audioRef = useRef(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  const togglePlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  return (
-    <div className="flex items-center gap-3 bg-black/20 px-3 py-2 rounded-xl border border-white/5 min-w-[200px]">
-      <button type="button" onClick={togglePlay} className="p-2 bg-cyan-500 text-black rounded-full hover:bg-cyan-400 transition-colors">
-        {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-      </button>
-      <audio ref={audioRef} src={url} onEnded={() => setIsPlaying(false)} className="hidden" />
-      <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
-        <div className={`h-full bg-cyan-500 ${isPlaying ? 'w-full transition-all duration-[15s] linear' : 'w-0'}`} />
-      </div>
-    </div>
-  );
-};
 
 const Messaging = () => {
   const [searchParams] = useSearchParams();
@@ -62,13 +36,6 @@ const Messaging = () => {
   const [showMenu, setShowMenu] = useState(false);
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [showSearchInput, setShowSearchInput] = useState(false);
-
-  // Media Attachment Handling References
-  const imageInputRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
 
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -99,15 +66,18 @@ const Messaging = () => {
     socketRef.current = io(SOCKET_SERVER_URL);
     socketRef.current.emit('user_going_online', currentUserId);
 
+    // Load entire history cleanly targeting complete dual communication vectors
     const loadConversationStream = async () => {
       const { data, error } = await supabase
         .from('messages')
         .select('*')
         .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},receiver_id.eq.${currentUserId})`)
-        .order('updated_at', { ascending: true });
+        .order('created_at', { ascending: true }); // Switched to created_at to avoid timeline distortion
 
       if (!error && data) {
         setMessages(data);
+        
+        // Mark peer's messages as read
         await supabase
           .from('messages')
           .update({ unread: false, status: 'read' })
@@ -118,9 +88,13 @@ const Messaging = () => {
 
     loadConversationStream();
 
+    // Socket Realtime Message Ingestion Flow
     socketRef.current.on('received_chat_message', (incoming) => {
-      if ((incoming.sender_id === peerUserId && incoming.receiver_id === currentUserId) ||
-          (incoming.sender_id === currentUserId && incoming.receiver_id === peerUserId)) {
+      const isRelevant = 
+        (incoming.sender_id === peerUserId && incoming.receiver_id === currentUserId) ||
+        (incoming.sender_id === currentUserId && incoming.receiver_id === peerUserId);
+
+      if (isRelevant) {
         setMessages(prev => {
           if (prev.some(m => m.id === incoming.id)) return prev;
           return [...prev, incoming];
@@ -155,7 +129,7 @@ const Messaging = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isPeerTyping, isPeerRecording]);
 
-  // --- Typing State Engine Transmission ---
+  // --- Typing State Transmission Engine ---
   const triggerTypingState = (isTyping, mode = 'text') => {
     if (socketRef.current) {
       socketRef.current.emit('user_typing_state', { 
@@ -177,169 +151,7 @@ const Messaging = () => {
     }, 2000);
   };
 
-  // --- Supabase Global Media File Streaming Upload Engine ---
-  const uploadMediaAttachment = async (file, bucketName = 'message-attachments') => {
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${crypto.randomUUID()}.${fileExt}`;
-      const filePath = `${currentUserId}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from(bucketName)
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage
-        .from(bucketName)
-        .getPublicUrl(filePath);
-
-      return publicUrlData.publicUrl;
-    } catch (err) {
-      console.error("Storage upload failed:", err.message);
-      return null;
-    }
-  };
-
-  // --- Updated File Input Handler for Instant UI Rendering ---
-  const handleFileInputChange = async (e, messageType) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const optimisticId = crypto.randomUUID();
-    const localPreviewUrl = URL.createObjectURL(file);
-
-    // Optimistically project item onto message window instantly
-    const tempPayload = {
-      id: optimisticId,
-      updated_at: new Date().toISOString(),
-      user_name: currentUserProfile?.username || 'User',
-      last_msg: file.name,
-      unread: true,
-      online: false,
-      receiver_id: peerUserId,
-      sender_id: currentUserId,
-      type: messageType,
-      metadata: replyingTo ? { reply_to_id: replyingTo.id, reply_body: replyingTo.last_msg } : {},
-      media_url: localPreviewUrl,
-      call_duration: 0,
-      status: 'sending',
-      reactions: {}
-    };
-
-    setMessages(prev => [...prev, tempPayload]);
-    setReplyingTo(null);
-
-    // Run background storage upload pipeline
-    const uploadedUrl = await uploadMediaAttachment(file);
-    if (!uploadedUrl) {
-      setMessages(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'failed' } : m));
-      return;
-    }
-
-    // Replace preview details with formal payload link matrix
-    sendStructuredPayload(file.name, messageType, uploadedUrl, optimisticId);
-  };
-
-  // --- Updated Voice Note Capturing Streams ---
-  const handleToggleVoiceRecording = async () => {
-    if (isRecordingVoice) {
-      mediaRecorderRef.current?.stop();
-      setIsRecordingVoice(false);
-      triggerTypingState(false, 'audio');
-    } else {
-      audioChunksRef.current = [];
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = recorder;
-
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) audioChunksRef.current.push(e.data);
-        };
-
-        recorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          const audioFile = new File([audioBlob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
-          
-          const optimisticId = crypto.randomUUID();
-          const localAudioUrl = URL.createObjectURL(audioFile);
-
-          // Optimistically load voice waveform component box onto interface immediately
-          const tempAudioPayload = {
-            id: optimisticId,
-            updated_at: new Date().toISOString(),
-            user_name: currentUserProfile?.username || 'User',
-            last_msg: "Voice Note",
-            unread: true,
-            online: false,
-            receiver_id: peerUserId,
-            sender_id: currentUserId,
-            type: 'audio',
-            metadata: replyingTo ? { reply_to_id: replyingTo.id, reply_body: replyingTo.last_msg } : {},
-            media_url: localAudioUrl,
-            call_duration: 0,
-            status: 'sending',
-            reactions: {}
-          };
-
-          setMessages(prev => [...prev, tempAudioPayload]);
-          setReplyingTo(null);
-
-          const uploadedUrl = await uploadMediaAttachment(audioFile);
-          if (uploadedUrl) {
-            sendStructuredPayload("Voice Note", 'audio', uploadedUrl, optimisticId);
-          } else {
-            setMessages(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'failed' } : m));
-          }
-          stream.getTracks().forEach(track => track.stop());
-        };
-
-        recorder.start();
-        setIsRecordingVoice(true);
-        triggerTypingState(true, 'audio');
-      } catch (err) {
-        console.error("Microphone device access denied:", err);
-      }
-    }
-  };
-
-  // --- Unified Payload Dispatcher (Supports Safe Replacements) ---
-  const sendStructuredPayload = async (textText, messageType = 'text', mediaUrl = null, optimisticId = null) => {
-    const targetId = optimisticId || crypto.randomUUID();
-    
-    const payload = {
-      id: targetId,
-      updated_at: new Date().toISOString(),
-      user_name: currentUserProfile?.username || 'User',
-      last_msg: textText,
-      unread: true,
-      online: false,
-      receiver_id: peerUserId,
-      sender_id: currentUserId,
-      type: messageType,
-      metadata: replyingTo ? { reply_to_id: replyingTo.id, reply_body: replyingTo.last_msg } : {},
-      media_url: mediaUrl,
-      call_duration: 0,
-      status: 'sent',
-      reactions: {}
-    };
-
-    if (optimisticId) {
-      // Overwrite the existing local preview payload parameters smoothly
-      setMessages(prev => prev.map(m => m.id === optimisticId ? payload : m));
-    } else {
-      setMessages(prev => [...prev, payload]);
-    }
-
-    setNewMessage("");
-    setReplyingTo(null);
-    triggerTypingState(false, 'text');
-
-    socketRef.current?.emit('send_chat_message', payload);
-    await supabase.from('messages').insert(payload);
-  };
-
+  // --- Send & Edit Execution Engine ---
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -361,10 +173,36 @@ const Messaging = () => {
       return;
     }
 
-    sendStructuredPayload(newMessage.trim(), 'text');
+    const payload = {
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      user_name: currentUserProfile?.username || 'User',
+      last_msg: newMessage.trim(),
+      unread: true,
+      online: false,
+      receiver_id: peerUserId,
+      sender_id: currentUserId,
+      type: 'text',
+      metadata: replyingTo ? { reply_to_id: replyingTo.id, reply_body: replyingTo.last_msg } : {},
+      media_url: null,
+      call_duration: 0,
+      status: 'sent',
+      reactions: {}
+    };
+
+    // Optimistically update state pipeline matrix
+    setMessages(prev => [...prev, payload]);
+    setNewMessage("");
+    setReplyingTo(null);
+    triggerTypingState(false, 'text');
+
+    // Broadcast through socket socketRef and write straight to database
+    socketRef.current?.emit('send_chat_message', payload);
+    await supabase.from('messages').insert(payload);
   };
 
-  // --- Advanced Interactivity Matrix (Reactions, Delete, Star) ---
+  // --- Interactions Vector ---
   const addReaction = async (msgId, emojiStr) => {
     const msg = messages.find(m => m.id === msgId);
     if (!msg) return;
@@ -396,6 +234,10 @@ const Messaging = () => {
     await supabase.from('messages').update({ is_starred: updated.is_starred }).eq('id', msg.id);
   };
 
+  const handleMediaUploadMock = async (type) => {
+    alert(`Selecting File from your device ecosystem: [${type}]`);
+  };
+
   const filteredConversationMessages = messages.filter(m => 
     m.last_msg?.toLowerCase().includes(messageSearchQuery.toLowerCase())
   );
@@ -403,11 +245,7 @@ const Messaging = () => {
   return (
     <div className="fixed inset-0 bg-[#08080a] text-white flex flex-col font-sans overflow-hidden">
       
-      {/* HIDDEN MEDIA CORE HARDWARE INTERFACE DEVICE CAPTURING REFERENCE LABELS */}
-      <input type="file" ref={imageInputRef} accept="image/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'image')} />
-      <input type="file" ref={fileInputRef} accept="*/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'file')} />
-
-      {/* 2. CHAT HEADER SECTION */}
+      {/* HEADER */}
       <header className="px-4 py-3 bg-zinc-950/80 backdrop-blur-xl border-b border-white/5 flex items-center justify-between z-50">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-1 hover:bg-white/5 rounded-full transition-colors">
@@ -445,17 +283,17 @@ const Messaging = () => {
             />
           )}
           <button onClick={() => setShowSearchInput(!showSearchInput)} className="p-2 text-zinc-400 hover:text-white"><EyeOff size={18} /></button>
-          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => navigate(`/voice-call?userId=${peerUserId}`)}><Phone size={18} /></button>
-          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => navigate(`/video-call?userId=${peerUserId}`)}><Video size={18} /></button>
+          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => alert("Initiating high-fidelity audio stream...")}><Phone size={18} /></button>
+          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => alert("Initiating secure video capture stream...")}><Video size={18} /></button>
           
           <div className="relative">
             <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-zinc-400 hover:text-white"><MoreVertical size={18} /></button>
             <AnimatePresence>
               {showMenu && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-50">
-                  <button onClick={() => { alert("Conversation notification tracking disabled."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2"><Shield size={14} /> Mute Notifications</button>
-                  <button onClick={() => { alert("User added to restriction sandbox database."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-amber-500"><AlertTriangle size={14} /> Restrict User</button>
-                  <button onClick={() => { alert("Conversation reported."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-red-500"><AlertTriangle size={14} /> Report User</button>
+                  <button onClick={() => { alert("Notifications muted."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2"><Shield size={14} /> Mute Notifications</button>
+                  <button onClick={() => { alert("User restricted."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-amber-500"><AlertTriangle size={14} /> Restrict User</button>
+                  <button onClick={() => { alert("User reported."); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-red-500"><AlertTriangle size={14} /> Report User</button>
                   <button onClick={() => { setMessages([]); setShowMenu(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 rounded-xl flex items-center gap-2 text-red-500"><Trash size={14} /> Clear History</button>
                 </motion.div>
               )}
@@ -464,7 +302,7 @@ const Messaging = () => {
         </div>
       </header>
 
-      {/* 3. MESSAGE CORE LAYOUT FRAMEWORK */}
+      {/* MESSAGES VIEW CONTAINER */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar bg-[#08080a]">
         {filteredConversationMessages.map((msg) => {
           const isMe = msg.sender_id === currentUserId;
@@ -479,44 +317,26 @@ const Messaging = () => {
               )}
 
               <div className="group relative flex flex-col max-w-[75%]">
+                {/* Micro Hover Controls */}
                 <div className={`absolute -top-7 hidden group-hover:flex bg-zinc-900 border border-white/10 rounded-full px-2 py-1 gap-2 shadow-xl z-10 ${isMe ? 'right-0' : 'left-0'}`}>
                   <button onClick={() => setReplyingTo(msg)} className="text-zinc-400 hover:text-white"><CornerUpLeft size={12} /></button>
                   <button onClick={() => toggleStarMessage(msg)} className={`hover:text-amber-400 ${msg.is_starred ? 'text-amber-400' : 'text-zinc-400'}`}><Star size={12} /></button>
                   <button onClick={() => togglePinMessage(msg)} className={`hover:text-cyan-400 ${msg.is_pinned ? 'text-cyan-400' : 'text-zinc-400'}`}><Pin size={12} /></button>
-                  {isMe && msg.type === 'text' && <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.last_msg); }} className="text-zinc-400 hover:text-cyan-400"><Edit2 size={12} /></button>}
+                  {isMe && <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.last_msg); }} className="text-zinc-400 hover:text-cyan-400"><Edit2 size={12} /></button>}
                   {isMe && <button onClick={() => deleteMessage(msg.id)} className="text-zinc-400 hover:text-red-500"><Trash2 size={12} /></button>}
                 </div>
 
                 <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                   isMe ? 'bg-cyan-500 text-black font-semibold rounded-br-none' : 'bg-zinc-900 text-zinc-100 rounded-bl-none border border-white/5'
-                } ${msg.status === 'sending' ? 'opacity-70 animate-pulse' : ''} ${msg.status === 'failed' ? 'border border-red-500/50 bg-red-500/10' : ''}`}>
-                  
-                  {/* MULTIMEDIA RENDERING MATRIX ROUTERS */}
-                  {msg.type === 'image' && msg.media_url && (
-                    <img src={msg.media_url} crossOrigin="anonymous" referrerPolicy="no-referrer" alt="Attachment" className="max-w-full rounded-xl mb-1 object-cover max-h-60 border border-white/10 shadow-md" />
-                  )}
-
-                  {msg.type === 'file' && msg.media_url && (
-                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-black/10 px-3 py-2 rounded-xl mb-1 border border-white/5 text-xs font-bold tracking-tight hover:underline">
-                      <FileText size={16} className="text-cyan-400" />
-                      <span className="truncate max-w-[180px]">{msg.last_msg}</span>
-                    </a>
-                  )}
-
-                  {msg.type === 'audio' && msg.media_url && (
-                    <AudioPlayer url={msg.media_url} />
-                  )}
-
-                  {msg.type === 'text' && <p>{msg.last_msg}</p>}
+                }`}>
+                  <p>{msg.last_msg}</p>
                   
                   <div className="flex items-center justify-end gap-1 mt-1">
-                    {msg.status === 'failed' && <span className="text-[8px] text-red-500 font-bold mr-2">Failed to upload</span>}
-                    {msg.status === 'sending' && <span className="text-[8px] text-zinc-400 italic mr-2">Sending...</span>}
                     {msg.is_edited && <span className={`text-[8px] italic font-bold ${isMe ? 'text-black/40' : 'text-zinc-600'}`}>Edited</span>}
                     <span className={`text-[8px] font-black ${isMe ? 'text-black/60' : 'text-zinc-500'}`}>
                       {new Date(msg.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    {isMe && msg.status !== 'sending' && msg.status !== 'failed' && (
+                    {isMe && (
                       <span className="text-black/60">
                         {msg.status === 'read' ? <CheckCheck size={10} className="text-blue-900" /> : <Check size={10} />}
                       </span>
@@ -524,6 +344,7 @@ const Messaging = () => {
                   </div>
                 </div>
 
+                {/* Micro Reactions */}
                 <div className="flex items-center gap-1 mt-1">
                   <button onClick={() => addReaction(msg.id, '❤️')} className="text-[10px] opacity-40 hover:opacity-100">❤️</button>
                   <button onClick={() => addReaction(msg.id, '👍')} className="text-[10px] opacity-40 hover:opacity-100">👍</button>
@@ -555,7 +376,7 @@ const Messaging = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 4. COMPOSER BOTTOM CONSOLE */}
+      {/* FOOTER INPUT COMPOSER */}
       <footer className="p-4 bg-zinc-950 border-t border-white/5 flex flex-col gap-2 z-50">
         
         {replyingTo && (
@@ -572,7 +393,7 @@ const Messaging = () => {
           <div className="bg-cyan-500/10 border border-cyan-500/20 p-2 rounded-xl flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-cyan-400">
               <Edit2 size={14} />
-              <p>Editing selected message wrapper...</p>
+              <p>Editing message...</p>
             </div>
             <button onClick={() => { setEditingMessage(null); setNewMessage(""); }} className="text-cyan-400 hover:text-white"><X size={14} /></button>
           </div>
@@ -580,9 +401,9 @@ const Messaging = () => {
 
         <form onSubmit={handleSendMessage} className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => imageInputRef.current?.click()} className="p-2 text-zinc-400 hover:text-white"><Image size={20} /></button>
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-zinc-400 hover:text-white"><Paperclip size={20} /></button>
-            <button type="button" onClick={handleToggleVoiceRecording} className={`p-2 transition-transform active:scale-90 ${isRecordingVoice ? 'text-[#fe2c55] animate-pulse scale-110' : 'text-zinc-400 hover:text-white'}`}><Mic size={20} /></button>
+            <button type="button" onClick={() => handleMediaUploadMock('image')} className="p-2 text-zinc-400 hover:text-white"><Image size={20} /></button>
+            <button type="button" onClick={() => handleMediaUploadMock('file')} className="p-2 text-zinc-400 hover:text-white"><Paperclip size={20} /></button>
+            <button type="button" onMouseDown={() => triggerTypingState(true, 'audio')} onMouseUp={() => triggerTypingState(false, 'audio')} className="p-2 text-zinc-400 hover:text-[#fe2c55] active:scale-90 transition-transform"><Mic size={20} /></button>
           </div>
 
           <div className="flex-1 relative">
@@ -590,18 +411,17 @@ const Messaging = () => {
               type="text"
               value={newMessage}
               onChange={(e) => handleInputChange(e.target.value)}
-              placeholder={isRecordingVoice ? "Recording voice note..." : "Message..."}
-              disabled={isRecordingVoice}
-              className="w-full bg-zinc-900 border border-white/5 rounded-full px-5 py-2.5 text-sm focus:outline-none focus:border-cyan-500/40 text-white placeholder-zinc-500 pr-10 disabled:opacity-50"
+              placeholder="Message..."
+              className="w-full bg-zinc-900 border border-white/5 rounded-full px-5 py-2.5 text-sm focus:outline-none focus:border-cyan-500/40 text-white placeholder-zinc-500 pr-10"
             />
-            <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} disabled={isRecordingVoice} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white disabled:opacity-30">
+            <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white">
               <Smile size={18} />
             </button>
           </div>
 
           <button 
             type="submit"
-            disabled={!newMessage.trim() || isRecordingVoice}
+            disabled={!newMessage.trim()}
             className="p-2.5 bg-cyan-500 text-black rounded-full hover:bg-cyan-400 disabled:opacity-30 disabled:hover:bg-cyan-500 transition-all shadow-lg shadow-cyan-500/10"
           >
             <Send size={16} className="fill-current" />
