@@ -32,7 +32,6 @@ const Inbox = () => {
           `)
           .eq('user_id', uid)
           .order('created_at', { ascending: false }),
-        // FIXED: Added explicit join table mapping constraints via column definitions to bypass the 400 Bad Request error
         supabase.from('messages')
           .select(`
             *,
@@ -47,7 +46,6 @@ const Inbox = () => {
       if (streamsRes.data) setLiveStreams(streamsRes.data);
       if (activitiesRes.data) setActivities(activitiesRes.data);
       
-      // Map your existing followings list into a high-speed Set lookup
       if (followsRes.data) {
         setMyFollows(new Set(followsRes.data.map(f => f.following_id)));
       }
@@ -60,7 +58,6 @@ const Inbox = () => {
           const otherUser = m.sender_id === uid ? m.receiver : m.sender;
           if (otherUser && !seenIds.has(otherUser.id)) {
             seenIds.add(otherUser.id);
-            // Dynamic display patch ensuring you always look at the counterpart's profile
             uniqueThreads.push({
               ...m,
               displayProfile: otherUser
@@ -79,7 +76,6 @@ const Inbox = () => {
   const handleFollowBack = async (targetId) => {
     if (!currentUserId || !targetId) return;
 
-    // Optimistic UI Update to eliminate loading lag
     setMyFollows(prev => {
       const updated = new Set(prev);
       updated.add(targetId);
@@ -96,7 +92,6 @@ const Inbox = () => {
 
       if (error) {
         console.error("Error following user:", error.message);
-        // Rollback on remote error
         setMyFollows(prev => {
           const updated = new Set(prev);
           updated.delete(targetId);
@@ -111,22 +106,30 @@ const Inbox = () => {
   const markAsRead = async (typeGroup) => {
     if (!currentUserId) return;
 
+    // Direct State mutation to ensure badge numbers drop immediately
     setActivities(prev => prev.map(act => {
       if (typeGroup === 'follow' && act.type === 'follow') return { ...act, is_read: true };
       if (typeGroup === 'activity' && act.type !== 'follow') return { ...act, is_read: true };
       return act;
     }));
 
-    const query = supabase
-      .from('activities')
-      .update({ is_read: true })
-      .eq('user_id', currentUserId)
-      .eq('is_read', false);
+    try {
+      let query = supabase
+        .from('activities')
+        .update({ is_read: true })
+        .eq('user_id', currentUserId)
+        .eq('is_read', false);
 
-    if (typeGroup === 'follow') {
-      await query.eq('type', 'follow');
-    } else {
-      await query.neq('type', 'follow');
+      if (typeGroup === 'follow') {
+        query = query.eq('type', 'follow');
+      } else {
+        query = query.neq('type', 'follow');
+      }
+
+      const { error } = await query;
+      if (error) console.error("Database Update Error on MarkRead:", error.message);
+    } catch (err) {
+      console.error("Mark as read query failed:", err);
     }
   };
 
@@ -140,8 +143,6 @@ const Inbox = () => {
       setCurrentUserId(user.id);
       await fetchData(user.id);
       
-      // CRITICAL REALTIME LOOP FIX: Listen exclusively to INSERT events 
-      // on incoming events. Avoid checking universal message modifications (*).
       const channel = supabase.channel(`inbox-realtime-${user.id}`)
         .on('postgres_changes', { 
             event: 'INSERT', 
@@ -171,7 +172,9 @@ const Inbox = () => {
   const getActivityIcon = (type) => {
     switch (type) {
       case 'comment': return <MessageCircle size={12} fill="currentColor" />;
+      case 'video_comments': return <MessageCircle size={12} fill="currentColor" />;
       case 'like': return <Heart size={12} fill="currentColor" />;
+      case 'video_likes': return <Heart size={12} fill="currentColor" />;
       default: return <Bell size={12} fill="currentColor" />;
     }
   };
@@ -225,7 +228,7 @@ const Inbox = () => {
                         <p className="text-[14px] font-bold">@{item.actor?.username || 'user'}</p>
                         <p className="text-[12px] text-zinc-500">
                           {item.type === 'follow' ? 'started following you' : 
-                           item.type === 'like' ? 'liked your video' : 'commented on your video'}
+                           (item.type === 'like' || item.type === 'video_likes') ? 'liked your video' : 'commented on your video'}
                         </p>
                         <p className="text-[10px] text-zinc-600 font-bold uppercase mt-1">
                           {formatDistanceToNow(new Date(item.created_at))} ago
@@ -246,9 +249,13 @@ const Inbox = () => {
                         {isFollowingBack ? 'Friends' : 'Follow Back'}
                       </button>
                     ) : item.video_id && (
-                      <div onClick={() => navigate(`/video/${item.video_id}`)} className="w-12 h-16 rounded-lg bg-zinc-800 relative overflow-hidden border border-white/5 cursor-pointer">
-                        {item.videos?.thumbnail_url && (
+                      <div onClick={() => navigate(`/video/${item.video_id}`)} className="w-12 h-16 rounded-lg bg-zinc-800 relative overflow-hidden border border-white/5 cursor-pointer flex items-center justify-center">
+                        {item.videos?.thumbnail_url ? (
                           <img src={item.videos.thumbnail_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-full h-full object-cover" alt="" />
+                        ) : item.video_url ? (
+                          <video src={item.video_url} className="w-full h-full object-cover" muted playsInline />
+                        ) : (
+                          <div className="w-full h-full bg-zinc-700" />
                         )}
                       </div>
                     )}
@@ -278,7 +285,6 @@ const Inbox = () => {
       </header>
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        {/* Live Stream Horizontal Rail */}
         {liveStreams.length > 0 && (
           <div className="flex gap-4 px-4 py-6 overflow-x-auto no-scrollbar border-b border-white/5">
             {liveStreams.map((live) => (
@@ -310,7 +316,6 @@ const Inbox = () => {
           </div>
         </div>
 
-        {/* Messaging List */}
         <div className="mt-4 px-2 pb-24">
           <h3 className="px-4 mb-2 text-[11px] font-black text-zinc-500 uppercase">Direct Messages</h3>
           {messages.map((msg) => (
