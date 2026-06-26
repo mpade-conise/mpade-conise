@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App'
+import { LanguageProvider } from './context/LanguageContext' // Import the provider
+import { ThemeProvider } from './context/ThemeContext';
 
 // --- GLOBAL WEBRTC CONFIGURATION INJECTION ---
 // This prevents ReferenceErrors across all minified production chunks (like VW)
@@ -27,7 +29,11 @@ const root = createRoot(rootElement);
 root.render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <LanguageProvider>
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
+      </LanguageProvider>
     </BrowserRouter>
   </StrictMode>
 );

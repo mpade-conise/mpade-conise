@@ -1,10 +1,11 @@
 // hooks/useStreamSocket.js
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
 export const useStreamSocket = (streamId, isHost = true) => {
-  const socketRef = useRef(null);
+  // 1. Turned socket into reactive state so subcomponents receive updates instantly when connection mounts
+  const [socket, setSocket] = useState(null);
   const [viewers, setViewers] = useState([]);
   const [joinAlert, setJoinAlert] = useState(null);
   const [activeGift, setActiveGift] = useState(null);
@@ -20,44 +21,53 @@ export const useStreamSocket = (streamId, isHost = true) => {
       return;
     }
 
-    const socket = globalIo(SOCKET_SERVER_URL, {
+    const socketInstance = globalIo(SOCKET_SERVER_URL, {
       transports: ['websocket', 'polling'],
       query: { room: streamId, role: isHost ? 'host' : 'viewer' },
       forceNew: true
     });
     
-    socketRef.current = socket;
+    setSocket(socketInstance);
 
-    socket.on('viewer_joined', (data) => {
+    socketInstance.on('viewer_joined', (data) => {
       setJoinAlert(`${data.username || 'A viewer'} joined the stream!`);
       setTimeout(() => setJoinAlert(null), 3000);
     });
 
-    socket.on('room_presence_update', (users) => {
+    socketInstance.on('room_presence_update', (users) => {
       setViewers(users);
     });
 
-    socket.on('received_reaction', (data) => {
+    socketInstance.on('received_reaction', (data) => {
       setReactionTrigger({ id: Date.now(), type: data.type });
     });
 
-    socket.on('incoming_gift_alert', (giftData) => {
+    socketInstance.on('incoming_gift_alert', (giftData) => {
       setActiveGift(giftData);
       setTimeout(() => setActiveGift(null), 4000);
     });
 
-    socket.on('battle_invite_received', (payload) => {
-      console.log("⚔️ Incoming battle invite via Socket.io:", payload);
+    // 2. Clear handling for incoming alliance signaling notifications
+    socketInstance.on('battle_invite_received', (payload) => {
+      console.log("⚔️ Incoming battle invite received on socket:", payload);
       setIncomingInvite(payload);
     });
 
+    // 3. Independent handler listener for multi-stage room evictions
+    socketInstance.on('cohost_eviction_notice', (payload) => {
+      console.warn("⚠️ CoHost Eviction Notice:", payload?.reason);
+      // Dispatches a native window event so independent layers can catch it and kick out cleanly
+      const evictionEvent = new CustomEvent('mpade_cohost_eviction', { detail: payload });
+      window.dispatchEvent(evictionEvent);
+    });
+
     return () => {
-      if (socket) socket.disconnect();
+      if (socketInstance) socketInstance.disconnect();
     };
   }, [streamId, isHost]);
 
   return {
-    socket: socketRef.current,
+    socket, // 👈 Now returns a reactive state variable instead of a stale ref value!
     viewers,
     joinAlert,
     activeGift,

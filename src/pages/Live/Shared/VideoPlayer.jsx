@@ -2,20 +2,29 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
-// UPGRADE: Define Open Relay STUN + TURN configurations outside to ensure stability
-const UPGRADED_ICE_CONFIG = {
+// CORRECTED GLOBAL ICE CONFIG MATCHING METERED METRICS
+const GLOBAL_ICE_CONFIG = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: "stun:stun.relay.metered.ca:80" },
     {
-      urls: 'turn:staticauth.openrelay.metered.ca:443',
-      username: 'openrelayprojectsecret',
-      credential: 'openrelayprojectsecret'
+      urls: "turn:global.relay.metered.ca:80",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
     },
     {
-      urls: 'turn:staticauth.openrelay.metered.ca:80',
-      username: 'openrelayprojectsecret',
-      credential: 'openrelayprojectsecret'
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
+    },
+    {
+      urls: "turn:global.relay.metered.ca:443",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
     }
   ],
   iceCandidatePoolSize: 10
@@ -28,6 +37,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   
   const peerConnectionsRef = useRef({}); 
   const singleViewerPcRef = useRef(null); 
+  const iceCandidatesQueueRef = useRef({}); // Queues early candidates to block 'checking' freeze drops
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing Socket...');
@@ -99,10 +109,10 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
           socket.on('viewer_requesting_stream', async (payload) => {
             const viewerId = payload.viewerSocketId;
-            console.log(`📥 Separate request received from viewer [${viewerId}]. Allocating distinct connection...`);
+            console.log(`📥 Separate request received from viewer [${viewerId}]. Allocating connection...`);
 
-            // Use the updated ICE config
-            const pc = new RTCPeerConnection(UPGRADED_ICE_CONFIG);
+            iceCandidatesQueueRef.current[viewerId] = [];
+            const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
             peerConnectionsRef.current[viewerId] = pc;
 
             stream.getTracks().forEach(track => pc.addTrack(track, stream));
@@ -133,10 +143,23 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           });
 
           socket.on('webrtc_answer_received', async (payload) => {
-            const pc = peerConnectionsRef.current[payload.viewerSocketId];
+            const viewerId = payload.viewerSocketId;
+            const pc = peerConnectionsRef.current[viewerId];
             if (pc && !pc.currentRemoteDescription) {
-              await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-              console.log(`✅ Connection stabilized directly for viewer: ${payload.viewerSocketId}`);
+              try {
+                await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+                console.log(`✅ Connection stabilized directly for viewer: ${viewerId}`);
+                
+                // Flush queued candidates
+                if (iceCandidatesQueueRef.current[viewerId]) {
+                  for (const candidate of iceCandidatesQueueRef.current[viewerId]) {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+                  }
+                  delete iceCandidatesQueueRef.current[viewerId];
+                }
+              } catch (e) {
+                console.error("Error setting remote answer on host:", e);
+              }
             }
           });
 
@@ -144,9 +167,9 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         // 👁️ VIEWER-SPECIFIC PIPELINE
         // ==========================================
         } else {
-          // Use the updated ICE config here too
-          const pc = new RTCPeerConnection(UPGRADED_ICE_CONFIG);
+          const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
           singleViewerPcRef.current = pc;
+          iceCandidatesQueueRef.current['host_queue'] = [];
 
           pc.ontrack = (event) => {
             console.log("🎬 Media track successfully bound to viewer element.");
@@ -167,13 +190,21 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               await pc.setLocalDescription(answer);
               
               socket.emit('send_webrtc_answer', { streamId, answer });
+
+              // Flush queued host candidates
+              if (iceCandidatesQueueRef.current['host_queue']) {
+                for (const candidate of iceCandidatesQueueRef.current['host_queue']) {
+                  await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+                }
+                delete iceCandidatesQueueRef.current['host_queue'];
+              }
             } catch (err) {
               console.error("❌ Handshake failure:", err);
             }
           });
 
           pc.onicecandidate = (event) => {
-            if (event.candidate && socketRef.current?.connected) {
+            if (event.candidate && socketRef.current?.connected && socketRef.current.hostSocketId) {
               socketRef.current.emit('webrtc_ice_candidate', {
                 streamId,
                 candidate: event.candidate,
@@ -198,21 +229,32 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         // ==========================================
         socket.on('incoming_ice_candidate', async (payload) => {
           if (isHost) {
-            const pc = peerConnectionsRef.current[payload.senderSocketId];
-            if (payload.senderType === 'viewer' && pc && pc.remoteDescription) {
-              try {
-                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-              } catch (e) {
-                console.warn("Host skipped structural candidate segment layout:", e);
+            const viewerId = payload.senderSocketId;
+            const pc = peerConnectionsRef.current[viewerId];
+            if (payload.senderType === 'viewer' && pc) {
+              if (pc.remoteDescription) {
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+                } catch (e) {
+                  console.warn("Host skipped structural candidate:", e);
+                }
+              } else {
+                if (!iceCandidatesQueueRef.current[viewerId]) iceCandidatesQueueRef.current[viewerId] = [];
+                iceCandidatesQueueRef.current[viewerId].push(payload.candidate);
               }
             }
           } else {
             const pc = singleViewerPcRef.current;
-            if (payload.senderType === 'host' && pc && pc.remoteDescription) {
-              try {
-                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-              } catch (e) {
-                console.warn("Viewer skipped structural candidate segment layout:", e);
+            if (payload.senderType === 'host' && pc) {
+              if (pc.remoteDescription) {
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+                } catch (e) {
+                  console.warn("Viewer skipped structural candidate:", e);
+                }
+              } else {
+                if (!iceCandidatesQueueRef.current['host_queue']) iceCandidatesQueueRef.current['host_queue'] = [];
+                iceCandidatesQueueRef.current['host_queue'].push(payload.candidate);
               }
             }
           }

@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  MessageCircle, UserPlus, Heart, Send, Plus, Loader2, Search, Users, X, Play, Bell, ArrowLeft, Check 
+  MessageCircle, UserPlus, Heart, Users, Search, ArrowLeft, Bell, Loader2 
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatDistanceToNow } from 'date-fns';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const Inbox = () => {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [liveStreams, setLiveStreams] = useState([]);
   const [activities, setActivities] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [myFollows, setMyFollows] = useState(new Set()); // Tracks who you already follow back
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [isFollowerPanelOpen, setIsFollowerPanelOpen] = useState(false);
@@ -22,7 +22,7 @@ const Inbox = () => {
 
   const fetchData = useCallback(async (uid) => {
     try {
-      const [streamsRes, activitiesRes, messagesRes] = await Promise.all([
+      const [streamsRes, activitiesRes, messagesRes, followsRes] = await Promise.all([
         supabase.from('live_streams').select('*, profiles:host_id(avatar_url, username)').eq('status', 'live'),
         supabase.from('activities')
           .select(`
@@ -33,22 +33,35 @@ const Inbox = () => {
           .eq('user_id', uid)
           .order('created_at', { ascending: false }),
         supabase.from('messages')
-          .select('*, profiles:sender_id(avatar_url, username)')
+          .select(`
+            *,
+            sender:profiles!sender_id(id, avatar_url, username),
+            receiver:profiles!receiver_id(id, avatar_url, username)
+          `)
           .or(`receiver_id.eq.${uid},sender_id.eq.${uid}`)
-          .order('updated_at', { ascending: false })
+          .order('updated_at', { ascending: false }), // Corrected ordering criteria string to updated_at
+        supabase.from('follows').select('following_id').eq('follower_id', uid)
       ]);
 
       if (streamsRes.data) setLiveStreams(streamsRes.data);
       if (activitiesRes.data) setActivities(activitiesRes.data);
       
+      if (followsRes.data) {
+        setMyFollows(new Set(followsRes.data.map(f => f.following_id)));
+      }
+      
       if (messagesRes.data) {
         const uniqueThreads = [];
         const seenIds = new Set();
+        
         messagesRes.data.forEach(m => {
-          const otherId = m.sender_id === uid ? m.receiver_id : m.sender_id;
-          if (!seenIds.has(otherId)) {
-            seenIds.add(otherId);
-            uniqueThreads.push(m);
+          const otherUser = m.sender_id === uid ? m.receiver : m.sender;
+          if (otherUser && !seenIds.has(otherUser.id)) {
+            seenIds.add(otherUser.id);
+            uniqueThreads.push({
+              ...m,
+              displayProfile: otherUser
+            });
           }
         });
         setMessages(uniqueThreads);
@@ -61,67 +74,68 @@ const Inbox = () => {
   }, []);
 
   const handleFollowBack = async (targetId) => {
-  if (!currentUserId) return;
+    if (!currentUserId || !targetId) return;
 
-  try {
-    // .upsert handles the "Conflict" by ignoring duplicates automatically
-    // provided you have a unique constraint on these two columns
-    const { error } = await supabase
-      .from('follows')
-      .upsert(
-        { 
-          follower_id: currentUserId, 
-          following_id: targetId 
-        }, 
-        { onConflict: 'follower_id,following_id' }
-      );
+    setMyFollows(prev => {
+      const updated = new Set(prev);
+      updated.add(targetId);
+      return updated;
+    });
 
-    if (error) {
-      console.error("Error following user:", error.message);
-      return;
+    try {
+      const { error } = await supabase
+        .from('follows')
+        .upsert(
+          { follower_id: currentUserId, following_id: targetId }, 
+          { onConflict: 'follower_id,following_id' }
+        );
+
+      if (error) {
+        console.error("Error following user:", error.message);
+        setMyFollows(prev => {
+          const updated = new Set(prev);
+          updated.delete(targetId);
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error("Follow operation failed:", err);
     }
+  };
 
-    // Refresh UI to show the new state
-    await fetchData(currentUserId);
-    
-  } catch (err) {
-    console.error("Follow operation failed:", err);
-  }
-};
-
-  /**
-   * FIX: Optimistic UI Update
-   * We update the local state 'is_read' immediately.
-   * This prevents the infinite loop caused by calling fetchData() 
-   * which would trigger a re-render and re-fetch.
-   */
   const markAsRead = async (typeGroup) => {
     if (!currentUserId) return;
 
-    // 1. Update local UI state immediately
+    // Direct State mutation to ensure badge numbers drop immediately
     setActivities(prev => prev.map(act => {
-        if (typeGroup === 'follow' && act.type === 'follow') return { ...act, is_read: true };
-        if (typeGroup === 'activity' && act.type !== 'follow') return { ...act, is_read: true };
-        return act;
+      if (typeGroup === 'follow' && act.type === 'follow') return { ...act, is_read: true };
+      if (typeGroup === 'activity' && act.type !== 'follow') return { ...act, is_read: true };
+      return act;
     }));
 
-    // 2. Perform database update silently
-    const query = supabase
-      .from('activities')
-      .update({ is_read: true })
-      .eq('user_id', currentUserId)
-      .eq('is_read', false);
+    try {
+      let query = supabase
+        .from('activities')
+        .update({ is_read: true })
+        .eq('user_id', currentUserId)
+        .eq('is_read', false);
 
-    if (typeGroup === 'follow') {
-      await query.eq('type', 'follow');
-    } else {
-      await query.neq('type', 'follow');
+      if (typeGroup === 'follow') {
+        query = query.eq('type', 'follow');
+      } else {
+        query = query.neq('type', 'follow');
+      }
+
+      const { error } = await query;
+      if (error) console.error("Database Update Error on MarkRead:", error.message);
+    } catch (err) {
+      console.error("Mark as read query failed:", err);
     }
-    // No fetchData() call here to avoid loop!
   };
 
   useEffect(() => {
     let mounted = true;
+    
     const initInbox = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !mounted) return;
@@ -129,25 +143,43 @@ const Inbox = () => {
       setCurrentUserId(user.id);
       await fetchData(user.id);
       
-      // Real-time listener
       const channel = supabase.channel(`inbox-realtime-${user.id}`)
         .on('postgres_changes', { 
-            event: 'INSERT', // Only fetch on NEW items to prevent update loops
+            event: 'INSERT', 
             schema: 'public', 
             table: 'activities', 
             filter: `user_id=eq.${user.id}` 
-        }, () => fetchData(user.id))
+        }, async (payload) => {
+          if (payload.new && mounted) {
+            // Fetch actor profile immediately for instant UI placement without full page refresh
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('id, avatar_url, username')
+              .eq('id', payload.new.actor_id)
+              .single();
+
+            const fullActivity = {
+              ...payload.new,
+              actor: profileData || null
+            };
+
+            setActivities(prev => [fullActivity, ...prev]);
+          }
+        })
         .on('postgres_changes', { 
-            event: '*', 
+            event: '*', // Listen to INSERTs & UPDATEs from messaging stream
             schema: 'public', 
-            table: 'messages', 
-            filter: `receiver_id=eq.${user.id}` 
-        }, () => fetchData(user.id))
+            table: 'messages'
+        }, () => {
+          if (mounted) fetchData(user.id);
+        })
         .subscribe();
+
       channelRef.current = channel;
     };
 
     initInbox();
+    
     return () => { 
       mounted = false; 
       if (channelRef.current) supabase.removeChannel(channelRef.current); 
@@ -157,7 +189,9 @@ const Inbox = () => {
   const getActivityIcon = (type) => {
     switch (type) {
       case 'comment': return <MessageCircle size={12} fill="currentColor" />;
+      case 'video_comments': return <MessageCircle size={12} fill="currentColor" />;
       case 'like': return <Heart size={12} fill="currentColor" />;
+      case 'video_likes': return <Heart size={12} fill="currentColor" />;
       default: return <Bell size={12} fill="currentColor" />;
     }
   };
@@ -184,55 +218,67 @@ const Inbox = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-2 space-y-1 no-scrollbar">
-              {data.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-white/5 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      {item.actor?.avatar_url ? (
-                        <img 
-                          src={item.actor.avatar_url} 
-                          crossOrigin="anonymous" 
-                          referrerPolicy="no-referrer"
-                          className="w-12 h-12 rounded-full object-cover border border-white/10" 
-                          alt="" 
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center border border-white/10 text-zinc-500 uppercase font-black text-xs">
-                          {item.actor?.username?.substring(0,2) || '??'}
+              {data.map((item) => {
+                const isFollowingBack = myFollows.has(item.actor_id);
+                return (
+                  <div key={item.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-white/5 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        {item.actor?.avatar_url ? (
+                          <img 
+                            src={item.actor.avatar_url} 
+                            crossOrigin="anonymous" 
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 rounded-full object-cover border border-white/10" 
+                            alt="" 
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center border border-white/10 text-zinc-500 uppercase font-black text-xs">
+                            {item.actor?.username?.substring(0,2) || '??'}
+                          </div>
+                        )}
+                        <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/10 text-[#00f2ea]">
+                          {getActivityIcon(item.type)}
                         </div>
-                      )}
-                      <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/10 text-[#00f2ea]">
-                        {getActivityIcon(item.type)}
+                      </div>
+                      <div>
+                        <p className="text-[14px] font-bold">@{item.actor?.username || 'user'}</p>
+                        <p className="text-[12px] text-zinc-500">
+                          {item.type === 'follow' ? 'started following you' : 
+                           (item.type === 'like' || item.type === 'video_likes') ? 'liked your video' : 'commented on your video'}
+                        </p>
+                        <p className="text-[10px] text-zinc-600 font-bold uppercase mt-1">
+                          {formatDistanceToNow(new Date(item.created_at))} ago
+                        </p>
                       </div>
                     </div>
-                    <div>
-                      <p className="text-[14px] font-bold">@{item.actor?.username || 'user'}</p>
-                      <p className="text-[12px] text-zinc-500">
-                        {item.type === 'follow' ? 'started following you' : 
-                         item.type === 'like' ? 'liked your video' : 'commented on your video'}
-                      </p>
-                      <p className="text-[10px] text-zinc-600 font-bold uppercase mt-1">
-                        {formatDistanceToNow(new Date(item.created_at))} ago
-                      </p>
-                    </div>
+                    
+                    {item.type === 'follow' ? (
+                      <button 
+                        onClick={() => handleFollowBack(item.actor_id)}
+                        disabled={isFollowingBack}
+                        className={`text-[12px] font-black px-4 py-2 rounded-lg transition-all ${
+                          isFollowingBack 
+                            ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed' 
+                            : 'bg-[#fe2c55] text-white active:scale-95'
+                        }`}
+                      >
+                        {isFollowingBack ? 'Friends' : 'Follow Back'}
+                      </button>
+                    ) : item.video_id && (
+                      <div onClick={() => navigate(`/video/${item.video_id}`)} className="w-12 h-16 rounded-lg bg-zinc-800 relative overflow-hidden border border-white/5 cursor-pointer flex items-center justify-center">
+                        {item.videos?.thumbnail_url ? (
+                          <img src={item.videos.thumbnail_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-full h-full object-cover" alt="" />
+                        ) : item.video_url ? (
+                          <video src={item.video_url} className="w-full h-full object-cover" muted playsInline />
+                        ) : (
+                          <div className="w-full h-full bg-zinc-700" />
+                        )}
+                      </div>
+                    )}
                   </div>
-                  
-                  {item.type === 'follow' ? (
-                    <button 
-                      onClick={() => handleFollowBack(item.actor_id)}
-                      className="bg-[#fe2c55] text-white text-[12px] font-black px-4 py-2 rounded-lg"
-                    >
-                      Follow Back
-                    </button>
-                  ) : item.video_id && (
-                    <div onClick={() => navigate(`/video/${item.video_id}`)} className="w-12 h-16 rounded-lg bg-zinc-800 relative overflow-hidden border border-white/5 cursor-pointer">
-                      {item.videos?.thumbnail_url && (
-                        <img src={item.videos.thumbnail_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-full h-full object-cover" alt="" />
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </motion.div>
         </>
@@ -256,16 +302,18 @@ const Inbox = () => {
       </header>
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        <div className="flex gap-4 px-4 py-6 overflow-x-auto no-scrollbar border-b border-white/5">
-          {liveStreams.map((live) => (
-            <div key={live.id} onClick={() => navigate(`/watch-live/${live.id}`)} className="flex flex-col items-center min-w-[72px] cursor-pointer">
-              <div className="relative p-[2px] rounded-full bg-gradient-to-tr from-[#00f2ea] to-[#fe2c55]">
-                <img src={live.profiles?.avatar_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-[58px] h-[58px] rounded-full object-cover" alt="" />
+        {liveStreams.length > 0 && (
+          <div className="flex gap-4 px-4 py-6 overflow-x-auto no-scrollbar border-b border-white/5">
+            {liveStreams.map((live) => (
+              <div key={live.id} onClick={() => navigate(`/watch-live/${live.id}`)} className="flex flex-col items-center min-w-[72px] cursor-pointer">
+                <div className="relative p-[2px] rounded-full bg-gradient-to-tr from-[#00f2ea] to-[#fe2c55]">
+                  <img src={live.profiles?.avatar_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-[58px] h-[58px] rounded-full object-cover" alt="" />
+                </div>
+                <span className="text-[11px] font-bold mt-2 truncate w-16 text-center">@{live.profiles?.username}</span>
               </div>
-              <span className="text-[11px] font-bold mt-2 truncate w-16 text-center">@{live.profiles?.username}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         <div className="px-4 py-4 space-y-2">
           <div onClick={() => { setIsFollowerPanelOpen(true); markAsRead('follow'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 cursor-pointer hover:bg-white/10 transition-colors">
@@ -288,11 +336,22 @@ const Inbox = () => {
         <div className="mt-4 px-2 pb-24">
           <h3 className="px-4 mb-2 text-[11px] font-black text-zinc-500 uppercase">Direct Messages</h3>
           {messages.map((msg) => (
-             <div key={msg.id} onClick={() => navigate(`/messaging?userId=${msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id}`)} className="flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-white/5 cursor-pointer">
-                <img src={msg.profiles?.avatar_url} crossOrigin="anonymous" referrerPolicy="no-referrer" className="w-14 h-14 rounded-full object-cover border border-white/10" alt="" />
+             <div 
+               key={msg.id} 
+               onClick={() => navigate(`/messaging?userId=${msg.displayProfile?.id}`)} 
+               className="flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-white/5 cursor-pointer"
+             >
+                <img 
+                  src={msg.displayProfile?.avatar_url} 
+                  crossOrigin="anonymous" 
+                  referrerPolicy="no-referrer" 
+                  className="w-14 h-14 rounded-full object-cover border border-white/10" 
+                  alt="" 
+                />
                 <div className="flex-1">
-                  <p className="text-[15px] font-bold">{msg.profiles?.username}</p>
-                  <p className="text-[13px] text-zinc-500 truncate">{msg.content}</p>
+                  <p className="text-[15px] font-bold">@{msg.displayProfile?.username || 'user'}</p>
+                  {/* Updated key extraction strategy from msg.content to msg.last_msg */}
+                  <p className="text-[13px] text-zinc-500 truncate">{msg.last_msg}</p>
                 </div>
              </div>
           ))}

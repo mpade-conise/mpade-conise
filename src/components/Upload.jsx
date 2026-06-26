@@ -17,6 +17,7 @@ const Upload = ({ onComplete, user }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0); // Track upload percentage
   const [mode, setMode] = useState('record'); 
   const [isRecording, setIsRecording] = useState(false);
   
@@ -29,16 +30,16 @@ const Upload = ({ onComplete, user }) => {
   const chunksRef = useRef([]);
   const audioPreviewRef = useRef(null);
 
- const filters = [
-  { name: 'Normal', css: '' },
-  { name: 'Neon', css: 'hue-rotate(90deg) saturate(200%) brightness(1.1) contrast(110%)' },
-  { name: 'Cyber', css: 'contrast(150%) saturate(150%) hue-rotate(180deg) brightness(1.2)' },
-  { name: 'Mono', css: 'grayscale(100%) contrast(150%) brightness(0.9)' },
-  { name: 'Sunset', css: 'sepia(50%) saturate(200%) hue-rotate(-30deg) contrast(110%)' },
-  { name: 'Vintage', css: 'sepia(30%) contrast(90%) brightness(1.1) saturate(80%)' },
-  { name: 'Night', css: 'brightness(0.7) contrast(120%) saturate(120%) hue-rotate(20deg)' },
-  { name: 'Glitch', css: 'hue-rotate(250deg) saturate(300%) contrast(150%)' }
-];
+  const filters = [
+    { name: 'Normal', css: '' },
+    { name: 'Neon', css: 'hue-rotate(90deg) saturate(200%) brightness(1.1) contrast(110%)' },
+    { name: 'Cyber', css: 'contrast(150%) saturate(150%) hue-rotate(180deg) brightness(1.2)' },
+    { name: 'Mono', css: 'grayscale(100%) contrast(150%) brightness(0.9)' },
+    { name: 'Sunset', css: 'sepia(50%) saturate(200%) hue-rotate(-30deg) contrast(110%)' },
+    { name: 'Vintage', css: 'sepia(30%) contrast(90%) brightness(1.1) saturate(80%)' },
+    { name: 'Night', css: 'brightness(0.7) contrast(120%) saturate(120%) hue-rotate(20deg)' },
+    { name: 'Glitch', css: 'hue-rotate(250deg) saturate(300%) contrast(150%)' }
+  ];
 
   useEffect(() => {
     if (view === 'editor' && audioPreviewRef.current && selectedMusic.url) {
@@ -97,10 +98,11 @@ const Upload = ({ onComplete, user }) => {
     }
   };
 
-  // --- UPDATED UPLOAD LOGIC (INCLUDES MUSIC URL) ---
+  // --- UPDATED FAST UPLOAD LOGIC WITH PROGRESSION TRACKING ---
   const handleUpload = async () => {
     if (!videoFile) return alert("No video to upload!");
     setIsUploading(true);
+    setUploadProgress(0);
 
     try {
       const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
@@ -108,17 +110,42 @@ const Upload = ({ onComplete, user }) => {
 
       const fileExt = videoFile.name?.split('.').pop() || 'mp4';
       const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
-      
-      // 1. Upload to Storage
-      const { error: storageError } = await supabase.storage
-        .from('videos')
-        .upload(fileName, videoFile);
 
-      if (storageError) throw storageError;
+      // OPTIMIZATION: Utilizing an explicit XMLHttpRequest approach wrapper with Supabase Storage Token 
+      // allows standard chunk/stream reporting via native onprogress handling without blocking client processes.
+      const sessionStr = localStorage.getItem('sb-wgzrebgvcqnvcstdpwsa-auth-token');
+      const parsedSession = sessionStr ? JSON.parse(sessionStr) : null;
+      const token = parsedSession?.access_token;
 
-      const { data: { publicUrl } } = supabase.storage
+      if (!token) throw new Error("Authorization credentials missing.");
+
+      const uploadUrl = `${supabase.storage.from('videos').url}/object/videos/${fileName}`;
+
+      const publicUrl = supabase.storage
         .from('videos')
-        .getPublicUrl(fileName);
+        .getPublicUrl(fileName).data.publicUrl;
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl, true);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.setRequestHeader('apikey', supabase.supabaseKey);
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(percentComplete);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status === 200 || xhr.status === 201) resolve(xhr.response);
+          else reject(new Error(`Storage engine rejected write: ${xhr.statusText}`));
+        };
+
+        xhr.onerror = () => reject(new Error("Network layer execution failed."));
+        xhr.send(videoFile);
+      });
 
       // 2. Insert Record with music_url
       const { error: dbError } = await supabase
@@ -140,12 +167,21 @@ const Upload = ({ onComplete, user }) => {
       alert("Upload failed: " + err.message);
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
   return (
-    <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="fixed inset-0 bg-black z-[100] flex flex-col text-white font-sans">
+    <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="fixed inset-0 bg-black z-[100] flex flex-col text-white font-sans selection:bg-red-500/30">
       
+      {/* Dynamic injection of customized scrollers for view lists */}
+      <style>{`
+        .custom-viewport-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-viewport-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        .custom-viewport-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+        .custom-viewport-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(239,68,68,0.4); }
+      `}</style>
+
       {/* Audio playback for the editor preview */}
       <audio ref={audioPreviewRef} src={selectedMusic.url} loop />
 
@@ -153,8 +189,9 @@ const Upload = ({ onComplete, user }) => {
       <div className="absolute top-0 left-0 right-0 flex justify-between items-center p-6 z-20">
         <button onClick={onComplete} className="p-2 bg-black/20 backdrop-blur-md rounded-full active:scale-90 transition-transform"><X size={28} /></button>
         <button 
+            disabled={isUploading}
             onClick={() => setView('music')} 
-            className="flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-5 py-2 rounded-full text-[10px] font-black shadow-lg hover:bg-white/20 transition-all uppercase tracking-widest"
+            className="flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-5 py-2 rounded-full text-[10px] font-black shadow-lg hover:bg-white/20 transition-all uppercase tracking-widest disabled:opacity-50"
         >
           <Music size={14} className="text-red-500 animate-pulse" /> {selectedMusic.name}
         </button>
@@ -208,7 +245,7 @@ const Upload = ({ onComplete, user }) => {
                 {isSearching ? <Loader2 className="animate-spin" size={20}/> : 'FIND'}
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-viewport-scrollbar">
               {searchResults.map((track, i) => (
                 <motion.div 
                     initial={{ opacity: 0, y: 10 }}
@@ -240,11 +277,11 @@ const Upload = ({ onComplete, user }) => {
       {view === 'editor' && (
         <div className="absolute inset-0 bg-black z-50 p-6 flex flex-col">
           <div className="flex items-center gap-4 mb-8">
-            <button onClick={() => setView('selector')} className="active:scale-90 transition-transform"><ChevronLeft size={30}/></button>
+            <button disabled={isUploading} onClick={() => setView('selector')} className="active:scale-90 transition-transform disabled:opacity-30"><ChevronLeft size={30}/></button>
             <h2 className="text-2xl font-black italic uppercase tracking-tighter">Vibe Check</h2>
           </div>
-          <div className="flex flex-col md:flex-row gap-6 flex-1 overflow-hidden">
-             <div className="w-full md:w-1/2 aspect-[9/16] bg-zinc-900 rounded-[2.5rem] overflow-hidden relative border border-white/10 shadow-[0_0_50px_rgba(239,68,68,0.15)]">
+          <div className="flex flex-col md:flex-row gap-6 flex-1 overflow-y-auto pr-1 custom-viewport-scrollbar">
+             <div className="w-full md:w-1/2 aspect-[9/16] bg-zinc-900 rounded-[2.5rem] overflow-hidden relative border border-white/10 shadow-[0_0_50px_rgba(239,68,68,0.15)] flex-shrink-0 mx-auto md:mx-0">
                 <video src={preview} className="h-full w-full object-cover" autoPlay loop muted={!!selectedMusic.url} />
                 {selectedMusic.url && (
                     <div className="absolute top-4 left-4 right-4 p-3 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 flex items-center gap-3">
@@ -253,21 +290,54 @@ const Upload = ({ onComplete, user }) => {
                     </div>
                 )}
              </div>
-             <div className="flex-1 flex flex-col gap-4">
-                <textarea 
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Tell the Universe about this vibe..." 
-                  className="flex-1 bg-zinc-900/40 backdrop-blur-md rounded-[2rem] p-8 outline-none text-lg italic border border-white/5 focus:border-red-500/50 transition-all resize-none shadow-inner" 
-                />
+             <div className="flex-1 flex flex-col gap-4 min-h-[200px] md:min-h-auto">
+                <div className="relative flex-1 flex flex-col">
+                  <textarea 
+                    disabled={isUploading}
+                    value={caption}
+                    maxLength={150}
+                    onChange={(e) => setCaption(e.target.value)}
+                    placeholder="Tell the Universe about this vibe..." 
+                    className="w-full flex-1 bg-zinc-900/40 backdrop-blur-md rounded-[2rem] p-8 outline-none text-lg italic border border-white/5 focus:border-red-500/50 transition-all resize-none shadow-inner custom-viewport-scrollbar" 
+                  />
+                  <div className="absolute bottom-4 right-6 text-[11px] font-black tracking-widest text-zinc-500">
+                    {caption.length} / 150
+                  </div>
+                </div>
              </div>
           </div>
+
+          {/* PROGRESS BAR LOADER DESIGN */}
+          {isUploading && (
+            <div className="w-full mt-6 bg-zinc-900 border border-white/5 p-4 rounded-2xl">
+              <div className="flex justify-between items-center mb-2 px-1">
+                <span className="text-[10px] font-black tracking-widest text-zinc-400 uppercase animate-pulse">Uploading Media Blocks</span>
+                <span className="text-xs font-black text-red-500">{uploadProgress}%</span>
+              </div>
+              <div className="w-full h-2 bg-black rounded-full overflow-hidden p-[2px]">
+                <motion.div 
+                  initial={{ width: 0 }} 
+                  animate={{ width: `${uploadProgress}%` }} 
+                  transition={{ duration: 0.1 }}
+                  className="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+                />
+              </div>
+            </div>
+          )}
+
           <button 
             disabled={isUploading}
             onClick={handleUpload}
-            className="w-full bg-gradient-to-r from-red-600 to-orange-600 py-6 rounded-[2.5rem] font-black text-xl mt-8 flex justify-center items-center gap-3 shadow-[0_15px_40px_rgba(239,68,68,0.4)] active:scale-95 transition-all disabled:opacity-50"
+            className="w-full bg-gradient-to-r from-red-600 to-orange-600 py-6 rounded-[2.5rem] font-black text-xl mt-4 flex justify-center items-center gap-3 shadow-[0_15px_40px_rgba(239,68,68,0.4)] active:scale-95 transition-all disabled:from-zinc-800 disabled:to-zinc-900 disabled:text-zinc-500 disabled:shadow-none"
           >
-            {isUploading ? <><Loader2 className="animate-spin" /> BROADCASTING...</> : 'SHARE TO UNIVERSE'}
+            {isUploading ? (
+              <>
+                <Loader2 className="animate-spin text-zinc-500" /> 
+                {uploadProgress === 100 ? 'CONSOLIDATING RECORDS...' : 'BROADCASTING TO UNIVERSE...'}
+              </>
+            ) : (
+              'SHARE TO UNIVERSE'
+            )}
           </button>
         </div>
       )}

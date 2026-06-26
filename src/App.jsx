@@ -16,6 +16,7 @@ import Settings from "./components/settings";
 import Security from './settings/Security'; 
 import Notifications from './settings/Notifications'; 
 import Language from './settings/Language'; 
+import { ThemeProvider } from './context/ThemeContext';
 import Theme from './settings/Theme'; 
 import FindFriends from "./components/find-friends";
 import { supabase } from './supabaseClient';
