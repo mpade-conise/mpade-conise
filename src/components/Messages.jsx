@@ -99,7 +99,6 @@ const Messaging = () => {
     socketRef.current = io(SOCKET_SERVER_URL);
     socketRef.current.emit('user_going_online', currentUserId);
 
-    // Initial query targeting direct communication match matrix
     const loadConversationStream = async () => {
       const { data, error } = await supabase
         .from('messages')
@@ -109,7 +108,6 @@ const Messaging = () => {
 
       if (!error && data) {
         setMessages(data);
-        // Mark messages as read when viewing conversation thread
         await supabase
           .from('messages')
           .update({ unread: false, status: 'read' })
@@ -120,7 +118,6 @@ const Messaging = () => {
 
     loadConversationStream();
 
-    // Socket Event Pipeline Matrix Mapping
     socketRef.current.on('received_chat_message', (incoming) => {
       if ((incoming.sender_id === peerUserId && incoming.receiver_id === currentUserId) ||
           (incoming.sender_id === currentUserId && incoming.receiver_id === peerUserId)) {
@@ -204,17 +201,47 @@ const Messaging = () => {
     }
   };
 
+  // --- Updated File Input Handler for Instant UI Rendering ---
   const handleFileInputChange = async (e, messageType) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const uploadedUrl = await uploadMediaAttachment(file);
-    if (!uploadedUrl) return;
+    const optimisticId = crypto.randomUUID();
+    const localPreviewUrl = URL.createObjectURL(file);
 
-    sendStructuredPayload(file.name, messageType, uploadedUrl);
+    // Optimistically project item onto message window instantly
+    const tempPayload = {
+      id: optimisticId,
+      updated_at: new Date().toISOString(),
+      user_name: currentUserProfile?.username || 'User',
+      last_msg: file.name,
+      unread: true,
+      online: false,
+      receiver_id: peerUserId,
+      sender_id: currentUserId,
+      type: messageType,
+      metadata: replyingTo ? { reply_to_id: replyingTo.id, reply_body: replyingTo.last_msg } : {},
+      media_url: localPreviewUrl,
+      call_duration: 0,
+      status: 'sending',
+      reactions: {}
+    };
+
+    setMessages(prev => [...prev, tempPayload]);
+    setReplyingTo(null);
+
+    // Run background storage upload pipeline
+    const uploadedUrl = await uploadMediaAttachment(file);
+    if (!uploadedUrl) {
+      setMessages(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'failed' } : m));
+      return;
+    }
+
+    // Replace preview details with formal payload link matrix
+    sendStructuredPayload(file.name, messageType, uploadedUrl, optimisticId);
   };
 
-  // --- Voice Note Capturing Streams ---
+  // --- Updated Voice Note Capturing Streams ---
   const handleToggleVoiceRecording = async () => {
     if (isRecordingVoice) {
       mediaRecorderRef.current?.stop();
@@ -235,9 +262,35 @@ const Messaging = () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           const audioFile = new File([audioBlob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
           
+          const optimisticId = crypto.randomUUID();
+          const localAudioUrl = URL.createObjectURL(audioFile);
+
+          // Optimistically load voice waveform component box onto interface immediately
+          const tempAudioPayload = {
+            id: optimisticId,
+            updated_at: new Date().toISOString(),
+            user_name: currentUserProfile?.username || 'User',
+            last_msg: "Voice Note",
+            unread: true,
+            online: false,
+            receiver_id: peerUserId,
+            sender_id: currentUserId,
+            type: 'audio',
+            metadata: replyingTo ? { reply_to_id: replyingTo.id, reply_body: replyingTo.last_msg } : {},
+            media_url: localAudioUrl,
+            call_duration: 0,
+            status: 'sending',
+            reactions: {}
+          };
+
+          setMessages(prev => [...prev, tempAudioPayload]);
+          setReplyingTo(null);
+
           const uploadedUrl = await uploadMediaAttachment(audioFile);
           if (uploadedUrl) {
-            sendStructuredPayload("Voice Note", 'audio', uploadedUrl);
+            sendStructuredPayload("Voice Note", 'audio', uploadedUrl, optimisticId);
+          } else {
+            setMessages(prev => prev.map(m => m.id === optimisticId ? { ...m, status: 'failed' } : m));
           }
           stream.getTracks().forEach(track => track.stop());
         };
@@ -251,10 +304,12 @@ const Messaging = () => {
     }
   };
 
-  // --- Unified Payload Dispatcher ---
-  const sendStructuredPayload = async (textText, messageType = 'text', mediaUrl = null) => {
+  // --- Unified Payload Dispatcher (Supports Safe Replacements) ---
+  const sendStructuredPayload = async (textText, messageType = 'text', mediaUrl = null, optimisticId = null) => {
+    const targetId = optimisticId || crypto.randomUUID();
+    
     const payload = {
-      id: crypto.randomUUID(),
+      id: targetId,
       updated_at: new Date().toISOString(),
       user_name: currentUserProfile?.username || 'User',
       last_msg: textText,
@@ -270,7 +325,13 @@ const Messaging = () => {
       reactions: {}
     };
 
-    setMessages(prev => [...prev, payload]);
+    if (optimisticId) {
+      // Overwrite the existing local preview payload parameters smoothly
+      setMessages(prev => prev.map(m => m.id === optimisticId ? payload : m));
+    } else {
+      setMessages(prev => [...prev, payload]);
+    }
+
     setNewMessage("");
     setReplyingTo(null);
     triggerTypingState(false, 'text');
@@ -428,7 +489,7 @@ const Messaging = () => {
 
                 <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                   isMe ? 'bg-cyan-500 text-black font-semibold rounded-br-none' : 'bg-zinc-900 text-zinc-100 rounded-bl-none border border-white/5'
-                }`}>
+                } ${msg.status === 'sending' ? 'opacity-70 animate-pulse' : ''} ${msg.status === 'failed' ? 'border border-red-500/50 bg-red-500/10' : ''}`}>
                   
                   {/* MULTIMEDIA RENDERING MATRIX ROUTERS */}
                   {msg.type === 'image' && msg.media_url && (
@@ -449,11 +510,13 @@ const Messaging = () => {
                   {msg.type === 'text' && <p>{msg.last_msg}</p>}
                   
                   <div className="flex items-center justify-end gap-1 mt-1">
+                    {msg.status === 'failed' && <span className="text-[8px] text-red-500 font-bold mr-2">Failed to upload</span>}
+                    {msg.status === 'sending' && <span className="text-[8px] text-zinc-400 italic mr-2">Sending...</span>}
                     {msg.is_edited && <span className={`text-[8px] italic font-bold ${isMe ? 'text-black/40' : 'text-zinc-600'}`}>Edited</span>}
                     <span className={`text-[8px] font-black ${isMe ? 'text-black/60' : 'text-zinc-500'}`}>
                       {new Date(msg.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    {isMe && (
+                    {isMe && msg.status !== 'sending' && msg.status !== 'failed' && (
                       <span className="text-black/60">
                         {msg.status === 'read' ? <CheckCheck size={10} className="text-blue-900" /> : <Check size={10} />}
                       </span>
