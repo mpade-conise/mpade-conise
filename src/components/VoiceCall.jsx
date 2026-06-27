@@ -51,7 +51,7 @@ const VoiceCall = () => {
   
   const remoteAudioRef = useRef(null);
 
-  // 1. Fetch user authorization and peer profile info with URL verification guards
+  // 1. Fetch profiles and establish authentication states
   useEffect(() => {
     const initProfiles = async () => {
       console.log("🔍 Audio Call Routing State Check -> peerUserId:", peerUserId, "| Role Parameter:", URLRole);
@@ -63,7 +63,6 @@ const VoiceCall = () => {
       }
       setCurrentUserId(user.id);
 
-      // CRITICAL GUARD: Stop execution if peerUserId is missing or evaluates to string literal "undefined"
       if (!peerUserId || peerUserId === 'undefined') {
         console.error("❌ Aborting profile fetching loop: peerUserId url parameter resolved to an undefined state.");
         setCallStatus("Routing Error");
@@ -80,7 +79,7 @@ const VoiceCall = () => {
     initProfiles();
   }, [peerUserId, URLRole, navigate]);
 
-  // 2. Main WebRTC Signalling Implementation Block (Audio Mode Specific)
+  // 2. Main Dual-Compatibility Signalling Engine
   useEffect(() => {
     if (!currentUserId || !peerUserId || peerUserId === 'undefined') return;
 
@@ -90,7 +89,6 @@ const VoiceCall = () => {
 
     const initializeMediaAndSignaling = async () => {
       try {
-        // A. Mount Audio Media Tracks Only
         setCallStatus("Accessing microphone...");
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: false, 
@@ -104,7 +102,6 @@ const VoiceCall = () => {
         
         localStreamRef.current = stream;
 
-        // B. Set Up Peer Connection Structure
         const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
         pcRef.current = pc;
 
@@ -120,22 +117,25 @@ const VoiceCall = () => {
 
         pc.onicecandidate = (event) => {
           if (event.candidate && socketRef.current?.connected) {
-            socketRef.current.emit('webrtc_ice_candidate', {
+            const icePayload = {
+              roomId: roomId,
               streamId: roomId,
               candidate: event.candidate,
+              to: peerUserId,
               targetSocketId: null
-            });
+            };
+            // Emit to both potential candidate routing targets
+            socketRef.current.emit('webrtc_ice_candidate', icePayload);
+            socketRef.current.emit('send_ice_candidate', icePayload);
           }
         };
 
-        // C. Spin up Socket Context AFTER WebRTC Instance is safely created
         const socket = io(SOCKET_SERVER_URL, {
           transports: ['websocket', 'polling'],
           forceNew: true
         });
         socketRef.current = socket;
 
-        // D. Setup Synchronous Context Handlers inside Socket Connection Frame
         socket.on('connect', async () => {
           console.log(`🟢 Connected to signaling server. Room: ${roomId}`);
           socket.emit('join_call_room', { roomId, userId: currentUserId, targetPeerId: peerUserId });
@@ -145,7 +145,18 @@ const VoiceCall = () => {
             try {
               const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
-              socket.emit('send_webrtc_offer', { streamId: roomId, offer, targetViewerId: peerUserId });
+              
+              const offerPayload = { 
+                roomId: roomId, 
+                streamId: roomId, 
+                offer, 
+                to: peerUserId, 
+                targetViewerId: peerUserId 
+              };
+
+              // Broadcast both typical signaling event variations
+              socket.emit('webrtc_offer', offerPayload);
+              socket.emit('send_webrtc_offer', offerPayload);
             } catch (err) {
               console.error("Failed creating signaling audio offer Matrix:", err);
             }
@@ -154,17 +165,26 @@ const VoiceCall = () => {
           }
         });
 
-        // E. Bind Signalling Pipeline Events safely
-        socket.on('webrtc_offer_received', async ({ offer }) => {
-          if (!isComponentMounted || !pcRef.current) return;
+        // Unified Handlers for Handshake Handlings
+        const handleIncomingOffer = async (data) => {
+          if (!isComponentMounted || !pcRef.current || !data?.offer) return;
           try {
             setCallStatus("Connecting...");
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.offer));
             const answer = await pcRef.current.createAnswer();
             await pcRef.current.setLocalDescription(answer);
-            socket.emit('send_webrtc_answer', { streamId: roomId, answer });
+            
+            const answerPayload = { 
+              roomId: roomId, 
+              streamId: roomId, 
+              answer, 
+              to: peerUserId,
+              targetViewerId: peerUserId
+            };
 
-            // Flush out stacked early ice arrivals
+            socket.emit('webrtc_answer', answerPayload);
+            socket.emit('send_webrtc_answer', answerPayload);
+
             if (iceQueueRef.current.length > 0) {
               for (const candidate of iceQueueRef.current) {
                 await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
@@ -174,12 +194,13 @@ const VoiceCall = () => {
           } catch (err) {
             console.error("Failed executing structural handshake audio loop:", err);
           }
-        });
+        };
 
-        socket.on('webrtc_answer_received', async ({ answer }) => {
-          if (!isComponentMounted || !pcRef.current) return;
+        const handleIncomingAnswer = async (data) => {
+          if (!isComponentMounted || !pcRef.current || !data?.answer) return;
           try {
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+            setCallStatus("Connected");
             
             if (iceQueueRef.current.length > 0) {
               for (const candidate of iceQueueRef.current) {
@@ -190,21 +211,31 @@ const VoiceCall = () => {
           } catch (err) {
             console.error("Failed setting up active remote answer specification:", err);
           }
-        });
+        };
 
-        socket.on('incoming_ice_candidate', async ({ candidate }) => {
-          if (!isComponentMounted) return;
+        const handleIncomingIce = async (data) => {
+          if (!isComponentMounted || !data?.candidate) return;
           const currentPc = pcRef.current;
           if (currentPc && currentPc.remoteDescription) {
             try {
-              await currentPc.addIceCandidate(new RTCIceCandidate(candidate));
+              await currentPc.addIceCandidate(new RTCIceCandidate(data.candidate));
             } catch (e) {
               console.warn("Skipped structural candidate node:", e);
             }
           } else {
-            iceQueueRef.current.push(candidate);
+            iceQueueRef.current.push(data.candidate);
           }
-        });
+        };
+
+        // Bind multi-convention listeners to capture any valid server emit
+        socket.on('webrtc_offer', handleIncomingOffer);
+        socket.on('webrtc_offer_received', handleIncomingOffer);
+        
+        socket.on('webrtc_answer', handleIncomingAnswer);
+        socket.on('webrtc_answer_received', handleIncomingAnswer);
+        
+        socket.on('webrtc_ice_candidate', handleIncomingIce);
+        socket.on('incoming_ice_candidate', handleIncomingIce);
 
         socket.on('peer_hung_up', () => {
           if (isComponentMounted) cleanUpCall();
@@ -251,7 +282,6 @@ const VoiceCall = () => {
 
   return (
     <div className="fixed inset-0 bg-[#08080a] text-white flex flex-col items-center justify-between p-6 font-sans">
-      {/* Hidden Audio element for streaming the remote user's voice */}
       <audio ref={remoteAudioRef} autoPlay />
 
       {/* Top Security Banner */}
@@ -263,7 +293,7 @@ const VoiceCall = () => {
         <span className="text-xs bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded-full font-bold">{callStatus}</span>
       </div>
 
-      {/* Voice Avatar Profile Core Display */}
+      {/* Voice Avatar Profile Display */}
       <div className="flex flex-col items-center gap-4">
         <div className="relative flex items-center justify-center">
           {callStatus !== "Connected" && (
