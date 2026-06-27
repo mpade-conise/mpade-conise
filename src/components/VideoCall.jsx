@@ -38,6 +38,7 @@ const VideoCall = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const peerUserId = searchParams.get('userId');
+  const callRole = searchParams.get('role'); // --- READ EXPLICIT DIALER ROLE ('caller' / 'receiver') ---
   
   const [currentUserId, setCurrentUserId] = useState(null);
   const [peerProfile, setPeerProfile] = useState(null);
@@ -79,6 +80,8 @@ const VideoCall = () => {
 
     socketRef.current = io(SOCKET_SERVER_URL);
     const roomId = [currentUserId, peerUserId].sort().join("-");
+    
+    // Pass along user context when connecting to the signal room pipeline
     socketRef.current.emit('join_call_room', { roomId, userId: currentUserId });
 
     const setupHardwareAndRTC = async () => {
@@ -113,8 +116,8 @@ const VideoCall = () => {
           }
         };
 
-        const isInitiator = currentUserId < peerUserId;
-        if (isInitiator) {
+        // --- FIXED ROLE IDENTIFICATION PARSER ---
+        if (callRole === 'caller') {
           setCallStatus("Calling user...");
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
@@ -181,7 +184,7 @@ const VideoCall = () => {
     return () => {
       cleanUpCall();
     };
-  }, [currentUserId, peerUserId]);
+  }, [currentUserId, peerUserId, callRole]); // --- ADDED callRole AS DEPENDENCY CONTAINER ---
 
   // Track State Synchronization Shifters
   useEffect(() => {
