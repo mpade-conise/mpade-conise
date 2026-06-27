@@ -38,7 +38,7 @@ const VideoCall = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const peerUserId = searchParams.get('userId');
-  const callRole = searchParams.get('role'); // --- READ EXPLICIT DIALER ROLE ('caller' / 'receiver') ---
+  const URLRole = searchParams.get('role'); 
   
   const [currentUserId, setCurrentUserId] = useState(null);
   const [peerProfile, setPeerProfile] = useState(null);
@@ -78,6 +78,11 @@ const VideoCall = () => {
   useEffect(() => {
     if (!currentUserId || !peerUserId) return;
 
+    // --- FALLBACK SAFETY SYSTEM ---
+    // If the URL parameters are stripped, corrupted, or missing during state switches,
+    // fallback safely to alphabetical UUID parsing to prevent a deadlock.
+    const callRole = URLRole || (currentUserId < peerUserId ? 'caller' : 'receiver');
+
     socketRef.current = io(SOCKET_SERVER_URL);
     const roomId = [currentUserId, peerUserId].sort().join("-");
     
@@ -116,7 +121,7 @@ const VideoCall = () => {
           }
         };
 
-        // --- FIXED ROLE IDENTIFICATION PARSER ---
+        // --- EXPLICIT ROLE EVALUATION PIPELINE ---
         if (callRole === 'caller') {
           setCallStatus("Calling user...");
           const offer = await pc.createOffer();
@@ -184,7 +189,7 @@ const VideoCall = () => {
     return () => {
       cleanUpCall();
     };
-  }, [currentUserId, peerUserId, callRole]); // --- ADDED callRole AS DEPENDENCY CONTAINER ---
+  }, [currentUserId, peerUserId, URLRole]); 
 
   // Track State Synchronization Shifters
   useEffect(() => {
