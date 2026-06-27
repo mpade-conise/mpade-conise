@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../../../supabaseClient';
+import { supabase } from '../supabaseClient';
 import { io } from 'socket.io-client';
 import { PhoneOff, Mic, MicOff, Video, VideoOff, Shield } from 'lucide-react';
 
