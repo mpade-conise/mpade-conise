@@ -443,8 +443,34 @@ const Messaging = () => {
           <button onClick={() => setShowSearchInput(!showSearchInput)} className="p-2 text-zinc-400 hover:text-white"><EyeOff size={18} /></button>
           
           {/* --- APPENDED REQUISITE CALL MATRIX SIGNALS FOR THE DIAL GENERATOR OUTLETS --- */}
-          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => navigate(`/voice-call?userId=${peerUserId}&role=caller`)}><Phone size={18} /></button>
-          <button className="p-2 text-zinc-400 hover:text-white" onClick={() => navigate(`/video-call?userId=${peerUserId}&role=caller`)}><Video size={18} /></button>
+          <button 
+            className="p-2 text-zinc-400 hover:text-white" 
+            onClick={() => {
+              socketRef.current?.emit('initiate_call_signal', {
+                receiverId: peerUserId,
+                callerId: currentUserId,
+                callerName: currentUserProfile?.username || 'user',
+                callType: 'voice'
+              });
+              navigate(`/voice-call?userId=${peerUserId}&role=caller`);
+            }}
+          >
+            <Phone size={18} />
+          </button>
+          <button 
+            className="p-2 text-zinc-400 hover:text-white" 
+            onClick={() => {
+              socketRef.current?.emit('initiate_call_signal', {
+                receiverId: peerUserId,
+                callerId: currentUserId,
+                callerName: currentUserProfile?.username || 'user',
+                callType: 'video'
+              });
+              navigate(`/video-call?userId=${peerUserId}&role=caller`);
+            }}
+          >
+            <Video size={18} />
+          </button>
           
           <div className="relative">
             <button onClick={() => setShowMenu(!showMenu)} className="p-2 text-zinc-400 hover:text-white"><MoreVertical size={18} /></button>
