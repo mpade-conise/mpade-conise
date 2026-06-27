@@ -76,7 +76,9 @@ function App() {
       .channel('pref-updates')
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'user_preferences', filter: `id=eq.${session.user.id}` },
+        'public',
+        'user_preferences',
+        `id=eq.${session.user.id}`,
         (payload) => setPreferences(payload.new)
       )
       .subscribe();
@@ -108,9 +110,11 @@ function App() {
 
   if (!session) return <Auth />;
 
+  // --- UPDATED NAVIGATION METHOD FOR CALL HANDLERS ---
   const handleAcceptCall = () => {
     if (!incomingCall) return;
-    navigate(`/video-call?userId=${incomingCall.fromUserId}`);
+    // Appending explicit role context so the receiver engine acts defensively and handles the oncoming offer stream
+    navigate(`/video-call?userId=${incomingCall.fromUserId}&role=receiver`);
     setIncomingCall(null);
   };
 
