@@ -120,11 +120,10 @@ const VoiceCall = () => {
 
         pc.onicecandidate = (event) => {
           if (event.candidate && socketRef.current?.connected) {
-            // Using classic standard naming convention string
             socketRef.current.emit('webrtc_ice_candidate', {
-              roomId,
+              streamId: roomId,
               candidate: event.candidate,
-              to: peerUserId
+              targetSocketId: null
             });
           }
         };
@@ -146,8 +145,7 @@ const VoiceCall = () => {
             try {
               const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
-              // Classic Event Emit
-              socket.emit('webrtc_offer', { roomId, offer, to: peerUserId });
+              socket.emit('send_webrtc_offer', { streamId: roomId, offer, targetViewerId: peerUserId });
             } catch (err) {
               console.error("Failed creating signaling audio offer Matrix:", err);
             }
@@ -156,16 +154,15 @@ const VoiceCall = () => {
           }
         });
 
-        // E. Bind Signalling Pipeline Events safely via standard naming keys
-        socket.on('webrtc_offer', async ({ offer }) => {
+        // E. Bind Signalling Pipeline Events safely
+        socket.on('webrtc_offer_received', async ({ offer }) => {
           if (!isComponentMounted || !pcRef.current) return;
           try {
             setCallStatus("Connecting...");
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await pcRef.current.createAnswer();
             await pcRef.current.setLocalDescription(answer);
-            // Classic Event Emit
-            socket.emit('webrtc_answer', { roomId, answer, to: peerUserId });
+            socket.emit('send_webrtc_answer', { streamId: roomId, answer });
 
             // Flush out stacked early ice arrivals
             if (iceQueueRef.current.length > 0) {
@@ -179,7 +176,7 @@ const VoiceCall = () => {
           }
         });
 
-        socket.on('webrtc_answer', async ({ answer }) => {
+        socket.on('webrtc_answer_received', async ({ answer }) => {
           if (!isComponentMounted || !pcRef.current) return;
           try {
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
@@ -195,7 +192,7 @@ const VoiceCall = () => {
           }
         });
 
-        socket.on('webrtc_ice_candidate', async ({ candidate }) => {
+        socket.on('incoming_ice_candidate', async ({ candidate }) => {
           if (!isComponentMounted) return;
           const currentPc = pcRef.current;
           if (currentPc && currentPc.remoteDescription) {
