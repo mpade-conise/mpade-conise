@@ -8,13 +8,17 @@
           "value": "same-origin"
         },
         {
-         "key": "Cross-Origin-Embedder-Policy",
-"value": "unsafe-none"
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "unsafe-none"
         }
       ]
     }
   ],
   "rewrites": [
+    {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
