@@ -63,6 +63,9 @@ const Messaging = () => {
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [showSearchInput, setShowSearchInput] = useState(false);
 
+  // Appended Signaled Realtime Call Modality Mapping
+  const [incomingCall, setIncomingCall] = useState(null);
+
   // Media Attachment Handling References
   const imageInputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -147,6 +150,17 @@ const Messaging = () => {
 
     socketRef.current.on('friend_presence_changed', ({ userId, status }) => {
       if (userId === peerUserId) setIsPeerOnline(status === 'online');
+    });
+
+    // --- SIGNAL EXTENSION: REALTIME SIGNALING CHANNEL FOR CALL DETECTIONS ---
+    socketRef.current.on('incoming_call_signal', (data) => {
+      if (data.receiverId === currentUserId) {
+        setIncomingCall(data);
+      }
+    });
+
+    socketRef.current.on('call_cancelled_by_caller', () => {
+      setIncomingCall(null);
     });
 
     return () => {
@@ -341,6 +355,49 @@ const Messaging = () => {
 
   return (
     <div className="fixed inset-0 bg-[#08080a] text-white flex flex-col font-sans overflow-hidden">
+      
+      {/* REALTIME MODAL GATEWAY FOR CAPTURING DETECTED INTERFACES */}
+      <AnimatePresence>
+        {incomingCall && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center z-[100] p-6 text-center"
+          >
+            <div className="w-20 h-20 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center animate-pulse mb-6">
+              {incomingCall.callType === 'video' ? <Video size={36} className="text-cyan-400" /> : <Phone size={36} className="text-cyan-400" />}
+            </div>
+            
+            <h2 className="text-xl font-black tracking-tight mb-1">Incoming {incomingCall.callType === 'video' ? 'Video' : 'Voice'} Call</h2>
+            <p className="text-sm text-zinc-500 font-medium mb-10">@{incomingCall.callerName || 'user'} is calling you...</p>
+            
+            <div className="flex items-center gap-8">
+              <button 
+                onClick={() => {
+                  socketRef.current?.emit('decline_call', { callerId: incomingCall.callerId });
+                  setIncomingCall(null);
+                }}
+                className="w-14 h-14 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 active:scale-95 transition-all shadow-lg shadow-red-500/20"
+              >
+                <X size={24} />
+              </button>
+              
+              <button 
+                onClick={() => {
+                  const targetCallRoute = incomingCall.callType === 'video' ? '/video-call' : '/voice-call';
+                  const callerId = incomingCall.callerId;
+                  setIncomingCall(null);
+                  navigate(`${targetCallRoute}?userId=${callerId}&role=receiver`);
+                }}
+                className="w-14 h-14 bg-emerald-500 text-black rounded-full flex items-center justify-center hover:bg-emerald-400 active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
+              >
+                <Check size={24} className="stroke-[3px]" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* HIDDEN MEDIA CORE HARDWARE INTERFACE DEVICE CAPTURING REFERENCE LABELS */}
       <input type="file" ref={imageInputRef} accept="image/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'image')} />
