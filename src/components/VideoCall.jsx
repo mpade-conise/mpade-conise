@@ -6,7 +6,6 @@ import { PhoneOff, Mic, MicOff, Video, VideoOff, Shield } from 'lucide-react';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
-// VERIFIED CONFIG MATCHING YOUR METERED METRICS
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.relay.metered.ca:80" },
@@ -54,7 +53,7 @@ const VideoCall = () => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
-  // 1. Fetch user states
+  // 1. Fetch user authentication and peer profile info
   useEffect(() => {
     const initProfiles = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -74,37 +73,39 @@ const VideoCall = () => {
     if (peerUserId) initProfiles();
   }, [peerUserId, navigate]);
 
-  // 2. Main WebRTC Signalling Implementation Block (1-on-1 Private Call Topology)
+  // 2. Main WebRTC Signalling Implementation Block (Asynchronous Workflow)
   useEffect(() => {
     if (!currentUserId || !peerUserId) return;
 
-    // --- FALLBACK SAFETY SYSTEM ---
-    // If the URL parameters are stripped, corrupted, or missing during state switches,
-    // fallback safely to alphabetical UUID parsing to prevent a deadlock.
+    let isComponentMounted = true;
     const callRole = URLRole || (currentUserId < peerUserId ? 'caller' : 'receiver');
-
-    socketRef.current = io(SOCKET_SERVER_URL);
     const roomId = [currentUserId, peerUserId].sort().join("-");
-    
-    // Pass along user context when connecting to the signal room pipeline
-    socketRef.current.emit('join_call_room', { roomId, userId: currentUserId });
 
-    const setupHardwareAndRTC = async () => {
+    const initializeMediaAndSignaling = async () => {
       try {
+        // A. Mount Local Media Tracks First
         setCallStatus("Accessing devices...");
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { width: 1280, height: 720 }, 
           audio: true 
         });
+
+        if (!isComponentMounted) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        
         localStreamRef.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
+        // B. Set Up Peer Connection Structure
         const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
         pcRef.current = pc;
 
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
         pc.ontrack = (event) => {
+          console.log("🎬 Remote stream attached successfully.");
           setCallStatus("Connected");
           if (remoteVideoRef.current && event.streams[0]) {
             remoteVideoRef.current.srcObject = event.streams[0];
@@ -112,7 +113,7 @@ const VideoCall = () => {
         };
 
         pc.onicecandidate = (event) => {
-          if (event.candidate) {
+          if (event.candidate && socketRef.current?.connected) {
             socketRef.current.emit('webrtc_ice_candidate', {
               roomId,
               candidate: event.candidate,
@@ -121,72 +122,98 @@ const VideoCall = () => {
           }
         };
 
-        // --- EXPLICIT ROLE EVALUATION PIPELINE ---
-        if (callRole === 'caller') {
-          setCallStatus("Calling user...");
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socketRef.current.emit('webrtc_offer', { roomId, offer, to: peerUserId });
-        } else {
-          setCallStatus("Answering call...");
-        }
+        // C. Spin up Socket Context AFTER WebRTC Instance is safely created
+        const socket = io(SOCKET_SERVER_URL, {
+          transports: ['websocket', 'polling'],
+          forceNew: true
+        });
+        socketRef.current = socket;
+
+        // D. Setup Synchronous Context Handlers inside Socket Connection Frame
+        socket.on('connect', async () => {
+          console.log(`🟢 Connected to signaling server. Room: ${roomId}`);
+          socket.emit('join_call_room', { roomId, userId: currentUserId });
+
+          if (callRole === 'caller') {
+            setCallStatus("Calling user...");
+            try {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              socket.emit('webrtc_offer', { roomId, offer, to: peerUserId });
+            } catch (err) {
+              console.error("Failed creating signaling offer Matrix:", err);
+            }
+          } else {
+            setCallStatus("Awaiting Connection...");
+          }
+        });
+
+        // E. Bind Signalling Pipeline Events safely
+        socket.on('webrtc_offer', async ({ offer }) => {
+          if (!isComponentMounted || !pcRef.current) return;
+          try {
+            setCallStatus("Answering call...");
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await pcRef.current.createAnswer();
+            await pcRef.current.setLocalDescription(answer);
+            socket.emit('webrtc_answer', { roomId, answer, to: peerUserId });
+
+            // Flush out stacked early ice arrivals
+            if (iceQueueRef.current.length > 0) {
+              for (const candidate of iceQueueRef.current) {
+                await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+              }
+              iceQueueRef.current = [];
+            }
+          } catch (err) {
+            console.error("Failed executing structural handshake offer loop:", err);
+          }
+        });
+
+        socket.on('webrtc_answer', async ({ answer }) => {
+          if (!isComponentMounted || !pcRef.current) return;
+          try {
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+            
+            if (iceQueueRef.current.length > 0) {
+              for (const candidate of iceQueueRef.current) {
+                await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+              }
+              iceQueueRef.current = [];
+            }
+          } catch (err) {
+            console.error("Failed setting up active remote answer specification:", err);
+          }
+        });
+
+        socket.on('webrtc_ice_candidate', async ({ candidate }) => {
+          if (!isComponentMounted) return;
+          const currentPc = pcRef.current;
+          if (currentPc && currentPc.remoteDescription) {
+            try {
+              await currentPc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (e) {
+              console.warn("Skipped structural candidate node:", e);
+            }
+          } else {
+            iceQueueRef.current.push(candidate);
+          }
+        });
+
+        socket.on('peer_hung_up', () => {
+          if (isComponentMounted) cleanUpCall();
+        });
 
       } catch (err) {
-        console.error("Hardware initialization exception:", err);
-        setCallStatus("Hardware Error");
+        console.error("System device acquisition or socket binding fault:", err);
+        if (isComponentMounted) setCallStatus("Hardware Error");
       }
     };
 
-    setupHardwareAndRTC();
-
-    socketRef.current.on('webrtc_offer', async ({ offer }) => {
-      if (!pcRef.current) return;
-      try {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pcRef.current.createAnswer();
-        await pcRef.current.setLocalDescription(answer);
-        socketRef.current.emit('webrtc_answer', { roomId, answer, to: peerUserId });
-
-        for (const candidate of iceQueueRef.current) {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-        }
-        iceQueueRef.current = [];
-      } catch (err) {
-        console.error("Failed executing Offer/Answer loop:", err);
-      }
-    });
-
-    socketRef.current.on('webrtc_answer', async ({ answer }) => {
-      if (!pcRef.current) return;
-      try {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        for (const candidate of iceQueueRef.current) {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-        }
-        iceQueueRef.current = [];
-      } catch (err) {
-        console.error("Failed saving answer definition:", err);
-      }
-    });
-
-    socketRef.current.on('webrtc_ice_candidate', async ({ candidate }) => {
-      const pc = pcRef.current;
-      if (pc && pc.remoteDescription) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {
-          console.warn("Skipped candidate payload:", e);
-        }
-      } else {
-        iceQueueRef.current.push(candidate);
-      }
-    });
-
-    socketRef.current.on('peer_hung_up', () => {
-      cleanUpCall();
-    });
+    initializeMediaAndSignaling();
 
     return () => {
+      isComponentMounted = false;
       cleanUpCall();
     };
   }, [currentUserId, peerUserId, URLRole]); 
@@ -207,14 +234,17 @@ const VideoCall = () => {
   const cleanUpCall = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
     }
     if (pcRef.current) {
       pcRef.current.close();
+      pcRef.current = null;
     }
     if (socketRef.current) {
       const roomId = [currentUserId, peerUserId].sort().join("-");
       socketRef.current.emit('hang_up_call', { roomId });
       socketRef.current.disconnect();
+      socketRef.current = null;
     }
     navigate(-1);
   };
