@@ -23,8 +23,11 @@ import { supabase } from './supabaseClient';
 
 import LiveRouter from './pages/Live/LiveRouter'; 
 
-import { Home, Search, Plus, MessageSquare, User } from 'lucide-react';
+import { Home, Search, Plus, MessageSquare, User, Phone, PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { io } from 'socket.io-client';
+
+const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
 // --- CALL SYSTEM ROUTE EXTENSIONS ---
 const VideoCall = lazy(() => import('./components/VideoCall'));
@@ -39,6 +42,10 @@ function App() {
   });
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Passive Global Signaling Notification Hooks
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [globalSocket, setGlobalSocket] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -77,7 +84,44 @@ function App() {
     return () => supabase.removeChannel(prefChannel);
   }, [session]);
 
+  // Integrated Global Receiver Signaling Listener Pipeline
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const socket = io(SOCKET_SERVER_URL);
+    setGlobalSocket(socket);
+
+    socket.emit('register_user_session', { userId: session.user.id });
+
+    socket.on('incoming_call_signal', ({ fromUserId, roomId }) => {
+      setIncomingCall({ fromUserId, roomId });
+    });
+
+    socket.on('peer_hung_up', () => {
+      setIncomingCall(null);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [session]);
+
   if (!session) return <Auth />;
+
+  const handleAcceptCall = () => {
+    if (!incomingCall) return;
+    navigate(`/video-call?userId=${incomingCall.fromUserId}`);
+    setIncomingCall(null);
+  };
+
+  const handleRejectCall = () => {
+    if (!incomingCall || !globalSocket) return;
+    globalSocket.emit('reject_incoming_call', { 
+      roomId: incomingCall.roomId, 
+      to: incomingCall.fromUserId 
+    });
+    setIncomingCall(null);
+  };
 
   // Navigation Visibility Logic
   const shouldHideNav = 
@@ -151,6 +195,46 @@ function App() {
           </Suspense>
         </AnimatePresence>
       </main>
+
+      {/* Floating Incoming Call Overlay UI */}
+      <AnimatePresence>
+        {incomingCall && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999] bg-black/80 flex items-center justify-center backdrop-blur-md"
+          >
+            <div className="bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col items-center gap-6">
+              <div className="w-20 h-20 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded-full flex items-center justify-center animate-bounce">
+                <Phone size={36} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Incoming Video Call</h3>
+                <p className="text-sm text-zinc-400 mt-1">Someone is calling you...</p>
+              </div>
+              
+              <div className="flex items-center gap-6 w-full justify-center mt-2">
+                <button 
+                  type="button"
+                  onClick={handleRejectCall}
+                  className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/20"
+                >
+                  <PhoneOff size={24} />
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={handleAcceptCall}
+                  className="p-4 bg-green-600 hover:bg-green-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-green-600/20 animate-pulse"
+                >
+                  <Phone size={24} />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showUpload && (
