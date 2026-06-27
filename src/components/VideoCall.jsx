@@ -114,10 +114,11 @@ const VideoCall = () => {
 
         pc.onicecandidate = (event) => {
           if (event.candidate && socketRef.current?.connected) {
+            // MATCHED TO SERVER: Emits payload using 'webrtc_ice_candidate' schema mapping target strings
             socketRef.current.emit('webrtc_ice_candidate', {
-              roomId,
+              streamId: roomId,
               candidate: event.candidate,
-              to: peerUserId
+              targetSocketId: null // Broadcast to the room channel route natively
             });
           }
         };
@@ -132,14 +133,18 @@ const VideoCall = () => {
         // D. Setup Synchronous Context Handlers inside Socket Connection Frame
         socket.on('connect', async () => {
           console.log(`🟢 Connected to signaling server. Room: ${roomId}`);
-          socket.emit('join_call_room', { roomId, userId: currentUserId });
+          
+          // MATCHED TO SERVER: Provide targetPeerId explicitly to avoid string separation issues
+          socket.emit('join_call_room', { roomId, userId: currentUserId, targetPeerId: peerUserId });
 
           if (callRole === 'caller') {
             setCallStatus("Calling user...");
             try {
               const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
-              socket.emit('webrtc_offer', { roomId, offer, to: peerUserId });
+              
+              // MATCHED TO SERVER: emit event changed to 'send_webrtc_offer'
+              socket.emit('send_webrtc_offer', { streamId: roomId, offer, targetViewerId: peerUserId });
             } catch (err) {
               console.error("Failed creating signaling offer Matrix:", err);
             }
@@ -149,14 +154,17 @@ const VideoCall = () => {
         });
 
         // E. Bind Signalling Pipeline Events safely
-        socket.on('webrtc_offer', async ({ offer }) => {
+        // MATCHED TO SERVER: Listens to 'webrtc_offer_received'
+        socket.on('webrtc_offer_received', async ({ offer, hostSocketId }) => {
           if (!isComponentMounted || !pcRef.current) return;
           try {
             setCallStatus("Answering call...");
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await pcRef.current.createAnswer();
             await pcRef.current.setLocalDescription(answer);
-            socket.emit('webrtc_answer', { roomId, answer, to: peerUserId });
+            
+            // MATCHED TO SERVER: emit event changed to 'send_webrtc_answer' targeting origin host
+            socket.emit('send_webrtc_answer', { streamId: roomId, answer });
 
             // Flush out stacked early ice arrivals
             if (iceQueueRef.current.length > 0) {
@@ -170,7 +178,8 @@ const VideoCall = () => {
           }
         });
 
-        socket.on('webrtc_answer', async ({ answer }) => {
+        // MATCHED TO SERVER: Listens to 'webrtc_answer_received'
+        socket.on('webrtc_answer_received', async ({ answer }) => {
           if (!isComponentMounted || !pcRef.current) return;
           try {
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
@@ -186,7 +195,8 @@ const VideoCall = () => {
           }
         });
 
-        socket.on('webrtc_ice_candidate', async ({ candidate }) => {
+        // MATCHED TO SERVER: Listens for incoming ICE events forwarded from room channels
+        socket.on('incoming_ice_candidate', async ({ candidate }) => {
           if (!isComponentMounted) return;
           const currentPc = pcRef.current;
           if (currentPc && currentPc.remoteDescription) {
@@ -242,7 +252,7 @@ const VideoCall = () => {
     }
     if (socketRef.current) {
       const roomId = [currentUserId, peerUserId].sort().join("-");
-      socketRef.current.emit('hang_up_call', { roomId });
+      socketRef.current.emit('reject_incoming_call', { roomId, to: peerUserId });
       socketRef.current.disconnect();
       socketRef.current = null;
     }
