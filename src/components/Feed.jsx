@@ -347,15 +347,15 @@ const VideoCard = ({ video, currentUser }) => {
     if (containerRef.current) observer.observe(containerRef.current);
 
     return () => {
-      // --- CRITICAL FIX: STOP MEDIA ON UNMOUNT ---
+      // --- CRITICAL FIX: TERMINATE PIPELINES AND STRIP SRC ON UNMOUNT ---
       if (videoRef.current) {
         videoRef.current.pause();
-        videoRef.current.src = ""; 
+        videoRef.current.removeAttribute('src'); 
         videoRef.current.load();
       }
       if (audioRef.current) {
         audioRef.current.pause();
-        audioRef.current.src = "";
+        audioRef.current.removeAttribute('src');
         audioRef.current.load();
       }
       observer.disconnect();
