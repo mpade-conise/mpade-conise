@@ -228,7 +228,11 @@ const handleDownloadAction = async () => {
       })
     });
 
-    if (!response.ok) throw new Error("Backend processing failed.");
+    // 🌟 ENHANCED ERROR CHECK: Read the exact server message if it fails
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "Backend processing failed.");
+    }
 
     // The backend sends back the finished video blob file directly!
     const blob = await response.blob();
@@ -244,7 +248,7 @@ const handleDownloadAction = async () => {
 
   } catch (err) {
     console.error("❌ Download Error:", err);
-    alert("Could not download video. Please try again.");
+    alert(`Could not download video. Details: ${err.message}`);
   } finally {
     setIsProcessing(null);
   }
