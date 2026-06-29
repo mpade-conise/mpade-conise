@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { io } from 'socket.io-client';
-import { PhoneOff, Mic, MicOff, Phone, Shield } from 'lucide-react';
+import { PhoneOff, Mic, MicOff, Shield, PhoneCall } from 'lucide-react';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -51,10 +51,10 @@ const VoiceCall = () => {
   
   const remoteAudioRef = useRef(null);
 
-  // 1. Fetch profiles and establish authentication states
+  // 1. Fetch user authentication and peer profile info with URL verification guards
   useEffect(() => {
     const initProfiles = async () => {
-      console.log("🔍 Audio Call Routing State Check -> peerUserId:", peerUserId, "| Role Parameter:", URLRole);
+      console.log("🔍 Incoming Voice Call Routing State Check -> peerUserId:", peerUserId, "| Role Parameter:", URLRole);
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -63,9 +63,10 @@ const VoiceCall = () => {
       }
       setCurrentUserId(user.id);
 
+      // CRITICAL GUARD: Stop execution if peerUserId is missing or evaluates to string literal "undefined"
       if (!peerUserId || peerUserId === 'undefined') {
         console.error("❌ Aborting profile fetching loop: peerUserId url parameter resolved to an undefined state.");
-        setCallStatus("Routing Error");
+        setCallStatus("URL Configuration Error");
         return;
       }
 
@@ -79,8 +80,9 @@ const VoiceCall = () => {
     initProfiles();
   }, [peerUserId, URLRole, navigate]);
 
-  // 2. Main Dual-Compatibility Signalling Engine
+  // 2. Main WebRTC Signalling Implementation Block (Asynchronous Workflow)
   useEffect(() => {
+    // Block signaling engine until both peer IDs are cleanly defined strings
     if (!currentUserId || !peerUserId || peerUserId === 'undefined') return;
 
     let isComponentMounted = true;
@@ -89,6 +91,7 @@ const VoiceCall = () => {
 
     const initializeMediaAndSignaling = async () => {
       try {
+        // A. Mount Local Media Tracks First (Audio Only)
         setCallStatus("Accessing microphone...");
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: false, 
@@ -102,13 +105,14 @@ const VoiceCall = () => {
         
         localStreamRef.current = stream;
 
+        // B. Set Up Peer Connection Structure
         const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
         pcRef.current = pc;
 
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
         pc.ontrack = (event) => {
-          console.log("🎵 Remote audio stream attached successfully.");
+          console.log("🔊 Remote audio stream attached successfully.");
           setCallStatus("Connected");
           if (remoteAudioRef.current && event.streams[0]) {
             remoteAudioRef.current.srcObject = event.streams[0];
@@ -117,74 +121,51 @@ const VoiceCall = () => {
 
         pc.onicecandidate = (event) => {
           if (event.candidate && socketRef.current?.connected) {
-            const icePayload = {
-              roomId: roomId,
+            socketRef.current.emit('webrtc_ice_candidate', {
               streamId: roomId,
               candidate: event.candidate,
-              to: peerUserId,
               targetSocketId: null
-            };
-            // Emit to both potential candidate routing targets
-            socketRef.current.emit('webrtc_ice_candidate', icePayload);
-            socketRef.current.emit('send_ice_candidate', icePayload);
+            });
           }
         };
 
+        // C. Spin up Socket Context AFTER WebRTC Instance is safely created
         const socket = io(SOCKET_SERVER_URL, {
           transports: ['websocket', 'polling'],
           forceNew: true
         });
         socketRef.current = socket;
 
+        // D. Setup Synchronous Context Handlers inside Socket Connection Frame
         socket.on('connect', async () => {
           console.log(`🟢 Connected to signaling server. Room: ${roomId}`);
           socket.emit('join_call_room', { roomId, userId: currentUserId, targetPeerId: peerUserId });
 
           if (callRole === 'caller') {
-            setCallStatus("Calling...");
+            setCallStatus("Calling user...");
             try {
               const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
-              
-              const offerPayload = { 
-                roomId: roomId, 
-                streamId: roomId, 
-                offer, 
-                to: peerUserId, 
-                targetViewerId: peerUserId 
-              };
-
-              // Broadcast both typical signaling event variations
-              socket.emit('webrtc_offer', offerPayload);
-              socket.emit('send_webrtc_offer', offerPayload);
+              socket.emit('send_webrtc_offer', { streamId: roomId, offer, targetViewerId: peerUserId });
             } catch (err) {
-              console.error("Failed creating signaling audio offer Matrix:", err);
+              console.error("Failed creating signaling offer Matrix:", err);
             }
           } else {
-            setCallStatus("Incoming Voice Call...");
+            setCallStatus("Awaiting Connection...");
           }
         });
 
-        // Unified Handlers for Handshake Handlings
-        const handleIncomingOffer = async (data) => {
-          if (!isComponentMounted || !pcRef.current || !data?.offer) return;
+        // E. Bind Signalling Pipeline Events safely
+        socket.on('webrtc_offer_received', async ({ offer, hostSocketId }) => {
+          if (!isComponentMounted || !pcRef.current) return;
           try {
-            setCallStatus("Connecting...");
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.offer));
+            setCallStatus("Answering call...");
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await pcRef.current.createAnswer();
             await pcRef.current.setLocalDescription(answer);
-            
-            const answerPayload = { 
-              roomId: roomId, 
-              streamId: roomId, 
-              answer, 
-              to: peerUserId,
-              targetViewerId: peerUserId
-            };
+            socket.emit('send_webrtc_answer', { streamId: roomId, answer });
 
-            socket.emit('webrtc_answer', answerPayload);
-            socket.emit('send_webrtc_answer', answerPayload);
-
+            // Flush out stacked early ice arrivals
             if (iceQueueRef.current.length > 0) {
               for (const candidate of iceQueueRef.current) {
                 await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
@@ -192,15 +173,14 @@ const VoiceCall = () => {
               iceQueueRef.current = [];
             }
           } catch (err) {
-            console.error("Failed executing structural handshake audio loop:", err);
+            console.error("Failed executing structural handshake offer loop:", err);
           }
-        };
+        });
 
-        const handleIncomingAnswer = async (data) => {
-          if (!isComponentMounted || !pcRef.current || !data?.answer) return;
+        socket.on('webrtc_answer_received', async ({ answer }) => {
+          if (!isComponentMounted || !pcRef.current) return;
           try {
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-            setCallStatus("Connected");
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
             
             if (iceQueueRef.current.length > 0) {
               for (const candidate of iceQueueRef.current) {
@@ -211,39 +191,29 @@ const VoiceCall = () => {
           } catch (err) {
             console.error("Failed setting up active remote answer specification:", err);
           }
-        };
+        });
 
-        const handleIncomingIce = async (data) => {
-          if (!isComponentMounted || !data?.candidate) return;
+        socket.on('incoming_ice_candidate', async ({ candidate }) => {
+          if (!isComponentMounted) return;
           const currentPc = pcRef.current;
           if (currentPc && currentPc.remoteDescription) {
             try {
-              await currentPc.addIceCandidate(new RTCIceCandidate(data.candidate));
+              await currentPc.addIceCandidate(new RTCIceCandidate(candidate));
             } catch (e) {
               console.warn("Skipped structural candidate node:", e);
             }
           } else {
-            iceQueueRef.current.push(data.candidate);
+            iceQueueRef.current.push(candidate);
           }
-        };
-
-        // Bind multi-convention listeners to capture any valid server emit
-        socket.on('webrtc_offer', handleIncomingOffer);
-        socket.on('webrtc_offer_received', handleIncomingOffer);
-        
-        socket.on('webrtc_answer', handleIncomingAnswer);
-        socket.on('webrtc_answer_received', handleIncomingAnswer);
-        
-        socket.on('webrtc_ice_candidate', handleIncomingIce);
-        socket.on('incoming_ice_candidate', handleIncomingIce);
+        });
 
         socket.on('peer_hung_up', () => {
           if (isComponentMounted) cleanUpCall();
         });
 
       } catch (err) {
-        console.error("Audio system acquisition or socket binding fault:", err);
-        if (isComponentMounted) setCallStatus("Mic Error");
+        console.error("System device acquisition or socket binding fault:", err);
+        if (isComponentMounted) setCallStatus("Hardware Error");
       }
     };
 
@@ -255,7 +225,7 @@ const VoiceCall = () => {
     };
   }, [currentUserId, peerUserId, URLRole]); 
 
-  // Mute Sync Shifter
+  // Track State Synchronization Shifters
   useEffect(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
@@ -281,56 +251,64 @@ const VoiceCall = () => {
   };
 
   return (
-    <div className="fixed inset-0 bg-[#08080a] text-white flex flex-col items-center justify-between p-6 font-sans">
+    <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col items-center justify-between p-6 font-sans">
+      {/* Hidden Audio Output Element for WebRTC Stream Processing */}
       <audio ref={remoteAudioRef} autoPlay />
 
-      {/* Top Security Banner */}
-      <div className="w-full flex justify-between items-center bg-white/5 px-4 py-3 rounded-2xl border border-white/5 backdrop-blur-md">
+      {/* Top Bar */}
+      <div className="w-full flex justify-between items-center bg-white/5 px-4 py-3 rounded-2xl border border-white/5 backdrop-blur-md z-10">
         <div className="flex items-center gap-2">
           <Shield size={16} className="text-cyan-400" />
-          <span className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Secure Audio Channel</span>
+          <span className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">End-to-End Encrypted</span>
         </div>
         <span className="text-xs bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded-full font-bold">{callStatus}</span>
       </div>
 
-      {/* Voice Avatar Profile Display */}
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative flex items-center justify-center">
-          {callStatus !== "Connected" && (
-            <div className="absolute inset-0 w-32 h-32 bg-cyan-500/10 rounded-full animate-ping duration-1000 opacity-40" />
-          )}
+      {/* Profile Audio Sandbox Container */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 my-8 relative w-full max-w-md rounded-3xl bg-zinc-900 border border-white/5 shadow-2xl p-8">
+        <div className="flex flex-col items-center gap-6">
           {peerProfile?.avatar_url ? (
             <img 
               src={peerProfile.avatar_url} 
-              alt="Avatar" 
-              className={`w-28 h-28 rounded-full object-cover border relative z-10 ${callStatus === 'Connected' ? 'border-cyan-500/50 shadow-[0_0_20px_rgba(34,211,238,0.2)]' : 'border-white/10'}`}
+              alt="Peer Avatar" 
+              className={`w-32 h-32 rounded-full object-cover border-4 border-cyan-500/20 shadow-2xl ${callStatus !== "Connected" ? 'animate-pulse' : ''}`}
             />
           ) : (
-            <div className="w-28 h-28 rounded-full bg-zinc-900 border border-white/10 flex items-center justify-center relative z-10 text-zinc-500">
-              <Phone size={32} />
+            <div className="w-32 h-32 rounded-full bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-center animate-pulse shadow-2xl">
+              <PhoneCall size={44} className="text-cyan-400" />
             </div>
           )}
+          
+          <div className="text-center">
+            <h2 className="text-2xl font-bold tracking-tight">@{peerProfile?.username || 'User'}</h2>
+            <p className="text-sm text-zinc-400 mt-2 font-medium tracking-wide">{callStatus}</p>
+          </div>
         </div>
-        <h2 className="text-xl font-bold tracking-tight mt-2">@{peerProfile?.username || 'User'}</h2>
-        <p className="text-xs text-zinc-500 tracking-wide font-medium">Mpade Audio Connection</p>
+
+        {/* Ambient Ring Wave Effect (Visual Indicator during connection) */}
+        {callStatus === "Connected" && (
+          <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+            <div className="absolute w-64 h-64 border-2 border-cyan-400 rounded-full animate-ping duration-1000" />
+          </div>
+        )}
       </div>
 
-      {/* Control Panel Block */}
-      <div className="flex items-center gap-6 bg-zinc-950 border border-white/5 px-8 py-4 rounded-full shadow-2xl mb-4">
+      {/* Control Dock */}
+      <div className="flex items-center gap-6 bg-zinc-900/80 border border-white/5 px-8 py-4 rounded-full backdrop-blur-xl shadow-xl z-10">
         <button 
           type="button"
           onClick={() => setIsMuted(!isMuted)} 
-          className={`p-4 rounded-full transition-colors ${isMuted ? 'bg-red-500 text-white' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+          className={`p-4 rounded-full transition-colors ${isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
         >
-          {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+          {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
         </button>
 
         <button 
           type="button"
           onClick={cleanUpCall} 
-          className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/30"
+          className="p-5 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/30"
         >
-          <PhoneOff size={22} />
+          <PhoneOff size={24} />
         </button>
       </div>
     </div>
