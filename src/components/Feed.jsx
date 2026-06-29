@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { toBlobURL } from '@ffmpeg/util';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   Heart, MessageCircle, Share2, Music, UserPlus, Disc, 
@@ -213,41 +213,51 @@ const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUp
     </button>
   );
 
-  const handleDownloadAction = async () => {
+ const handleDownloadAction = async () => {
     if (!video.video_url) return alert("Video source not found.");
     setIsProcessing('downloading'); 
     try {
+      // Check for loaded state using the official v0.12 flag (ffmpeg.loaded or custom check)
       if (!ffmpeg.loaded) {
         const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+        
         await ffmpeg.load({
-          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          // Correct property names for FFmpeg v0.12 initialization
+          corejsURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-          workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+          workerJSURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
         });
       }
+
       const videoData = await fetchFile(video.video_url);
       const audioData = await fetchFile(video.music_url || '/sounds/default_audio.mp3');
+      
       await ffmpeg.writeFile('input_video.mp4', videoData);
       await ffmpeg.writeFile('input_audio.mp3', audioData);
+      
       await ffmpeg.exec([
         '-i', 'input_video.mp4', '-i', 'input_audio.mp3',
-        '-c:v', 'copy', '-c:a', 'libmp3lame',
+        '-c:v', 'copy', '-c:a', 'aac', // 'aac' has wider default browser support than libmp3lame inside mp4 wrappers
         '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'output.mp4'
       ]);
+      
       const data = await ffmpeg.readFile('output.mp4');
       const blob = new Blob([data.buffer], { type: 'video/mp4' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Mpade_${video.id}.mp4`;
+      link.download = `Mpade_${video.id || 'export'}.mp4`;
       link.click();
+      
+      // Clean up local browser memory maps
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error(err);
+      console.error("❌ FFmpeg Processing Pipeline Error:", err);
+      alert("Processing failed. Please check cross-origin browser headers.");
     } finally {
       setIsProcessing(null);
     }
   };
-
   const handleDelete = async () => {
     if (!window.confirm("Delete this video forever?")) return;
     setIsProcessing('deleting');
