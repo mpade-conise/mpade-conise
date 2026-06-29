@@ -213,51 +213,79 @@ const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUp
     </button>
   );
 
- const handleDownloadAction = async () => {
-    if (!video.video_url) return alert("Video source not found.");
-    setIsProcessing('downloading'); 
-    try {
-      // Check for loaded state using the official v0.12 flag (ffmpeg.loaded or custom check)
-      if (!ffmpeg.loaded) {
-        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-        
-        await ffmpeg.load({
-          // Correct property names for FFmpeg v0.12 initialization
-          corejsURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-          workerJSURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
-        });
-      }
-
-      const videoData = await fetchFile(video.video_url);
-      const audioData = await fetchFile(video.music_url || '/sounds/default_audio.mp3');
+const handleDownloadAction = async () => {
+  if (!video.video_url) return alert("Video source not found.");
+  setIsProcessing('downloading'); 
+  
+  try {
+    // 1. Double check that properties are perfectly mapped for v0.12+
+    if (!ffmpeg.loaded) {
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
       
-      await ffmpeg.writeFile('input_video.mp4', videoData);
-      await ffmpeg.writeFile('input_audio.mp3', audioData);
-      
-      await ffmpeg.exec([
-        '-i', 'input_video.mp4', '-i', 'input_audio.mp3',
-        '-c:v', 'copy', '-c:a', 'aac', // 'aac' has wider default browser support than libmp3lame inside mp4 wrappers
-        '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'output.mp4'
-      ]);
-      
-      const data = await ffmpeg.readFile('output.mp4');
-      const blob = new Blob([data.buffer], { type: 'video/mp4' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Mpade_${video.id || 'export'}.mp4`;
-      link.click();
-      
-      // Clean up local browser memory maps
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("❌ FFmpeg Processing Pipeline Error:", err);
-      alert("Processing failed. Please check cross-origin browser headers.");
-    } finally {
-      setIsProcessing(null);
+      await ffmpeg.load({
+        corejsURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        workerJSURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+      });
     }
-  };
+
+    // 2. Fetch Video Data safely
+    let videoData;
+    try {
+      videoData = await fetchFile(video.video_url);
+    } catch (vErr) {
+      console.error("Failed to load video file source:", vErr);
+      throw new Error("Could not access video source file.");
+    }
+
+    // 3. Fetch Audio Data safely with a reliable fallback for iTunes timeouts
+    let audioData;
+    const primaryAudioUrl = video.music_url;
+    const fallbackAudioUrl = '/sounds/default_audio.mp3';
+
+    try {
+      // Set a controller to drop the fetch if Apple handles it with a slow hang/timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second absolute limit
+
+      const response = await fetch(primaryAudioUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) throw new Error("Audio network response not ok");
+      audioData = await fetchFile(primaryAudioUrl);
+    } catch (aErr) {
+      console.warn("⚠️ Audio asset dropped or timed out. Dropping back to default stream audio asset.", aErr);
+      // Fetch local public folder asset instead of external broken server
+      audioData = await fetchFile(fallbackAudioUrl);
+    }
+
+    // 4. Run processing layers
+    await ffmpeg.writeFile('input_video.mp4', videoData);
+    await ffmpeg.writeFile('input_audio.mp3', audioData);
+    
+    await ffmpeg.exec([
+      '-i', 'input_video.mp4', '-i', 'input_audio.mp3',
+      '-c:v', 'copy', '-c:a', 'aac', 
+      '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'output.mp4'
+    ]);
+    
+    const data = await ffmpeg.readFile('output.mp4');
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+    const url = window.URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Mpade_${video.id || 'export'}.mp4`;
+    link.click();
+    
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("❌ FFmpeg Pipeline Processing Error:", err);
+    alert(`Could not compile download: ${err.message || 'Check connection configs'}`);
+  } finally {
+    setIsProcessing(null);
+  }
+};
   const handleDelete = async () => {
     if (!window.confirm("Delete this video forever?")) return;
     setIsProcessing('deleting');
