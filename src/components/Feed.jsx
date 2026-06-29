@@ -482,7 +482,39 @@ const Feed = () => {
       } catch (err) { console.error("Feed error:", err); } 
       finally { setLoading(false); }
     };
+    
     initFeed();
+
+    // --- CRITICAL REALTIME SUBSCRIPTION ADDED HERE ---
+    // Sets up a structural engine listener that detects new inserts on the videos table
+    const feedChannel = supabase
+      .channel('realtime-feed-updates')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'videos' },
+        async (payload) => {
+          // A secondary lookup brings in the profile details of the user who uploaded the new video
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('username, avatar_url')
+            .eq('id', payload.new.user_id)
+            .single();
+
+          const integratedVideoObject = {
+            ...payload.new,
+            profiles: profileData || null
+          };
+
+          // Slide the newly uploaded video directly into the front of the feed state array
+          setVideos((currentFeed) => [integratedVideoObject, ...currentFeed]);
+        }
+      )
+      .subscribe();
+
+    // Tear down subscription on unmount to save bandwidth and prevent stack leaks
+    return () => {
+      supabase.removeChannel(feedChannel);
+    };
   }, []);
 
   useEffect(() => {
