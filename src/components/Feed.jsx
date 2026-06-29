@@ -218,9 +218,9 @@ const handleDownloadAction = async () => {
   setIsProcessing('downloading'); 
   
   try {
-    // 1. Double check that properties are perfectly mapped for v0.12+
     if (!ffmpeg.loaded) {
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+      // Switching to jsDelivr completely sidesteps unpkg's nested resolution issues
+      const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
       
       await ffmpeg.load({
         corejsURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
@@ -229,37 +229,9 @@ const handleDownloadAction = async () => {
       });
     }
 
-    // 2. Fetch Video Data safely
-    let videoData;
-    try {
-      videoData = await fetchFile(video.video_url);
-    } catch (vErr) {
-      console.error("Failed to load video file source:", vErr);
-      throw new Error("Could not access video source file.");
-    }
-
-    // 3. Fetch Audio Data safely with a reliable fallback for iTunes timeouts
-    let audioData;
-    const primaryAudioUrl = video.music_url;
-    const fallbackAudioUrl = '/sounds/default_audio.mp3';
-
-    try {
-      // Set a controller to drop the fetch if Apple handles it with a slow hang/timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second absolute limit
-
-      const response = await fetch(primaryAudioUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) throw new Error("Audio network response not ok");
-      audioData = await fetchFile(primaryAudioUrl);
-    } catch (aErr) {
-      console.warn("⚠️ Audio asset dropped or timed out. Dropping back to default stream audio asset.", aErr);
-      // Fetch local public folder asset instead of external broken server
-      audioData = await fetchFile(fallbackAudioUrl);
-    }
-
-    // 4. Run processing layers
+    const videoData = await fetchFile(video.video_url);
+    const audioData = await fetchFile(video.music_url || '/sounds/default_audio.mp3');
+    
     await ffmpeg.writeFile('input_video.mp4', videoData);
     await ffmpeg.writeFile('input_audio.mp3', audioData);
     
@@ -280,8 +252,8 @@ const handleDownloadAction = async () => {
     
     window.URL.revokeObjectURL(url);
   } catch (err) {
-    console.error("❌ FFmpeg Pipeline Processing Error:", err);
-    alert(`Could not compile download: ${err.message || 'Check connection configs'}`);
+    console.error("❌ FFmpeg Processing Pipeline Error:", err);
+    alert("Processing failed. Please check cross-origin browser headers.");
   } finally {
     setIsProcessing(null);
   }
