@@ -130,9 +130,10 @@ const VoiceCall = () => {
         };
 
         // C. Spin up Socket Context AFTER WebRTC Instance is safely created
+        // FIX: Forcing websocket exclusively to stop polling overhead bugs
         const socket = io(SOCKET_SERVER_URL, {
-          transports: ['websocket', 'polling'],
-          forceNew: true
+          transports: ['websocket'],
+          upgrade: false
         });
         socketRef.current = socket;
 
