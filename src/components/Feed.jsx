@@ -218,14 +218,17 @@ const handleDownloadAction = async () => {
   setIsProcessing('downloading'); 
   
   try {
+    // Check if FFmpeg instance is loaded. 
+    // Note: Depending on your exact @ffmpeg/ffmpeg build layout, 
+    // you might need to use `ffmpeg.loaded` or a custom state tracking boolean.
     if (!ffmpeg.loaded) {
-      // Switching to jsDelivr completely sidesteps unpkg's nested resolution issues
       const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
       
       await ffmpeg.load({
-        corejsURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-        workerJSURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+        // Correct options for @ffmpeg/ffmpeg v0.12.15
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+        // No worker properties are included here since v0.12's ESM build handles execution inline
       });
     }
 
