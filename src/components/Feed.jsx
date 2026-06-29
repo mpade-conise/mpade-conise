@@ -216,47 +216,35 @@ const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUp
 const handleDownloadAction = async () => {
   if (!video.video_url) return alert("Video source not found.");
   setIsProcessing('downloading'); 
-  
-  try {
-    // Check if FFmpeg instance is loaded. 
-    // Note: Depending on your exact @ffmpeg/ffmpeg build layout, 
-    // you might need to use `ffmpeg.loaded` or a custom state tracking boolean.
-    if (!ffmpeg.loaded) {
-      const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
-      
-      await ffmpeg.load({
-        // Correct options for @ffmpeg/ffmpeg v0.12.15
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
-        // No worker properties are included here since v0.12's ESM build handles execution inline
-      });
-    }
 
-    const videoData = await fetchFile(video.video_url);
-    const audioData = await fetchFile(video.music_url || '/sounds/default_audio.mp3');
-    
-    await ffmpeg.writeFile('input_video.mp4', videoData);
-    await ffmpeg.writeFile('input_audio.mp3', audioData);
-    
-    await ffmpeg.exec([
-      '-i', 'input_video.mp4', '-i', 'input_audio.mp3',
-      '-c:v', 'copy', '-c:a', 'aac', 
-      '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'output.mp4'
-    ]);
-    
-    const data = await ffmpeg.readFile('output.mp4');
-    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+  try {
+    // Send the URLs to your Render backend to do the heavy lifting
+    const response = await fetch('https://mpade-backend.onrender.com/api/merge-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoUrl: video.video_url,
+        audioUrl: video.music_url || '/sounds/default_audio.mp3'
+      })
+    });
+
+    if (!response.ok) throw new Error("Backend processing failed.");
+
+    // The backend sends back the finished video blob file directly!
+    const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     
     const link = document.createElement('a');
     link.href = url;
     link.download = `Mpade_${video.id || 'export'}.mp4`;
+    document.body.appendChild(link);
     link.click();
-    
+    document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
+
   } catch (err) {
-    console.error("❌ FFmpeg Processing Pipeline Error:", err);
-    alert("Processing failed. Please check cross-origin browser headers.");
+    console.error("❌ Download Error:", err);
+    alert("Could not download video. Please try again.");
   } finally {
     setIsProcessing(null);
   }
