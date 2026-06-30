@@ -218,13 +218,23 @@ const handleDownloadAction = async () => {
   setIsProcessing('downloading'); 
 
   try {
+    // Clean up audioUrl logic so we NEVER pass the broken local fallback string
+    // If music_url is "NULL", 'null', or empty, we explicitly send null to the backend
+    let stableAudioUrl = null;
+    if (video.music_url) {
+      const cleanCheck = String(video.music_url).trim().toLowerCase();
+      if (cleanCheck !== '' && cleanCheck !== 'null' && cleanCheck !== 'undefined') {
+        stableAudioUrl = video.music_url;
+      }
+    }
+
     // Send the URLs to your Render backend to do the heavy lifting
     const response = await fetch('https://mpade-backend.onrender.com/api/merge-video', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         videoUrl: video.video_url,
-        audioUrl: video.music_url || '/sounds/default_audio.mp3'
+        audioUrl: stableAudioUrl // 🌟 Sends a true null or a valid live URL link
       })
     });
 
