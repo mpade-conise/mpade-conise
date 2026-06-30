@@ -112,7 +112,8 @@ const Messaging = () => {
 
       if (!error && data) {
         setMessages(data);
-        // Mark messages as read when viewing conversation thread
+        
+        // Updated logic: Updates unread status specifically for incoming messages from the peer
         await supabase
           .from('messages')
           .update({ unread: false, status: 'read' })
