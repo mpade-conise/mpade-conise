@@ -53,7 +53,7 @@ const VideoCall = () => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
-  // 1. Fetch user authentication and peer profile info with URL verification guards
+  // 1. Fetch user authentication and peer profile info
   useEffect(() => {
     const initProfiles = async () => {
       console.log("🔍 Incoming Call Routing State Check -> peerUserId:", peerUserId, "| Role Parameter:", URLRole);
@@ -65,7 +65,6 @@ const VideoCall = () => {
       }
       setCurrentUserId(user.id);
 
-      // CRITICAL GUARD: Stop execution if peerUserId is missing or evaluates to string literal "undefined"
       if (!peerUserId || peerUserId === 'undefined') {
         console.error("❌ Aborting profile fetching loop: peerUserId url parameter resolved to an undefined state.");
         setCallStatus("URL Configuration Error");
@@ -82,14 +81,20 @@ const VideoCall = () => {
     initProfiles();
   }, [peerUserId, URLRole, navigate]);
 
-  // 2. Main WebRTC Signalling Implementation Block (Asynchronous Workflow)
+  // 2. Main WebRTC Signalling Implementation Block
   useEffect(() => {
-    // Block signaling engine until both peer IDs are cleanly defined strings
     if (!currentUserId || !peerUserId || peerUserId === 'undefined') return;
 
     let isComponentMounted = true;
-    const callRole = URLRole || (currentUserId < peerUserId ? 'caller' : 'receiver');
+    
+    // FIXED: Strict deterministic role checking logic so they don't both claim to be the caller
+    const callRole = URLRole === 'caller' || URLRole === 'receiver' 
+      ? URLRole 
+      : (currentUserId < peerUserId ? 'caller' : 'receiver');
+      
     const roomId = [currentUserId, peerUserId].sort().join("-");
+
+    console.log(`Setting up signaling as [${callRole}] for Room: ${roomId}`);
 
     const initializeMediaAndSignaling = async () => {
       try {
@@ -159,8 +164,11 @@ const VideoCall = () => {
         });
 
         // E. Bind Signalling Pipeline Events safely
-        socket.on('webrtc_offer_received', async ({ offer, hostSocketId }) => {
+        socket.on('webrtc_offer_received', async ({ offer }) => {
           if (!isComponentMounted || !pcRef.current) return;
+          // Guard: If we are explicitly designated as caller, drop accidental offers to avoid state racing
+          if (callRole === 'caller') return; 
+
           try {
             setCallStatus("Answering call...");
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
@@ -261,7 +269,6 @@ const VideoCall = () => {
 
   return (
     <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col items-center justify-between p-6 font-sans">
-      {/* Top Bar */}
       <div className="w-full flex justify-between items-center bg-white/5 px-4 py-3 rounded-2xl border border-white/5 backdrop-blur-md z-10">
         <div className="flex items-center gap-2">
           <Shield size={16} className="text-cyan-400" />
@@ -270,7 +277,6 @@ const VideoCall = () => {
         <span className="text-xs bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded-full font-bold">{callStatus}</span>
       </div>
 
-      {/* Video Sandbox Box Container */}
       <div className="flex-1 flex flex-col items-center justify-center gap-4 my-8 relative w-full max-w-md rounded-3xl overflow-hidden bg-zinc-900 border border-white/5 shadow-2xl">
         <video 
           ref={remoteVideoRef} 
@@ -297,7 +303,6 @@ const VideoCall = () => {
           </div>
         )}
 
-        {/* Local Preview Pin */}
         <div className="absolute bottom-4 right-4 w-28 h-40 bg-black/60 border border-white/10 rounded-xl backdrop-blur-md overflow-hidden flex items-center justify-center z-20 shadow-lg">
           <video 
             ref={localVideoRef} 
@@ -310,7 +315,6 @@ const VideoCall = () => {
         </div>
       </div>
 
-      {/* Control Dock */}
       <div className="flex items-center gap-4 bg-zinc-900/80 border border-white/5 px-6 py-4 rounded-full backdrop-blur-xl shadow-xl z-10">
         <button 
           type="button"
