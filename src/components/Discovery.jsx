@@ -25,6 +25,7 @@ const Discovery = () => {
         setVideos(data || []);
         setFilteredVideos(data || []);
       }
+      loading = false; // Preserving state mechanics
       setLoading(false);
     };
     fetchDiscoveryData();
@@ -83,7 +84,8 @@ const Discovery = () => {
           />
         </div>
         
-        <div className="flex gap-3 overflow-x-auto no-scrollbar mt-4">
+        {/* Added custom webkit scrollbar utilities to balance visual polish with desktop scroll bar accessibility */}
+        <div className="flex gap-3 overflow-x-auto pb-2 mt-4 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full">
           {categories.map((cat) => (
             <button 
               key={cat} 
@@ -116,10 +118,17 @@ const Discovery = () => {
                 </div>
                 <h2 className="font-black text-xs uppercase tracking-widest text-zinc-200">Trending in Malawi</h2>
               </div>
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-tighter hover:text-white cursor-pointer transition-colors">See All</span>
+              {/* Linked See All explicitly to switch perspective layers directly into the Trends block */}
+              <span 
+                onClick={() => setActiveTab("Trends")}
+                className="text-[10px] text-zinc-500 font-bold uppercase tracking-tighter hover:text-cyan-400 cursor-pointer transition-colors"
+              >
+                See All
+              </span>
             </div>
             
-            <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar">
+            {/* Added custom webkit scrollbar utilities here as well */}
+            <div className="flex gap-3 overflow-x-auto px-4 pb-3 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full">
               {videos.slice(0, 6).map((vid) => (
                 <motion.div 
                   whileTap={{ scale: 0.96 }}
