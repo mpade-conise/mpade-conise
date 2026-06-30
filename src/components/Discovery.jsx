@@ -25,7 +25,6 @@ const Discovery = () => {
         setVideos(data || []);
         setFilteredVideos(data || []);
       }
-      loading = false; // Preserving state mechanics
       setLoading(false);
     };
     fetchDiscoveryData();
@@ -84,7 +83,6 @@ const Discovery = () => {
           />
         </div>
         
-        {/* Added custom webkit scrollbar utilities to balance visual polish with desktop scroll bar accessibility */}
         <div className="flex gap-3 overflow-x-auto pb-2 mt-4 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full">
           {categories.map((cat) => (
             <button 
@@ -118,7 +116,6 @@ const Discovery = () => {
                 </div>
                 <h2 className="font-black text-xs uppercase tracking-widest text-zinc-200">Trending in Malawi</h2>
               </div>
-              {/* Linked See All explicitly to switch perspective layers directly into the Trends block */}
               <span 
                 onClick={() => setActiveTab("Trends")}
                 className="text-[10px] text-zinc-500 font-bold uppercase tracking-tighter hover:text-cyan-400 cursor-pointer transition-colors"
@@ -127,7 +124,6 @@ const Discovery = () => {
               </span>
             </div>
             
-            {/* Added custom webkit scrollbar utilities here as well */}
             <div className="flex gap-3 overflow-x-auto px-4 pb-3 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-zinc-800 [&::-webkit-scrollbar-thumb]:rounded-full">
               {videos.slice(0, 6).map((vid) => (
                 <motion.div 
