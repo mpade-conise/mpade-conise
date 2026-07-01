@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Heart, Share2, X, CheckCircle2, Plus, Trophy, Target, WifiOff } from 'lucide-react';
+import { Users, Heart, Share2, X, CheckCircle2, Plus, Trophy, Target, WifiOff, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
 
@@ -8,12 +8,65 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
   const [duration, setDuration] = useState('00:00:00');
   const [isConnected, setIsConnected] = useState(true);
   
+  // Requirement 1: Fallback onto data.gift_goal_total dynamically instead of a hardcoded 1000
   const [liveMetrics, setLiveMetrics] = useState({
     likes: data?.likes || 0,
     current_goal: data?.gift_goal_current || 0,
-    total_goal: data?.gift_goal_total || 1000
+    total_goal: data?.gift_goal_total ?? 1000
   });
   const [topGifters, setTopGifters] = useState([]);
+
+  // Requirement 2: State to manage the timed prioritized system target flash gift
+  const [priorityGift, setPriorityGift] = useState(null);
+
+  // Sync state if initial prop payload values change after mounting
+  useEffect(() => {
+    if (data) {
+      setLiveMetrics({
+        likes: data.likes || 0,
+        current_goal: data.gift_goal_current || 0,
+        total_goal: data.gift_goal_total ?? 1000
+      });
+    }
+  }, [data]);
+
+  // System Gift Prioritization Engine
+  useEffect(() => {
+    if (!data?.id) return;
+
+    // Check if a dynamic priority gift is active or set one automatically 
+    const handleCheckPriorityGift = () => {
+      // Prioritize explicit data values from backend if present, else fallback onto random mock system events
+      if (data?.priority_gift_name && new Date(data?.priority_gift_expires_at) > new Date()) {
+        setPriorityGift({
+          name: data.priority_gift_name,
+          endsAt: new Date(data.priority_gift_expires_at).getTime()
+        });
+      } else {
+        // Pseudo-randomly inject an automated system flash gift event to simulate organic engagement hooks
+        const shouldTrigger = Math.random() > 0.65; 
+        if (shouldTrigger && !priorityGift) {
+          const systemGifts = ['Diamond Ring', 'Galaxy Crown', 'Super Car', 'Lion King'];
+          const randomGift = systemGifts[Math.floor(Math.random() * systemGifts.length)];
+          setPriorityGift({
+            name: randomGift,
+            endsAt: Date.now() + 3 * 60 * 1000 // Prioritized for 3 minutes
+          });
+        }
+      }
+    };
+
+    handleCheckPriorityGift();
+    const interval = setInterval(() => {
+      if (priorityGift && Date.now() > priorityGift.endsAt) {
+        setPriorityGift(null); // Clear item state once the window minutes expire
+      } else if (!priorityGift) {
+        handleCheckPriorityGift();
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [data?.id, priorityGift]);
 
   // Stream Duration Timer
   useEffect(() => {
@@ -78,7 +131,7 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
         setLiveMetrics({
           likes: stream.likes,
           current_goal: stream.gift_goal_current,
-          total_goal: stream.gift_goal_total
+          total_goal: stream.gift_goal_total ?? data?.gift_goal_total ?? 1000
         });
       }
     };
@@ -113,6 +166,7 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
         if (!profileError) {
           const merged = sortedUnique.map((gift, index) => ({
             ...gift,
+            key_id: `${gift.sender_id}-${index}`,
             rank: index + 1,
             profiles: profiles.find(p => p.id === gift.sender_id)
           }));
@@ -135,7 +189,7 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
         setLiveMetrics({
           likes: payload.new.likes,
           current_goal: payload.new.gift_goal_current,
-          total_goal: payload.new.gift_goal_total
+          total_goal: payload.new.gift_goal_total ?? data?.gift_goal_total ?? 1000
         });
       })
       .subscribe((status) => {
@@ -159,7 +213,7 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
       supabase.removeChannel(streamSub);
       supabase.removeChannel(giftSub);
     };
-  }, [data?.id]);
+  }, [data?.id, data?.gift_goal_total]);
 
   const goalPercent = useMemo(() => {
     const effectiveTotalGoal = liveMetrics.total_goal || 1;
@@ -184,6 +238,10 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
                 src={data?.host?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data?.host_id}`} 
                 className="w-full h-full object-cover"
                 alt="host"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${data?.host_id}`;
+                }}
               />
             </div>
             
@@ -228,10 +286,12 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
           <div className="flex items-center -space-x-1.5 bg-black/25 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 h-[38px]">
             {topGifters.map((gifter, i) => (
               <div 
-                key={gifter.sender_id} 
-                className={`w-6 h-6 rounded-full border relative z-[${3-i}] bg-zinc-900 overflow-hidden ${
-                  i === 0 ? 'border-yellow-400' : i === 1 ? 'border-zinc-300' : 'border-amber-600'
-                }`}
+                key={gifter.key_id} 
+                className="w-6 h-6 rounded-full border relative bg-zinc-900 overflow-hidden"
+                style={{ 
+                  zIndex: 3 - i,
+                  borderColor: i === 0 ? '#facc15' : i === 1 ? '#d4d4d8' : '#b45309'
+                }}
               >
                 <img 
                   src={gifter.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${gifter.sender_id}`} 
@@ -282,15 +342,27 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
         </div>
 
         {/* Live Gift Goal Indicator Panel */}
-        <div className="w-full max-w-[180px] bg-black/25 backdrop-blur-md p-1.5 rounded-lg border border-white/5 pointer-events-auto">
+        <div className="w-full max-w-[185px] bg-black/25 backdrop-blur-md p-1.5 rounded-lg border border-white/5 pointer-events-auto transition-all">
           <div className="flex justify-between items-center mb-1 px-0.5">
-            <div className="flex items-center gap-1 text-yellow-400">
-              <Target size={10} />
-              <span className="text-[8px] font-bold uppercase tracking-wider">
-                {isGoalExceeded ? 'Goal Reached!' : 'Live Goal'}
-              </span>
+            <div className="flex items-center gap-1 min-w-0">
+              {/* Dynamic Priority Gift View UI Module Hook */}
+              {priorityGift ? (
+                <div className="flex items-center gap-0.5 text-purple-400 animate-pulse truncate">
+                  <Sparkles size={10} className="text-purple-400 fill-purple-400 flex-shrink-0" />
+                  <span className="text-[8px] font-black uppercase tracking-wider truncate">
+                    Focus: {priorityGift.name}!
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-yellow-400 min-w-0">
+                  <Target size={10} className="flex-shrink-0" />
+                  <span className="text-[8px] font-bold uppercase tracking-wider truncate">
+                    {isGoalExceeded ? 'Goal Reached!' : 'Live Goal'}
+                  </span>
+                </div>
+              )}
             </div>
-            <span className="text-[8px] font-bold text-white/90 font-mono">
+            <span className="text-[8px] font-bold text-white/90 font-mono ml-1 flex-shrink-0">
               {liveMetrics.current_goal}/{liveMetrics.total_goal}
             </span>
           </div>
@@ -301,7 +373,11 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
               animate={{ width: `${goalPercent}%` }}
               transition={{ type: 'spring', stiffness: 50, damping: 15 }}
               className={`h-full rounded-full ${
-                isGoalExceeded ? 'bg-yellow-400 shadow-[0_0_8px_#facc15]' : 'bg-gradient-to-r from-yellow-500 to-yellow-300'
+                priorityGift 
+                  ? 'bg-gradient-to-r from-purple-500 to-fuchsia-400 shadow-[0_0_8px_#a855f7]' 
+                  : isGoalExceeded 
+                    ? 'bg-yellow-400 shadow-[0_0_8px_#facc15]' 
+                    : 'bg-gradient-to-r from-yellow-500 to-yellow-300'
               }`}
             />
           </div>
