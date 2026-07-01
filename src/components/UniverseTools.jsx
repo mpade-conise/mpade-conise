@@ -367,6 +367,7 @@ const UniverseTools = () => {
     </>
   )}
 </AnimatePresence>
+      
               {/* Close Drawer Button */}
               <button 
                 onClick={() => setSelectedVideo(null)}
@@ -375,7 +376,7 @@ const UniverseTools = () => {
                 Exit Viewport Analysis
               </button>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 
