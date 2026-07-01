@@ -258,117 +258,115 @@ const UniverseTools = () => {
         </main>
       </div>
 
-      {/* --- REFACTORED INTERACTIVE PREVIEW DRAWER --- */}
-      <AnimatePresence>
-        {selectedVideo && (
-          <>
-            {/* Backdrop Dimmer Overlay */}
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setSelectedVideo(null)}
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200]"
-            />
-            {/* Content Drawer Frame */}
-            <motion.div 
-              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 24, stiffness: 180 }}
-              className="fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-white/10 rounded-t-[32px] z-[201] p-6 pb-10 max-h-[85vh] flex flex-col"
-            >
-              <div className="w-10 h-1 bg-zinc-800 rounded-full mx-auto mb-6 shrink-0" />
-              
-              {/* Drawer Identity Card Header */}
-              <div className="flex items-start gap-4 mb-6 shrink-0 bg-white/[0.01] p-3 rounded-2xl border border-white/5">
-                <div className="w-14 h-20 bg-zinc-900 rounded-xl overflow-hidden shrink-0 border border-white/10 shadow-lg flex items-center justify-center relative">
-                  {selectedVideo.video_url ? (
-                    <img 
-                      src={selectedVideo.video_url} 
-                      className="w-full h-full object-cover" 
-                      alt="Selected model preview asset" 
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150';
-                      }}
-                    />
-                  ) : (
-                    <Play size={16} className="text-zinc-700" fill="currentColor" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-base font-black italic tracking-tight truncate text-zinc-100">{selectedVideo.caption || "Untitled Content Session"}</h2>
-                  <p className="text-[8px] font-mono font-black text-zinc-500 uppercase tracking-widest mt-1">ID: VID_{selectedVideo.id?.slice(0, 12)}</p>
-                  
-                  {/* Internal Tab Management Engine inside Drawer */}
-                  <div className="flex gap-2 mt-3">
-                    <button 
-                      onClick={() => setDrawerMode('metrics')}
-                      className={`px-3 py-1 rounded-md text-[8px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${drawerMode === 'metrics' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-400'}`}
-                    >
-                      <FileText size={10} /> Metrics Array
-                    </button>
-                    <button 
-                      onClick={() => setDrawerMode('preview')}
-                      className={`px-3 py-1 rounded-md text-[8px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${drawerMode === 'preview' ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/10' : 'bg-white/5 text-zinc-400'}`}
-                    >
-                      <Video size={10} /> Render View
-                    </button>
+     {/* --- REFACTORED INTERACTIVE PREVIEW DRAWER --- */}
+<AnimatePresence>
+  {selectedVideo && (
+    <>
+      {/* Backdrop Dimmer Overlay */}
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={() => setSelectedVideo(null)}
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200]"
+      />
+      {/* Content Drawer Frame */}
+      <motion.div 
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 24, stiffness: 180 }}
+        className="fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-white/10 rounded-t-[32px] z-[201] p-6 pb-10 max-h-[85vh] flex flex-col"
+      >
+        <div className="w-10 h-1 bg-zinc-800 rounded-full mx-auto mb-6 shrink-0" />
+        
+        {/* Drawer Identity Card Header */}
+        <div className="flex items-start gap-4 mb-6 shrink-0 bg-white/[0.01] p-3 rounded-2xl border border-white/5">
+          <div className="w-14 h-20 bg-zinc-900 rounded-xl overflow-hidden shrink-0 border border-white/10 shadow-lg flex items-center justify-center relative">
+            {selectedVideo.video_url ? (
+              <video 
+                src={selectedVideo.video_url} 
+                className="w-full h-full object-cover pointer-events-none" 
+                muted
+                playsInline
+                preload="metadata"
+              />
+            ) : (
+              <Play size={16} className="text-zinc-700" fill="currentColor" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-black italic tracking-tight truncate text-zinc-100">{selectedVideo.caption || "Untitled Content Session"}</h2>
+            <p className="text-[8px] font-mono font-black text-zinc-500 uppercase tracking-widest mt-1">ID: VID_{selectedVideo.id?.slice(0, 12)}</p>
+            
+            {/* Internal Tab Management Engine inside Drawer */}
+            <div className="flex gap-2 mt-3">
+              <button 
+                onClick={() => setDrawerMode('metrics')}
+                className={`px-3 py-1 rounded-md text-[8px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${drawerMode === 'metrics' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-400'}`}
+              >
+                <FileText size={10} /> Metrics Array
+              </button>
+              <button 
+                onClick={() => setDrawerMode('preview')}
+                className={`px-3 py-1 rounded-md text-[8px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${drawerMode === 'preview' ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/10' : 'bg-white/5 text-zinc-400'}`}
+              >
+                <Video size={10} /> Render View
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Drawer Tab Sub-views Panel Content */}
+        <div className="flex-1 overflow-y-auto pr-1 scrollbar-studio mb-6 min-h-[140px]">
+          <AnimatePresence mode="wait">
+            {drawerMode === 'metrics' ? (
+              <motion.div key="draw-met" initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 5 }} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 font-mono">
+                  <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
+                    <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Total Engaged Views</p>
+                    <p className="text-xl font-black italic mt-1 text-cyan-400">{selectedVideo.views_count || 0}</p>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
+                    <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Organic Target Likes</p>
+                    <p className="text-xl font-black italic mt-1 text-rose-500">{selectedVideo.likes_count || 0}</p>
                   </div>
                 </div>
-              </div>
-
-              {/* Dynamic Drawer Tab Sub-views Panel Content */}
-              <div className="flex-1 overflow-y-auto pr-1 scrollbar-studio mb-6 min-h-[140px]">
-                <AnimatePresence mode="wait">
-                  {drawerMode === 'metrics' ? (
-                    <motion.div key="draw-met" initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 5 }} className="space-y-4">
-                      <div className="grid grid-cols-2 gap-3 font-mono">
-                        <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
-                          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Total Engaged Views</p>
-                          <p className="text-xl font-black italic mt-1 text-cyan-400">{selectedVideo.views_count || 0}</p>
-                        </div>
-                        <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
-                          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Organic Target Likes</p>
-                          <p className="text-xl font-black italic mt-1 text-rose-500">{selectedVideo.likes_count || 0}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 font-mono">
-                        <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
-                          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Audience Retention</p>
-                          <p className="text-xl font-black italic mt-1 text-zinc-300">64.2%</p>
-                        </div>
-                        <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
-                          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Average Watch Duration</p>
-                          <p className="text-xl font-black italic mt-1 text-yellow-500">0:42s</p>
-                        </div>
-                      </div>
-                    </motion.div>
+                <div className="grid grid-cols-2 gap-3 font-mono">
+                  <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
+                    <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Audience Retention</p>
+                    <p className="text-xl font-black italic mt-1 text-zinc-300">64.2%</p>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
+                    <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Average Watch Duration</p>
+                    <p className="text-xl font-black italic mt-1 text-yellow-500">0:42s</p>
+                  </div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div key="draw-prev" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -5 }} className="h-full flex items-center justify-center">
+                {/* Active Video Player Viewbox Sandbox Area */}
+                <div className="w-full max-w-xs aspect-[9/16] bg-zinc-950 border border-white/10 rounded-2xl relative group overflow-hidden shadow-2xl flex items-center justify-center">
+                  {selectedVideo.video_url ? (
+                    <video 
+                      src={selectedVideo.video_url} 
+                      className="w-full h-full object-contain z-10" 
+                      controls
+                      autoPlay
+                      playsInline
+                    />
                   ) : (
-                    <motion.div key="draw-prev" initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -5 }} className="h-full flex items-center justify-center">
-                      {/* Interactive Target Sandbox Video Component Simulation Block */}
-                      <div className="w-full max-w-xs aspect-[9/16] bg-zinc-900 border border-white/5 rounded-2xl relative flex flex-col items-center justify-center p-4 group overflow-hidden shadow-2xl">
-                        <Play size={24} className="text-purple-400 animate-pulse z-10" fill="currentColor" />
-                        <p className="text-[8px] font-mono tracking-widest uppercase text-zinc-500 mt-3 z-10 text-center">Video Media Payload Stream Container</p>
-                        <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none text-left">
-                          <p className="text-[10px] font-bold text-white truncate">{selectedVideo.caption || "@mpade_creator"}</p>
-                          <p className="text-[8px] text-zinc-400 truncate mt-0.5">Vite Core Client Render Frame Target Sandbox</p>
-                        </div>
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 z-0" />
-                        {selectedVideo.video_url && (
-                          <img 
-                            src={selectedVideo.video_url} 
-                            className="absolute inset-0 w-full h-full object-cover opacity-30 z-0 blur-sm scale-105" 
-                            alt="Blur layer design" 
-                            onError={(e) => {
-                              e.target.onerror = null;
-                              e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150';
-                            }}
-                          />
-                        )}
-                      </div>
-                    </motion.div>
+                    <div className="flex flex-col items-center justify-center p-4 text-center z-10">
+                      <Play size={24} className="text-zinc-600 mb-2" fill="currentColor" />
+                      <p className="text-[9px] font-mono uppercase tracking-wider text-zinc-500">No Stream Address Linked</p>
+                    </div>
                   )}
-                </AnimatePresence>
-              </div>
-
+                  <div className="absolute inset-0 bg-zinc-900/40 z-0" />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
+    </>
+  )}
+</AnimatePresence>
               {/* Close Drawer Button */}
               <button 
                 onClick={() => setSelectedVideo(null)}
