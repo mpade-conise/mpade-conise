@@ -258,19 +258,24 @@ const UniverseTools = () => {
         </main>
       </div>
 
-     {/* --- REFACTORED INTERACTIVE PREVIEW DRAWER --- */}
+{/* --- REFACTORED INTERACTIVE PREVIEW DRAWER --- */}
 <AnimatePresence>
   {selectedVideo && (
     <>
       {/* Backdrop Dimmer Overlay */}
       <motion.div 
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        exit={{ opacity: 0 }}
         onClick={() => setSelectedVideo(null)}
         className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200]"
       />
+      
       {/* Content Drawer Frame */}
       <motion.div 
-        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        initial={{ y: "100%" }} 
+        animate={{ y: 0 }} 
+        exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 24, stiffness: 180 }}
         className="fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-white/10 rounded-t-[32px] z-[201] p-6 pb-10 max-h-[85vh] flex flex-col"
       >
@@ -363,23 +368,18 @@ const UniverseTools = () => {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Close Drawer Button */}
+        <button 
+          onClick={() => setSelectedVideo(null)}
+          className="w-full py-4 bg-white hover:bg-zinc-100 text-black font-black uppercase tracking-[3px] text-xs rounded-xl shrink-0 transition-colors"
+        >
+          Exit Viewport Analysis
+        </button>
       </motion.div>
     </>
   )}
 </AnimatePresence>
-      
-              {/* Close Drawer Button */}
-              <button 
-                onClick={() => setSelectedVideo(null)}
-                className="w-full py-4 bg-white hover:bg-zinc-100 text-black font-black uppercase tracking-[3px] text-xs rounded-xl shrink-0 transition-colors"
-              >
-                Exit Viewport Analysis
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
       {/* --- BALANCED STICKY BOTTOM FLOATING CONTROL PANEL NAV --- */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-sm bg-zinc-950/70 backdrop-blur-3xl border border-white/10 rounded-[28px] p-1.5 flex items-center justify-between shadow-2xl z-[100]">
         <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={16}/>} label="Home" />
