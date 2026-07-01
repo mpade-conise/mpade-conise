@@ -179,9 +179,9 @@ const UniverseTools = () => {
                       className="bg-zinc-900/30 p-3 rounded-2xl border border-white/5 flex gap-4 items-center cursor-pointer group hover:border-cyan-500/20 hover:bg-zinc-900/60 transition-all active:scale-[0.995]"
                     >
                       <div className="w-12 h-16 bg-zinc-800 rounded-xl overflow-hidden relative shadow-md shrink-0 border border-white/10">
-                        {video.thumbnail_url ? (
+                        {video.video_url ? (
                           <img 
-                            src={video.thumbnail_url} 
+                            src={video.video_url} 
                             className="w-full h-full object-cover" 
                             alt="Node thumbnail payload" 
                             onError={(e) => { 
