@@ -2,21 +2,31 @@ import React from 'react';
 import { ArrowLeft, Radio, Video, Mic, X, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const GuestManager = ({ activeGuests, setActiveGuests, pendingRequests, setPendingRequests, onBack }) => {
+// Add defensive empty array fallbacks directly in the destructuring
+const GuestManager = ({ 
+  activeGuests = [], 
+  setActiveGuests, 
+  pendingRequests = [], 
+  setPendingRequests, 
+  onBack 
+}) => {
   
   const handleAcceptRequest = (request, assignedMode) => {
+    if (!setActiveGuests) return;
     setActiveGuests(prev => [
-      ...prev,
+      ...(prev || []),
       { id: request.id, username: request.username, mode: assignedMode, isMuted: false }
     ]);
-    setPendingRequests(prev => prev.filter(item => item.id !== request.id));
+    if (setPendingRequests) {
+      setPendingRequests(prev => (prev || []).filter(item => item.id !== request.id));
+    }
   };
 
   const handleRejectRemove = (id, isRequestQueue = true) => {
     if (isRequestQueue) {
-      setPendingRequests(prev => prev.filter(item => item.id !== id));
+      if (setPendingRequests) setPendingRequests(prev => (prev || []).filter(item => item.id !== id));
     } else {
-      setActiveGuests(prev => prev.filter(item => item.id !== id));
+      if (setActiveGuests) setActiveGuests(prev => (prev || []).filter(item => item.id !== id));
     }
   };
 
@@ -29,11 +39,11 @@ const GuestManager = ({ activeGuests, setActiveGuests, pendingRequests, setPendi
       {/* ACTIVE MANAGER CONTROL LIST */}
       <div className="space-y-2">
         <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-[2px] px-1 flex items-center gap-1">
-          <Users size={10} className="text-cyan-400" /> Allocated Room Seats ({activeGuests.length}/3)
+          <Users size={10} className="text-cyan-400" /> Allocated Room Seats ({activeGuests?.length || 0}/3)
         </h3>
         
         <div className="grid grid-cols-1 gap-1.5">
-          {activeGuests.map(guest => (
+          {activeGuests?.map(guest => (
             <div key={guest.id} className="bg-zinc-900 p-2 rounded-xl border border-white/5 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-bold text-zinc-200 truncate">{guest.username}</p>
@@ -50,12 +60,12 @@ const GuestManager = ({ activeGuests, setActiveGuests, pendingRequests, setPendi
       {/* REQUEST QUEUE INTAKE CARD */}
       <div className="space-y-2">
         <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-[2px] px-1 flex items-center gap-1">
-          <Radio size={10} className="text-purple-400 animate-pulse" /> Pending Requests ({pendingRequests.length})
+          <Radio size={10} className="text-purple-400 animate-pulse" /> Pending Requests ({pendingRequests?.length || 0})
         </h3>
 
         <div className="space-y-1.5">
           <AnimatePresence mode="popLayout">
-            {pendingRequests.map(req => (
+            {pendingRequests?.map(req => (
               <motion.div key={req.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, x: -10 }} className="bg-zinc-900 p-2.5 rounded-xl border border-white/5 flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-zinc-200 truncate">{req.username}</span>
                 <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-lg border border-white/5">
