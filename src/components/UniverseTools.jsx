@@ -168,49 +168,51 @@ const UniverseTools = () => {
               </motion.div>
             )}
 
-            {activeTab === 'content' && (
-              <motion.div key="cont" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
-                <h3 className="text-[9px] font-black text-zinc-600 uppercase tracking-[3px] px-2">Video Framework Repositories ({myVideos.length})</h3>
-                <div className="space-y-2.5">
-                  {myVideos.length > 0 ? myVideos.map(video => (
-                    <div 
-                      key={video.id} 
-                      onClick={() => handleOpenDrawer(video)}
-                      className="bg-zinc-900/30 p-3 rounded-2xl border border-white/5 flex gap-4 items-center cursor-pointer group hover:border-cyan-500/20 hover:bg-zinc-900/60 transition-all active:scale-[0.995]"
-                    >
-                      <div className="w-12 h-16 bg-zinc-800 rounded-xl overflow-hidden relative shadow-md shrink-0 border border-white/10">
-                        {video.video_url ? (
-                          <img 
-                            src={video.video_url} 
-                            className="w-full h-full object-cover" 
-                            alt="Node thumbnail payload" 
-                            onError={(e) => { 
-                              e.target.onerror = null;
-                              e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150'; 
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-600">
-                            <Play size={14} fill="currentColor" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                         <h4 className="text-xs font-bold truncate text-zinc-200 italic">{video.caption || "Untitled Stream Instance"}</h4>
-                         <div className="flex gap-3 mt-1.5 font-mono">
-                            <span className="flex items-center gap-1 text-[9px] text-zinc-500 font-bold"><Eye size={10} className="text-cyan-400"/> {video.views_count || 0}</span>
-                            <span className="flex items-center gap-1 text-[9px] text-zinc-500 font-bold"><Heart size={10} className="text-rose-500"/> {video.likes_count || 0}</span>
-                         </div>
-                      </div>
-                      <ChevronRight size={16} className="text-zinc-700 group-hover:text-cyan-400 transition-colors shrink-0 ml-2" />
-                    </div>
-                  )) : (
-                    <div className="text-center py-20 opacity-20 uppercase font-black tracking-widest text-[10px]">No content lines indexed</div>
-                  )}
-                </div>
-              </motion.div>
+{activeTab === 'content' && (
+  <motion.div key="cont" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
+    <h3 className="text-[9px] font-black text-zinc-600 uppercase tracking-[3px] px-2">Video Framework Repositories ({myVideos.length})</h3>
+    <div className="space-y-2.5">
+      {myVideos.length > 0 ? myVideos.map(video => (
+        <div 
+          key={video.id} 
+          onClick={() => handleOpenDrawer(video)}
+          className="bg-zinc-900/30 p-3 rounded-2xl border border-white/5 flex gap-4 items-center cursor-pointer group hover:border-cyan-500/20 hover:bg-zinc-900/60 transition-all active:scale-[0.995]"
+        >
+          {/* Replaced image sandbox box with inline video preview context */}
+          <div className="w-12 h-16 bg-zinc-800 rounded-xl overflow-hidden relative shadow-md shrink-0 border border-white/10 flex items-center justify-center">
+            {video.video_url ? (
+              <video 
+                src={video.video_url} 
+                className="w-full h-full object-cover pointer-events-none" 
+                muted
+                playsInline
+                preload="metadata"
+                // Optional UI Trick: Play short preview clip when user hovers over the row
+                onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
+                onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-600">
+                <Play size={14} fill="currentColor" />
+              </div>
             )}
-
+          </div>
+          
+          <div className="flex-1 min-w-0">
+             <h4 className="text-xs font-bold truncate text-zinc-200 italic">{video.caption || "Untitled Stream Instance"}</h4>
+             <div className="flex gap-3 mt-1.5 font-mono">
+                <span className="flex items-center gap-1 text-[9px] text-zinc-500 font-bold"><Eye size={10} className="text-cyan-400"/> {video.views_count || 0}</span>
+                <span className="flex items-center gap-1 text-[9px] text-zinc-500 font-bold"><Heart size={10} className="text-rose-500"/> {video.likes_count || 0}</span>
+             </div>
+          </div>
+          <ChevronRight size={16} className="text-zinc-700 group-hover:text-cyan-400 transition-colors shrink-0 ml-2" />
+        </div>
+      )) : (
+        <div className="text-center py-20 opacity-20 uppercase font-black tracking-widest text-[10px]">No content lines indexed</div>
+      )}
+    </div>
+  </motion.div>
+)}
             {activeTab === 'monetization' && (
               <motion.div key="mon" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
                 <div className="bg-gradient-to-br from-purple-900/40 via-blue-900/20 to-black p-8 rounded-[36px] text-center border border-purple-500/20 shadow-2xl relative overflow-hidden">
@@ -277,9 +279,9 @@ const UniverseTools = () => {
               {/* Drawer Identity Card Header */}
               <div className="flex items-start gap-4 mb-6 shrink-0 bg-white/[0.01] p-3 rounded-2xl border border-white/5">
                 <div className="w-14 h-20 bg-zinc-900 rounded-xl overflow-hidden shrink-0 border border-white/10 shadow-lg flex items-center justify-center relative">
-                  {selectedVideo.thumbnail_url ? (
+                  {selectedVideo.video_url ? (
                     <img 
-                      src={selectedVideo.thumbnail_url} 
+                      src={selectedVideo.video_url} 
                       className="w-full h-full object-cover" 
                       alt="Selected model preview asset" 
                       onError={(e) => {
@@ -350,9 +352,9 @@ const UniverseTools = () => {
                           <p className="text-[8px] text-zinc-400 truncate mt-0.5">Vite Core Client Render Frame Target Sandbox</p>
                         </div>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 z-0" />
-                        {selectedVideo.thumbnail_url && (
+                        {selectedVideo.video_url && (
                           <img 
-                            src={selectedVideo.thumbnail_url} 
+                            src={selectedVideo.video_url} 
                             className="absolute inset-0 w-full h-full object-cover opacity-30 z-0 blur-sm scale-105" 
                             alt="Blur layer design" 
                             onError={(e) => {
