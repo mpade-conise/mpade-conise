@@ -130,15 +130,17 @@ const GiftPanel = ({ streamId, onClose }) => {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      // UPDATED: Parameters match the clean Postgres Signature perfectly
       const { error } = await supabase.rpc('send_live_gift', {
-        p_stream_id: streamId,
-        p_sender_id: user.id,
-        p_gift_id: gift.id,
-        p_price: gift.price,
-        p_quantity: 1
+        stream_id: streamId,
+        sender_id: user.id,
+        gift_id: String(gift.id), 
+        price: Number(gift.price) 
       });
       if (!error) {
         setBalance(prev => prev - gift.price);
+      } else {
+        console.error("RPC Error:", error.message);
       }
     } catch (err) { console.error(err); } 
     finally { setIsSending(false); }
