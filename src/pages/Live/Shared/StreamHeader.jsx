@@ -1,4 +1,4 @@
-withoute altering innocent codes the goal must not be fixed to 1000 but the host can set during go live and the system sometimes it must set itself a type of gift to be priotized for some minutes import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Users, Heart, Share2, X, CheckCircle2, Plus, Trophy, Target, WifiOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
