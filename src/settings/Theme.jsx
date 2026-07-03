@@ -8,26 +8,16 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
   });
 
   const backgroundOptions = [
+    /* ================= TIER 1: BASE SYSTEM DEFAULTS ================= */
     {
       id: 'none',
-      name: 'None (Passthrough)',
+      name: 'Default Passthrough',
       className: 'bg-zinc-900 border-zinc-800',
       css: ''
     },
     {
-      id: 'neon-stage',
-      name: 'Neon Stage',
-      className: 'bg-gradient-to-tr from-purple-950 to-indigo-900 border-purple-500/20',
-      css: `
-        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
-          background: linear-gradient(to top right, #2e1065, #0f172a) !important;
-          background-image: linear-gradient(to top right, #2e1065, #0f172a) !important;
-        }
-      `
-    },
-    {
       id: 'blur-light',
-      name: 'Minimal Blur',
+      name: 'Minimal Canvas Blur',
       className: 'bg-zinc-800 border-zinc-700/50 backdrop-blur-sm',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -38,8 +28,31 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
       `
     },
     {
+      id: 'obsidian-smooth',
+      name: 'Pure Obsidian Matte',
+      className: 'bg-stone-950 border-stone-800',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: #050505 !important;
+        }
+      `
+    },
+
+    /* ================= TIER 2: IMMERSIVE NEON & CYBER STUDIO ================= */
+    {
+      id: 'neon-stage',
+      name: 'Cyber Neon Stage',
+      className: 'bg-gradient-to-tr from-purple-950 to-indigo-900 border-purple-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: linear-gradient(to top right, #2e1065, #0f172a) !important;
+          background-image: linear-gradient(to top right, #2e1065, #0f172a) !important;
+        }
+      `
+    },
+    {
       id: 'cyber-grid',
-      name: 'Cyber Grid',
+      name: 'Retro Tech Grid',
       className: 'bg-zinc-950 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:20px_20px] border-zinc-800',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -50,21 +63,9 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
         }
       `
     },
-    /* 🔥 EXTRA NEON & GLOW DESIGNS 🔥 */
-    {
-      id: 'neon-pool',
-      name: 'Neon Pool',
-      className: 'bg-gradient-to-b from-cyan-950 via-slate-900 to-emerald-950 border-cyan-500/20',
-      css: `
-        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
-          background: radial-gradient(circle at 50% 120%, rgba(6, 182, 212, 0.15), #020617 70%) !important;
-          box-shadow: inset 0 -100px 150px -50px rgba(6, 182, 212, 0.3) !important;
-        }
-      `
-    },
     {
       id: 'ai-neon-city',
-      name: 'AI Neon City',
+      name: 'AI Neon Skyline',
       className: 'bg-gradient-to-tr from-fuchsia-950 via-zinc-950 to-indigo-950 border-fuchsia-500/20',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -76,7 +77,7 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
     },
     {
       id: 'synthwave-sunset',
-      name: 'Synthwave Glow',
+      name: 'Synthwave Glow Sunset',
       className: 'bg-gradient-to-t from-pink-950 to-neutral-950 border-pink-500/20',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -87,7 +88,7 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
     },
     {
       id: 'matrix-matrix',
-      name: 'Digital Matrix',
+      name: 'Digital Matrix System',
       className: 'bg-zinc-950 border-emerald-500/10',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -98,10 +99,22 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
         }
       `
     },
-    /* 🎬 HIGH CONTRAST STUDIO FILTER MODELS 🎬 */
+
+    /* ================= TIER 3: PREMIUM CINEMATIC AMBIENCE ================= */
+    {
+      id: 'neon-pool',
+      name: 'Chroma Neon Pool',
+      className: 'bg-gradient-to-b from-cyan-950 via-slate-900 to-emerald-950 border-cyan-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: radial-gradient(circle at 50% 120%, rgba(6, 182, 212, 0.15), #020617 70%) !important;
+          box-shadow: inset 0 -100px 150px -50px rgba(6, 182, 212, 0.3) !important;
+        }
+      `
+    },
     {
       id: 'crimson-eclipse',
-      name: 'Crimson Eclipse',
+      name: 'Crimson Deep Eclipse',
       className: 'bg-gradient-to-br from-rose-950 to-stone-950 border-rose-500/20',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -111,7 +124,7 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
     },
     {
       id: 'toxic-radiation',
-      name: 'Acid Neon',
+      name: 'Acid Neon Laboratory',
       className: 'bg-gradient-to-tr from-lime-950 to-neutral-950 border-lime-500/20',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -122,7 +135,7 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
     },
     {
       id: 'deep-ocean',
-      name: 'Deep Abyss',
+      name: 'Deep Sea Abyss',
       className: 'bg-gradient-to-b from-blue-950 to-black border-blue-500/20',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -132,7 +145,7 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
     },
     {
       id: 'gold-lux',
-      name: 'Liquid Gold',
+      name: 'Liquid Luxury Gold',
       className: 'bg-gradient-to-r from-amber-950 to-zinc-950 border-amber-500/20',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -141,18 +154,8 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
       `
     },
     {
-      id: 'obsidian-smooth',
-      name: 'Pure Obsidian',
-      className: 'bg-stone-950 border-stone-800',
-      css: `
-        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
-          background: #050505 !important;
-        }
-      `
-    },
-    {
       id: 'violet-pulse',
-      name: 'Violet Nebula',
+      name: 'Violet Star Nebula',
       className: 'bg-gradient-to-tr from-violet-950 to-slate-950 border-violet-500/20',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
@@ -164,7 +167,7 @@ const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
     },
     {
       id: 'magma-flow',
-      name: 'Magma Core',
+      name: 'Magma Core Engine',
       className: 'bg-gradient-to-tr from-orange-950 via-stone-950 to-black border-orange-500/20',
       css: `
         body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
