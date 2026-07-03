@@ -1,184 +1,248 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Moon, Zap, Sparkles, Monitor, Loader2, Save } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
+// src/pages/Live/Shared/BackgroundChanger.jsx
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Image, Sparkles } from 'lucide-react';
 
-const ThemeSettings = () => {
-  const navigate = useNavigate();
-  const { currentTheme, glassEffect, updateGlobalTheme, loading } = useTheme();
-  
-  // UI States (Drafts before applying)
-  const [selectedTheme, setSelectedTheme] = useState("neon-glow");
-  const [glassActive, setGlassActive] = useState(true);
-  const [saving, setSaving] = useState(false);
+const BackgroundChanger = ({ streamId, onBack, onSelectBackground }) => {
+  const [selectedBg, setSelectedBg] = useState(() => {
+    return localStorage.getItem(`mpade_bg_${streamId}`) || 'none';
+  });
 
-  const themes = [
-    { 
-      id: "neon-glow", 
-      name: "Neon Glow", 
-      desc: "Signature Mpade Universe aesthetic", 
-      colors: ["#00f2ea", "#ff0050", "#7000ff"],
-      icon: <Zap size={18} className="text-cyan-400" />
+  const backgroundOptions = [
+    {
+      id: 'none',
+      name: 'None (Passthrough)',
+      className: 'bg-zinc-900 border-zinc-800',
+      css: ''
     },
-    { 
-      id: "deep-dark", 
-      name: "Midnight Black", 
-      desc: "Pure black for OLED battery saving", 
-      colors: ["#ffffff", "#111111", "#222222"],
-      icon: <Moon size={18} className="text-zinc-400" />
+    {
+      id: 'neon-stage',
+      name: 'Neon Stage',
+      className: 'bg-gradient-to-tr from-purple-950 to-indigo-900 border-purple-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: linear-gradient(to top right, #2e1065, #0f172a) !important;
+          background-image: linear-gradient(to top right, #2e1065, #0f172a) !important;
+        }
+      `
     },
-    { 
-      id: "cyber-punk", 
-      name: "Cyberpunk", 
-      desc: "High contrast yellow and purple", 
-      colors: ["#f3ec1a", "#7000ff", "#000000"],
-      icon: <Sparkles size={18} className="text-yellow-400" />
+    {
+      id: 'blur-light',
+      name: 'Minimal Blur',
+      className: 'bg-zinc-800 border-zinc-700/50 backdrop-blur-sm',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: rgba(24, 24, 27, 0.75) !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+        }
+      `
+    },
+    {
+      id: 'cyber-grid',
+      name: 'Cyber Grid',
+      className: 'bg-zinc-950 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:20px_20px] border-zinc-800',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background-color: #09090b !important;
+          background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), 
+                            linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px) !important;
+          background-size: 24px 24px !important;
+        }
+      `
+    },
+    /* 🔥 EXTRA NEON & GLOW DESIGNS 🔥 */
+    {
+      id: 'neon-pool',
+      name: 'Neon Pool',
+      className: 'bg-gradient-to-b from-cyan-950 via-slate-900 to-emerald-950 border-cyan-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: radial-gradient(circle at 50% 120%, rgba(6, 182, 212, 0.15), #020617 70%) !important;
+          box-shadow: inset 0 -100px 150px -50px rgba(6, 182, 212, 0.3) !important;
+        }
+      `
+    },
+    {
+      id: 'ai-neon-city',
+      name: 'AI Neon City',
+      className: 'bg-gradient-to-tr from-fuchsia-950 via-zinc-950 to-indigo-950 border-fuchsia-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: linear-gradient(135deg, #090514 0%, #020205 100%) !important;
+          background-image: radial-gradient(at 0% 0%, rgba(217, 70, 239, 0.12) 0px, transparent 50%),
+                            radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.15) 0px, transparent 50%) !important;
+        }
+      `
+    },
+    {
+      id: 'synthwave-sunset',
+      name: 'Synthwave Glow',
+      className: 'bg-gradient-to-t from-pink-950 to-neutral-950 border-pink-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: linear-gradient(to bottom, #030712, #111827, #31102f) !important;
+          box-shadow: inset 0 -40px 100px rgba(236, 72, 153, 0.1) !important;
+        }
+      `
+    },
+    {
+      id: 'matrix-matrix',
+      name: 'Digital Matrix',
+      className: 'bg-zinc-950 border-emerald-500/10',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background-color: #020617 !important;
+          background-image: linear-gradient(rgba(16, 185, 129, 0.03) 2px, transparent 2px),
+                            linear-gradient(90deg, rgba(16, 185, 129, 0.03) 2px, transparent 2px) !important;
+          background-size: 30px 30px !important;
+        }
+      `
+    },
+    /* 🎬 HIGH CONTRAST STUDIO FILTER MODELS 🎬 */
+    {
+      id: 'crimson-eclipse',
+      name: 'Crimson Eclipse',
+      className: 'bg-gradient-to-br from-rose-950 to-stone-950 border-rose-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: radial-gradient(circle at 50% 30%, #25030a 0%, #000000 80%) !important;
+        }
+      `
+    },
+    {
+      id: 'toxic-radiation',
+      name: 'Acid Neon',
+      className: 'bg-gradient-to-tr from-lime-950 to-neutral-950 border-lime-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: linear-gradient(135deg, #022c22 0%, #050505 100%) !important;
+          box-shadow: inset 0 0 80px rgba(132, 204, 22, 0.05) !important;
+        }
+      `
+    },
+    {
+      id: 'deep-ocean',
+      name: 'Deep Abyss',
+      className: 'bg-gradient-to-b from-blue-950 to-black border-blue-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: linear-gradient(to bottom, #000a1f, #000000) !important;
+        }
+      `
+    },
+    {
+      id: 'gold-lux',
+      name: 'Liquid Gold',
+      className: 'bg-gradient-to-r from-amber-950 to-zinc-950 border-amber-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.08), #09090b 60%) !important;
+        }
+      `
+    },
+    {
+      id: 'obsidian-smooth',
+      name: 'Pure Obsidian',
+      className: 'bg-stone-950 border-stone-800',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: #050505 !important;
+        }
+      `
+    },
+    {
+      id: 'violet-pulse',
+      name: 'Violet Nebula',
+      className: 'bg-gradient-to-tr from-violet-950 to-slate-950 border-violet-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.15), transparent 60%),
+                      radial-gradient(circle at 80% 70%, rgba(236, 72, 153, 0.1), transparent 60%) !important;
+          background-color: #0c0a0f !important;
+        }
+      `
+    },
+    {
+      id: 'magma-flow',
+      name: 'Magma Core',
+      className: 'bg-gradient-to-tr from-orange-950 via-stone-950 to-black border-orange-500/20',
+      css: `
+        body, .min-h-screen, .h-screen, [class*="bg-black"], [class*="bg-zinc"] {
+          background: linear-gradient(to top left, #1c0a00, #000000 70%) !important;
+          box-shadow: inset 0 0 100px rgba(249, 115, 22, 0.04) !important;
+        }
+      `
     }
   ];
 
-  // Map initial settings when loaded from provider
   useEffect(() => {
-    if (!loading) {
-      setSelectedTheme(currentTheme);
-      setGlassActive(glassEffect);
+    let styleElement = document.getElementById('mpade-live-dynamic-theme');
+    if (!styleElement) {
+      styleElement = document.createElement('style');
+      styleElement.id = 'mpade-live-dynamic-theme';
+      document.head.appendChild(styleElement);
     }
-  }, [currentTheme, glassEffect, loading]);
 
-  const hasChanges = selectedTheme !== currentTheme || glassActive !== glassEffect;
+    const activeConfig = backgroundOptions.find(b => b.id === selectedBg);
+    if (activeConfig) {
+      styleElement.innerHTML = activeConfig.css;
+    }
 
-  const handleSave = async () => {
-    setSaving(true);
-    const success = await updateGlobalTheme(selectedTheme, glassActive);
-    setSaving(false);
-    if (success) {
-      navigate(-1);
+    localStorage.setItem(`mpade_bg_${streamId}`, selectedBg);
+  }, [selectedBg, streamId]);
+
+  const handleSelect = (id) => {
+    setSelectedBg(id);
+    if (onSelectBackground) {
+      onSelectBackground(id);
     }
   };
 
-  if (loading) return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <Loader2 className="text-cyan-500 animate-spin" size={28} />
-    </div>
-  );
-
   return (
-    <div className="min-h-screen bg-black text-white font-sans pb-32">
-      {/* --- HEADER --- */}
-      <nav className="sticky top-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/5 px-6 py-5 flex items-center">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/5 rounded-full transition-colors mr-2 active:scale-95">
-          <ChevronLeft size={22} className="text-zinc-400 hover:text-white" />
-        </button>
-        <h1 className="text-xs font-black uppercase tracking-[3px] italic bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">Visual Theme</h1>
-      </nav>
+    <div className="space-y-4 text-white font-sans max-h-[70vh] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-800">
+      
+      {/* Navigation Return Button */}
+      <button 
+        onClick={onBack} 
+        className="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition-colors w-fit group sticky top-0 bg-black/40 backdrop-blur-md py-1 z-10"
+      >
+        <ArrowLeft size={14} className="transform group-hover:-translate-x-0.5 transition-transform" /> 
+        Back to Menu
+      </button>
 
-      <div className="max-w-2xl mx-auto pt-8 px-4">
-        
-        {/* --- LIVE MOCKUP PREVIEW CARD --- */}
-        <div className="mb-10 flex justify-center">
-          <div className={`w-44 h-76 rounded-[36px] border-4 border-zinc-800 relative overflow-hidden transition-all duration-500 bg-black`}>
-            <div className="p-4 space-y-3 h-full flex flex-col justify-between">
-              <div className="space-y-3">
-                <div 
-                  className="h-2 w-14 rounded-full transition-colors duration-300" 
-                  style={{ backgroundColor: selectedTheme === 'neon-glow' ? '#00f2ea' : selectedTheme === 'cyber-punk' ? '#f3ec1a' : '#ffffff' }}
-                />
-                <div 
-                  className={`h-24 w-full rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-center transition-all duration-300 ${
-                    glassActive ? 'backdrop-blur-md bg-white/[0.03]' : ''
-                  }`}
-                >
-                  <div 
-                    className="w-8 h-8 rounded-full border-2 transition-colors duration-300 animate-pulse" 
-                    style={{ borderColor: selectedTheme === 'neon-glow' ? '#ff0050' : selectedTheme === 'cyber-punk' ? '#7000ff' : '#444444' }}
-                  />
-                </div>
-              </div>
-              <div className="h-8 w-full rounded-xl bg-zinc-900/20 border border-white/5" />
-            </div>
-          </div>
-        </div>
+      {/* Grid Selection Layout Container */}
+      <div className="grid grid-cols-2 gap-2">
+        {backgroundOptions.map((bg) => {
+          const isActive = selectedBg === bg.id;
 
-        {/* --- EXPERIENCE THEME LIST --- */}
-        <section className="mb-8">
-          <h3 className="px-2 mb-4 text-[10px] font-black text-zinc-500 uppercase tracking-[3px]">Select Experience</h3>
-          <div className="space-y-3">
-            {themes.map((t) => {
-              const isSelected = selectedTheme === t.id;
-              return (
-                <div
-                  key={t.id}
-                  onClick={() => setSelectedTheme(t.id)}
-                  className={`p-5 rounded-[24px] border transition-all duration-200 cursor-pointer flex items-center justify-between ${
-                    isSelected 
-                      ? 'bg-zinc-900 border-cyan-500/40 shadow-xl' 
-                      : 'bg-zinc-950 border-white/5 hover:bg-zinc-900/40'
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-11 h-11 bg-black rounded-xl flex items-center justify-center border border-white/5">{t.icon}</div>
-                    <div>
-                      <h4 className="text-sm font-bold text-zinc-200">{t.name}</h4>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">{t.desc}</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* --- PERFORMANCE / RENDERING SETTINGS --- */}
-        <section>
-          <h3 className="px-2 mb-4 text-[10px] font-black text-zinc-500 uppercase tracking-[3px]">Rendering</h3>
-          <div className="bg-[#0A0A0A] border border-white/5 rounded-[24px] p-5 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Monitor size={16} className="text-zinc-500" />
-              <h4 className="text-sm font-bold text-zinc-200">Glassmorphism</h4>
-            </div>
-            <button 
-              onClick={() => setGlassActive(!glassActive)}
-              className={`w-10 h-5 rounded-full relative transition-all duration-300 ${glassActive ? 'bg-cyan-500' : 'bg-zinc-800'}`}
+          return (
+            <div
+              key={bg.id}
+              onClick={() => handleSelect(bg.id)}
+              className={`aspect-video rounded-xl flex flex-col items-center justify-center p-3 text-center text-[10px] font-bold cursor-pointer border relative transition-all group overflow-hidden select-none ${bg.className} ${
+                isActive 
+                  ? 'border-cyan-500 text-cyan-400 shadow-md shadow-cyan-500/10' 
+                  : 'text-zinc-400 hover:border-white/20 hover:text-zinc-200'
+              }`}
             >
-              <motion.div 
-                animate={{ x: glassActive ? 22 : 4 }}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                className="absolute top-1 w-3 h-3 bg-white rounded-full" 
-              />
-            </button>
-          </div>
-        </section>
-      </div>
+              {/* Decorative Subtle Icon Layer for Visual Depth */}
+              <div className="absolute top-1.5 right-1.5 opacity-40 group-hover:opacity-100 transition-opacity">
+                {bg.id === 'none' && <Image size={11} />}
+                {bg.id !== 'none' && <Sparkles size={11} className={isActive ? "text-cyan-400" : "text-zinc-500"} />}
+              </div>
 
-      {/* --- FLOATING ACTION NOTIFICATION DOCK --- */}
-      <AnimatePresence>
-        {hasChanges && (
-          <motion.div 
-            initial={{ y: 80, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 80, opacity: 0 }}
-            className="fixed bottom-8 left-0 right-0 px-6 z-50"
-          >
-            <div className="max-w-md mx-auto bg-zinc-900/90 backdrop-blur-2xl border border-white/10 p-3.5 pl-6 rounded-full flex items-center justify-between shadow-2xl">
-              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Unsaved Customizations</p>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="bg-white hover:bg-cyan-400 text-black px-6 py-3 rounded-full flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-              >
-                {saving ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Save size={14} />
-                )}
-                <span className="text-xs font-black uppercase tracking-wider italic">Save</span>
-              </button>
+              <span className="tracking-wide px-1">{bg.name}</span>
+
+              {/* Mini Status Dot */}
+              {isActive && (
+                <div className="absolute bottom-1.5 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-cyan-400 rounded-full shadow-glow" />
+              )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          );
+        })}
+      </div>
     </div>
   );
 };
 
-export default ThemeSettings;
+export default BackgroundChanger;
