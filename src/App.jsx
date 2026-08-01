@@ -23,7 +23,7 @@ import { supabase } from './supabaseClient';
 
 import LiveRouter from './pages/Live/LiveRouter'; 
 
-import { Home, Search, Plus, MessageSquare, User, Phone, PhoneOff } from 'lucide-react';
+import { LayoutGrid, Compass, Plus, MessageSquareCode, UserCheck, Phone, PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 
@@ -154,53 +154,18 @@ function App() {
   };
 
   return (
-    <div className={`${getThemeClass()} min-h-screen text-white relative overflow-hidden font-sans select-none transition-colors duration-500 md:flex`}>
+    <div className={`${getThemeClass()} min-h-screen text-white relative overflow-hidden font-sans select-none transition-colors duration-500`}>
       
       {preferences.visual_theme === 'neon-glow' && (
-        <div className="fixed inset-0 pointer-events-none z-0">
-           <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/10 blur-[140px] rounded-full" />
-           <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-pink-500/10 blur-[140px] rounded-full" />
+        <div className="fixed inset-0 pointer-events-none">
+           <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/5 blur-[120px] rounded-full" />
+           <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-500/5 blur-[120px] rounded-full" />
         </div>
       )}
 
-      {/* RE-STYLED NAV: Desktop/Tablet Left Deck Navigation (Hides TikTok Bottom Bar Style) */}
-      {!shouldHideNav && (
-        <nav className="fixed md:relative bottom-0 left-0 right-0 md:right-auto md:w-64 h-20 md:h-screen bg-[#0a0a10]/90 backdrop-blur-xl border-t md:border-t-0 md:border-r border-cyan-500/20 px-6 md:py-8 flex md:flex-col items-center md:items-start justify-between md:justify-start gap-8 z-[100] shadow-[0_0_30px_rgba(0,243,255,0.05)]">
-          
-          {/* Brand Identity Header for Desktop */}
-          <div className="hidden md:flex items-center gap-3 px-2 mb-4">
-            <div className="w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_10px_#00f3ff]" />
-            <h1 className="font-extrabold tracking-widest text-lg bg-gradient-to-r from-cyan-400 to-pink-500 bg-clip-text text-transparent">
-              MPADE<span className="text-white">.UNIVERSE</span>
-            </h1>
-          </div>
-
-          <NavIcon icon={<Home size={22} />} label="Home" active={location.pathname === '/'} onClick={() => navigate('/')} />
-          <NavIcon icon={<Search size={22} />} label="Discover" active={location.pathname === '/discovery'} onClick={() => navigate('/discovery')} />
-
-          {/* RE-STYLED CREATE BUTTON: Hexagonal Cyber Pulse (No cyan/red offset TikTok look) */}
-          <div className="flex-1 md:flex-none flex justify-center w-full md:my-2">
-            <motion.button 
-              whileTap={{ scale: 0.95 }} 
-              whileHover={{ scale: 1.05 }}
-              onClick={() => setShowUpload(true)} 
-              className="relative group w-12 h-12 md:w-full md:h-12 rounded-xl bg-gradient-to-r from-cyan-500 via-purple-600 to-pink-500 p-[1px] shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
-            >
-              <div className="w-full h-full bg-[#0d0d14] rounded-xl flex items-center justify-center gap-2 group-hover:bg-transparent transition-colors">
-                <Plus size={20} className="text-cyan-400 group-hover:text-white" />
-                <span className="hidden md:inline text-xs font-bold uppercase tracking-wider text-white">Create Asset</span>
-              </div>
-            </motion.button>
-          </div>
-
-          <NavIcon icon={<MessageSquare size={22} />} label="Inbox" active={location.pathname === '/inbox' || location.pathname === '/messaging'} onClick={() => navigate('/inbox')} />
-          <NavIcon icon={<User size={22} />} label="Profile" active={location.pathname === '/profile'} onClick={() => navigate('/profile')} />
-        </nav>
-      )}
-
-      <main className="h-screen flex-1 pb-20 md:pb-0 overflow-hidden relative">
+      <main className="h-screen pb-20 overflow-hidden relative">
         <AnimatePresence mode="wait">
-          <Suspense fallback={<div className="fixed inset-0 bg-[#08080a] flex items-center justify-center text-cyan-400 text-xs tracking-widest uppercase font-bold animate-pulse">Initializing Deck...</div>}>
+          <Suspense fallback={<div className="fixed inset-0 bg-[#08080a] flex items-center justify-center text-zinc-500 text-xs tracking-wider uppercase font-bold animate-pulse">Initializing Channel...</div>}>
             <Routes location={location} key={location.pathname}>
               <Route path="/" element={<Feed session={session} dataSaver={preferences.data_saver} />} />
               <Route path="/discovery" element={<Discovery />} />
@@ -285,14 +250,37 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {!shouldHideNav && (
+        <nav className="fixed bottom-0 left-0 right-0 h-20 bg-[#09090e]/95 border-t border-cyan-500/20 px-6 flex items-center justify-between z-[100] backdrop-blur-xl shadow-[0_-5px_25px_rgba(0,243,255,0.08)]">
+          <NavIcon icon={<LayoutGrid size={22} />} label="Home" active={location.pathname === '/'} onClick={() => navigate('/')} />
+          <NavIcon icon={<Compass size={22} />} label="Discover" active={location.pathname === '/discovery'} onClick={() => navigate('/discovery')} />
+
+          <div className="flex-1 flex justify-center">
+            <motion.button 
+              whileTap={{ scale: 0.9 }} 
+              whileHover={{ scale: 1.05 }}
+              onClick={() => setShowUpload(true)} 
+              className="relative p-[1.5px] rounded-2xl bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-indigo-500 shadow-[0_0_20px_rgba(0,243,255,0.6)]"
+            >
+              <div className="w-11 h-11 bg-[#09090e] hover:bg-transparent transition-colors rounded-[14px] flex items-center justify-center">
+                <Plus size={22} className="text-cyan-400 drop-shadow-[0_0_8px_#00f3ff]" />
+              </div>
+            </motion.button>
+          </div>
+
+          <NavIcon icon={<MessageSquareCode size={22} />} label="Inbox" active={location.pathname === '/inbox' || location.pathname === '/messaging'} onClick={() => navigate('/inbox')} />
+          <NavIcon icon={<UserCheck size={22} />} label="Profile" active={location.pathname === '/profile'} onClick={() => navigate('/profile')} />
+        </nav>
+      )}
     </div>
   );
 }
 
 const NavIcon = ({ icon, label, active, onClick }) => (
-  <button onClick={onClick} className={`flex md:flex-row items-center gap-3 transition-all flex-1 md:flex-none md:w-full md:px-4 md:py-3 md:rounded-xl ${active ? 'text-cyan-400 md:bg-cyan-500/10 md:border md:border-cyan-500/30 shadow-[0_0_15px_rgba(0,243,255,0.2)]' : 'text-zinc-500 hover:text-zinc-300'}`}>
+  <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all flex-1 ${active ? 'text-cyan-400 drop-shadow-[0_0_10px_rgba(0,243,255,0.6)]' : 'text-zinc-500 hover:text-zinc-300'}`}>
     <div className={`${active ? 'scale-110' : 'scale-100'} transition-transform duration-200`}>{icon}</div>
-    <span className={`text-[9px] md:text-sm font-bold uppercase md:capitalize tracking-tight ${active ? 'opacity-100' : 'opacity-60'}`}>{label}</span>
+    <span className={`text-[9px] font-bold uppercase tracking-widest ${active ? 'opacity-100 text-cyan-300' : 'opacity-60'}`}>{label}</span>
   </button>
 );
 
