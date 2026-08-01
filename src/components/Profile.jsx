@@ -230,13 +230,13 @@ const Profile = () => {
     <div className="h-screen bg-black text-white font-sans flex flex-col overflow-hidden">
       
       <nav className="flex items-center justify-between px-6 py-4 bg-black/80 backdrop-blur-lg z-50 shrink-0">
-        <Link to="/find-friends" className="p-2 hover:bg-zinc-900 rounded-full transition-colors">
+        <Link to="/find-friends" className="p-2 bg-zinc-900/80 hover:bg-zinc-800 rounded-full transition-all border-b-2 border-black active:translate-y-[2px] active:border-b-0 shadow-md">
           <UserPlus size={24} />
         </Link>
         <h2 className="text-sm font-black tracking-tight uppercase">{profile?.username || 'Username'}</h2>
         <div className="flex gap-2">
-          <Link to="/share-profile" className="p-2 hover:bg-zinc-900 rounded-full"><Share2 size={22} /></Link>
-          <Link to="/settings" className="p-2 hover:bg-zinc-900 rounded-full"><Settings size={22} /></Link>
+          <Link to="/share-profile" className="p-2 bg-zinc-900/80 hover:bg-zinc-800 rounded-full transition-all border-b-2 border-black active:translate-y-[2px] active:border-b-0 shadow-md"><Share2 size={22} /></Link>
+          <Link to="/settings" className="p-2 bg-zinc-900/80 hover:bg-zinc-800 rounded-full transition-all border-b-2 border-black active:translate-y-[2px] active:border-b-0 shadow-md"><Settings size={22} /></Link>
         </div>
       </nav>
 
@@ -247,7 +247,7 @@ const Profile = () => {
             <motion.div 
               initial={{ scale: 0.8, opacity: 0 }} 
               animate={{ scale: 1, opacity: 1 }}
-              className="w-28 h-28 rounded-full p-[3px] bg-gradient-to-tr from-[#00f2ea] via-[#ff0050] to-[#face15] shadow-[0_0_25px_rgba(255,0,80,0.4)]"
+              className="w-28 h-28 rounded-full p-[3px] bg-gradient-to-tr from-[#00f2ea] via-[#ff0050] to-[#face15] shadow-[0_10px_20px_rgba(255,0,80,0.3)]"
             >
               <div className="w-full h-full rounded-full bg-black p-1">
                 <img 
@@ -257,7 +257,7 @@ const Profile = () => {
                 />
               </div>
             </motion.div>
-            <div className="absolute bottom-1 right-1 bg-blue-500 p-1 rounded-full border-2 border-black">
+            <div className="absolute bottom-1 right-1 bg-blue-500 p-1 rounded-full border-2 border-black shadow-md">
               <Check size={12} className="text-white" strokeWidth={4} />
             </div>
           </div>
@@ -280,21 +280,21 @@ const Profile = () => {
           </div>
 
           <div className="flex gap-2 w-full px-6 mb-3">
-            <Link to="/edit-profile" className="flex-1 py-2.5 bg-zinc-900 rounded-md font-bold text-[13px] border border-white/5 flex items-center justify-center gap-2">
+            <Link to="/edit-profile" className="flex-1 py-2.5 bg-gradient-to-b from-zinc-800 to-zinc-900 rounded-lg font-bold text-[13px] border border-white/10 border-b-zinc-950 border-b-4 flex items-center justify-center gap-2 active:translate-y-[2px] active:border-b-2 shadow-lg hover:brightness-110 transition-all">
               <Edit3 size={14} /> Edit Profile
             </Link>
-            <Link to="/share-profile" className="flex-1 py-2.5 bg-zinc-900 rounded-md font-bold text-[13px] border border-white/5 flex items-center justify-center gap-2">
+            <Link to="/share-profile" className="flex-1 py-2.5 bg-gradient-to-b from-zinc-800 to-zinc-900 rounded-lg font-bold text-[13px] border border-white/10 border-b-zinc-950 border-b-4 flex items-center justify-center gap-2 active:translate-y-[2px] active:border-b-2 shadow-lg hover:brightness-110 transition-all">
               <ExternalLink size={14} /> Share Profile
             </Link>
           </div>
 
           <div className="flex gap-2 w-full px-6 mb-6">
-            <Link to="/universe-tools" className="flex-1 py-2.5 bg-[#1A1A1A] rounded-md font-bold text-[11px] border border-cyan-500/30 flex items-center justify-center gap-2 text-cyan-400">
+            <Link to="/universe-tools" className="flex-1 py-2.5 bg-gradient-to-b from-[#1c2830] to-[#0f171c] rounded-lg font-bold text-[11px] border border-cyan-500/40 border-b-cyan-950 border-b-4 flex items-center justify-center gap-2 text-cyan-400 active:translate-y-[2px] active:border-b-2 shadow-[0_4px_15px_rgba(6,182,212,0.15)] hover:brightness-110 transition-all">
               <BarChart3 size={16} /> CON-UNIVERSE TOOLS
             </Link>
            <Link 
   to="/live" 
-  className="flex-1 py-2.5 bg-[#1A1A1A] rounded-md font-bold text-[11px] border border-red-500/30 flex items-center justify-center gap-2 text-red-500 hover:bg-red-500/10 transition-all"
+  className="flex-1 py-2.5 bg-gradient-to-b from-[#2e181b] to-[#170b0d] rounded-lg font-bold text-[11px] border border-red-500/40 border-b-red-950 border-b-4 flex items-center justify-center gap-2 text-red-500 active:translate-y-[2px] active:border-b-2 shadow-[0_4px_15px_rgba(239,68,68,0.15)] hover:brightness-110 transition-all"
 >
   <Radio size={16} /> LIVE UNIVERSE
 </Link>
@@ -370,7 +370,7 @@ const Profile = () => {
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
               <h3 className="font-black uppercase tracking-widest text-sm">{modalType}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 bg-zinc-900 rounded-full">
+              <button onClick={() => setIsModalOpen(false)} className="p-2 bg-zinc-800 rounded-full border-b-2 border-black active:translate-y-[2px] active:border-b-0">
                 <X size={20} />
               </button>
             </div>
@@ -389,7 +389,7 @@ const Profile = () => {
                   {!myFollowingIds.has(item.id) ? (
                     <button 
                       onClick={() => handleFollowBack(item.id)}
-                      className="bg-white text-black px-4 py-1.5 rounded-full text-[10px] font-black uppercase active:scale-90 transition-transform"
+                      className="bg-gradient-to-b from-white to-zinc-200 text-black px-4 py-1.5 rounded-full text-[10px] font-black uppercase border-b-2 border-zinc-400 active:translate-y-[2px] active:border-b-0 shadow-md transition-all"
                     >
                       Follow Back
                     </button>
