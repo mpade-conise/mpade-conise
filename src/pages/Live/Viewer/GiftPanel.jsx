@@ -112,7 +112,8 @@ const GiftPanel = ({ streamId, onClose }) => {
     const fetchBalance = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase.from('profiles').select('coins').eq('id', user.id).single();
+      const { data, error } = await supabase.from('profiles').select('coins').eq('id', user.id).single();
+      if (error) console.error("Error fetching balance:", error.message);
       if (data) setBalance(data.coins || 0);
     };
     fetchBalance();
@@ -130,7 +131,6 @@ const GiftPanel = ({ streamId, onClose }) => {
       console.warn("Audio play blocked by browser:", e);
     }
 
-    onClose?.(); 
     setIsSending(true);
 
     if (gift.big) {
@@ -139,10 +139,15 @@ const GiftPanel = ({ streamId, onClose }) => {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        alert("Authentication error. Please log in again.");
+        setIsSending(false);
+        return;
+      }
 
-      // 1️⃣ Direct Insert matching exact table columns shown in Supabase
+      // 1️⃣ Insert record into live_gifts table
       const { error: insertError } = await supabase
         .from('live_gifts')
         .insert({
@@ -154,25 +159,30 @@ const GiftPanel = ({ streamId, onClose }) => {
         });
 
       if (insertError) {
-        console.error("Insert Error:", insertError.message);
+        console.error("Insert Error:", insertError);
+        alert(`Failed to send gift: ${insertError.message}`);
+        setIsSending(false);
         return;
       }
 
-      // 2️⃣ Deduct coins from profiles
+      // 2️⃣ Deduct coins from profiles table
       const newBalance = Math.max(0, balance - gift.price);
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ coins: newBalance })
         .eq('id', user.id);
 
-      if (!updateError) {
-        setBalance(newBalance);
+      if (updateError) {
+        console.error("Balance Update Error:", updateError);
+        alert(`Gift sent, but failed to update coins: ${updateError.message}`);
       } else {
-        console.error("Balance Update Error:", updateError.message);
+        setBalance(newBalance);
+        onClose?.(); // Close panel on complete success
       }
 
     } catch (err) { 
       console.error("Unexpected error sending gift:", err); 
+      alert("Unexpected error sending gift. Check browser console.");
     } finally { 
       setIsSending(false); 
     }
