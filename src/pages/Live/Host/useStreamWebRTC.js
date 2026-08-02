@@ -45,7 +45,11 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
         console.log("🎥 Accessing media hardware devices...");
         mediaStream = await navigator.mediaDevices.getUserMedia({ 
           video: { width: 1280, height: 720 }, 
-          audio: true 
+          audio: {
+            echoCancellation: true, // 👈 Eliminates audio bounce/echo
+            noiseSuppression: true, // 👈 Removes background room noise
+            autoGainControl: true   // 👈 Balances audio volume
+          }
         });
         
         if (!isMounted) {
