@@ -105,9 +105,13 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             return;
           }
           localStreamRef.current = stream;
-          if (videoRef.current) videoRef.current.srcObject = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.muted = true; // Ensure local preview strictly stays muted
+          }
 
           socket.on('viewer_requesting_stream', async (payload) => {
+            if (!isComponentMounted) return;
             const viewerId = payload.viewerSocketId;
             console.log(`📥 Separate request received from viewer [${viewerId}]. Allocating connection...`);
 
@@ -130,6 +134,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
             try {
               const offer = await pc.createOffer();
+              if (!isComponentMounted) return;
               await pc.setLocalDescription(offer);
               
               socket.emit('send_webrtc_offer', {
@@ -143,6 +148,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           });
 
           socket.on('webrtc_answer_received', async (payload) => {
+            if (!isComponentMounted) return;
             const viewerId = payload.viewerSocketId;
             const pc = peerConnectionsRef.current[viewerId];
             if (pc && !pc.currentRemoteDescription) {
@@ -173,7 +179,9 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
           pc.ontrack = (event) => {
             console.log("🎬 Media track successfully bound to viewer element.");
-            if (videoRef.current) videoRef.current.srcObject = event.streams[0];
+            if (videoRef.current && videoRef.current.srcObject !== event.streams[0]) {
+              videoRef.current.srcObject = event.streams[0];
+            }
             if (isComponentMounted) {
               setIsConnected(true);
               setConnectionStatus("Live");
@@ -181,12 +189,14 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           };
 
           socket.on('webrtc_offer_received', async (payload) => {
+            if (!isComponentMounted) return;
             console.log("📥 Host WebRTC Offer captured via direct route. Compiling answer...");
             try {
               socket.hostSocketId = payload.hostSocketId; 
 
               await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
               const answer = await pc.createAnswer();
+              if (!isComponentMounted) return;
               await pc.setLocalDescription(answer);
               
               socket.emit('send_webrtc_answer', { streamId, answer });
@@ -228,6 +238,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         // ❄️ CENTRAL INTERCONNECTED ICE ROUTING MODULE
         // ==========================================
         socket.on('incoming_ice_candidate', async (payload) => {
+          if (!isComponentMounted) return;
           if (isHost) {
             const viewerId = payload.senderSocketId;
             const pc = peerConnectionsRef.current[viewerId];
