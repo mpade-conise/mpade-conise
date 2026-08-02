@@ -53,6 +53,21 @@ const VideoCall = () => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
+  // Helper to drain queued ICE candidates once remoteDescription is ready
+  const processIceQueue = async () => {
+    if (pcRef.current && pcRef.current.remoteDescription && iceQueueRef.current.length > 0) {
+      const candidatesToProcess = [...iceQueueRef.current];
+      iceQueueRef.current = [];
+      for (const candidate of candidatesToProcess) {
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.warn("Error processing queued ICE candidate:", e);
+        }
+      }
+    }
+  };
+
   // 1. Fetch user authentication and peer profile info
   useEffect(() => {
     const initProfiles = async () => {
@@ -87,7 +102,7 @@ const VideoCall = () => {
 
     let isComponentMounted = true;
     
-    // FIXED: Strict deterministic role checking logic so they don't both claim to be the caller
+    // Strict deterministic role checking logic
     const callRole = URLRole === 'caller' || URLRole === 'receiver' 
       ? URLRole 
       : (currentUserId < peerUserId ? 'caller' : 'receiver');
@@ -95,6 +110,18 @@ const VideoCall = () => {
     const roomId = [currentUserId, peerUserId].sort().join("-");
 
     console.log(`Setting up signaling as [${callRole}] for Room: ${roomId}`);
+
+    const createAndSendOffer = async () => {
+      if (!pcRef.current || !socketRef.current) return;
+      try {
+        setCallStatus("Calling user...");
+        const offer = await pcRef.current.createOffer();
+        await pcRef.current.setLocalDescription(offer);
+        socketRef.current.emit('send_webrtc_offer', { streamId: roomId, offer, targetViewerId: peerUserId });
+      } catch (err) {
+        console.error("Failed creating signaling offer:", err);
+      }
+    };
 
     const initializeMediaAndSignaling = async () => {
       try {
@@ -145,28 +172,34 @@ const VideoCall = () => {
         socketRef.current = socket;
 
         // D. Setup Synchronous Context Handlers inside Socket Connection Frame
-        socket.on('connect', async () => {
+        socket.on('connect', () => {
           console.log(`🟢 Connected to signaling server. Room: ${roomId}`);
           socket.emit('join_call_room', { roomId, userId: currentUserId, targetPeerId: peerUserId });
 
           if (callRole === 'caller') {
             setCallStatus("Calling user...");
-            try {
-              const offer = await pc.createOffer();
-              await pc.setLocalDescription(offer);
-              socket.emit('send_webrtc_offer', { streamId: roomId, offer, targetViewerId: peerUserId });
-            } catch (err) {
-              console.error("Failed creating signaling offer Matrix:", err);
-            }
+            // Trigger offer immediately as baseline, but also allow fallback retry when peer ready arrives
+            createAndSendOffer();
           } else {
             setCallStatus("Awaiting Connection...");
+            // Notify room that receiver is mounted and ready for offer handshake
+            socket.emit('peer_ready', { roomId, userId: currentUserId });
           }
         });
 
-        // E. Bind Signalling Pipeline Events safely
+        // E. Handle peer ready broadcast to avoid premature offer drops
+        socket.on('peer_ready', async () => {
+          if (!isComponentMounted) return;
+          if (callRole === 'caller' && pcRef.current && pcRef.current.signalingState === 'stable') {
+            console.log("⚡ Receiver is ready in room. Dispatching offer handshake.");
+            await createAndSendOffer();
+          }
+        });
+
+        // F. Bind Signalling Pipeline Events safely
         socket.on('webrtc_offer_received', async ({ offer }) => {
           if (!isComponentMounted || !pcRef.current) return;
-          // Guard: If we are explicitly designated as caller, drop accidental offers to avoid state racing
+          // Guard: If explicitly designated as caller, drop accidental offers to avoid state racing
           if (callRole === 'caller') return; 
 
           try {
@@ -176,13 +209,7 @@ const VideoCall = () => {
             await pcRef.current.setLocalDescription(answer);
             socket.emit('send_webrtc_answer', { streamId: roomId, answer });
 
-            // Flush out stacked early ice arrivals
-            if (iceQueueRef.current.length > 0) {
-              for (const candidate of iceQueueRef.current) {
-                await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-              }
-              iceQueueRef.current = [];
-            }
+            await processIceQueue();
           } catch (err) {
             console.error("Failed executing structural handshake offer loop:", err);
           }
@@ -191,13 +218,10 @@ const VideoCall = () => {
         socket.on('webrtc_answer_received', async ({ answer }) => {
           if (!isComponentMounted || !pcRef.current) return;
           try {
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-            
-            if (iceQueueRef.current.length > 0) {
-              for (const candidate of iceQueueRef.current) {
-                await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-              }
-              iceQueueRef.current = [];
+            // Check state before setting remote description to avoid signalingState crashes
+            if (pcRef.current.signalingState === "have-local-offer") {
+              await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+              await processIceQueue();
             }
           } catch (err) {
             console.error("Failed setting up active remote answer specification:", err);
@@ -207,7 +231,7 @@ const VideoCall = () => {
         socket.on('incoming_ice_candidate', async ({ candidate }) => {
           if (!isComponentMounted) return;
           const currentPc = pcRef.current;
-          if (currentPc && currentPc.remoteDescription) {
+          if (currentPc && currentPc.remoteDescription && currentPc.remoteDescription.type) {
             try {
               await currentPc.addIceCandidate(new RTCIceCandidate(candidate));
             } catch (e) {
