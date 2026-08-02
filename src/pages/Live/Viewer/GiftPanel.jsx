@@ -5,18 +5,22 @@ import { Zap, X, Plus } from 'lucide-react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Center, ContactShadows, Bounds } from '@react-three/drei';
 
-// 🔥 SILENCE THE DEPRECATION WARNINGS
+// 🔥 SILENCE DEPRECATION WARNINGS
 if (typeof window !== 'undefined') {
   const originalWarn = console.warn;
   console.warn = (...args) => {
-    if (args[0]?.includes('THREE.Clock') || args[0]?.includes('WebGLRenderer')) return;
+    if (
+      args[0]?.includes('THREE.Clock') || 
+      args[0]?.includes('WebGLRenderer') ||
+      args[0]?.includes('THREE.PropertyBinding')
+    ) return;
     originalWarn(...args);
   };
 }
 
 const GiftModel = ({ url }) => {
-  const { scene } = useGLTF(url, true);
-  const clonedScene = useMemo(() => scene.clone(), [scene]);
+  const { scene } = useGLTF(url);
+  const clonedScene = useMemo(() => scene.clone(true), [scene]);
   
   return (
     <Bounds fit clip observe margin={1.2}>
@@ -43,7 +47,10 @@ const ModelViewer = ({ model }) => {
   return (
     <div ref={containerRef} className="w-16 h-16 flex items-center justify-center">
       {isVisible ? (
-        <Canvas camera={{ position: [0, 0, 5], fov: 40 }} gl={{ alpha: true }}>
+        <Canvas 
+          camera={{ position: [0, 0, 5], fov: 40 }} 
+          gl={{ alpha: true, antialias: true }}
+        >
           <ambientLight intensity={1.5} />
           <pointLight position={[10, 10, 10]} />
           <Suspense fallback={null}>
@@ -113,11 +120,15 @@ const GiftPanel = ({ streamId, onClose }) => {
 
   const handleInstantSend = async (gift) => {
     if (isSending || balance < gift.price) return;
-    
-    // 🔥 OPTIMIZED AUDIO PLAYBACK
-    const audio = new Audio(gift.sound);
-    audio.load(); // Forces immediate load from public folder
-    audio.play().catch(e => console.log("Audio play blocked by browser. Interaction required."));
+
+    // AUDIO PLAYBACK WITH FALLBACK
+    try {
+      const audio = new Audio(gift.sound);
+      audio.currentTime = 0;
+      await audio.play();
+    } catch (e) {
+      console.warn("Audio play blocked or unavailable:", e);
+    }
 
     // Close panel
     onClose?.(); 
@@ -130,20 +141,41 @@ const GiftPanel = ({ streamId, onClose }) => {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      // UPDATED: Parameters match the clean Postgres Signature perfectly
-      const { error } = await supabase.rpc('send_live_gift', {
+      if (!user) return;
+
+      // Executing RPC with parameter fallbacks
+      let rpcError = null;
+      
+      const { error: primaryErr } = await supabase.rpc('send_live_gift', {
         stream_id: streamId,
         sender_id: user.id,
         gift_id: String(gift.id), 
         price: Number(gift.price) 
       });
-      if (!error) {
-        setBalance(prev => prev - gift.price);
+
+      if (primaryErr) {
+        // Fallback for prefixed p_ schema RPC naming
+        const { error: secondaryErr } = await supabase.rpc('send_live_gift', {
+          p_stream_id: streamId,
+          p_sender_id: user.id,
+          p_gift_id: String(gift.id), 
+          p_price: Number(gift.price) 
+        });
+        rpcError = secondaryErr;
       } else {
-        console.error("RPC Error:", error.message);
+        rpcError = primaryErr;
       }
-    } catch (err) { console.error(err); } 
-    finally { setIsSending(false); }
+
+      if (!rpcError) {
+        setBalance(prev => Math.max(0, prev - gift.price));
+      } else {
+        console.error("RPC Error:", rpcError.message);
+      }
+    } catch (err) { 
+      console.error(err); 
+    } finally { 
+      setIsSending(false); 
+    }
   };
 
   return (
@@ -188,7 +220,9 @@ const GiftPanel = ({ streamId, onClose }) => {
               key={g.id}
               onClick={() => handleInstantSend(g)}
               disabled={isSending}
-              className={`flex flex-col items-center p-2 rounded-2xl bg-white/5 border border-transparent hover:border-yellow-400/50 active:scale-95 transition-all ${balance < g.price ? 'opacity-40 grayscale-[0.5]' : 'opacity-100'}`}
+              className={`flex flex-col items-center p-2 rounded-2xl bg-white/5 border border-transparent hover:border-yellow-400/50 active:scale-95 transition-all ${
+                balance < g.price ? 'opacity-40 grayscale-[0.5]' : 'opacity-100'
+              }`}
             >
               <ModelViewer model={g.model} />
               <span className="text-[10px] opacity-60 mt-1 truncate w-full">{g.name}</span>
