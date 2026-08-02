@@ -34,7 +34,7 @@ const ActionButton = ({ icon, label, onClick }) => {
       <motion.button 
         whileTap={{ scale: 0.6 }} 
         onClick={onClick} 
-        className="drop-shadow-[0_0_8px_rgba(0,0,0,0.5)] active:brightness-125 transition-all"
+        className="drop-shadow-[0_0_12px_rgba(6,182,212,0.6)] hover:drop-shadow-[0_0_18px_rgba(236,72,153,0.8)] active:brightness-125 transition-all"
       >
         {icon}
       </motion.button>
@@ -42,7 +42,7 @@ const ActionButton = ({ icon, label, onClick }) => {
         key={safeLabel}
         initial={{ scale: 0.8, opacity: 0.5 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="text-[11px] font-black mt-1 text-white shadow-sm select-none tracking-tight"
+        className="text-[11px] font-black mt-1 text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)] select-none tracking-tight"
       >
         {safeLabel.toLocaleString()}
       </motion.span>
@@ -73,30 +73,30 @@ const ShareDrawer = ({ video, onClose }) => {
 
   return (
     <>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/60 z-[110] backdrop-blur-[2px]" />
-      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="absolute bottom-0 left-0 right-0 bg-[#121212] rounded-t-[2rem] z-[111] p-6 pb-12 border-t border-white/10">
-        <div className="w-12 h-1.5 bg-zinc-700 rounded-full mx-auto mb-6" />
-        <h3 className="text-white font-black uppercase tracking-widest text-center mb-8">Share Video</h3>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/80 z-[110] backdrop-blur-md" />
+      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="absolute bottom-0 left-0 right-0 bg-[#0a0a12]/95 rounded-t-[2rem] z-[111] p-6 pb-12 border-t border-cyan-500/40 shadow-[0_-10px_30px_rgba(6,182,212,0.3)]">
+        <div className="w-12 h-1.5 bg-gradient-to-r from-cyan-500 via-pink-500 to-yellow-400 rounded-full mx-auto mb-6 shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
+        <h3 className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500 font-black uppercase tracking-widest text-center mb-8 drop-shadow-[0_0_10px_rgba(6,182,212,0.5)]">Share Video</h3>
         <div className="flex justify-around items-center">
-          <button onClick={copyToClipboard} className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-cyan-400 border border-white/5">
-              {copied ? <Check className="text-green-400" /> : <Copy />}
+          <button onClick={copyToClipboard} className="flex flex-col items-center gap-3 group">
+            <div className="w-16 h-16 bg-black/60 rounded-2xl flex items-center justify-center text-cyan-400 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.3)] group-hover:shadow-[0_0_20px_rgba(6,182,212,0.7)] group-hover:border-cyan-400 transition-all">
+              {copied ? <Check className="text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]" /> : <Copy className="drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]" />}
             </div>
-            <span className="text-[10px] text-zinc-400 font-bold uppercase">{copied ? 'Copied' : 'Copy Link'}</span>
+            <span className="text-[10px] text-cyan-300 font-bold uppercase tracking-wider">{copied ? 'Copied' : 'Copy Link'}</span>
           </button>
           
-          <button onClick={shareExternal} className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-purple-400 border border-white/5">
-              <ExternalLink />
+          <button onClick={shareExternal} className="flex flex-col items-center gap-3 group">
+            <div className="w-16 h-16 bg-black/60 rounded-2xl flex items-center justify-center text-purple-400 border border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.3)] group-hover:shadow-[0_0_20px_rgba(168,85,247,0.7)] group-hover:border-purple-400 transition-all">
+              <ExternalLink className="drop-shadow-[0_0_8px_rgba(168,85,247,0.8)]" />
             </div>
-            <span className="text-[10px] text-zinc-400 font-bold uppercase">System Share</span>
+            <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider">System Share</span>
           </button>
 
-          <button onClick={() => handleDownload(video.video_url)} className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-pink-500 border border-white/5">
-              <Download />
+          <button onClick={() => handleDownload(video.video_url)} className="flex flex-col items-center gap-3 group">
+            <div className="w-16 h-16 bg-black/60 rounded-2xl flex items-center justify-center text-pink-500 border border-pink-500/40 shadow-[0_0_15px_rgba(236,72,153,0.3)] group-hover:shadow-[0_0_20px_rgba(236,72,153,0.7)] group-hover:border-pink-400 transition-all">
+              <Download className="drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]" />
             </div>
-            <span className="text-[10px] text-zinc-400 font-bold uppercase">Save Video</span>
+            <span className="text-[10px] text-pink-300 font-bold uppercase tracking-wider">Save Video</span>
           </button>
         </div>
       </motion.div>
@@ -157,36 +157,36 @@ const CommentDrawer = ({ videoId, onClose, user, onCommentCountUpdate }) => {
 
   return (
     <>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/60 z-[100] backdrop-blur-[2px]" />
-      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="absolute bottom-0 left-0 right-0 bg-[#121212] h-[75vh] rounded-t-[2rem] z-[101] flex flex-col border-t border-white/10 shadow-2xl">
-        <div className="w-12 h-1.5 bg-zinc-700 rounded-full mx-auto mt-3 mb-1" />
-        <div className="p-4 flex justify-between items-center border-b border-white/5 text-white">
-          <span className="text-sm font-black uppercase tracking-tighter">{comments.length} Comments</span>
-          <button onClick={onClose} className="p-1.5 bg-zinc-800 rounded-full text-zinc-400"><X size={18} /></button>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/80 z-[100] backdrop-blur-md" />
+      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="absolute bottom-0 left-0 right-0 bg-[#0a0a12]/95 h-[75vh] rounded-t-[2rem] z-[101] flex flex-col border-t border-cyan-500/40 shadow-[0_-10px_35px_rgba(6,182,212,0.35)]">
+        <div className="w-12 h-1.5 bg-gradient-to-r from-cyan-400 via-pink-500 to-yellow-400 rounded-full mx-auto mt-3 mb-1 shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
+        <div className="p-4 flex justify-between items-center border-b border-cyan-500/20 text-white">
+          <span className="text-sm font-black uppercase tracking-wider text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">{comments.length} Comments</span>
+          <button onClick={onClose} className="p-1.5 bg-zinc-900 border border-pink-500/40 rounded-full text-pink-400 hover:shadow-[0_0_10px_rgba(236,72,153,0.6)] transition-all"><X size={18} /></button>
         </div>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-5">
           {isFetching ? (
             <div className="h-full flex flex-col items-center justify-center text-zinc-500">
-              <Loader2 className="animate-spin text-cyan-500 mb-2" size={30} />
+              <Loader2 className="animate-spin text-cyan-400 drop-shadow-[0_0_12px_rgba(6,182,212,0.9)] mb-2" size={30} />
             </div>
           ) : (
             comments.map(c => (
               <div key={c.id} className="flex gap-3 text-white">
-                <img src={c.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.user_id}`} className="w-10 h-10 rounded-full bg-zinc-800 border border-white/5 object-cover" alt="" />
-                <div className="flex-1 bg-white/5 p-3 rounded-2xl rounded-tl-none">
+                <img src={c.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.user_id}`} className="w-10 h-10 rounded-full bg-zinc-900 border border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.4)] object-cover" alt="" />
+                <div className="flex-1 bg-zinc-900/80 border border-cyan-500/20 p-3 rounded-2xl rounded-tl-none shadow-[0_0_15px_rgba(0,0,0,0.5)]">
                   <div className="flex justify-between items-center mb-1">
-                    <p className="text-[11px] font-black text-cyan-400">@{c.profiles?.username || 'user'}</p>
-                    <p className="text-[9px] text-zinc-500">{c.created_at ? formatDistanceToNow(new Date(c.created_at), { addSuffix: true }) : ''}</p>
+                    <p className="text-[11px] font-black text-cyan-300 drop-shadow-[0_0_5px_rgba(6,182,212,0.6)]">@{c.profiles?.username || 'user'}</p>
+                    <p className="text-[9px] text-zinc-400">{c.created_at ? formatDistanceToNow(new Date(c.created_at), { addSuffix: true }) : ''}</p>
                   </div>
-                  <p className="text-[13px] text-zinc-200 leading-snug">{c.text}</p>
+                  <p className="text-[13px] text-zinc-100 leading-snug">{c.text}</p>
                 </div>
               </div>
             ))
           )}
         </div>
-        <div className="p-4 pb-10 bg-zinc-900 border-t border-white/5 flex gap-3 items-center">
-          <input value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Add comment..." className="flex-1 bg-white/5 border border-white/10 rounded-full px-5 py-3 text-sm text-white outline-none" />
-          <button onClick={postComment} disabled={!newComment.trim() || isPosting} className="p-3 bg-cyan-500 rounded-full text-black disabled:bg-zinc-800"><Send size={18} /></button>
+        <div className="p-4 pb-10 bg-[#0d0d18] border-t border-cyan-500/20 flex gap-3 items-center">
+          <input value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Add comment..." className="flex-1 bg-black/60 border border-cyan-500/40 rounded-full px-5 py-3 text-sm text-cyan-100 placeholder-cyan-500/50 outline-none focus:border-pink-500 focus:shadow-[0_0_15px_rgba(236,72,153,0.5)] transition-all" />
+          <button onClick={postComment} disabled={!newComment.trim() || isPosting} className="p-3 bg-gradient-to-r from-cyan-500 to-pink-500 rounded-full text-black font-bold disabled:opacity-40 shadow-[0_0_15px_rgba(6,182,212,0.6)] hover:shadow-[0_0_20px_rgba(236,72,153,0.8)] transition-all"><Send size={18} /></button>
         </div>
       </motion.div>
     </>
@@ -204,12 +204,12 @@ const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUp
     <button 
       onClick={onClick} 
       disabled={loading}
-      className="flex flex-col items-center justify-center gap-2 p-4 bg-white/5 rounded-3xl active:scale-90 transition-all border border-white/5 disabled:opacity-50"
+      className="flex flex-col items-center justify-center gap-2 p-4 bg-black/60 rounded-3xl active:scale-90 transition-all border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.2)] hover:shadow-[0_0_18px_rgba(6,182,212,0.5)] hover:border-cyan-400 disabled:opacity-50"
     >
-      <div className="text-white">
-        {loading ? <Loader2 size={22} className="animate-spin text-red-500" /> : (icon || '?')}
+      <div className="text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">
+        {loading ? <Loader2 size={22} className="animate-spin text-pink-500" /> : (icon || '?')}
       </div>
-      <span className="text-[10px] font-black uppercase text-zinc-500 tracking-tighter">{label}</span>
+      <span className="text-[10px] font-black uppercase text-cyan-400 tracking-tighter drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]">{label}</span>
     </button>
   );
 
@@ -218,8 +218,6 @@ const handleDownloadAction = async () => {
   setIsProcessing('downloading'); 
 
   try {
-    // Clean up audioUrl logic so we NEVER pass the broken local fallback string
-    // If music_url is "NULL", 'null', or empty, we explicitly send null to the backend
     let stableAudioUrl = null;
     if (video.music_url) {
       const cleanCheck = String(video.music_url).trim().toLowerCase();
@@ -228,23 +226,20 @@ const handleDownloadAction = async () => {
       }
     }
 
-    // Send the URLs to your Render backend to do the heavy lifting
     const response = await fetch('https://mpade-backend.onrender.com/api/merge-video', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         videoUrl: video.video_url,
-        audioUrl: stableAudioUrl // 🌟 Sends a true null or a valid live URL link
+        audioUrl: stableAudioUrl
       })
     });
 
-    // 🌟 ENHANCED ERROR CHECK: Read the exact server message if it fails
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(errorText || "Backend processing failed.");
     }
 
-    // The backend sends back the finished video blob file directly!
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     
@@ -280,9 +275,9 @@ const handleDownloadAction = async () => {
 
   return (
     <>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/60 z-[100] backdrop-blur-[2px]" />
-      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="absolute bottom-0 left-0 right-0 bg-zinc-900 rounded-t-[2rem] pb-10 z-[101] border-t border-white/10">
-        <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mt-3 mb-6" />
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/80 z-[100] backdrop-blur-md" />
+      <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="absolute bottom-0 left-0 right-0 bg-[#0a0a12]/95 rounded-t-[2rem] pb-10 z-[101] border-t border-cyan-500/40 shadow-[0_-10px_30px_rgba(6,182,212,0.3)]">
+        <div className="w-10 h-1 bg-gradient-to-r from-cyan-400 to-pink-500 rounded-full mx-auto mt-3 mb-6 shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
         <div className="px-6 flex flex-col gap-2">
           <div className="grid grid-cols-4 gap-2 mb-4">
             <ActionSquare icon={<Download size={22}/>} label="Save" onClick={handleDownloadAction} loading={isProcessing === 'downloading'} />
@@ -290,15 +285,15 @@ const handleDownloadAction = async () => {
             <ActionSquare icon={<Repeat2 size={22}/>} label="Duet" onClick={() => alert("Soon!")} />
             <ActionSquare icon={<Scissors size={22}/>} label="Trim" onClick={() => alert("Editor opening...")} />
           </div>
-          <button onClick={() => { onNotInterested?.(video.id); onClose(); }} className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl text-white">
-            <EyeOff size={20} /> <span className="font-semibold text-sm">Not Interested</span>
+          <button onClick={() => { onNotInterested?.(video.id); onClose(); }} className="flex items-center gap-4 p-4 bg-black/50 border border-cyan-500/30 rounded-2xl text-cyan-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all">
+            <EyeOff size={20} className="drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]" /> <span className="font-semibold text-sm">Not Interested</span>
           </button>
-          <button onClick={() => { onReport?.(video.id); onClose(); }} className="flex items-center gap-4 p-4 bg-red-500/10 rounded-2xl text-red-500">
-            <Flag size={20} /> <span className="font-semibold text-sm">Report</span>
+          <button onClick={() => { onReport?.(video.id); onClose(); }} className="flex items-center gap-4 p-4 bg-pink-950/30 border border-pink-500/40 rounded-2xl text-pink-400 hover:shadow-[0_0_15px_rgba(236,72,153,0.4)] transition-all">
+            <Flag size={20} className="drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]" /> <span className="font-semibold text-sm">Report</span>
           </button>
           {isOwner && (
-            <button onClick={handleDelete} disabled={isProcessing === 'deleting'} className="flex items-center gap-4 p-4 bg-zinc-800 border border-red-500/20 rounded-2xl text-red-500 mt-2">
-              {isProcessing === 'deleting' ? 'Deleting...' : <Trash2 size={20} />}
+            <button onClick={handleDelete} disabled={isProcessing === 'deleting'} className="flex items-center gap-4 p-4 bg-red-950/40 border border-red-500/60 rounded-2xl text-red-400 mt-2 shadow-[0_0_15px_rgba(239,68,68,0.3)] hover:shadow-[0_0_20px_rgba(239,68,68,0.6)] transition-all">
+              {isProcessing === 'deleting' ? 'Deleting...' : <Trash2 size={20} className="drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]" />}
               <span className="font-semibold text-sm ml-2">Delete Video</span>
             </button>
           )}
@@ -362,7 +357,6 @@ const VideoCard = ({ video, currentUser }) => {
     if (containerRef.current) observer.observe(containerRef.current);
 
     return () => {
-      // --- CRITICAL FIX: TERMINATE PIPELINES AND STRIP SRC ON UNMOUNT ---
       if (videoRef.current) {
         videoRef.current.pause();
         videoRef.current.removeAttribute('src'); 
@@ -411,49 +405,49 @@ const VideoCard = ({ video, currentUser }) => {
       ref={containerRef} 
       id={`video-${video.id}`} 
       onClick={togglePlay} 
-      className="relative h-screen w-full bg-black snap-start flex items-center justify-center overflow-hidden cursor-pointer"
+      className="relative h-screen w-full bg-black snap-start flex items-center justify-center overflow-hidden cursor-pointer border-b border-cyan-500/10"
     >
       {video.music_url && <audio ref={audioRef} src={video.music_url} loop preload="auto" />}
       <video ref={videoRef} className="h-full w-full object-cover" src={video.video_url} loop playsInline muted={!!video.music_url} />
 
       <AnimatePresence>
         {showPlayIcon && (
-          <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1.2, opacity: 0.8 }} exit={{ scale: 1.5, opacity: 0 }} className="absolute z-50 pointer-events-none">
-            <Play size={80} className="text-white fill-white opacity-40" />
+          <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1.2, opacity: 0.8 }} exit={{ scale: 1.5, opacity: 0 }} className="absolute z-50 pointer-events-none drop-shadow-[0_0_20px_rgba(6,182,212,0.9)]">
+            <Play size={80} className="text-cyan-400 fill-cyan-400 opacity-60" />
           </motion.div>
         )}
       </AnimatePresence>
 
       <div className="absolute right-3 bottom-24 flex flex-col gap-5 items-center z-20 text-white">
         <div className="relative mb-4">
-          <div className="w-12 h-12 rounded-full border-2 border-white overflow-hidden bg-zinc-800">
+          <div className="w-12 h-12 rounded-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.8)] overflow-hidden bg-zinc-900">
             <Link to={video?.user_id ? `/profile/${video.user_id}` : '#'} className="block w-full h-full">
               <img src={video.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${video.user_id}`} className="w-full h-full object-cover" alt="" />
             </Link>
           </div>
           {!isFollowing && currentUser?.id !== video.user_id && (
-            <button onClick={(e) => { e.stopPropagation(); setIsFollowing(true); handleFollow(e, video.user_id, false, currentUser); }} className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#ff0050] rounded-full p-1 border-2 border-black">
-              <UserPlus size={12} strokeWidth={4} />
+            <button onClick={(e) => { e.stopPropagation(); setIsFollowing(true); handleFollow(e, video.user_id, false, currentUser); }} className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-rose-600 shadow-[0_0_10px_rgba(236,72,153,0.9)] rounded-full p-1 border-2 border-black">
+              <UserPlus size={12} strokeWidth={4} className="text-white" />
             </button>
           )}
         </div>
 
         <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-5 items-center">
-          <ActionButton icon={<Heart size={38} className={isLiked ? 'fill-[#ff0050] text-[#ff0050]' : 'text-white'} />} label={counts.likes} onClick={onLike} />
-          <ActionButton icon={<MessageCircle size={38} />} label={counts.comments} onClick={(e) => { e.stopPropagation(); setShowComments(true); }} />
-          <ActionButton icon={<Bookmark size={38} className={isFavorited ? 'fill-[#face15] text-[#face15]' : 'text-white'} />} label={counts.favorites} onClick={onFavorite} />
-          <ActionButton icon={<Share2 size={35} />} label="Share" onClick={(e) => { e.stopPropagation(); setShowShare(true); }} />
-          <MoreHorizontal size={30} onClick={(e) => { e.stopPropagation(); setShowSettings(true); }} className="cursor-pointer opacity-70" />
+          <ActionButton icon={<Heart size={38} className={isLiked ? 'fill-pink-500 text-pink-500 drop-shadow-[0_0_15px_rgba(236,72,153,0.9)]' : 'text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]'} />} label={counts.likes} onClick={onLike} />
+          <ActionButton icon={<MessageCircle size={38} className="text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]" />} label={counts.comments} onClick={(e) => { e.stopPropagation(); setShowComments(true); }} />
+          <ActionButton icon={<Bookmark size={38} className={isFavorited ? 'fill-yellow-400 text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.9)]' : 'text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]'} />} label={counts.favorites} onClick={onFavorite} />
+          <ActionButton icon={<Share2 size={35} className="text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]" />} label="Share" onClick={(e) => { e.stopPropagation(); setShowShare(true); }} />
+          <MoreHorizontal size={30} onClick={(e) => { e.stopPropagation(); setShowSettings(true); }} className="cursor-pointer text-cyan-400 hover:text-pink-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.8)] transition-all" />
         </div>
-        <motion.div animate={playing ? { rotate: 360 } : {}} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} className="mt-4 w-11 h-11 rounded-full bg-zinc-800 border-[6px] border-zinc-700 flex items-center justify-center shadow-lg"><Disc size={20} /></motion.div>
+        <motion.div animate={playing ? { rotate: 360 } : {}} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} className="mt-4 w-11 h-11 rounded-full bg-black border-[3px] border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.8)] flex items-center justify-center text-pink-500"><Disc size={20} className="drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]" /></motion.div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-6 pb-12 bg-gradient-to-t from-black/90 to-transparent pointer-events-none text-white z-10">
-        <h3 className="font-black text-lg mb-1 drop-shadow-lg">@{video.profiles?.username || 'user'}</h3>
-        <p className="text-sm mb-4 line-clamp-2 max-w-[80%] drop-shadow-md">{video.caption}</p>
-        <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full w-fit border border-white/5">
-          <Music size={14} className="text-cyan-400" />
-          <p className="text-[11px] font-black uppercase truncate max-w-[150px]">{video.music_name || 'Original Audio'}</p>
+      <div className="absolute bottom-0 left-0 right-0 p-6 pb-12 bg-gradient-to-t from-black via-black/60 to-transparent pointer-events-none text-white z-10">
+        <h3 className="font-black text-lg mb-1 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500 drop-shadow-[0_0_10px_rgba(6,182,212,0.7)]">@{video.profiles?.username || 'user'}</h3>
+        <p className="text-sm mb-4 line-clamp-2 max-w-[80%] text-cyan-100 drop-shadow-[0_0_6px_rgba(0,0,0,0.9)]">{video.caption}</p>
+        <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full w-fit border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.4)]">
+          <Music size={14} className="text-cyan-400 animate-pulse drop-shadow-[0_0_6px_rgba(6,182,212,0.9)]" />
+          <p className="text-[11px] font-black uppercase truncate max-w-[150px] text-cyan-300 drop-shadow-[0_0_5px_rgba(6,182,212,0.6)]">{video.music_name || 'Original Audio'}</p>
         </div>
       </div>
 
@@ -500,15 +494,12 @@ const Feed = () => {
     
     initFeed();
 
-    // --- CRITICAL REALTIME SUBSCRIPTION ADDED HERE ---
-    // Sets up a structural engine listener that detects new inserts on the videos table
     const feedChannel = supabase
       .channel('realtime-feed-updates')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'videos' },
         async (payload) => {
-          // A secondary lookup brings in the profile details of the user who uploaded the new video
           const { data: profileData } = await supabase
             .from('profiles')
             .select('username, avatar_url')
@@ -520,13 +511,11 @@ const Feed = () => {
             profiles: profileData || null
           };
 
-          // Slide the newly uploaded video directly into the front of the feed state array
           setVideos((currentFeed) => [integratedVideoObject, ...currentFeed]);
         }
       )
       .subscribe();
 
-    // Tear down subscription on unmount to save bandwidth and prevent stack leaks
     return () => {
       supabase.removeChannel(feedChannel);
     };
@@ -543,9 +532,9 @@ const Feed = () => {
   }, [loading, videos, location]);
 
   if (loading) return (
-    <div className="h-screen w-full bg-black flex flex-col items-center justify-center gap-4 text-white">
-      <Loader2 className="animate-spin text-cyan-500" size={48} />
-      <p className="italic font-black tracking-widest uppercase">Syncing Universe...</p>
+    <div className="h-screen w-full bg-[#05050a] flex flex-col items-center justify-center gap-4 text-white">
+      <Loader2 className="animate-spin text-cyan-400 drop-shadow-[0_0_20px_rgba(6,182,212,1)]" size={54} />
+      <p className="italic font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500 drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]">Syncing Universe...</p>
     </div>
   );
 
