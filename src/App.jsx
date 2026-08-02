@@ -1,4 +1,4 @@
-update it import React, { useEffect, useState, lazy, Suspense } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import Auth from './components/Auth';
 import Feed from './components/Feed';
