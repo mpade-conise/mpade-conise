@@ -121,16 +121,15 @@ const GiftPanel = ({ streamId, onClose }) => {
   const handleInstantSend = async (gift) => {
     if (isSending || balance < gift.price) return;
 
-    // AUDIO PLAYBACK WITH FALLBACK
+    // AUDIO PLAYBACK
     try {
       const audio = new Audio(gift.sound);
       audio.currentTime = 0;
       await audio.play();
     } catch (e) {
-      console.warn("Audio play blocked or unavailable:", e);
+      console.warn("Audio play blocked by browser:", e);
     }
 
-    // Close panel
     onClose?.(); 
     setIsSending(true);
 
@@ -143,36 +142,37 @@ const GiftPanel = ({ streamId, onClose }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Executing RPC with parameter fallbacks
-      let rpcError = null;
-      
-      const { error: primaryErr } = await supabase.rpc('send_live_gift', {
-        stream_id: streamId,
-        sender_id: user.id,
-        gift_id: String(gift.id), 
-        price: Number(gift.price) 
-      });
-
-      if (primaryErr) {
-        // Fallback for prefixed p_ schema RPC naming
-        const { error: secondaryErr } = await supabase.rpc('send_live_gift', {
-          p_stream_id: streamId,
-          p_sender_id: user.id,
-          p_gift_id: String(gift.id), 
-          p_price: Number(gift.price) 
+      // 1️⃣ Direct Insert matching exact table columns shown in Supabase
+      const { error: insertError } = await supabase
+        .from('live_gifts')
+        .insert({
+          stream_id: streamId,
+          sender_id: user.id,
+          gift_id: String(gift.id),
+          price_total: Number(gift.price),
+          quantity: 1
         });
-        rpcError = secondaryErr;
-      } else {
-        rpcError = primaryErr;
+
+      if (insertError) {
+        console.error("Insert Error:", insertError.message);
+        return;
       }
 
-      if (!rpcError) {
-        setBalance(prev => Math.max(0, prev - gift.price));
+      // 2️⃣ Deduct coins from profiles
+      const newBalance = Math.max(0, balance - gift.price);
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ coins: newBalance })
+        .eq('id', user.id);
+
+      if (!updateError) {
+        setBalance(newBalance);
       } else {
-        console.error("RPC Error:", rpcError.message);
+        console.error("Balance Update Error:", updateError.message);
       }
+
     } catch (err) { 
-      console.error(err); 
+      console.error("Unexpected error sending gift:", err); 
     } finally { 
       setIsSending(false); 
     }
