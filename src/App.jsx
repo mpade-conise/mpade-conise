@@ -98,15 +98,18 @@ function App() {
 
     socket.on('connect', () => {
       console.log(`🌐 Global Socket Operational: ${socket.id}`);
-      // Register active session dynamically on server so calls map directly to this user
       socket.emit('register_user_session', { userId: session.user.id });
     });
 
     socket.on('incoming_call_signal', async (data) => {
       console.log("📞 Incoming Call Signal Received globally:", data);
       
-      const callerId = data.callerId || data.fromUserId;
-      if (!callerId) return;
+      // Robust extraction of caller ID across common backend event structures
+      const callerId = data?.callerId || data?.fromUserId || data?.senderId || data?.userId;
+      if (!callerId) {
+        console.error("⚠️ Call payload received without a valid caller ID:", data);
+        return;
+      }
 
       // Fetch caller profile information from Supabase
       const { data: callerProfile } = await supabase
@@ -119,8 +122,8 @@ function App() {
         callerId: callerId,
         callerUsername: callerProfile?.username || 'User',
         callerAvatar: callerProfile?.avatar_url || null,
-        callType: data.callType || 'voice', // 'voice' or 'video'
-        roomId: data.roomId || [session.user.id, callerId].sort().join("-")
+        callType: data?.callType || 'video', // Defaults to video
+        roomId: data?.roomId || [session.user.id, callerId].sort().join("-")
       });
     });
 
@@ -142,18 +145,27 @@ function App() {
   // --- UPDATED DYNAMIC CALL ACCEPT/REJECT HANDLERS ---
   const handleAcceptCall = () => {
     if (!incomingCall) return;
-    
-    // Choose voice vs video route depending on inbound call type
-    const route = incomingCall.callType === 'video' ? '/video-call' : '/voice-call';
-    navigate(`${route}?userId=${incomingCall.callerId}&role=receiver`);
+
+    // Guaranteed fallback target user ID check
+    const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
+    if (!targetUserId) {
+      console.error("❌ Cannot accept call: Target caller ID resolved to undefined.");
+      return;
+    }
+
+    // Choose route depending on call type
+    const route = incomingCall.callType === 'voice' ? '/voice-call' : '/video-call';
+    navigate(`${route}?userId=${targetUserId}&role=receiver`);
     setIncomingCall(null);
   };
 
   const handleRejectCall = () => {
     if (!incomingCall || !globalSocket) return;
+    
+    const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
     globalSocket.emit('reject_incoming_call', { 
       roomId: incomingCall.roomId, 
-      to: incomingCall.callerId 
+      to: targetUserId 
     });
     setIncomingCall(null);
   };
