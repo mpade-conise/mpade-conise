@@ -92,12 +92,22 @@ function App() {
 
     const socket = io(SOCKET_SERVER_URL, {
       transports: ['websocket', 'polling'],
-      forceNew: true
+      forceNew: false,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      autoConnect: true
     });
     setGlobalSocket(socket);
 
     socket.on('connect', () => {
       console.log(`🌐 Global Socket Operational: ${socket.id}`);
+      socket.emit('register_user_session', { userId: session.user.id });
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log(`🔄 Global Socket Reconnected on attempt: ${attemptNumber}`);
       socket.emit('register_user_session', { userId: session.user.id });
     });
 
