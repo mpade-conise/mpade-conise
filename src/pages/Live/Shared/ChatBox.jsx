@@ -77,18 +77,26 @@ const ChatBox = ({ streamId }) => {
               key={msg.id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex items-start gap-2 bg-black/20 backdrop-blur-sm p-2 rounded-2xl w-fit max-w-[90%] border border-white/5"
+              /* Added Cyan neon border, background blur, and glowing box shadow */
+              className="flex items-start gap-2 bg-black/40 backdrop-blur-md p-2.5 rounded-2xl w-fit max-w-[90%] border border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
             >
               <img 
                 src={msg.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.user_id}`} 
                 alt="" 
-                className="w-6 h-6 rounded-full object-cover border border-white/10"
+                /* Added Pink neon border and glowing shadow to avatars */
+                className="w-7 h-7 rounded-full object-cover border border-pink-500/80 shadow-[0_0_10px_rgba(244,63,94,0.6)] flex-shrink-0"
               />
-              <div className="flex flex-col">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-tighter">
+              <div className="flex flex-col pt-0.5">
+                <span 
+                  /* Added Pink glowing text for the username */
+                  className="text-[10px] font-black text-pink-400 uppercase tracking-wider drop-shadow-[0_0_6px_rgba(244,63,94,0.8)]"
+                >
                   {msg.profiles?.username || 'User'}
                 </span>
-                <p className="text-[11px] font-medium text-white leading-tight">
+                <p 
+                  /* Added Cyan glowing text for the message content */
+                  className="text-[12px] font-medium text-cyan-50 leading-tight drop-shadow-[0_0_4px_rgba(6,182,212,0.6)] mt-0.5"
+                >
                   {/* Fallback check for text, message, or content column names */}
                   {msg.text || msg.message || msg.content}
                 </p>
@@ -98,9 +106,9 @@ const ChatBox = ({ streamId }) => {
         </AnimatePresence>
       </div>
 
-      {/* Decorative Overlays */}
-      <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-black/20 to-transparent pointer-events-none" />
-      <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+      {/* Decorative Overlays - Darkened slightly to make the neon pop more */}
+      <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+      <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
     </div>
   );
 };
