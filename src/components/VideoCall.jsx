@@ -117,7 +117,14 @@ const VideoCall = () => {
         setCallStatus("Calling user...");
         const offer = await pcRef.current.createOffer();
         await pcRef.current.setLocalDescription(offer);
-        socketRef.current.emit('send_webrtc_offer', { streamId: roomId, offer, targetViewerId: peerUserId });
+        
+        socketRef.current.emit('send_webrtc_offer', { 
+          roomId: roomId,
+          streamId: roomId, 
+          offer, 
+          targetViewerId: peerUserId,
+          to: peerUserId
+        });
       } catch (err) {
         console.error("Failed creating signaling offer:", err);
       }
@@ -157,9 +164,10 @@ const VideoCall = () => {
         pc.onicecandidate = (event) => {
           if (event.candidate && socketRef.current?.connected) {
             socketRef.current.emit('webrtc_ice_candidate', {
+              roomId: roomId,
               streamId: roomId,
               candidate: event.candidate,
-              targetSocketId: null
+              to: peerUserId
             });
           }
         };
@@ -173,12 +181,16 @@ const VideoCall = () => {
 
         // D. Setup Synchronous Context Handlers inside Socket Connection Frame
         socket.on('connect', () => {
-          console.log(`🟢 Connected to signaling server. Room: ${roomId}`);
+          console.log(`🟢 Connected to signaling server. Socket ID: ${socket.id} | Room: ${roomId}`);
+          
+          // Step 1: Register active session dynamically on backend
+          socket.emit('register_user_session', { userId: currentUserId });
+
+          // Step 2: Join target call room
           socket.emit('join_call_room', { roomId, userId: currentUserId, targetPeerId: peerUserId });
 
           if (callRole === 'caller') {
             setCallStatus("Calling user...");
-            // Trigger offer immediately as baseline, but also allow fallback retry when peer ready arrives
             createAndSendOffer();
           } else {
             setCallStatus("Awaiting Connection...");
@@ -187,11 +199,11 @@ const VideoCall = () => {
           }
         });
 
-        // E. Handle peer ready broadcast to avoid premature offer drops
+        // E. Handle peer ready broadcast to trigger targeted offer
         socket.on('peer_ready', async () => {
           if (!isComponentMounted) return;
-          if (callRole === 'caller' && pcRef.current && pcRef.current.signalingState === 'stable') {
-            console.log("⚡ Receiver is ready in room. Dispatching offer handshake.");
+          if (callRole === 'caller' && pcRef.current) {
+            console.log("⚡ Peer is ready in room. Dispatching WebRTC offer.");
             await createAndSendOffer();
           }
         });
@@ -199,15 +211,20 @@ const VideoCall = () => {
         // F. Bind Signalling Pipeline Events safely
         socket.on('webrtc_offer_received', async ({ offer }) => {
           if (!isComponentMounted || !pcRef.current) return;
-          // Guard: If explicitly designated as caller, drop accidental offers to avoid state racing
-          if (callRole === 'caller') return; 
+          if (callRole === 'caller') return; // Drop accidental loops
 
           try {
             setCallStatus("Answering call...");
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await pcRef.current.createAnswer();
             await pcRef.current.setLocalDescription(answer);
-            socket.emit('send_webrtc_answer', { streamId: roomId, answer });
+
+            socket.emit('send_webrtc_answer', { 
+              roomId: roomId,
+              streamId: roomId, 
+              answer,
+              to: peerUserId
+            });
 
             await processIceQueue();
           } catch (err) {
@@ -218,7 +235,6 @@ const VideoCall = () => {
         socket.on('webrtc_answer_received', async ({ answer }) => {
           if (!isComponentMounted || !pcRef.current) return;
           try {
-            // Check state before setting remote description to avoid signalingState crashes
             if (pcRef.current.signalingState === "have-local-offer") {
               await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
               await processIceQueue();
