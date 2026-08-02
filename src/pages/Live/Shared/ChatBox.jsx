@@ -13,7 +13,7 @@ const ChatBox = ({ streamId }) => {
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('live_comments')
-        .select('id, content, user_id, profiles(username, avatar_url)')
+        .select('id, text, message, content, user_id, profiles(username, avatar_url)')
         .eq('stream_id', streamId)
         .order('created_at', { ascending: true })
         .limit(50);
@@ -80,7 +80,7 @@ const ChatBox = ({ streamId }) => {
               className="flex items-start gap-2 bg-black/20 backdrop-blur-sm p-2 rounded-2xl w-fit max-w-[90%] border border-white/5"
             >
               <img 
-                src={msg.profiles?.avatar_url || 'https://via.placeholder.com/50'} 
+                src={msg.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${msg.user_id}`} 
                 alt="" 
                 className="w-6 h-6 rounded-full object-cover border border-white/10"
               />
@@ -89,7 +89,8 @@ const ChatBox = ({ streamId }) => {
                   {msg.profiles?.username || 'User'}
                 </span>
                 <p className="text-[11px] font-medium text-white leading-tight">
-                  {msg.content}
+                  {/* Fallback check for text, message, or content column names */}
+                  {msg.text || msg.message || msg.content}
                 </p>
               </div>
             </motion.div>
@@ -97,7 +98,7 @@ const ChatBox = ({ streamId }) => {
         </AnimatePresence>
       </div>
 
-      {/* Decorative Overlays (No UI elements here) */}
+      {/* Decorative Overlays */}
       <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-black/20 to-transparent pointer-events-none" />
       <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
     </div>
