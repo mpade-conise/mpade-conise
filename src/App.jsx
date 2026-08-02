@@ -5,7 +5,7 @@ import Feed from './components/Feed';
 import Upload from './components/Upload';
 import Discovery from './components/Discovery';
 import Inbox from './components/Inbox';
-import Messages from './components/Messages'; // --- NEW IMPORT ---
+import Messages from './components/Messages';
 import Profile from './components/Profile';
 import EditProfile from './components/EditProfile'; 
 import ShareProfile from './components/ShareProfile'; 
@@ -23,7 +23,7 @@ import { supabase } from './supabaseClient';
 
 import LiveRouter from './pages/Live/LiveRouter'; 
 
-import { LayoutGrid, Compass, Plus, MessageSquareCode, UserCheck, Phone, PhoneOff } from 'lucide-react';
+import { LayoutGrid, Compass, Plus, MessageSquareCode, UserCheck, Phone, PhoneOff, Video } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 
@@ -86,17 +86,46 @@ function App() {
     return () => supabase.removeChannel(prefChannel);
   }, [session]);
 
-  // Integrated Global Receiver Signaling Listener Pipeline
+  // Persistent Global Receiver Signaling Listener Pipeline
   useEffect(() => {
     if (!session?.user?.id) return;
 
-    const socket = io(SOCKET_SERVER_URL);
+    const socket = io(SOCKET_SERVER_URL, {
+      transports: ['websocket', 'polling'],
+      forceNew: true
+    });
     setGlobalSocket(socket);
 
-    socket.emit('register_user_session', { userId: session.user.id });
+    socket.on('connect', () => {
+      console.log(`🌐 Global Socket Operational: ${socket.id}`);
+      // Register active session dynamically on server so calls map directly to this user
+      socket.emit('register_user_session', { userId: session.user.id });
+    });
 
-    socket.on('incoming_call_signal', ({ fromUserId, roomId }) => {
-      setIncomingCall({ fromUserId, roomId });
+    socket.on('incoming_call_signal', async (data) => {
+      console.log("📞 Incoming Call Signal Received globally:", data);
+      
+      const callerId = data.callerId || data.fromUserId;
+      if (!callerId) return;
+
+      // Fetch caller profile information from Supabase
+      const { data: callerProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', callerId)
+        .single();
+
+      setIncomingCall({
+        callerId: callerId,
+        callerUsername: callerProfile?.username || 'User',
+        callerAvatar: callerProfile?.avatar_url || null,
+        callType: data.callType || 'voice', // 'voice' or 'video'
+        roomId: data.roomId || [session.user.id, callerId].sort().join("-")
+      });
+    });
+
+    socket.on('call_cancelled_by_caller', () => {
+      setIncomingCall(null);
     });
 
     socket.on('peer_hung_up', () => {
@@ -110,11 +139,13 @@ function App() {
 
   if (!session) return <Auth />;
 
-  // --- UPDATED NAVIGATION METHOD FOR CALL HANDLERS ---
+  // --- UPDATED DYNAMIC CALL ACCEPT/REJECT HANDLERS ---
   const handleAcceptCall = () => {
     if (!incomingCall) return;
-    // Appending explicit role context so the receiver engine acts defensively and handles the oncoming offer stream
-    navigate(`/video-call?userId=${incomingCall.fromUserId}&role=receiver`);
+    
+    // Choose voice vs video route depending on inbound call type
+    const route = incomingCall.callType === 'video' ? '/video-call' : '/voice-call';
+    navigate(`${route}?userId=${incomingCall.callerId}&role=receiver`);
     setIncomingCall(null);
   };
 
@@ -122,7 +153,7 @@ function App() {
     if (!incomingCall || !globalSocket) return;
     globalSocket.emit('reject_incoming_call', { 
       roomId: incomingCall.roomId, 
-      to: incomingCall.fromUserId 
+      to: incomingCall.callerId 
     });
     setIncomingCall(null);
   };
@@ -131,8 +162,8 @@ function App() {
   const shouldHideNav = 
     location.pathname.startsWith('/live') || 
     location.pathname.startsWith('/profile/') ||
-    location.pathname.startsWith('/messaging') || // --- NEW: HIDE NAV FOR MESSAGING ---
-    location.pathname.startsWith('/video-call') || // --- CALL MASK ENGINE EXCLUSIONS ---
+    location.pathname.startsWith('/messaging') || 
+    location.pathname.startsWith('/video-call') || 
     location.pathname.startsWith('/voice-call') ||
     [
       '/universe-tools', 
@@ -170,7 +201,7 @@ function App() {
               <Route path="/" element={<Feed session={session} dataSaver={preferences.data_saver} />} />
               <Route path="/discovery" element={<Discovery />} />
               <Route path="/inbox" element={<Inbox />} />
-              <Route path="/messaging" element={<Messages currentUser={session.user} />} /> {/* --- NEW ROUTE --- */}
+              <Route path="/messaging" element={<Messages currentUser={session.user} />} />
               
               {/* --- CALL MODULE TARGET ENGINES --- */}
               <Route path="/video-call" element={<VideoCall />} />
@@ -200,29 +231,49 @@ function App() {
         </AnimatePresence>
       </main>
 
-      {/* Floating Incoming Call Overlay UI */}
+      {/* Floating Global Incoming Call Overlay UI */}
       <AnimatePresence>
         {incomingCall && (
           <motion.div 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999] bg-black/80 flex items-center justify-center backdrop-blur-md"
+            className="fixed inset-0 z-[999] bg-black/80 flex items-center justify-center backdrop-blur-md p-4"
           >
             <div className="bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col items-center gap-6">
-              <div className="w-20 h-20 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded-full flex items-center justify-center animate-bounce">
-                <Phone size={36} />
+              
+              {/* Profile / Call Avatar */}
+              <div className="relative">
+                {incomingCall.callerAvatar ? (
+                  <img 
+                    src={incomingCall.callerAvatar} 
+                    alt="Caller Avatar" 
+                    className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/30 animate-pulse shadow-xl"
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-center animate-pulse shadow-xl">
+                    {incomingCall.callType === 'video' ? (
+                      <Video size={40} className="text-cyan-400" />
+                    ) : (
+                      <Phone size={40} className="text-cyan-400" />
+                    )}
+                  </div>
+                )}
+                <span className="absolute -bottom-1 -right-1 bg-cyan-500 text-black px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
+                  {incomingCall.callType}
+                </span>
               </div>
+
               <div>
-                <h3 className="text-xl font-bold text-white">Incoming Video Call</h3>
-                <p className="text-sm text-zinc-400 mt-1">Someone is calling you...</p>
+                <h3 className="text-xl font-bold text-white">@{incomingCall.callerUsername}</h3>
+                <p className="text-sm text-zinc-400 mt-1 capitalize">Incoming {incomingCall.callType} call...</p>
               </div>
               
               <div className="flex items-center gap-6 w-full justify-center mt-2">
                 <button 
                   type="button"
                   onClick={handleRejectCall}
-                  className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/20"
+                  className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/30"
                 >
                   <PhoneOff size={24} />
                 </button>
@@ -230,7 +281,7 @@ function App() {
                 <button 
                   type="button"
                   onClick={handleAcceptCall}
-                  className="p-4 bg-green-600 hover:bg-green-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-green-600/20 animate-pulse"
+                  className="p-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-emerald-600/30 animate-pulse"
                 >
                   <Phone size={24} />
                 </button>
