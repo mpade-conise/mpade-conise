@@ -76,9 +76,9 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
       
       if (!error && stream) {
         setLiveMetrics({
-          likes: stream.likes,
-          current_goal: stream.gift_goal_current,
-          total_goal: stream.gift_goal_total
+          likes: stream.likes || 0,
+          current_goal: stream.gift_goal_current || 0,
+          total_goal: stream.gift_goal_total || 1000
         });
       }
     };
@@ -110,7 +110,7 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
           .select('id, avatar_url, username')
           .in('id', userIds);
 
-        if (!profileError) {
+        if (!profileError && profiles) {
           const merged = sortedUnique.map((gift, index) => ({
             ...gift,
             rank: index + 1,
@@ -133,9 +133,9 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
         filter: `id=eq.${data.id}`
       }, (payload) => {
         setLiveMetrics({
-          likes: payload.new.likes,
-          current_goal: payload.new.gift_goal_current,
-          total_goal: payload.new.gift_goal_total
+          likes: payload.new.likes || 0,
+          current_goal: payload.new.gift_goal_current || 0,
+          total_goal: payload.new.gift_goal_total || 1000
         });
       })
       .subscribe((status) => {
@@ -163,10 +163,10 @@ const StreamHeader = ({ data, isHost, viewerCount, onLeave }) => {
 
   const goalPercent = useMemo(() => {
     const effectiveTotalGoal = liveMetrics.total_goal || 1;
-    return Math.min((liveMetrics.current_goal / effectiveTotalGoal) * 100, 100);
+    return Math.min(((liveMetrics.current_goal || 0) / effectiveTotalGoal) * 100, 100);
   }, [liveMetrics.current_goal, liveMetrics.total_goal]);
 
-  const isGoalExceeded = liveMetrics.current_goal >= liveMetrics.total_goal;
+  const isGoalExceeded = (liveMetrics.current_goal || 0) >= (liveMetrics.total_goal || 1000);
 
   return (
     <header className="absolute top-0 left-0 right-0 p-4 flex flex-col gap-2.5 z-50 bg-gradient-to-b from-black/60 via-black/20 to-transparent pointer-events-none select-none">
