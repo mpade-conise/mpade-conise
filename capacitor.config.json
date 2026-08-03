@@ -1,1 +1,6 @@
-
+{
+  "appId": "com.mpade.app",
+  "appName": "con Universe",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
