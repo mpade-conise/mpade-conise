@@ -1,6 +1,10 @@
 {
   "appId": "com.mpade.app",
-  "appName": "con Universe",
+  "appName": "Mpade Universe",
   "webDir": "dist",
-  "bundledWebRuntime": false
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://progress-lake.vercel.app",
+    "cleartext": true
+  }
 }
