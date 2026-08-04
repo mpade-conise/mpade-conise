@@ -54,7 +54,9 @@ const JoinAsGuest = () => {
   const [assignedMode, setAssignedMode] = useState('video');
   const [userProfile, setUserProfile] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [hostUserId, setHostUserId] = useState(null);
 
+  // Drain candidate queue once remote description is ready
   const processIceQueue = async () => {
     if (pcRef.current && pcRef.current.remoteDescription && iceQueueRef.current.length > 0) {
       const candidatesToProcess = [...iceQueueRef.current];
@@ -71,7 +73,7 @@ const JoinAsGuest = () => {
 
   useEffect(() => {
     startPreview();
-    fetchUser();
+    fetchUserAndStreamDetails();
 
     return () => {
       if (localStreamRef.current) {
@@ -82,12 +84,18 @@ const JoinAsGuest = () => {
     };
   }, [streamId]);
 
-  const fetchUser = async () => {
+  const fetchUserAndStreamDetails = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setCurrentUserId(user.id);
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      setUserProfile(data);
+      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      setUserProfile(profileData);
+    }
+
+    // Fetch the host ID from the live stream record
+    const { data: streamData } = await supabase.from('live_streams').select('user_id, host_id').eq('id', streamId).single();
+    if (streamData) {
+      setHostUserId(streamData.user_id || streamData.host_id);
     }
   };
 
@@ -124,17 +132,16 @@ const JoinAsGuest = () => {
 
     const socket = initSocket();
 
-    socket.on('connect', () => {
-      console.log(`Connected as guest/cohost. Socket ID: ${socket.id}`);
+    const setupSocketListeners = () => {
       socket.emit('register_user_session', { userId: currentUserId });
-      socket.emit('join_call_room', { roomId: streamId, userId: currentUserId });
+      socket.emit('join_call_room', { roomId: streamId, userId: currentUserId, targetPeerId: hostUserId });
       socket.emit('peer_ready', { roomId: streamId, userId: currentUserId });
-    });
+    };
 
     if (socket.connected) {
-      socket.emit('register_user_session', { userId: currentUserId });
-      socket.emit('join_call_room', { roomId: streamId, userId: currentUserId });
-      socket.emit('peer_ready', { roomId: streamId, userId: currentUserId });
+      setupSocketListeners();
+    } else {
+      socket.on('connect', setupSocketListeners);
     }
 
     const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
@@ -149,6 +156,7 @@ const JoinAsGuest = () => {
     }
 
     pc.ontrack = (event) => {
+      console.log("🎬 Host Stream Received");
       if (event.streams && event.streams[0] && hostVideoRef.current) {
         hostVideoRef.current.srcObject = event.streams[0];
         hostVideoRef.current.play().catch(e => console.error("Auto-play error:", e));
@@ -161,6 +169,7 @@ const JoinAsGuest = () => {
           roomId: streamId,
           streamId: streamId,
           candidate: event.candidate,
+          to: hostUserId
         });
       }
     };
@@ -173,9 +182,11 @@ const JoinAsGuest = () => {
           roomId: streamId,
           streamId: streamId,
           offer,
+          targetViewerId: hostUserId,
+          to: hostUserId
         });
       } catch (err) {
-        console.error("Error creating guest WebRTC offer:", err);
+        console.error("Error creating WebRTC offer:", err);
       }
     };
 
@@ -203,6 +214,7 @@ const JoinAsGuest = () => {
           roomId: streamId,
           streamId: streamId,
           answer,
+          to: hostUserId
         });
         await processIceQueue();
       } catch (err) {
@@ -216,7 +228,7 @@ const JoinAsGuest = () => {
         try {
           await currentPc.addIceCandidate(new RTCIceCandidate(candidate));
         } catch (e) {
-          console.warn("Skipped candidate node:", e);
+          console.warn("Skipped candidate:", e);
         }
       } else {
         iceQueueRef.current.push(candidate);
