@@ -65,7 +65,9 @@ const JoinAsGuest = () => {
 
   // Connects WebRTC PeerConnection for simultaneous two-way audio/video exchange
   const connectToHostStream = (guestMediaStream, mode) => {
-    const socket = io(SOCKET_SERVER_URL, { query: { streamId, role: 'cohost' } });
+    if (pcRef.current) return; // Prevent double initialization
+
+    const socket = socketRef.current || io(SOCKET_SERVER_URL, { query: { streamId, role: 'cohost' } });
     socketRef.current = socket;
 
     socket.emit('join-room', { room: streamId, isCoHost: true, mode });
@@ -126,8 +128,30 @@ const JoinAsGuest = () => {
     });
   };
 
+  const handleApprovalTrigger = (mode) => {
+    setIsRequesting(false);
+    setIsApproved(true);
+    setAssignedMode(mode);
+
+    if (mode === 'audio' && stream) {
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) videoTrack.enabled = false;
+      setIsCamOn(false);
+    }
+
+    connectToHostStream(stream, mode);
+  };
+
   const handleSendRequest = async () => {
     setIsRequesting(true);
+
+    // Initialize Socket early to listen for instant direct socket approvals
+    const socket = io(SOCKET_SERVER_URL, { query: { streamId, role: 'cohost' } });
+    socketRef.current = socket;
+
+    socket.on('approve_cohost', ({ mode }) => {
+      handleApprovalTrigger(mode || 'video');
+    });
 
     const { data: request, error } = await supabase
       .from('live_guest_requests')
@@ -142,7 +166,7 @@ const JoinAsGuest = () => {
       .single();
 
     if (!error && request) {
-      // Listen for Host Approval & Mode Assignment
+      // Backup DB listener via Supabase Realtime
       const subscription = supabase
         .channel(`guest_request_${request.id}`)
         .on(
@@ -152,18 +176,7 @@ const JoinAsGuest = () => {
             const mode = payload.new.mode || 'video';
 
             if (payload.new.status === 'approved') {
-              setIsRequesting(false);
-              setIsApproved(true);
-              setAssignedMode(mode);
-
-              // Update local stream state according to host preference
-              if (mode === 'audio' && stream) {
-                const videoTrack = stream.getVideoTracks()[0];
-                if (videoTrack) videoTrack.enabled = false;
-                setIsCamOn(false);
-              }
-
-              connectToHostStream(stream, mode);
+              handleApprovalTrigger(mode);
               supabase.removeChannel(subscription);
             } else if (payload.new.status === 'rejected') {
               setIsRequesting(false);
