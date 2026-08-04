@@ -8,11 +8,31 @@ import { io } from 'socket.io-client';
 
 const SOCKET_SERVER_URL = process.env.REACT_APP_SOCKET_URL || 'https://mpade-backend.onrender.com';
 
-const RTC_CONFIG = {
+const GLOBAL_ICE_CONFIG = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19020' },
-    { urls: 'stun:stun1.l.google.com:19020' }
-  ]
+    { urls: "stun:stun.relay.metered.ca:80" },
+    {
+      urls: "turn:global.relay.metered.ca:80",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
+    },
+    {
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
+    },
+    {
+      urls: "turn:global.relay.metered.ca:443",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "28087eceaa61e6de7d551200",
+      credential: "KW6Vsm7ZTUwjjDWn"
+    }
+  ],
+  iceCandidatePoolSize: 10
 };
 
 const JoinAsGuest = () => {
@@ -23,22 +43,40 @@ const JoinAsGuest = () => {
   const hostVideoRef = useRef(null);
   const socketRef = useRef(null);
   const pcRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const iceQueueRef = useRef([]);
 
   const [stream, setStream] = useState(null);
-  const [hostStream, setHostStream] = useState(null);
   const [isCamOn, setIsCamOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isRequesting, setIsRequesting] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
-  const [assignedMode, setAssignedMode] = useState('video'); // 'video' | 'audio'
+  const [assignedMode, setAssignedMode] = useState('video');
   const [userProfile, setUserProfile] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  const processIceQueue = async () => {
+    if (pcRef.current && pcRef.current.remoteDescription && iceQueueRef.current.length > 0) {
+      const candidatesToProcess = [...iceQueueRef.current];
+      iceQueueRef.current = [];
+      for (const candidate of candidatesToProcess) {
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.warn("Error processing queued ICE candidate:", e);
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     startPreview();
     fetchUser();
 
     return () => {
-      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
+      }
       if (pcRef.current) pcRef.current.close();
       if (socketRef.current) socketRef.current.disconnect();
     };
@@ -47,6 +85,7 @@ const JoinAsGuest = () => {
   const fetchUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      setCurrentUserId(user.id);
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       setUserProfile(data);
     }
@@ -55,6 +94,7 @@ const JoinAsGuest = () => {
   const startPreview = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localStreamRef.current = mediaStream;
       setStream(mediaStream);
       if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
     } catch (err) {
@@ -67,8 +107,8 @@ const JoinAsGuest = () => {
     if (socketRef.current?.connected) return socketRef.current;
 
     const socket = io(SOCKET_SERVER_URL, {
-      query: { streamId, role: 'cohost' },
-      transports: ['polling', 'websocket'], // Polling fallback to bypass Render cold-starts & proxy drops
+      transports: ['websocket', 'polling'],
+      forceNew: true,
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
@@ -80,12 +120,24 @@ const JoinAsGuest = () => {
   };
 
   const connectToHostStream = (guestMediaStream, mode) => {
-    if (pcRef.current) return; // Prevent duplicate connections
+    if (pcRef.current) return;
 
     const socket = initSocket();
-    socket.emit('join-room', { room: streamId, isCoHost: true, mode });
 
-    const pc = new RTCPeerConnection(RTC_CONFIG);
+    socket.on('connect', () => {
+      console.log(`Connected as guest/cohost. Socket ID: ${socket.id}`);
+      socket.emit('register_user_session', { userId: currentUserId });
+      socket.emit('join_call_room', { roomId: streamId, userId: currentUserId });
+      socket.emit('peer_ready', { roomId: streamId, userId: currentUserId });
+    });
+
+    if (socket.connected) {
+      socket.emit('register_user_session', { userId: currentUserId });
+      socket.emit('join_call_room', { roomId: streamId, userId: currentUserId });
+      socket.emit('peer_ready', { roomId: streamId, userId: currentUserId });
+    }
+
+    const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
     pcRef.current = pc;
 
     if (guestMediaStream) {
@@ -93,42 +145,81 @@ const JoinAsGuest = () => {
       if (videoTrack) {
         videoTrack.enabled = mode === 'video' && isCamOn;
       }
-      
-      guestMediaStream.getTracks().forEach(track => {
-        pc.addTrack(track, guestMediaStream);
-      });
+      guestMediaStream.getTracks().forEach(track => pc.addTrack(track, guestMediaStream));
     }
 
     pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        setHostStream(event.streams[0]);
-        if (hostVideoRef.current) {
-          hostVideoRef.current.srcObject = event.streams[0];
-          hostVideoRef.current.play().catch(e => console.error("Auto-play error:", e));
-        }
+      if (event.streams && event.streams[0] && hostVideoRef.current) {
+        hostVideoRef.current.srcObject = event.streams[0];
+        hostVideoRef.current.play().catch(e => console.error("Auto-play error:", e));
       }
     };
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('ice-candidate', { candidate: event.candidate, streamId });
+      if (event.candidate && socketRef.current?.connected) {
+        socketRef.current.emit('webrtc_ice_candidate', {
+          roomId: streamId,
+          streamId: streamId,
+          candidate: event.candidate,
+        });
       }
     };
 
-    pc.createOffer().then(offer => {
-      pc.setLocalDescription(offer);
-      socket.emit('sdp-offer', { sdp: offer, streamId });
-    });
+    const createAndSendOffer = async () => {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('send_webrtc_offer', {
+          roomId: streamId,
+          streamId: streamId,
+          offer,
+        });
+      } catch (err) {
+        console.error("Error creating guest WebRTC offer:", err);
+      }
+    };
 
-    socket.on('sdp-answer', async ({ sdp }) => {
-      if (pc.signalingState !== 'closed') {
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    createAndSendOffer();
+
+    socket.on('webrtc_answer_received', async ({ answer }) => {
+      if (!pcRef.current || pcRef.current.signalingState === 'closed') return;
+      try {
+        if (pcRef.current.signalingState === 'have-local-offer') {
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+          await processIceQueue();
+        }
+      } catch (err) {
+        console.error("Error setting remote answer:", err);
       }
     });
 
-    socket.on('ice-candidate', async ({ candidate }) => {
-      if (candidate && pc.signalingState !== 'closed') {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    socket.on('webrtc_offer_received', async ({ offer }) => {
+      if (!pcRef.current || pcRef.current.signalingState === 'closed') return;
+      try {
+        await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pcRef.current.createAnswer();
+        await pcRef.current.setLocalDescription(answer);
+        socket.emit('send_webrtc_answer', {
+          roomId: streamId,
+          streamId: streamId,
+          answer,
+        });
+        await processIceQueue();
+      } catch (err) {
+        console.error("Error handling incoming offer:", err);
+      }
+    });
+
+    socket.on('incoming_ice_candidate', async ({ candidate }) => {
+      const currentPc = pcRef.current;
+      if (currentPc && currentPc.remoteDescription && currentPc.remoteDescription.type) {
+        try {
+          await currentPc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.warn("Skipped candidate node:", e);
+        }
+      } else {
+        iceQueueRef.current.push(candidate);
       }
     });
 
@@ -143,13 +234,13 @@ const JoinAsGuest = () => {
     setIsApproved(true);
     setAssignedMode(mode);
 
-    if (mode === 'audio' && stream) {
-      const videoTrack = stream.getVideoTracks()[0];
+    if (mode === 'audio' && localStreamRef.current) {
+      const videoTrack = localStreamRef.current.getVideoTracks()[0];
       if (videoTrack) videoTrack.enabled = false;
       setIsCamOn(false);
     }
 
-    connectToHostStream(stream, mode);
+    connectToHostStream(localStreamRef.current, mode);
   };
 
   const handleSendRequest = async () => {
@@ -206,8 +297,8 @@ const JoinAsGuest = () => {
       return;
     }
 
-    if (stream) {
-      const track = stream.getVideoTracks()[0];
+    if (localStreamRef.current) {
+      const track = localStreamRef.current.getVideoTracks()[0];
       if (track) {
         track.enabled = !track.enabled;
         setIsCamOn(track.enabled);
@@ -216,8 +307,8 @@ const JoinAsGuest = () => {
   };
 
   const toggleMic = () => {
-    if (stream) {
-      const track = stream.getAudioTracks()[0];
+    if (localStreamRef.current) {
+      const track = localStreamRef.current.getAudioTracks()[0];
       if (track) {
         track.enabled = !track.enabled;
         setIsMicOn(track.enabled);
@@ -238,9 +329,7 @@ const JoinAsGuest = () => {
         </div>
       </div>
 
-      {/* Dynamic Stage Grid Layout */}
       <div className={`w-full max-w-[700px] grid gap-4 ${isApproved ? 'grid-cols-2' : 'grid-cols-1 flex justify-center'}`}>
-        {/* Guest Local Video / Audio Avatar View */}
         <motion.div className="relative w-full aspect-[3/4] rounded-[30px] overflow-hidden border border-white/10 bg-zinc-900 mx-auto max-w-[320px]">
           {isCamOn && assignedMode === 'video' ? (
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover -scale-x-100" />
@@ -258,7 +347,6 @@ const JoinAsGuest = () => {
           </div>
         </motion.div>
 
-        {/* Remote Host Stream */}
         {isApproved && (
           <div className="relative w-full aspect-[3/4] rounded-[30px] overflow-hidden border border-white/10 bg-zinc-900 mx-auto max-w-[320px]">
             <video ref={hostVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
@@ -269,7 +357,6 @@ const JoinAsGuest = () => {
         )}
       </div>
 
-      {/* Control Console */}
       <div className="mt-8 flex items-center gap-6 z-50">
         <button onClick={toggleMic} className={`w-14 h-14 rounded-full flex items-center justify-center border transition-all ${isMicOn ? 'bg-white/10 text-white border-white/20' : 'bg-red-500/20 text-red-500 border-red-500/30'}`}>
           {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
