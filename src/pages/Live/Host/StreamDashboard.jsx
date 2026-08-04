@@ -5,7 +5,7 @@ import { supabase } from '../../../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, Gift, BarChart3, Share2, HelpCircle, BarChart, 
-  Smile, X, UserPlus, Swords, Mic, MicOff, Video, VideoOff, Settings, Radio
+  Smile, X, UserPlus, Swords, Mic, MicOff, Video, VideoOff, Settings, Radio, UserCheck, UserX
 } from 'lucide-react';
 
 // Isolated Logic Hook Injectors
@@ -19,7 +19,7 @@ import LiveAnalyticsPanel from './HostAnalytics';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
-import SettingsPanel from '../Shared/setting'; // 👈 Imported settings feature panel
+import SettingsPanel from '../Shared/setting';
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
@@ -37,7 +37,11 @@ const StreamDashboard = () => {
   const [reactions, setReactions] = useState([]); 
   const [battleScores, setBattleScores] = useState({ host: 0, challenger: 0 });
 
-  // DOM node link to explicitly bind remote challenger streams from the WebRTC hook
+  // --- CO-HOSTING & GUEST REQUESTS STATE ---
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [activeCoHosts, setActiveCoHosts] = useState([]);
+
+  // DOM node link to explicitly bind remote challenger/cohost streams from WebRTC hook
   const challengerVideoRef = useRef(null);
 
   // 1. EXECUTE ABSTRACTED WEBSOCKET NETWORK CONTROLLER
@@ -45,7 +49,7 @@ const StreamDashboard = () => {
     socket, viewers, joinAlert, activeGift, setActiveGift, incomingInvite, setIncomingInvite, reactionTrigger
   } = useStreamSocket(streamId, true);
 
-  // 2. EXECUTE ABSTRACTED WEBRTC HARDWARE CONTROLLER (Passing challengerVideoRef)
+  // 2. EXECUTE ABSTRACTED WEBRTC HARDWARE CONTROLLER
   const { localVideoRef, hardwareReady } = useStreamWebRTC(streamId, socket, isCameraOff, isMuted, challengerVideoRef);
 
   // Fetch Metadata & Sync Database Lifecycle Status
@@ -73,6 +77,37 @@ const StreamDashboard = () => {
     }
   }, [hardwareReady, streamId]);
 
+  // Listen for Live Guest Requests for Co-Hosting
+  useEffect(() => {
+    if (!streamId) return;
+
+    // Fetch initial pending requests
+    supabase
+      .from('live_guest_requests')
+      .select('*')
+      .eq('stream_id', streamId)
+      .eq('status', 'pending')
+      .then(({ data }) => {
+        if (data) setPendingRequests(data);
+      });
+
+    // Real-time subscription for incoming guest join requests
+    const channel = supabase
+      .channel(`host_requests_${streamId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'live_guest_requests', filter: `stream_id=eq.${streamId}` },
+        (payload) => {
+          setPendingRequests(prev => [...prev, payload.new]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [streamId]);
+
   // Handle local reactions cleanly when hook emits a socket event capture
   useEffect(() => {
     if (reactionTrigger) {
@@ -84,7 +119,6 @@ const StreamDashboard = () => {
   const handleAcceptInvite = async () => {
     if (!incomingInvite || !socket) return;
     try {
-      // Standardize input fields across variant backend signaling keys
       const peerId = incomingInvite.senderHostId || incomingInvite.host_id || '';
       const peerStreamId = incomingInvite.senderStreamId || incomingInvite.hostRoomId || '';
 
@@ -105,7 +139,31 @@ const StreamDashboard = () => {
     }
   };
 
-  // --- ADDED SYSTEM CONTROLLERS LINKED VIA GLOBAL WINDOW BROADCASTING ---
+  // Co-Host Accept / Reject Actions
+  const handleAcceptGuest = async (request) => {
+    await supabase
+      .from('live_guest_requests')
+      .update({ status: 'approved' })
+      .eq('id', request.id);
+
+    setActiveCoHosts(prev => [...prev, request]);
+    setPendingRequests(prev => prev.filter(r => r.id !== request.id));
+
+    if (socket) {
+      socket.emit('approve_cohost', { streamId, guestId: request.user_id });
+    }
+  };
+
+  const handleRejectGuest = async (requestId) => {
+    await supabase
+      .from('live_guest_requests')
+      .update({ status: 'rejected' })
+      .eq('id', requestId);
+
+    setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+  };
+
+  // Video Filter System Broadcasting
   useEffect(() => {
     const fxState = {
       smoothing: 3, jawline: 0, eyes: 0, slim: 0,
@@ -179,10 +237,43 @@ const StreamDashboard = () => {
           <StreamHeader data={streamData} isHost={true} viewerCount={viewers.length} onLeave={() => navigate('/live')} />
         </div>
 
-        {/* 2. LIVE STAGE MULTIPLEX VIEWPORT MATRIX */}
-        <div className="absolute inset-0 z-0 grid grid-cols-1 grid-rows-1 gap-0.5 transition-all duration-500 bg-zinc-900">
+        {/* CO-HOST PENDING REQUESTS BANNER OVERLAY */}
+        <AnimatePresence>
+          {pendingRequests.length > 0 && (
+            <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[65] w-full max-w-sm px-4">
+              {pendingRequests.map(req => (
+                <motion.div 
+                  key={req.id}
+                  initial={{ y: -20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: -20, opacity: 0 }}
+                  className="bg-zinc-900/90 backdrop-blur-xl border border-[#fe2c55]/50 p-3 rounded-2xl shadow-2xl flex items-center justify-between mb-2"
+                >
+                  <div className="flex items-center gap-3">
+                    <img src={req.avatar_url} className="w-9 h-9 rounded-full border border-[#fe2c55]" alt="" />
+                    <div>
+                      <p className="text-xs font-bold">{req.username}</p>
+                      <p className="text-[9px] text-white/50 uppercase font-semibold">Wants to join live panel</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleAcceptGuest(req)} className="p-2 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white rounded-full transition-all">
+                      <UserCheck size={16} />
+                    </button>
+                    <button onClick={() => handleRejectGuest(req.id)} className="p-2 bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white rounded-full transition-all">
+                      <UserX size={16} />
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* 2. LIVE STAGE MULTIPLEX VIEWPORT MATRIX (Grid adjusts for co-hosts/battles) */}
+        <div className={`absolute inset-0 z-0 grid gap-0.5 transition-all duration-500 bg-zinc-900 ${isBattleMode || activeCoHosts.length > 0 ? 'grid-cols-2' : 'grid-cols-1 grid-rows-1'}`}>
           
-          {/* PANEL A: THE PRIMARY MAIN HOST (YOU) */}
+          {/* PANEL A: PRIMARY HOST (YOU) */}
           <div className="relative h-full w-full overflow-hidden bg-zinc-950">
             <video 
               ref={localVideoRef} 
@@ -197,12 +288,10 @@ const StreamDashboard = () => {
               </div>
             )}
 
-            {/* Absolute Identity Floating Tag Indicator */}
             <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2 py-1 rounded border border-white/5 text-[10px] uppercase font-bold tracking-wider">
               @{streamData?.host?.username} <span className="text-cyan-400 font-black ml-1">● Host</span>
             </div>
             
-            {/* Universal Overlay Widget Layout */}
             {isBattleMode && (
               <BattleOverlay 
                 score={battleScores} 
@@ -212,11 +301,26 @@ const StreamDashboard = () => {
               />
             )}
           </div>
+
+          {/* PANEL B: REMOTE CO-HOST / CHALLENGER VIDEO PANEL */}
+          {(isBattleMode || activeCoHosts.length > 0) && (
+            <div className="relative h-full w-full overflow-hidden bg-zinc-900 border-l border-white/10">
+              <video 
+                ref={challengerVideoRef} 
+                autoPlay 
+                playsInline 
+                className="w-full h-full object-cover" 
+              />
+              <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2 py-1 rounded border border-white/5 text-[10px] uppercase font-bold tracking-wider">
+                {activeCoHosts[0]?.username || 'Co-Host Guest'} <span className="text-[#fe2c55] font-black ml-1">● Live</span>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Control Console Dock Bar at bottom */}
         <div className="absolute bottom-0 left-0 right-0 z-50 p-4 space-y-4 pointer-events-none">
-          {/* UPGRADED CHAT BOX STREAM PANEL FEATURE */}
           <div className="h-48 w-full max-w-[320px] pointer-events-auto overflow-y-auto floating-chat-container">
             <ChatBox streamId={streamId} isHost={true} transparent={true} filter={chatFilter} />
           </div>
@@ -233,7 +337,6 @@ const StreamDashboard = () => {
                   {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
                 </button>
               </li>
-              {/* SETTINGS ICON ACTION DOCK BUTTON ELEMENT */}
               <li>
                 <button 
                   onClick={() => setActivePanel(activePanel === 'settings' ? null : 'settings')} 
@@ -275,9 +378,9 @@ const StreamDashboard = () => {
               streamId={streamId} 
               streamData={streamData} 
               socket={socket}
-              currentCoHosts={[]}
-              onDropUser={() => {}}
-              onDropAll={() => {}}
+              currentCoHosts={activeCoHosts}
+              onDropUser={(user) => setActiveCoHosts(prev => prev.filter(c => c.id !== user.id))}
+              onDropAll={() => setActiveCoHosts([])}
               onClose={() => setActivePanel(null)} 
             />
           </motion.div>
