@@ -20,6 +20,7 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting';
+import GuestManager from './GuestManager';
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
@@ -77,9 +78,19 @@ const StreamDashboard = () => {
     }
   }, [hardwareReady, streamId]);
 
-  // Listen for Live Guest Requests for Co-Hosting
+  // Fetch Existing Approved Co-Hosts & Listen for Guest Requests
   useEffect(() => {
     if (!streamId) return;
+
+    // Fetch initial approved co-hosts
+    supabase
+      .from('live_guest_requests')
+      .select('*')
+      .eq('stream_id', streamId)
+      .eq('status', 'approved')
+      .then(({ data }) => {
+        if (data) setActiveCoHosts(data);
+      });
 
     // Fetch initial pending requests
     supabase
@@ -98,7 +109,19 @@ const StreamDashboard = () => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'live_guest_requests', filter: `stream_id=eq.${streamId}` },
         (payload) => {
-          setPendingRequests(prev => [...prev, payload.new]);
+          if (payload.new.status === 'pending') {
+            setPendingRequests(prev => [...prev, payload.new]);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'live_guest_requests', filter: `stream_id=eq.${streamId}` },
+        (payload) => {
+          if (payload.new.status === 'disconnected' || payload.new.status === 'rejected') {
+            setActiveCoHosts(prev => prev.filter(c => c.id !== payload.new.id));
+            setPendingRequests(prev => prev.filter(r => r.id !== payload.new.id));
+          }
         }
       )
       .subscribe();
@@ -139,18 +162,18 @@ const StreamDashboard = () => {
     }
   };
 
-  // Co-Host Accept / Reject Actions
-  const handleAcceptGuest = async (request) => {
+  // Quick Accept/Reject Actions from Floating Alert Banner
+  const handleAcceptGuest = async (request, mode = 'video') => {
     await supabase
       .from('live_guest_requests')
-      .update({ status: 'approved' })
+      .update({ status: 'approved', mode })
       .eq('id', request.id);
 
-    setActiveCoHosts(prev => [...prev, request]);
+    setActiveCoHosts(prev => [...prev, { ...request, mode }]);
     setPendingRequests(prev => prev.filter(r => r.id !== request.id));
 
     if (socket) {
-      socket.emit('approve_cohost', { streamId, guestId: request.user_id });
+      socket.emit('approve_cohost', { streamId, guestId: request.user_id, mode });
     }
   };
 
@@ -223,6 +246,16 @@ const StreamDashboard = () => {
     );
   }
 
+  // Calculate dynamic grid layout parameters based on active guest count
+  const totalSlots = 1 + activeCoHosts.length;
+  const gridClasses = isBattleMode 
+    ? 'grid-cols-2 grid-rows-1' 
+    : totalSlots === 1 
+      ? 'grid-cols-1 grid-rows-1' 
+      : totalSlots === 2 
+        ? 'grid-cols-2 grid-rows-1' 
+        : 'grid-cols-2 grid-rows-2';
+
   return (
     <div className="h-[100dvh] w-full bg-zinc-950 text-white overflow-hidden relative font-sans flex flex-row">
       
@@ -239,7 +272,7 @@ const StreamDashboard = () => {
 
         {/* CO-HOST PENDING REQUESTS BANNER OVERLAY */}
         <AnimatePresence>
-          {pendingRequests.length > 0 && (
+          {pendingRequests.length > 0 && activePanel !== 'guests' && (
             <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[65] w-full max-w-sm px-4">
               {pendingRequests.map(req => (
                 <motion.div 
@@ -250,18 +283,21 @@ const StreamDashboard = () => {
                   className="bg-zinc-900/90 backdrop-blur-xl border border-[#fe2c55]/50 p-3 rounded-2xl shadow-2xl flex items-center justify-between mb-2"
                 >
                   <div className="flex items-center gap-3">
-                    <img src={req.avatar_url} className="w-9 h-9 rounded-full border border-[#fe2c55]" alt="" />
+                    <img src={req.avatar_url || 'https://via.placeholder.com/150'} className="w-9 h-9 rounded-full border border-[#fe2c55]" alt="" />
                     <div>
                       <p className="text-xs font-bold">{req.username}</p>
                       <p className="text-[9px] text-white/50 uppercase font-semibold">Wants to join live panel</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => handleAcceptGuest(req)} className="p-2 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white rounded-full transition-all">
-                      <UserCheck size={16} />
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => handleAcceptGuest(req, 'audio')} className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-emerald-400 text-[9px] font-bold rounded-lg flex items-center gap-1 transition-all">
+                      <Mic size={12} /> Audio
                     </button>
-                    <button onClick={() => handleRejectGuest(req.id)} className="p-2 bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white rounded-full transition-all">
-                      <UserX size={16} />
+                    <button onClick={() => handleAcceptGuest(req, 'video')} className="px-2 py-1 bg-emerald-500 hover:bg-emerald-400 text-white text-[9px] font-bold rounded-lg flex items-center gap-1 transition-all">
+                      <Video size={12} /> Video
+                    </button>
+                    <button onClick={() => handleRejectGuest(req.id)} className="p-1.5 bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white rounded-lg transition-all ml-1">
+                      <UserX size={14} />
                     </button>
                   </div>
                 </motion.div>
@@ -270,11 +306,11 @@ const StreamDashboard = () => {
           )}
         </AnimatePresence>
 
-        {/* 2. LIVE STAGE MULTIPLEX VIEWPORT MATRIX (Grid adjusts for co-hosts/battles) */}
-        <div className={`absolute inset-0 z-0 grid gap-0.5 transition-all duration-500 bg-zinc-900 ${isBattleMode || activeCoHosts.length > 0 ? 'grid-cols-2' : 'grid-cols-1 grid-rows-1'}`}>
+        {/* 2. DYNAMIC STAGE MULTIPLEX VIEWPORT GRID MATRIX */}
+        <div className={`absolute inset-0 z-0 grid gap-1 p-1 transition-all duration-500 bg-zinc-950 ${gridClasses}`}>
           
           {/* PANEL A: PRIMARY HOST (YOU) */}
-          <div className="relative h-full w-full overflow-hidden bg-zinc-950">
+          <div className="relative h-full w-full overflow-hidden bg-zinc-900 rounded-2xl border border-white/5">
             <video 
               ref={localVideoRef} 
               autoPlay 
@@ -288,7 +324,7 @@ const StreamDashboard = () => {
               </div>
             )}
 
-            <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2 py-1 rounded border border-white/5 text-[10px] uppercase font-bold tracking-wider">
+            <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] uppercase font-bold tracking-wider">
               @{streamData?.host?.username} <span className="text-cyan-400 font-black ml-1">● Host</span>
             </div>
             
@@ -302,20 +338,54 @@ const StreamDashboard = () => {
             )}
           </div>
 
-          {/* PANEL B: REMOTE CO-HOST / CHALLENGER VIDEO PANEL */}
-          {(isBattleMode || activeCoHosts.length > 0) && (
-            <div className="relative h-full w-full overflow-hidden bg-zinc-900 border-l border-white/10">
+          {/* BATTLE CHALLENGER FEED */}
+          {isBattleMode && (
+            <div className="relative h-full w-full overflow-hidden bg-zinc-900 rounded-2xl border border-white/5">
               <video 
                 ref={challengerVideoRef} 
                 autoPlay 
                 playsInline 
                 className="w-full h-full object-cover" 
               />
-              <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2 py-1 rounded border border-white/5 text-[10px] uppercase font-bold tracking-wider">
-                {activeCoHosts[0]?.username || 'Co-Host Guest'} <span className="text-[#fe2c55] font-black ml-1">● Live</span>
+              <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] uppercase font-bold tracking-wider">
+                Challenger <span className="text-[#fe2c55] font-black ml-1">● Live</span>
               </div>
             </div>
           )}
+
+          {/* DYNAMIC CO-HOST GUEST FEEDS */}
+          {!isBattleMode && activeCoHosts.map((guest, idx) => (
+            <div key={guest.id || idx} className="relative h-full w-full overflow-hidden bg-zinc-900 rounded-2xl border border-white/5">
+              {guest.mode === 'audio' ? (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900/90 relative">
+                  <div className="relative">
+                    <img 
+                      src={guest.avatar_url || 'https://via.placeholder.com/150'} 
+                      className="w-16 h-16 rounded-full border-2 border-emerald-500/50 shadow-lg object-cover" 
+                      alt="" 
+                    />
+                    <div className="absolute -bottom-1 -right-1 p-1.5 bg-emerald-500 text-black rounded-full shadow">
+                      <Mic size={12} />
+                    </div>
+                  </div>
+                  <p className="text-xs font-bold text-zinc-200 mt-2">@{guest.username}</p>
+                  <p className="text-[9px] text-emerald-400 font-mono tracking-wider uppercase mt-0.5">Audio Linked</p>
+                </div>
+              ) : (
+                <video 
+                  ref={idx === 0 ? challengerVideoRef : null} 
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-full object-cover" 
+                />
+              )}
+
+              <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
+                <span>@{guest.username}</span> 
+                <span className="text-emerald-400 font-black ml-1">● Guest</span>
+              </div>
+            </div>
+          ))}
 
         </div>
 
@@ -335,6 +405,19 @@ const StreamDashboard = () => {
               <li>
                 <button onClick={() => setIsMuted(!isMuted)} className={`p-2.5 rounded-full text-white transition-colors ${isMuted ? 'bg-red-500' : 'bg-white/5 hover:bg-white/10'}`}>
                   {isMuted ? <MicOff size={16}/> : <Mic size={16}/>}
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={() => setActivePanel(activePanel === 'guests' ? null : 'guests')} 
+                  className={`p-2.5 rounded-full transition-colors relative ${activePanel === 'guests' ? 'bg-cyan-500 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                >
+                  <Users size={16}/>
+                  {pendingRequests.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#fe2c55] text-white text-[9px] font-black rounded-full flex items-center justify-center border border-zinc-950">
+                      {pendingRequests.length}
+                    </span>
+                  )}
                 </button>
               </li>
               <li>
@@ -364,25 +447,39 @@ const StreamDashboard = () => {
         </AnimatePresence>
       </div>
 
-      {/* 3. SETTINGS INTERACTIVE DRAWER OVERLAY PANEL SIDEBAR */}
+      {/* 3. INTERACTIVE DRAWER OVERLAY PANEL SIDEBAR */}
       <AnimatePresence>
-        {activePanel === 'settings' && (
+        {activePanel && (
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-            className="w-80 h-full bg-zinc-950 border-l border-white/10 z-[100] relative pointer-events-auto"
+            className="w-80 h-full bg-zinc-950 border-l border-white/10 z-[100] relative pointer-events-auto p-4 overflow-y-auto"
           >
-            <SettingsPanel 
-              streamId={streamId} 
-              streamData={streamData} 
-              socket={socket}
-              currentCoHosts={activeCoHosts}
-              onDropUser={(user) => setActiveCoHosts(prev => prev.filter(c => c.id !== user.id))}
-              onDropAll={() => setActiveCoHosts([])}
-              onClose={() => setActivePanel(null)} 
-            />
+            {activePanel === 'guests' && (
+              <GuestManager 
+                streamId={streamId}
+                activeGuests={activeCoHosts}
+                setActiveGuests={setActiveCoHosts}
+                pendingRequests={pendingRequests}
+                setPendingRequests={setPendingRequests}
+                onBack={() => setActivePanel(null)}
+                socket={socket}
+              />
+            )}
+
+            {activePanel === 'settings' && (
+              <SettingsPanel 
+                streamId={streamId} 
+                streamData={streamData} 
+                socket={socket}
+                currentCoHosts={activeCoHosts}
+                onDropUser={(user) => setActiveCoHosts(prev => prev.filter(c => c.id !== user.id))}
+                onDropAll={() => setActiveCoHosts([])}
+                onClose={() => setActivePanel(null)} 
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
