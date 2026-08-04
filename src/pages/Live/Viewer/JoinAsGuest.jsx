@@ -177,6 +177,7 @@ const JoinAsGuest = () => {
         .subscribe();
     } else {
       setIsRequesting(false);
+      if (error) console.error("Error creating guest request:", error);
     }
   };
 
