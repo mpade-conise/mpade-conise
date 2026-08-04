@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { Camera, VideoOff, Mic, MicOff, X, Zap, Loader2 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
-const SOCKET_SERVER_URL = process.env.REACT_APP_SOCKET_URL || 'https://your-signaling-server.com';
+const SOCKET_SERVER_URL = process.env.REACT_APP_SOCKET_URL || 'https://mpade-backend.onrender.com';
 
 const RTC_CONFIG = {
   iceServers: [
@@ -63,17 +63,31 @@ const JoinAsGuest = () => {
     }
   };
 
-  // Connects WebRTC PeerConnection for simultaneous two-way audio/video exchange
-  const connectToHostStream = (guestMediaStream, mode) => {
-    const socket = io(SOCKET_SERVER_URL, { query: { streamId, role: 'cohost' } });
-    socketRef.current = socket;
+  const initSocket = () => {
+    if (socketRef.current?.connected) return socketRef.current;
 
+    const socket = io(SOCKET_SERVER_URL, {
+      query: { streamId, role: 'cohost' },
+      transports: ['polling', 'websocket'], // Polling fallback to bypass Render cold-starts & proxy drops
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      timeout: 20000,
+    });
+
+    socketRef.current = socket;
+    return socket;
+  };
+
+  const connectToHostStream = (guestMediaStream, mode) => {
+    if (pcRef.current) return; // Prevent duplicate connections
+
+    const socket = initSocket();
     socket.emit('join-room', { room: streamId, isCoHost: true, mode });
 
     const pc = new RTCPeerConnection(RTC_CONFIG);
     pcRef.current = pc;
 
-    // Direct mode enforcement: If audio-only, disable camera track
     if (guestMediaStream) {
       const videoTrack = guestMediaStream.getVideoTracks()[0];
       if (videoTrack) {
@@ -85,12 +99,12 @@ const JoinAsGuest = () => {
       });
     }
 
-    // Receive host stream tracks (Audio & Video)
     pc.ontrack = (event) => {
       if (event.streams && event.streams[0]) {
         setHostStream(event.streams[0]);
         if (hostVideoRef.current) {
           hostVideoRef.current.srcObject = event.streams[0];
+          hostVideoRef.current.play().catch(e => console.error("Auto-play error:", e));
         }
       }
     };
@@ -101,7 +115,6 @@ const JoinAsGuest = () => {
       }
     };
 
-    // Create SDP Offer for the Host
     pc.createOffer().then(offer => {
       pc.setLocalDescription(offer);
       socket.emit('sdp-offer', { sdp: offer, streamId });
@@ -119,15 +132,33 @@ const JoinAsGuest = () => {
       }
     });
 
-    // Listen for Host Kick signal
     socket.on('kicked_cohost', () => {
       alert('Host ended the panel session.');
       navigate(`/live/watch/${streamId}`);
     });
   };
 
+  const handleApprovalTrigger = (mode) => {
+    setIsRequesting(false);
+    setIsApproved(true);
+    setAssignedMode(mode);
+
+    if (mode === 'audio' && stream) {
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) videoTrack.enabled = false;
+      setIsCamOn(false);
+    }
+
+    connectToHostStream(stream, mode);
+  };
+
   const handleSendRequest = async () => {
     setIsRequesting(true);
+
+    const socket = initSocket();
+    socket.on('approve_cohost', ({ mode }) => {
+      handleApprovalTrigger(mode || 'video');
+    });
 
     const { data: request, error } = await supabase
       .from('live_guest_requests')
@@ -142,7 +173,6 @@ const JoinAsGuest = () => {
       .single();
 
     if (!error && request) {
-      // Listen for Host Approval & Mode Assignment
       const subscription = supabase
         .channel(`guest_request_${request.id}`)
         .on(
@@ -152,18 +182,7 @@ const JoinAsGuest = () => {
             const mode = payload.new.mode || 'video';
 
             if (payload.new.status === 'approved') {
-              setIsRequesting(false);
-              setIsApproved(true);
-              setAssignedMode(mode);
-
-              // Update local stream state according to host preference
-              if (mode === 'audio' && stream) {
-                const videoTrack = stream.getVideoTracks()[0];
-                if (videoTrack) videoTrack.enabled = false;
-                setIsCamOn(false);
-              }
-
-              connectToHostStream(stream, mode);
+              handleApprovalTrigger(mode);
               supabase.removeChannel(subscription);
             } else if (payload.new.status === 'rejected') {
               setIsRequesting(false);
@@ -239,7 +258,7 @@ const JoinAsGuest = () => {
           </div>
         </motion.div>
 
-        {/* Remote Host Stream (Rendered live upon host approval) */}
+        {/* Remote Host Stream */}
         {isApproved && (
           <div className="relative w-full aspect-[3/4] rounded-[30px] overflow-hidden border border-white/10 bg-zinc-900 mx-auto max-w-[320px]">
             <video ref={hostVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
