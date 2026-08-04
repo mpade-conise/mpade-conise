@@ -112,16 +112,18 @@ const JoinAsGuest = () => {
       }
 
       console.log("🔍 [SUPABASE] Fetching stream details for stream ID:", streamId);
+      
+      // Query without non-existent columns (fallback logic handles schema variations)
       const { data: streamData, error: streamError } = await supabase
         .from('live_streams')
-        .select('user_id, host_id')
+        .select('*')
         .eq('id', streamId)
         .single();
 
       if (streamError) {
         console.error("❌ [SUPABASE] Stream fetch error:", streamError);
       } else if (streamData) {
-        const resolvedHost = streamData.user_id || streamData.host_id;
+        const resolvedHost = streamData.host_id || streamData.user_id;
         console.log("👑 [HOST] Resolved Host ID:", resolvedHost);
         setHostUserId(resolvedHost);
       } else {
@@ -170,20 +172,18 @@ const JoinAsGuest = () => {
     return socket;
   };
 
-  const connectToHostStream = (guestMediaStream, mode) => {
-    const targetHostId = hostUserIdRef.current || hostUserId;
+  const connectToHostStream = (guestMediaStream, mode, directHostId = null) => {
+    const targetHostId = directHostId || hostUserIdRef.current || hostUserId;
     const activeUserId = currentUserIdRef.current || currentUserId;
 
     console.log("🏁 [WEBRTC HALT CHECK] Preparing handshake:", { targetHostId, activeUserId, streamId });
 
-    // HALT CHECK 1: Missing Host ID
     if (!targetHostId) {
       console.error("🛑 [HALT CAUSE 1] hostUserId is null/undefined! WebRTC handshake stopped.");
       alert("Host details not loaded yet. Please try again.");
       return;
     }
 
-    // HALT CHECK 2: Connection Already Active
     if (pcRef.current) {
       console.warn("🛑 [HALT CAUSE 2] RTCPeerConnection already active. Blocking double initialization.");
       return;
@@ -208,7 +208,6 @@ const JoinAsGuest = () => {
     const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
     pcRef.current = pc;
 
-    // Detailed State Logging
     pc.onconnectionstatechange = () => {
       console.log(`🌐 [WEBRTC STATE] Connection State: %c${pc.connectionState}`, "color: yellow; font-weight: bold;");
       if (pc.connectionState === 'failed') {
@@ -331,11 +330,16 @@ const JoinAsGuest = () => {
     });
   };
 
-  const handleApprovalTrigger = (mode) => {
-    console.log("🎉 [APPROVAL] Triggering panel join in mode:", mode);
+  const handleApprovalTrigger = (mode, dynamicHostId = null) => {
+    console.log("🎉 [APPROVAL] Triggering panel join in mode:", mode, "Host ID:", dynamicHostId);
     setIsRequesting(false);
     setIsApproved(true);
     setAssignedMode(mode);
+
+    if (dynamicHostId) {
+      setHostUserId(dynamicHostId);
+      hostUserIdRef.current = dynamicHostId;
+    }
 
     if (mode === 'audio' && localStreamRef.current) {
       const videoTrack = localStreamRef.current.getVideoTracks()[0];
@@ -343,7 +347,7 @@ const JoinAsGuest = () => {
       setIsCamOn(false);
     }
 
-    connectToHostStream(localStreamRef.current, mode);
+    connectToHostStream(localStreamRef.current, mode, dynamicHostId);
   };
 
   const handleSendRequest = async () => {
@@ -351,10 +355,10 @@ const JoinAsGuest = () => {
     setIsRequesting(true);
 
     const socket = initSocket();
-    socket.off('approve_cohost'); // Prevent duplicated event bindings
-    socket.on('approve_cohost', ({ mode }) => {
+    socket.off('approve_cohost');
+    socket.on('approve_cohost', ({ mode, hostId }) => {
       console.log("⚡ [SOCKET] Received approve_cohost event!");
-      handleApprovalTrigger(mode || 'video');
+      handleApprovalTrigger(mode || 'video', hostId);
     });
 
     const activeUser = userProfile?.id || currentUserIdRef.current || currentUserId;
@@ -383,7 +387,7 @@ const JoinAsGuest = () => {
             const mode = payload.new.mode || 'video';
 
             if (payload.new.status === 'approved') {
-              handleApprovalTrigger(mode);
+              handleApprovalTrigger(mode, payload.new.host_id);
               supabase.removeChannel(subscription);
             } else if (payload.new.status === 'rejected') {
               setIsRequesting(false);
