@@ -20,7 +20,7 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader'; 
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting';
-import GuestManager from './GuestManager';
+import GuestManager from '../Shared/GuestManager';
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
