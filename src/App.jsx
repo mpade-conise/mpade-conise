@@ -2,26 +2,26 @@ import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import Auth from './components/Auth';
 import Feed from './components/Feed';
-import UploadContainer from './components/upload/UploadContainer';
+import Upload from './components/Upload';
 import Discovery from './components/Discovery';
 import Inbox from './components/Inbox';
 import Messages from './components/Messages';
 import Profile from './components/Profile';
-import EditProfile from './components/EditProfile'; 
-import ShareProfile from './components/ShareProfile'; 
-import UniverseTools from './components/UniverseTools'; 
-import LiveUniverse from './components/LiveUniverse'; 
-import Payouts from './components/Payouts'; 
+import EditProfile from './components/EditProfile'; 
+import ShareProfile from './components/ShareProfile'; 
+import UniverseTools from './components/UniverseTools'; 
+import LiveUniverse from './components/LiveUniverse'; 
+import Payouts from './components/Payouts'; 
 import Settings from "./components/settings";
-import Security from './settings/Security'; 
-import Notifications from './settings/Notifications'; 
-import Language from './settings/Language'; 
+import Security from './settings/Security'; 
+import Notifications from './settings/Notifications'; 
+import Language from './settings/Language'; 
 import { ThemeProvider } from './context/ThemeContext';
-import Theme from './settings/Theme'; 
+import Theme from './settings/Theme'; 
 import FindFriends from "./components/find-friends";
 import { supabase } from './supabaseClient';
 
-import LiveRouter from './pages/Live/LiveRouter'; 
+import LiveRouter from './pages/Live/LiveRouter'; 
 
 import { LayoutGrid, Compass, Plus, MessageSquareCode, UserCheck, Phone, PhoneOff, Video } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -34,324 +34,327 @@ const VideoCall = lazy(() => import('./components/VideoCall'));
 const VoiceCall = lazy(() => import('./components/VoiceCall'));
 
 function App() {
-  const [session, setSession] = useState(null);
-  const [showUpload, setShowUpload] = useState(false);
-  const [preferences, setPreferences] = useState({
-    visual_theme: 'neon-glow',
-    data_saver: false
-  });
-  const location = useLocation();
-  const navigate = useNavigate();
+  const [session, setSession] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [preferences, setPreferences] = useState({
+    visual_theme: 'neon-glow',
+    data_saver: false
+  });
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  // Passive Global Signaling Notification Hooks
-  const [incomingCall, setIncomingCall] = useState(null);
-  const [globalSocket, setGlobalSocket] = useState(null);
+  // Passive Global Signaling Notification Hooks
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [globalSocket, setGlobalSocket] = useState(null);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => subscription.unsubscribe();
+  }, []);
 
-  useEffect(() => {
-    if (!session?.user?.id) return;
+  useEffect(() => {
+    if (!session?.user?.id) return;
 
-    const fetchPrefs = async () => {
-      const { data } = await supabase
-        .from('user_preferences')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-      if (data) setPreferences(data);
-    };
-    fetchPrefs();
+    const fetchPrefs = async () => {
+      const { data } = await supabase
+        .from('user_preferences')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      if (data) setPreferences(data);
+    };
+    fetchPrefs();
 
-    const prefChannel = supabase
-      .channel('pref-updates')
-      .on(
-        'postgres_changes',
-        'public',
-        'user_preferences',
-        `id=eq.${session.user.id}`,
-        (payload) => setPreferences(payload.new)
-      )
-      .subscribe();
+    const prefChannel = supabase
+      .channel('pref-updates')
+      .on(
+        'postgres_changes',
+        'public',
+        'user_preferences',
+        `id=eq.${session.user.id}`,
+        (payload) => setPreferences(payload.new)
+      )
+      .subscribe();
 
-    return () => supabase.removeChannel(prefChannel);
-  }, [session]);
+    return () => supabase.removeChannel(prefChannel);
+  }, [session]);
 
-  // Persistent Global Receiver Signaling Listener Pipeline
-  useEffect(() => {
-    if (!session?.user?.id) return;
+  // Persistent Global Receiver Signaling Listener Pipeline
+  useEffect(() => {
+    if (!session?.user?.id) return;
 
-    const socket = io(SOCKET_SERVER_URL, {
-      transports: ['websocket', 'polling'],
-      forceNew: false,
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      autoConnect: true
-    });
-    setGlobalSocket(socket);
+    const socket = io(SOCKET_SERVER_URL, {
+      transports: ['websocket', 'polling'],
+      forceNew: false,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      autoConnect: true
+    });
+    setGlobalSocket(socket);
 
-    socket.on('connect', () => {
-      console.log(`🌐 Global Socket Operational: ${socket.id}`);
-      socket.emit('register_user_session', { userId: session.user.id });
-    });
+    socket.on('connect', () => {
+      console.log(`🌐 Global Socket Operational: ${socket.id}`);
+      socket.emit('register_user_session', { userId: session.user.id });
+    });
 
-    socket.on('reconnect', (attemptNumber) => {
-      console.log(`🔄 Global Socket Reconnected on attempt: ${attemptNumber}`);
-      socket.emit('register_user_session', { userId: session.user.id });
-    });
+    socket.on('reconnect', (attemptNumber) => {
+      console.log(`🔄 Global Socket Reconnected on attempt: ${attemptNumber}`);
+      socket.emit('register_user_session', { userId: session.user.id });
+    });
 
-    socket.on('incoming_call_signal', async (data) => {
-      console.log("📞 Incoming Call Signal Received globally:", data);
-      
-      const callerId = data?.callerId || data?.fromUserId || data?.senderId || data?.userId;
-      if (!callerId) {
-        console.error("⚠️ Call payload received without a valid caller ID:", data);
-        return;
-      }
+    socket.on('incoming_call_signal', async (data) => {
+      console.log("📞 Incoming Call Signal Received globally:", data);
+      
+      // Robust extraction of caller ID across common backend event structures
+      const callerId = data?.callerId || data?.fromUserId || data?.senderId || data?.userId;
+      if (!callerId) {
+        console.error("⚠️ Call payload received without a valid caller ID:", data);
+        return;
+      }
 
-      const { data: callerProfile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', callerId)
-        .single();
+      // Fetch caller profile information from Supabase
+      const { data: callerProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', callerId)
+        .single();
 
-      setIncomingCall({
-        callerId: callerId,
-        callerUsername: callerProfile?.username || 'User',
-        callerAvatar: callerProfile?.avatar_url || null,
-        callType: data?.callType || 'video',
-        roomId: data?.roomId || [session.user.id, callerId].sort().join("-")
-      });
-    });
+      setIncomingCall({
+        callerId: callerId,
+        callerUsername: callerProfile?.username || 'User',
+        callerAvatar: callerProfile?.avatar_url || null,
+        callType: data?.callType || 'video', // Defaults to video
+        roomId: data?.roomId || [session.user.id, callerId].sort().join("-")
+      });
+    });
 
-    socket.on('call_cancelled_by_caller', () => {
-      setIncomingCall(null);
-    });
+    socket.on('call_cancelled_by_caller', () => {
+      setIncomingCall(null);
+    });
 
-    socket.on('peer_hung_up', () => {
-      setIncomingCall(null);
-    });
+    socket.on('peer_hung_up', () => {
+      setIncomingCall(null);
+    });
 
-    return () => {
-      socket.disconnect();
-    };
-  }, [session]);
+    return () => {
+      socket.disconnect();
+    };
+  }, [session]);
 
-  if (!session) return <Auth />;
+  if (!session) return <Auth />;
 
-  const handleAcceptCall = () => {
-    if (!incomingCall) return;
+  // --- UPDATED DYNAMIC CALL ACCEPT/REJECT HANDLERS ---
+  const handleAcceptCall = () => {
+    if (!incomingCall) return;
 
-    const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
-    if (!targetUserId) {
-      console.error("❌ Cannot accept call: Target caller ID resolved to undefined.");
-      return;
-    }
+    // Guaranteed fallback target user ID check
+    const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
+    if (!targetUserId) {
+      console.error("❌ Cannot accept call: Target caller ID resolved to undefined.");
+      return;
+    }
 
-    const route = incomingCall.callType === 'voice' ? '/voice-call' : '/video-call';
-    navigate(`${route}?userId=${targetUserId}&role=receiver`);
-    setIncomingCall(null);
-  };
+    // Choose route depending on call type
+    const route = incomingCall.callType === 'voice' ? '/voice-call' : '/video-call';
+    navigate(`${route}?userId=${targetUserId}&role=receiver`);
+    setIncomingCall(null);
+  };
 
-  const handleRejectCall = () => {
-    if (!incomingCall || !globalSocket) return;
-    
-    const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
-    globalSocket.emit('reject_incoming_call', { 
-      roomId: incomingCall.roomId, 
-      to: targetUserId 
-    });
-    setIncomingCall(null);
-  };
+  const handleRejectCall = () => {
+    if (!incomingCall || !globalSocket) return;
+    
+    const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
+    globalSocket.emit('reject_incoming_call', { 
+      roomId: incomingCall.roomId, 
+      to: targetUserId 
+    });
+    setIncomingCall(null);
+  };
 
-  const shouldHideNav = 
-    location.pathname.startsWith('/live') || 
-    location.pathname.startsWith('/profile/') ||
-    location.pathname.startsWith('/messaging') || 
-    location.pathname.startsWith('/video-call') || 
-    location.pathname.startsWith('/voice-call') ||
-    [
-      '/universe-tools', 
-      '/edit-profile', 
-      '/share-profile',
-      '/payouts', 
-      '/settings',
-      '/settings/security',
-      '/settings/notifications',
-      '/settings/language',
-      '/settings/theme',
-      '/find-friends'
-    ].includes(location.pathname);
+  // Navigation Visibility Logic
+  const shouldHideNav = 
+    location.pathname.startsWith('/live') || 
+    location.pathname.startsWith('/profile/') ||
+    location.pathname.startsWith('/messaging') || 
+    location.pathname.startsWith('/video-call') || 
+    location.pathname.startsWith('/voice-call') ||
+    [
+      '/universe-tools', 
+      '/edit-profile', 
+      '/share-profile',
+      '/payouts', 
+      '/settings',
+      '/settings/security',
+      '/settings/notifications',
+      '/settings/language',
+      '/settings/theme',
+      '/find-friends'
+    ].includes(location.pathname);
 
-  const getThemeClass = () => {
-    if (preferences.visual_theme === 'deep-dark') return 'bg-black';
-    if (preferences.visual_theme === 'cyber-punk') return 'bg-[#0a0a00]';
-    return 'bg-black'; 
-  };
+  const getThemeClass = () => {
+    if (preferences.visual_theme === 'deep-dark') return 'bg-black';
+    if (preferences.visual_theme === 'cyber-punk') return 'bg-[#0a0a00]';
+    return 'bg-black'; 
+  };
 
-  return (
-    <div className={`${getThemeClass()} min-h-screen text-white relative overflow-hidden font-sans select-none transition-colors duration-500`}>
-      
-      {preferences.visual_theme === 'neon-glow' && (
-        <div className="fixed inset-0 pointer-events-none">
-           <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/5 blur-[120px] rounded-full" />
-           <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-500/5 blur-[120px] rounded-full" />
-        </div>
-      )}
+  return (
+    <div className={`${getThemeClass()} min-h-screen text-white relative overflow-hidden font-sans select-none transition-colors duration-500`}>
+      
+      {preferences.visual_theme === 'neon-glow' && (
+        <div className="fixed inset-0 pointer-events-none">
+           <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/5 blur-[120px] rounded-full" />
+           <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-500/5 blur-[120px] rounded-full" />
+        </div>
+      )}
 
-      <main className="h-screen pb-20 overflow-hidden relative">
-        <AnimatePresence mode="wait">
-          <Suspense fallback={<div className="fixed inset-0 bg-[#08080a] flex items-center justify-center text-zinc-500 text-xs tracking-wider uppercase font-bold animate-pulse">Initializing Channel...</div>}>
-            <Routes location={location} key={location.pathname}>
-              <Route path="/" element={<Feed session={session} dataSaver={preferences.data_saver} />} />
-              <Route path="/discovery" element={<Discovery />} />
-              <Route path="/inbox" element={<Inbox />} />
-              <Route path="/messaging" element={<Messages currentUser={session.user} />} />
-              
-              {/* --- CALL MODULE TARGET ENGINES --- */}
-              <Route path="/video-call" element={<VideoCall />} />
-              <Route path="/voice-call" element={<VoiceCall />} />
-              
-              <Route path="/profile" element={<Profile session={session} />} />
-              <Route path="/profile/:id" element={<Profile session={session} />} />
-              
-              <Route path="/edit-profile" element={<EditProfile />} />
-              <Route path="/share-profile" element={<ShareProfile />} />
-              <Route path="/universe-tools" element={<UniverseTools />} />
-              <Route path="/live-universe" element={<LiveUniverse />} />
-              <Route path="/payouts" element={<Payouts />} />
-              <Route path="/find-friends" element={<FindFriends />} />
+      <main className="h-screen pb-20 overflow-hidden relative">
+        <AnimatePresence mode="wait">
+          <Suspense fallback={<div className="fixed inset-0 bg-[#08080a] flex items-center justify-center text-zinc-500 text-xs tracking-wider uppercase font-bold animate-pulse">Initializing Channel...</div>}>
+            <Routes location={location} key={location.pathname}>
+              <Route path="/" element={<Feed session={session} dataSaver={preferences.data_saver} />} />
+              <Route path="/discovery" element={<Discovery />} />
+              <Route path="/inbox" element={<Inbox />} />
+              <Route path="/messaging" element={<Messages currentUser={session.user} />} />
+              
+              {/* --- CALL MODULE TARGET ENGINES --- */}
+              <Route path="/video-call" element={<VideoCall />} />
+              <Route path="/voice-call" element={<VoiceCall />} />
+              
+              <Route path="/profile" element={<Profile session={session} />} />
+              <Route path="/profile/:id" element={<Profile session={session} />} />
+              
+              <Route path="/edit-profile" element={<EditProfile />} />
+              <Route path="/share-profile" element={<ShareProfile />} />
+              <Route path="/universe-tools" element={<UniverseTools />} />
+              <Route path="/live-universe" element={<LiveUniverse />} />
+              <Route path="/payouts" element={<Payouts />} />
+              <Route path="/find-friends" element={<FindFriends />} />
 
-              <Route path="/live/*" element={<LiveRouter />} />
-              
-              <Route path="/settings" element={<Settings preferences={preferences} />} />
-              <Route path="/settings/security" element={<Security />} />
-              <Route path="/settings/notifications" element={<Notifications />} />
-              <Route path="/settings/language" element={<Language />} />
-              <Route path="/settings/theme" element={<Theme currentTheme={preferences.visual_theme} />} />
+              <Route path="/live/*" element={<LiveRouter />} />
+              
+              <Route path="/settings" element={<Settings preferences={preferences} />} />
+              <Route path="/settings/security" element={<Security />} />
+              <Route path="/settings/notifications" element={<Notifications />} />
+              <Route path="/settings/language" element={<Language />} />
+              <Route path="/settings/theme" element={<Theme currentTheme={preferences.visual_theme} />} />
 
-              <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
-          </Suspense>
-        </AnimatePresence>
-      </main>
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
+        </AnimatePresence>
+      </main>
 
-      {/* Floating Global Incoming Call Overlay UI */}
-      <AnimatePresence>
-        {incomingCall && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999] bg-black/80 flex items-center justify-center backdrop-blur-md p-4"
-          >
-            <div className="bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col items-center gap-6">
-              
-              <div className="relative">
-                {incomingCall.callerAvatar ? (
-                  <img 
-                    src={incomingCall.callerAvatar} 
-                    alt="Caller Avatar" 
-                    className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/30 animate-pulse shadow-xl"
-                  />
-                ) : (
-                  <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-center animate-pulse shadow-xl">
-                    {incomingCall.callType === 'video' ? (
-                      <Video size={40} className="text-cyan-400" />
-                    ) : (
-                      <Phone size={40} className="text-cyan-400" />
-                    )}
-                  </div>
-                )}
-                <span className="absolute -bottom-1 -right-1 bg-cyan-500 text-black px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
-                  {incomingCall.callType}
-                </span>
-              </div>
+      {/* Floating Global Incoming Call Overlay UI */}
+      <AnimatePresence>
+        {incomingCall && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999] bg-black/80 flex items-center justify-center backdrop-blur-md p-4"
+          >
+            <div className="bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col items-center gap-6">
+              
+              {/* Profile / Call Avatar */}
+              <div className="relative">
+                {incomingCall.callerAvatar ? (
+                  <img 
+                    src={incomingCall.callerAvatar} 
+                    alt="Caller Avatar" 
+                    className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/30 animate-pulse shadow-xl"
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-center animate-pulse shadow-xl">
+                    {incomingCall.callType === 'video' ? (
+                      <Video size={40} className="text-cyan-400" />
+                    ) : (
+                      <Phone size={40} className="text-cyan-400" />
+                    )}
+                  </div>
+                )}
+                <span className="absolute -bottom-1 -right-1 bg-cyan-500 text-black px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
+                  {incomingCall.callType}
+                </span>
+              </div>
 
-              <div>
-                <h3 className="text-xl font-bold text-white">@{incomingCall.callerUsername}</h3>
-                <p className="text-sm text-zinc-400 mt-1 capitalize">Incoming {incomingCall.callType} call...</p>
-              </div>
-              
-              <div className="flex items-center gap-6 w-full justify-center mt-2">
-                <button 
-                  type="button"
-                  onClick={handleRejectCall}
-                  className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/30"
-                >
-                  <PhoneOff size={24} />
-                </button>
+              <div>
+                <h3 className="text-xl font-bold text-white">@{incomingCall.callerUsername}</h3>
+                <p className="text-sm text-zinc-400 mt-1 capitalize">Incoming {incomingCall.callType} call...</p>
+              </div>
+              
+              <div className="flex items-center gap-6 w-full justify-center mt-2">
+                <button 
+                  type="button"
+                  onClick={handleRejectCall}
+                  className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/30"
+                >
+                  <PhoneOff size={24} />
+                </button>
 
-                <button 
-                  type="button"
-                  onClick={handleAcceptCall}
-                  className="p-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-emerald-600/30 animate-pulse"
-                >
-                  <Phone size={24} />
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                <button 
+                  type="button"
+                  onClick={handleAcceptCall}
+                  className="p-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-emerald-600/30 animate-pulse"
+                >
+                  <Phone size={24} />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* 9-Module Upload Hub Stepper Modal */}
-      <AnimatePresence>
-        {showUpload && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <UploadContainer 
-              onClose={() => setShowUpload(false)}
-              onComplete={() => {
-                setShowUpload(false);
-                navigate('/'); 
-              }} 
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <AnimatePresence>
+        {showUpload && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <Upload onComplete={() => {
+              setShowUpload(false);
+              navigate('/'); 
+            }} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {!shouldHideNav && (
-        <nav className="fixed bottom-0 left-0 right-0 h-20 bg-[#09090e]/95 border-t border-cyan-500/20 px-6 flex items-center justify-between z-[100] backdrop-blur-xl shadow-[0_-5px_25px_rgba(0,243,255,0.08)]">
-          <NavIcon icon={<LayoutGrid size={22} />} label="Home" active={location.pathname === '/'} onClick={() => navigate('/')} />
-          <NavIcon icon={<Compass size={22} />} label="Discover" active={location.pathname === '/discovery'} onClick={() => navigate('/discovery')} />
+      {!shouldHideNav && (
+        <nav className="fixed bottom-0 left-0 right-0 h-20 bg-[#09090e]/95 border-t border-cyan-500/20 px-6 flex items-center justify-between z-[100] backdrop-blur-xl shadow-[0_-5px_25px_rgba(0,243,255,0.08)]">
+          <NavIcon icon={<LayoutGrid size={22} />} label="Home" active={location.pathname === '/'} onClick={() => navigate('/')} />
+          <NavIcon icon={<Compass size={22} />} label="Discover" active={location.pathname === '/discovery'} onClick={() => navigate('/discovery')} />
 
-          <div className="flex-1 flex justify-center">
-            <motion.button 
-              whileTap={{ scale: 0.9 }} 
-              whileHover={{ scale: 1.05 }}
-              onClick={() => setShowUpload(true)} 
-              className="relative p-[1.5px] rounded-2xl bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-indigo-500 shadow-[0_0_20px_rgba(0,243,255,0.6)]"
-            >
-              <div className="w-11 h-11 bg-[#09090e] hover:bg-transparent transition-colors rounded-[14px] flex items-center justify-center">
-                <Plus size={22} className="text-cyan-400 drop-shadow-[0_0_8px_#00f3ff]" />
-              </div>
-            </motion.button>
-          </div>
+          <div className="flex-1 flex justify-center">
+            <motion.button 
+              whileTap={{ scale: 0.9 }} 
+              whileHover={{ scale: 1.05 }}
+              onClick={() => setShowUpload(true)} 
+              className="relative p-[1.5px] rounded-2xl bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-indigo-500 shadow-[0_0_20px_rgba(0,243,255,0.6)]"
+            >
+              <div className="w-11 h-11 bg-[#09090e] hover:bg-transparent transition-colors rounded-[14px] flex items-center justify-center">
+                <Plus size={22} className="text-cyan-400 drop-shadow-[0_0_8px_#00f3ff]" />
+              </div>
+            </motion.button>
+          </div>
 
-          <NavIcon icon={<MessageSquareCode size={22} />} label="Inbox" active={location.pathname === '/inbox' || location.pathname === '/messaging'} onClick={() => navigate('/inbox')} />
-          <NavIcon icon={<UserCheck size={22} />} label="Profile" active={location.pathname === '/profile'} onClick={() => navigate('/profile')} />
-        </nav>
-      )}
-    </div>
-  );
+          <NavIcon icon={<MessageSquareCode size={22} />} label="Inbox" active={location.pathname === '/inbox' || location.pathname === '/messaging'} onClick={() => navigate('/inbox')} />
+          <NavIcon icon={<UserCheck size={22} />} label="Profile" active={location.pathname === '/profile'} onClick={() => navigate('/profile')} />
+        </nav>
+      )}
+    </div>
+  );
 }
 
 const NavIcon = ({ icon, label, active, onClick }) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all flex-1 ${active ? 'text-cyan-400 drop-shadow-[0_0_10px_rgba(0,243,255,0.6)]' : 'text-zinc-500 hover:text-zinc-300'}`}>
-    <div className={`${active ? 'scale-110' : 'scale-100'} transition-transform duration-200`}>{icon}</div>
-    <span className={`text-[9px] font-bold uppercase tracking-widest ${active ? 'opacity-100 text-cyan-300' : 'opacity-60'}`}>{label}</span>
-  </button>
+  <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all flex-1 ${active ? 'text-cyan-400 drop-shadow-[0_0_10px_rgba(0,243,255,0.6)]' : 'text-zinc-500 hover:text-zinc-300'}`}>
+    <div className={`${active ? 'scale-110' : 'scale-100'} transition-transform duration-200`}>{icon}</div>
+    <span className={`text-[9px] font-bold uppercase tracking-widest ${active ? 'opacity-100 text-cyan-300' : 'opacity-60'}`}>{label}</span>
+  </button>
 );
 
 export default App;
