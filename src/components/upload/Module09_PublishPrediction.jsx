@@ -1,9 +1,9 @@
 // src/components/upload/Module09_PublishPrediction.jsx
 import React, { useState } from 'react';
-import { Sparkles, TrendingUp, CheckCircle, Rocket, Loader2, Save } from 'lucide-react';
+import { Sparkles, Rocket, Loader2 } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
-const Module09_PublishPrediction = ({ formData, updateField, onPrev, onComplete }) => {
+const Module09_PublishPrediction = ({ formData, onPrev, onComplete }) => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -12,9 +12,9 @@ const Module09_PublishPrediction = ({ formData, updateField, onPrev, onComplete 
     setProgress(20);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error("Session expired. Please sign in again.");
 
-      // Simulated media upload progress
       const progressInterval = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 85) {
@@ -23,25 +23,23 @@ const Module09_PublishPrediction = ({ formData, updateField, onPrev, onComplete 
           }
           return prev + 15;
         });
-      }, 300);
+      }, 200);
 
-      // Insert record into Supabase
-      const { data, error } = await supabase.from('posts').insert([
-        {
-          user_id: user?.id,
-          content_type: formData.contentType,
-          caption: formData.caption,
-          hashtags: formData.hashtags,
-          location: formData.location,
-          audience: formData.audience,
-          allow_downloads: formData.allowDownloads,
-          hide_likes: formData.hideLikes,
-          is_paid: formData.isPaidContent,
-          price_coins: formData.priceCoins,
-          scheduled_at: formData.scheduleTime || null,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      // INSERT into 'videos' table matching your actual database schema
+      const { data, error } = await supabase
+        .from('videos')
+        .insert([
+          {
+            user_id: user.id,
+            video_url: formData.videoUrl || formData.fileUrl || '',
+            caption: formData.caption || '',
+            music_name: formData.selectedMusic?.name || 'Original Audio',
+            music_url: formData.selectedMusic?.url || null,
+            is_private: formData.audience === 'private',
+            created_at: new Date().toISOString()
+          }
+        ])
+        .select();
 
       clearInterval(progressInterval);
       setProgress(100);
@@ -51,11 +49,12 @@ const Module09_PublishPrediction = ({ formData, updateField, onPrev, onComplete 
       setTimeout(() => {
         setIsPublishing(false);
         if (onComplete) onComplete(data);
-      }, 500);
+      }, 400);
+
     } catch (err) {
       console.error("❌ [UPLOAD ERROR]:", err);
       setIsPublishing(false);
-      alert("Failed to publish post. Check console for details.");
+      alert(`Failed to publish: ${err.message || 'Check console details'}`);
     }
   };
 
@@ -109,14 +108,11 @@ const Module09_PublishPrediction = ({ formData, updateField, onPrev, onComplete 
           </span>
           <div className="text-xs text-cyan-100 line-clamp-2">
             <span className="font-bold text-pink-400">Caption: </span>
-            {formData.caption || 'No caption added.'}
+            {formData?.caption || 'No caption added.'}
           </div>
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {formData.hashtags.map((tag, i) => (
-              <span key={i} className="text-[10px] text-cyan-400 font-bold">
-                #{tag}
-              </span>
-            ))}
+          <div className="text-xs text-cyan-100">
+            <span className="font-bold text-cyan-400">Audio: </span>
+            {formData?.selectedMusic?.name || 'Original Audio'}
           </div>
         </div>
 
@@ -140,6 +136,7 @@ const Module09_PublishPrediction = ({ formData, updateField, onPrev, onComplete 
       {/* Footer Controls */}
       <div className="flex gap-4">
         <button
+          type="button"
           onClick={onPrev}
           disabled={isPublishing}
           className="w-1/3 py-4 rounded-full font-bold text-xs uppercase tracking-wider text-zinc-400 bg-zinc-900 hover:bg-zinc-800 transition-all border-none disabled:opacity-50"
@@ -147,6 +144,7 @@ const Module09_PublishPrediction = ({ formData, updateField, onPrev, onComplete 
           Back
         </button>
         <button
+          type="button"
           onClick={handlePublish}
           disabled={isPublishing}
           className="w-2/3 py-4 rounded-full font-black text-xs uppercase tracking-widest text-white bg-[#fe2c55] shadow-[0_0_15px_rgba(254,44,85,0.6)] hover:shadow-[0_0_25px_rgba(254,44,85,0.9)] active:scale-95 transition-all flex items-center justify-center gap-2 border-none disabled:opacity-50"
