@@ -2,7 +2,7 @@ import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import Auth from './components/Auth';
 import Feed from './components/Feed';
-import Upload from './components/Upload';
+import UploadContainer from './components/upload/UploadContainer';
 import Discovery from './components/Discovery';
 import Inbox from './components/Inbox';
 import Messages from './components/Messages';
@@ -114,14 +114,12 @@ function App() {
     socket.on('incoming_call_signal', async (data) => {
       console.log("📞 Incoming Call Signal Received globally:", data);
       
-      // Robust extraction of caller ID across common backend event structures
       const callerId = data?.callerId || data?.fromUserId || data?.senderId || data?.userId;
       if (!callerId) {
         console.error("⚠️ Call payload received without a valid caller ID:", data);
         return;
       }
 
-      // Fetch caller profile information from Supabase
       const { data: callerProfile } = await supabase
         .from('profiles')
         .select('*')
@@ -132,7 +130,7 @@ function App() {
         callerId: callerId,
         callerUsername: callerProfile?.username || 'User',
         callerAvatar: callerProfile?.avatar_url || null,
-        callType: data?.callType || 'video', // Defaults to video
+        callType: data?.callType || 'video',
         roomId: data?.roomId || [session.user.id, callerId].sort().join("-")
       });
     });
@@ -152,18 +150,15 @@ function App() {
 
   if (!session) return <Auth />;
 
-  // --- UPDATED DYNAMIC CALL ACCEPT/REJECT HANDLERS ---
   const handleAcceptCall = () => {
     if (!incomingCall) return;
 
-    // Guaranteed fallback target user ID check
     const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
     if (!targetUserId) {
       console.error("❌ Cannot accept call: Target caller ID resolved to undefined.");
       return;
     }
 
-    // Choose route depending on call type
     const route = incomingCall.callType === 'voice' ? '/voice-call' : '/video-call';
     navigate(`${route}?userId=${targetUserId}&role=receiver`);
     setIncomingCall(null);
@@ -180,7 +175,6 @@ function App() {
     setIncomingCall(null);
   };
 
-  // Navigation Visibility Logic
   const shouldHideNav = 
     location.pathname.startsWith('/live') || 
     location.pathname.startsWith('/profile/') ||
@@ -264,7 +258,6 @@ function App() {
           >
             <div className="bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col items-center gap-6">
               
-              {/* Profile / Call Avatar */}
               <div className="relative">
                 {incomingCall.callerAvatar ? (
                   <img 
@@ -313,13 +306,17 @@ function App() {
         )}
       </AnimatePresence>
 
+      {/* 9-Module Upload Hub Stepper Modal */}
       <AnimatePresence>
         {showUpload && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Upload onComplete={() => {
-              setShowUpload(false);
-              navigate('/'); 
-            }} />
+            <UploadContainer 
+              onClose={() => setShowUpload(false)}
+              onComplete={() => {
+                setShowUpload(false);
+                navigate('/'); 
+              }} 
+            />
           </motion.div>
         )}
       </AnimatePresence>
