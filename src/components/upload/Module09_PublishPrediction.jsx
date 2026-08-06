@@ -1,7 +1,7 @@
 // src/components/upload/Module09_PublishPrediction.jsx
 import React, { useState } from 'react';
 import { Sparkles, TrendingUp, CheckCircle, Rocket, Loader2, Save } from 'lucide-react';
-import { supabase } from '../../../supabaseClient';
+import { supabase } from '../../supabaseClient';
 
 const Module09_PublishPrediction = ({ formData, updateField, onPrev, onComplete }) => {
   const [isPublishing, setIsPublishing] = useState(false);
