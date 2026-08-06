@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient'; 
 import { 
   X, Music, Disc, Video, Image as ImageIcon, Check, Search, 
-  ChevronLeft, RefreshCw, Scissors, Wand2, Volume2, Loader2, Play 
+  ChevronLeft, RefreshCw, Scissors, Wand2, Volume2, Loader2, Play,
+  Hash, AtSign, Globe, Lock, Users, MapPin
 } from 'lucide-react';
 
 const Upload = ({ onComplete, user }) => {
@@ -24,6 +25,12 @@ const Upload = ({ onComplete, user }) => {
   const [filterIndex, setFilterIndex] = useState(0);
   const [facingMode, setFacingMode] = useState('user');
   const [isMuted, setIsMuted] = useState(false);
+
+  // --- NEW ADDED FEATURE STATES ---
+  const [privacy, setPrivacy] = useState('public');
+  const [location, setLocation] = useState('');
+  const [tags, setTags] = useState([]);
+  const [mentions, setMentions] = useState([]);
 
   const videoRef = useRef(null); 
   const mediaRecorderRef = useRef(null);
@@ -98,6 +105,17 @@ const Upload = ({ onComplete, user }) => {
     }
   };
 
+  // --- HELPER FUNCTIONS FOR NEW FEATURES ---
+  const handleAddTag = (tag) => {
+    if (!tags.includes(tag)) setTags([...tags, tag]);
+    if (!caption.includes(`#${tag}`)) setCaption(prev => `${prev} #${tag}`.trim());
+  };
+
+  const handleAddMention = (userHandle) => {
+    if (!mentions.includes(userHandle)) setMentions([...mentions, userHandle]);
+    if (!caption.includes(`@${userHandle}`)) setCaption(prev => `${prev} @${userHandle}`.trim());
+  };
+
   // --- UPDATED FAST UPLOAD LOGIC WITH PROGRESSION TRACKING ---
   const handleUpload = async () => {
     if (!videoFile) return alert("No video to upload!");
@@ -147,7 +165,11 @@ const Upload = ({ onComplete, user }) => {
         xhr.send(videoFile);
       });
 
-      // 2. Insert Record with music_url
+      // Extract raw hashtags and mentions directly from caption text
+      const extractedTags = caption.match(/#[a-zA-Z0-9_]+/g)?.map(t => t.replace('#', '')) || tags;
+      const extractedMentions = caption.match(/@[a-zA-Z0-9_]+/g)?.map(m => m.replace('@', '')) || mentions;
+
+      // 2. Insert Record with music_url and newly added fields
       const { error: dbError } = await supabase
         .from('videos')
         .insert([{
@@ -155,7 +177,11 @@ const Upload = ({ onComplete, user }) => {
           caption: caption,
           music_name: selectedMusic.name,
           music_url: selectedMusic.url, // CRITICAL: Saves the iTunes preview link
-          user_id: currentUser.id 
+          user_id: currentUser.id,
+          privacy: privacy,
+          location: location,
+          tags: extractedTags,
+          mentions: extractedMentions
         }]);
 
       if (dbError) throw dbError;
@@ -304,6 +330,67 @@ const Upload = ({ onComplete, user }) => {
                     {caption.length} / 150
                   </div>
                 </div>
+
+                {/* --- ADDED FEATURE PANELS --- */}
+                {/* 1. Quick Tag & Mention Helper Buttons */}
+                <div className="flex gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => handleAddTag('vibes')} 
+                    className="flex items-center gap-1 text-xs bg-zinc-900/80 hover:bg-red-500/20 px-3 py-2 rounded-xl border border-white/10 transition-colors"
+                  >
+                    <Hash size={14} className="text-red-500" /> Hashtag
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => handleAddMention('mpade')} 
+                    className="flex items-center gap-1 text-xs bg-zinc-900/80 hover:bg-red-500/20 px-3 py-2 rounded-xl border border-white/10 transition-colors"
+                  >
+                    <AtSign size={14} className="text-red-500" /> Tag Friend
+                  </button>
+                </div>
+
+                {/* 2. Location Input Tagging */}
+                <div className="relative flex items-center">
+                  <MapPin size={18} className="absolute left-4 text-red-500" />
+                  <input
+                    type="text"
+                    disabled={isUploading}
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Add location (e.g. Blantyre, MW)"
+                    className="w-full bg-zinc-900/40 border border-white/5 focus:border-red-500/50 rounded-2xl py-3 pl-11 pr-4 text-sm outline-none transition-all"
+                  />
+                </div>
+
+                {/* 3. Post Privacy Selector */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] font-black tracking-widest text-zinc-500 uppercase">Who can see this?</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPrivacy('public')}
+                      className={`flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-bold border transition-all ${privacy === 'public' ? 'bg-red-500/20 border-red-500 text-white' : 'bg-zinc-900/40 border-white/5 text-zinc-400'}`}
+                    >
+                      <Globe size={14} /> Public
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPrivacy('friends')}
+                      className={`flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-bold border transition-all ${privacy === 'friends' ? 'bg-red-500/20 border-red-500 text-white' : 'bg-zinc-900/40 border-white/5 text-zinc-400'}`}
+                    >
+                      <Users size={14} /> Friends
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPrivacy('private')}
+                      className={`flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-bold border transition-all ${privacy === 'private' ? 'bg-red-500/20 border-red-500 text-white' : 'bg-zinc-900/40 border-white/5 text-zinc-400'}`}
+                    >
+                      <Lock size={14} /> Only Me
+                    </button>
+                  </div>
+                </div>
+
              </div>
           </div>
 
