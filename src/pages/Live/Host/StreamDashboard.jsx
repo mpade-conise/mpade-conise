@@ -27,8 +27,14 @@ const GuestTileVideo = ({ stream }) => {
   const videoRef = useRef(null);
 
   useEffect(() => {
+    console.log("🎥 [GuestTileVideo] Component mounted/updated with stream:", stream);
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+      console.log("✅ [GuestTileVideo] Successfully assigned stream to video srcObject.", {
+        tracks: stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState }))
+      });
+    } else if (!stream) {
+      console.warn("⚠️ [GuestTileVideo] Rendered without an active stream object!");
     }
   }, [stream]);
 
@@ -65,6 +71,11 @@ const StreamDashboard = () => {
   // DOM node link to explicitly bind remote challenger/cohost streams from WebRTC hook
   const challengerVideoRef = useRef(null);
 
+  // Monitor challengerVideoRef attachment state
+  useEffect(() => {
+    console.log("🔍 [challengerVideoRef] DOM Node Current Ref:", challengerVideoRef.current);
+  });
+
   // 1. EXECUTE ABSTRACTED WEBSOCKET NETWORK CONTROLLER
   const {
     socket, viewers, joinAlert, activeGift, setActiveGift, incomingInvite, setIncomingInvite, reactionTrigger
@@ -76,13 +87,18 @@ const StreamDashboard = () => {
   // Fetch Metadata & Sync Database Lifecycle Status
   useEffect(() => {
     async function fetchMeta() {
-      const { data } = await supabase
+      console.log("📡 [StreamDashboard] Fetching stream metadata for ID:", streamId);
+      const { data, error } = await supabase
         .from('live_streams')
         .select('*, host:host_id(username, avatar_url)')
         .eq('id', streamId)
         .single();
       
+      if (error) {
+        console.error("❌ [StreamDashboard] Error fetching stream metadata:", error);
+      }
       if (data) {
+        console.log("✅ [StreamDashboard] Stream metadata loaded:", data);
         setStreamData(data);
         setBattleScores({ host: data.host_battle_points || 0, challenger: data.challenger_battle_points || 0 });
       }
@@ -92,8 +108,10 @@ const StreamDashboard = () => {
 
   useEffect(() => {
     if (hardwareReady) {
-      supabase.from('live_streams').update({ status: 'live' }).eq('id', streamId).then(() => {
-        console.log("🚀 Media stream status set to active in DB.");
+      console.log("🚀 [StreamDashboard] Hardware ready. Updating stream DB status to 'live'...");
+      supabase.from('live_streams').update({ status: 'live' }).eq('id', streamId).then(({ error }) => {
+        if (error) console.error("❌ [StreamDashboard] DB Status update failed:", error);
+        else console.log("🚀 [StreamDashboard] Media stream status set to active in DB.");
       });
     }
   }, [hardwareReady, streamId]);
@@ -102,14 +120,20 @@ const StreamDashboard = () => {
   useEffect(() => {
     if (!streamId) return;
 
+    console.log("👥 [StreamDashboard] Initializing guest request database listeners for stream:", streamId);
+
     // Fetch initial approved co-hosts
     supabase
       .from('live_guest_requests')
       .select('*')
       .eq('stream_id', streamId)
       .eq('status', 'approved')
-      .then(({ data }) => {
-        if (data) setActiveCoHosts(data);
+      .then(({ data, error }) => {
+        if (error) console.error("❌ [StreamDashboard] Error fetching initial approved co-hosts:", error);
+        if (data) {
+          console.log("✅ [StreamDashboard] Initial approved co-hosts fetched:", data);
+          setActiveCoHosts(data);
+        }
       });
 
     // Fetch initial pending requests
@@ -118,8 +142,12 @@ const StreamDashboard = () => {
       .select('*')
       .eq('stream_id', streamId)
       .eq('status', 'pending')
-      .then(({ data }) => {
-        if (data) setPendingRequests(data);
+      .then(({ data, error }) => {
+        if (error) console.error("❌ [StreamDashboard] Error fetching initial pending guest requests:", error);
+        if (data) {
+          console.log("✅ [StreamDashboard] Initial pending guest requests fetched:", data);
+          setPendingRequests(data);
+        }
       });
 
     // Real-time subscription for incoming guest join requests
@@ -129,6 +157,7 @@ const StreamDashboard = () => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'live_guest_requests', filter: `stream_id=eq.${streamId}` },
         (payload) => {
+          console.log("📥 [Supabase Realtime] New guest request INSERT received:", payload.new);
           if (payload.new.status === 'pending') {
             setPendingRequests(prev => [...prev, payload.new]);
           }
@@ -138,18 +167,27 @@ const StreamDashboard = () => {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'live_guest_requests', filter: `stream_id=eq.${streamId}` },
         (payload) => {
+          console.log("🔄 [Supabase Realtime] Guest request UPDATE received:", payload.new);
           if (payload.new.status === 'disconnected' || payload.new.status === 'rejected') {
             setActiveCoHosts(prev => prev.filter(c => c.id !== payload.new.id));
             setPendingRequests(prev => prev.filter(r => r.id !== payload.new.id));
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`📡 [Supabase Realtime] Guest subscription channel status: ${status}`);
+      });
 
     return () => {
+      console.log("🧹 [StreamDashboard] Cleaning up guest realtime subscription channel.");
       supabase.removeChannel(channel);
     };
   }, [streamId]);
+
+  // Log active co-hosts state variations
+  useEffect(() => {
+    console.log("📊 [StreamDashboard] Active Co-Hosts state updated:", activeCoHosts);
+  }, [activeCoHosts]);
 
   // Handle local reactions cleanly when hook emits a socket event capture
   useEffect(() => {
@@ -160,7 +198,10 @@ const StreamDashboard = () => {
   }, [reactionTrigger]);
 
   const handleAcceptInvite = async () => {
-    if (!incomingInvite || !socket) return;
+    if (!incomingInvite || !socket) {
+      console.warn("⚠️ [StreamDashboard] Cannot accept invite - missing socket or incomingInvite object.");
+      return;
+    }
     try {
       const peerId = incomingInvite.senderHostId || incomingInvite.host_id || '';
       const peerStreamId = incomingInvite.senderStreamId || incomingInvite.hostRoomId || '';
@@ -170,6 +211,7 @@ const StreamDashboard = () => {
         return;
       }
 
+      console.log(`⚔️ [StreamDashboard] Accepting battle invite from peerId: ${peerId}, peerStreamId: ${peerStreamId}`);
       socket.emit('accept_battle_invite', { 
         hostRoomId: streamId, 
         challengerRoomId: peerStreamId 
@@ -184,24 +226,37 @@ const StreamDashboard = () => {
 
   // Quick Accept/Reject Actions from Floating Alert Banner
   const handleAcceptGuest = async (request, mode = 'video') => {
-    await supabase
+    console.log(`✅ [StreamDashboard] Accepting guest request for user: ${request.username} (${request.user_id}) in mode: ${mode}`);
+    const { error } = await supabase
       .from('live_guest_requests')
       .update({ status: 'approved', mode })
       .eq('id', request.id);
+
+    if (error) {
+      console.error("❌ [StreamDashboard] Failed to update guest status in Supabase:", error);
+    }
 
     setActiveCoHosts(prev => [...prev, { ...request, mode }]);
     setPendingRequests(prev => prev.filter(r => r.id !== request.id));
 
     if (socket) {
+      console.log("📡 [StreamDashboard] Emitting 'approve_cohost' event via Socket.io:", { streamId, guestId: request.user_id, mode });
       socket.emit('approve_cohost', { streamId, guestId: request.user_id, mode });
+    } else {
+      console.error("❌ [StreamDashboard] Socket unavailable! Guest approval socket signal was not dispatched.");
     }
   };
 
   const handleRejectGuest = async (requestId) => {
-    await supabase
+    console.log(`❌ [StreamDashboard] Rejecting guest request ID: ${requestId}`);
+    const { error } = await supabase
       .from('live_guest_requests')
       .update({ status: 'rejected' })
       .eq('id', requestId);
+
+    if (error) {
+      console.error("❌ [StreamDashboard] Failed to update rejected guest status in Supabase:", error);
+    }
 
     setPendingRequests(prev => prev.filter(r => r.id !== requestId));
   };
@@ -374,40 +429,43 @@ const StreamDashboard = () => {
           )}
 
           {/* DYNAMIC CO-HOST GUEST FEEDS */}
-          {!isBattleMode && activeCoHosts.map((guest, idx) => (
-            <div key={guest.id || idx} className="relative h-full w-full overflow-hidden bg-zinc-900 rounded-2xl border border-white/5">
-              {guest.mode === 'audio' ? (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900/90 relative">
-                  <div className="relative">
-                    <img 
-                      src={guest.avatar_url || 'https://via.placeholder.com/150'} 
-                      className="w-16 h-16 rounded-full border-2 border-emerald-500/50 shadow-lg object-cover" 
-                      alt="" 
-                    />
-                    <div className="absolute -bottom-1 -right-1 p-1.5 bg-emerald-500 text-black rounded-full shadow">
-                      <Mic size={12} />
+          {!isBattleMode && activeCoHosts.map((guest, idx) => {
+            console.log(`🎨 [StreamDashboard] Rendering active guest panel #${idx}:`, guest);
+            return (
+              <div key={guest.id || idx} className="relative h-full w-full overflow-hidden bg-zinc-900 rounded-2xl border border-white/5">
+                {guest.mode === 'audio' ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900/90 relative">
+                    <div className="relative">
+                      <img 
+                        src={guest.avatar_url || 'https://via.placeholder.com/150'} 
+                        className="w-16 h-16 rounded-full border-2 border-emerald-500/50 shadow-lg object-cover" 
+                        alt="" 
+                      />
+                      <div className="absolute -bottom-1 -right-1 p-1.5 bg-emerald-500 text-black rounded-full shadow">
+                        <Mic size={12} />
+                      </div>
                     </div>
+                    <p className="text-xs font-bold text-zinc-200 mt-2">@{guest.username}</p>
+                    <p className="text-[9px] text-emerald-400 font-mono tracking-wider uppercase mt-0.5">Audio Linked</p>
                   </div>
-                  <p className="text-xs font-bold text-zinc-200 mt-2">@{guest.username}</p>
-                  <p className="text-[9px] text-emerald-400 font-mono tracking-wider uppercase mt-0.5">Audio Linked</p>
-                </div>
-              ) : guest.stream ? (
-                <GuestTileVideo stream={guest.stream} />
-              ) : (
-                <video 
-                  ref={idx === 0 ? challengerVideoRef : null} 
-                  autoPlay 
-                  playsInline 
-                  className="w-full h-full object-cover" 
-                />
-              )}
+                ) : guest.stream ? (
+                  <GuestTileVideo stream={guest.stream} />
+                ) : (
+                  <video 
+                    ref={idx === 0 ? challengerVideoRef : null} 
+                    autoPlay 
+                    playsInline 
+                    className="w-full h-full object-cover" 
+                  />
+                )}
 
-              <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
-                <span>@{guest.username}</span> 
-                <span className="text-emerald-400 font-black ml-1">● Guest</span>
+                <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
+                  <span>@{guest.username}</span> 
+                  <span className="text-emerald-400 font-black ml-1">● Guest</span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
         </div>
 
