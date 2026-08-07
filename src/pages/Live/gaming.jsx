@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 const MobileGamingSetup = () => {
+  const { streamId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const screenVideoRef = useRef(null);
@@ -25,6 +26,7 @@ const MobileGamingSetup = () => {
   const [title, setTitle] = useState("");
   const [selectedGame, setSelectedGame] = useState("PUBG Mobile");
   const [privacy, setPrivacy] = useState("public");
+  const [activeStreamData, setActiveStreamData] = useState(null);
 
   // MEDIA CAPTURE STATE
   const [screenStream, setScreenStream] = useState(null);
@@ -37,6 +39,21 @@ const MobileGamingSetup = () => {
     "PUBG Mobile", "Free Fire", "Call of Duty: Mobile", 
     "Mobile Legends", "Genshin Impact", "Roblox", "Clash Royale"
   ];
+
+  // FETCH STREAM DATA IF STREAM ID IS PRESENT
+  useEffect(() => {
+    if (streamId) {
+      const fetchStream = async () => {
+        const { data, error } = await supabase
+          .from('live_streams')
+          .select('*')
+          .eq('id', streamId)
+          .single();
+        if (data) setActiveStreamData(data);
+      };
+      fetchStream();
+    }
+  }, [streamId]);
 
   // START SCREEN SHARE CAPTURE
   const startScreenCapture = async () => {
@@ -69,10 +86,10 @@ const MobileGamingSetup = () => {
 
   // WEBCAM OVERLAY PREVIEW
   useEffect(() => {
-    if (isCamOverlayOn) startCamPreview();
-    else stopCamPreview();
+    if (isCamOverlayOn && !streamId) startCamPreview();
+    else if (!isCamOverlayOn) stopCamPreview();
     return () => stopCamPreview();
-  }, [isCamOverlayOn]);
+  }, [isCamOverlayOn, streamId]);
 
   const startCamPreview = async () => {
     try {
@@ -92,7 +109,7 @@ const MobileGamingSetup = () => {
   };
 
   // INITIALIZE WEBRTC & REALTIME SIGNALING VIA SUPABASE / POSTGRES
-  const initWebRTCSignaling = async (streamId) => {
+  const initWebRTCSignaling = async (targetStreamId) => {
     const iceServers = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -110,12 +127,12 @@ const MobileGamingSetup = () => {
       camStream.getTracks().forEach(track => pc.addTrack(track, camStream));
     }
 
-    const channel = supabase.channel(`stream_signaling:${streamId}`, {
+    const channel = supabase.channel(`stream_signaling:${targetStreamId}`, {
       config: { broadcast: { self: false } }
     });
     signalingChannelRef.current = channel;
 
-    // Attach ICE candidates broadcast only after subscription completes to prevent REST fallback warnings
+    // Attach ICE candidates broadcast only after subscription completes
     channel
       .on('broadcast', { event: 'viewer-answer' }, async ({ payload }) => {
         if (payload.answer && pc.signalingState !== 'closed') {
@@ -152,7 +169,7 @@ const MobileGamingSetup = () => {
         offer: offer,
         status: 'live' 
       })
-      .eq('id', streamId);
+      .eq('id', targetStreamId);
 
     if (updateError) {
       console.error("❌ Failed to update stream SDP offer in Postgres database:", updateError);
@@ -177,8 +194,6 @@ const MobileGamingSetup = () => {
 
       if (!error && data) {
         await initWebRTCSignaling(data.id);
-        
-        // Navigate specifically to the Gaming route instead of the standard dashboard
         navigate(`/live/gaming/${data.id}`);
       } else {
         console.error("❌ Failed to insert stream in Supabase:", error);
@@ -188,6 +203,18 @@ const MobileGamingSetup = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEndStream = async () => {
+    if (streamId) {
+      await supabase
+        .from('live_streams')
+        .update({ status: 'ended' })
+        .eq('id', streamId);
+    }
+    stopScreenCapture();
+    stopCamPreview();
+    navigate('/live');
   };
 
   const tabs = [
@@ -209,6 +236,53 @@ const MobileGamingSetup = () => {
     }
   };
 
+  // IF STREAM IS ACTIVE (RENDER ACTIVE BROADCAST DASHBOARD)
+  if (streamId) {
+    return (
+      <div className="h-screen bg-[#030308] text-white flex flex-col overflow-hidden font-sans relative">
+        <div className="fixed top-0 left-1/4 w-[400px] h-[400px] bg-pink-600/20 rounded-full blur-[140px] pointer-events-none animate-pulse z-10" />
+        <div className="fixed bottom-0 right-1/4 w-[400px] h-[400px] bg-cyan-500/20 rounded-full blur-[140px] pointer-events-none animate-pulse delay-700 z-10" />
+
+        {/* TOP BAR WITH LIVE INDICATOR & END STREAM BUTTON */}
+        <div className="absolute top-0 inset-x-0 z-50 p-6 flex justify-between items-center pointer-events-auto">
+          <div className="flex items-center gap-3 bg-black/60 backdrop-blur-xl border border-pink-500/40 px-4 py-2 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.3)]">
+            <span className="w-2.5 h-2.5 bg-pink-500 rounded-full animate-ping" />
+            <span className="text-xs font-black uppercase text-pink-300 tracking-wider">LIVE</span>
+            <span className="text-xs font-bold text-zinc-300">| {activeStreamData?.category || selectedGame}</span>
+          </div>
+
+          <button 
+            onClick={handleEndStream}
+            className="px-5 py-2 bg-red-600/80 hover:bg-red-500 border border-red-400 rounded-full text-white text-xs font-black uppercase tracking-wider shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all"
+          >
+            End Stream
+          </button>
+        </div>
+
+        {/* ACTIVE STREAM CANVAS */}
+        <div className="flex-1 relative bg-zinc-950 flex flex-col items-center justify-center p-6">
+          <div className="w-full max-w-4xl aspect-video rounded-3xl overflow-hidden border-2 border-pink-500/50 shadow-[0_0_40px_rgba(244,63,94,0.3)] relative bg-black flex items-center justify-center">
+            {isScreenSharing ? (
+              <video ref={screenVideoRef} autoPlay muted playsInline className="w-full h-full object-contain" />
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <Radio size={48} className="text-pink-500 animate-pulse" />
+                <span className="text-sm font-black text-pink-300 tracking-widest uppercase">Broadcasting Live</span>
+              </div>
+            )}
+
+            {isCamOverlayOn && (
+              <div className="absolute bottom-4 right-4 w-32 h-32 rounded-2xl overflow-hidden border-2 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.6)] bg-zinc-900 z-30">
+                <video ref={camVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // DEFAULT SETUP VIEW
   return (
     <div className="h-screen bg-[#030308] text-white flex flex-col overflow-hidden font-sans relative">
       
