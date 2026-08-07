@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
-// CORRECTED GLOBAL ICE CONFIG MATCHING METERED METRICS
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.relay.metered.ca:80" },
@@ -37,10 +36,11 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
   
   const peerConnectionsRef = useRef({}); 
   const singleViewerPcRef = useRef(null); 
-  const iceCandidatesQueueRef = useRef({}); // Queues early candidates to block 'checking' freeze drops
+  const iceCandidatesQueueRef = useRef({});
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('Initializing Socket...');
+  const [needsAutoplayUnmute, setNeedsAutoplayUnmute] = useState(false);
 
   const getStreamId = () => {
     if (propStreamId && propStreamId.length > 10) return propStreamId;
@@ -51,6 +51,15 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
   const streamId = getStreamId();
   const isHost = initialIsHost || window.location.pathname.includes('dashboard');
+
+  const handleManualPlay = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      videoRef.current.play().then(() => {
+        setNeedsAutoplayUnmute(false);
+      }).catch(err => console.error("Play override failed:", err));
+    }
+  };
 
   useEffect(() => {
     if (!streamId || streamId === "undefined" || streamId.length < 10) {
@@ -95,9 +104,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           }
         });
 
-        // ==========================================
-        // 🛠️ HOST-SPECIFIC PIPELINE (ONE-TO-MANY)
-        // ==========================================
+        // Host Pipeline
         if (isHost) {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           if (!isComponentMounted) {
@@ -107,13 +114,17 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
           localStreamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            videoRef.current.muted = true; // Ensure local preview strictly stays muted
+            videoRef.current.muted = true;
           }
 
           socket.on('viewer_requesting_stream', async (payload) => {
             if (!isComponentMounted) return;
             const viewerId = payload.viewerSocketId;
             console.log(`📥 Separate request received from viewer [${viewerId}]. Allocating connection...`);
+
+            if (peerConnectionsRef.current[viewerId]) {
+              peerConnectionsRef.current[viewerId].close();
+            }
 
             iceCandidatesQueueRef.current[viewerId] = [];
             const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
@@ -143,7 +154,17 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
                 targetViewerId: viewerId
               });
             } catch (err) {
-              console.error("❌ Failed to orchestrate individual offer matrix:", err);
+              console.error("❌ Failed to orchestrate offer:", err);
+            }
+          });
+
+          socket.on('viewer_left', (payload) => {
+            const viewerId = payload.viewerSocketId;
+            if (peerConnectionsRef.current[viewerId]) {
+              peerConnectionsRef.current[viewerId].close();
+              delete peerConnectionsRef.current[viewerId];
+              delete iceCandidatesQueueRef.current[viewerId];
+              console.log(`🧹 Host cleaned up disconnected viewer: ${viewerId}`);
             }
           });
 
@@ -154,9 +175,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             if (pc && !pc.currentRemoteDescription) {
               try {
                 await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-                console.log(`✅ Connection stabilized directly for viewer: ${viewerId}`);
                 
-                // Flush queued candidates
                 if (iceCandidatesQueueRef.current[viewerId]) {
                   for (const candidate of iceCandidatesQueueRef.current[viewerId]) {
                     await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
@@ -169,9 +188,7 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             }
           });
 
-        // ==========================================
-        // 👁️ VIEWER-SPECIFIC PIPELINE
-        // ==========================================
+        // Viewer Pipeline
         } else {
           const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
           singleViewerPcRef.current = pc;
@@ -181,6 +198,11 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
             console.log("🎬 Media track successfully bound to viewer element.");
             if (videoRef.current && videoRef.current.srcObject !== event.streams[0]) {
               videoRef.current.srcObject = event.streams[0];
+              
+              videoRef.current.play().catch(err => {
+                console.warn("Autoplay blocked by browser. User interaction needed:", err);
+                setNeedsAutoplayUnmute(true);
+              });
             }
             if (isComponentMounted) {
               setIsConnected(true);
@@ -190,7 +212,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
           socket.on('webrtc_offer_received', async (payload) => {
             if (!isComponentMounted) return;
-            console.log("📥 Host WebRTC Offer captured via direct route. Compiling answer...");
             try {
               socket.hostSocketId = payload.hostSocketId; 
 
@@ -201,7 +222,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
               
               socket.emit('send_webrtc_answer', { streamId, answer });
 
-              // Flush queued host candidates
               if (iceCandidatesQueueRef.current['host_queue']) {
                 for (const candidate of iceCandidatesQueueRef.current['host_queue']) {
                   await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
@@ -226,17 +246,17 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
           pc.oniceconnectionstatechange = () => {
             if (!isComponentMounted) return;
-            console.log("⚡ Viewer ICE Connection State Changed:", pc.iceConnectionState);
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
               setIsConnected(true);
               setConnectionStatus("Live");
+            } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+              setIsConnected(false);
+              setConnectionStatus("Reconnecting Stream...");
             }
           };
         }
 
-        // ==========================================
-        // ❄️ CENTRAL INTERCONNECTED ICE ROUTING MODULE
-        // ==========================================
+        // Central ICE candidate listener
         socket.on('incoming_ice_candidate', async (payload) => {
           if (!isComponentMounted) return;
           if (isHost) {
@@ -281,7 +301,6 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
 
     return () => {
       isComponentMounted = false;
-      console.log("🧹 Cleaning signaling and media instances...");
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
       }
@@ -303,6 +322,17 @@ const VideoPlayer = ({ streamId: propStreamId, isHost: initialIsHost = false }) 
         muted={isHost} 
         className={`w-full h-full object-cover transition-opacity duration-500 ${isConnected || isHost ? 'opacity-100' : 'opacity-40'} ${isHost ? 'scale-x-[-1]' : ''}`} 
       />
+      
+      {/* Fallback Autoplay Overlay for Mobile Browsers */}
+      {needsAutoplayUnmute && !isHost && (
+        <button 
+          onClick={handleManualPlay}
+          className="absolute z-40 px-4 py-2 bg-[#fe2c55] text-white font-bold rounded-full shadow-lg hover:bg-opacity-90 transition-all"
+        >
+          Tap to Play Stream
+        </button>
+      )}
+
       {!isConnected && !isHost && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-zinc-950">
           <div className="w-10 h-10 border-4 border-t-[#fe2c55] border-zinc-800 rounded-full animate-spin" />
