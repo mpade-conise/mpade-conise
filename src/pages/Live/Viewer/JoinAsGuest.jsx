@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { motion } from 'framer-motion';
@@ -9,29 +9,29 @@ const SOCKET_SERVER_URL = process.env.REACT_APP_SOCKET_URL || 'https://mpade-bac
 
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
-    { urls: "stun:stun.relay.metered.ca:80" },
+    { urls: 'stun:stun.relay.metered.ca:80' },
     {
-      urls: "turn:global.relay.metered.ca:80",
-      username: "28087eceaa61e6de7d551200",
-      credential: "KW6Vsm7ZTUwjjDWn"
+      urls: 'turn:global.relay.metered.ca:80',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn',
     },
     {
-      urls: "turn:global.relay.metered.ca:80?transport=tcp",
-      username: "28087eceaa61e6de7d551200",
-      credential: "KW6Vsm7ZTUwjjDWn"
+      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn',
     },
     {
-      urls: "turn:global.relay.metered.ca:443",
-      username: "28087eceaa61e6de7d551200",
-      credential: "KW6Vsm7ZTUwjjDWn"
+      urls: 'turn:global.relay.metered.ca:443',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn',
     },
     {
-      urls: "turns:global.relay.metered.ca:443?transport=tcp",
-      username: "28087eceaa61e6de7d551200",
-      credential: "KW6Vsm7ZTUwjjDWn"
-    }
+      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn',
+    },
   ],
-  iceCandidatePoolSize: 10
+  iceCandidatePoolSize: 10,
 };
 
 const JoinAsGuest = () => {
@@ -44,6 +44,7 @@ const JoinAsGuest = () => {
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
   const iceQueueRef = useRef([]);
+  const isConnectingRef = useRef(false);
 
   const [stream, setStream] = useState(null);
   const [isCamOn, setIsCamOn] = useState(true);
@@ -55,7 +56,6 @@ const JoinAsGuest = () => {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [hostUserId, setHostUserId] = useState(null);
 
-  // Sync state to refs to prevent stale closure bugs in socket event handlers
   const hostUserIdRef = useRef(null);
   const currentUserIdRef = useRef(null);
 
@@ -69,49 +69,43 @@ const JoinAsGuest = () => {
 
   const processIceQueue = async () => {
     if (pcRef.current && pcRef.current.remoteDescription && iceQueueRef.current.length > 0) {
-      console.log(`🧊 [ICE] Processing ${iceQueueRef.current.length} queued ICE candidates...`);
+      console.log(`🧊 [ICE] Processing ${iceQueueRef.current.length} queued candidates...`);
       const candidatesToProcess = [...iceQueueRef.current];
       iceQueueRef.current = [];
       for (const candidate of candidatesToProcess) {
         try {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-          console.log("✅ [ICE] Queued candidate added");
         } catch (e) {
-          console.warn("⚠️ [ICE] Queued candidate failed:", e);
+          console.warn('⚠️ [ICE] Candidate add warning:', e);
         }
       }
     }
   };
 
-  useEffect(() => {
-    console.log("🚀 [MOUNT] JoinAsGuest mounted for stream:", streamId);
-    startPreview();
-    fetchUserAndStreamDetails();
-
-    return () => {
-      console.log("🧹 [CLEANUP] Cleaning up connections...");
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(t => t.stop());
-      }
-      if (pcRef.current) pcRef.current.close();
-      if (socketRef.current) socketRef.current.disconnect();
-    };
-  }, [streamId]);
+  const startPreview = async () => {
+    try {
+      console.log('🎥 [MEDIA] Initializing camera/mic preview...');
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localStreamRef.current = mediaStream;
+      setStream(mediaStream);
+      if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
+    } catch (err) {
+      console.error('❌ [MEDIA] Access Error:', err);
+      setIsCamOn(false);
+    }
+  };
 
   const fetchUserAndStreamDetails = async () => {
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) console.error("❌ [SUPABASE] Auth error:", userError);
-      
+      if (userError) console.error('❌ [SUPABASE] Auth error:', userError);
+
       if (user) {
-        console.log("👤 [USER] Logged-in User ID:", user.id);
         setCurrentUserId(user.id);
         const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
         setUserProfile(profileData);
       }
 
-      console.log("🔍 [SUPABASE] Fetching stream details for stream ID:", streamId);
-      
       const { data: streamData, error: streamError } = await supabase
         .from('live_streams')
         .select('*')
@@ -119,40 +113,33 @@ const JoinAsGuest = () => {
         .single();
 
       if (streamError) {
-        console.error("❌ [SUPABASE] Stream fetch error:", streamError);
+        console.error('❌ [SUPABASE] Stream error:', streamError);
       } else if (streamData) {
         const resolvedHost = streamData.host_id || streamData.user_id;
-        console.log("👑 [HOST] Resolved Host ID:", resolvedHost);
         setHostUserId(resolvedHost);
-      } else {
-        console.warn("⚠️ [HOST] Stream record returned null or empty");
       }
     } catch (err) {
-      console.error("❌ [SUPABASE] Exception in fetchUserAndStreamDetails:", err);
+      console.error('❌ [SUPABASE] Exception in fetch details:', err);
     }
   };
 
-  const startPreview = async () => {
-    try {
-      console.log("🎥 [MEDIA] Requesting camera/mic permissions...");
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localStreamRef.current = mediaStream;
-      setStream(mediaStream);
-      if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
-      console.log("✅ [MEDIA] Local media initialized");
-    } catch (err) {
-      console.error("❌ [MEDIA] Camera/Mic Access Error:", err);
-      setIsCamOn(false);
-    }
-  };
+  useEffect(() => {
+    startPreview();
+    fetchUserAndStreamDetails();
 
-  const initSocket = () => {
-    if (socketRef.current?.connected) {
-      console.log("⚡ [SOCKET] Using existing connected instance");
-      return socketRef.current;
-    }
+    return () => {
+      console.log('🧹 [CLEANUP] Tearing down peer connections & sockets');
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (pcRef.current) pcRef.current.close();
+      if (socketRef.current) socketRef.current.disconnect();
+    };
+  }, [streamId]);
 
-    console.log("🔌 [SOCKET] Connecting to:", SOCKET_SERVER_URL);
+  const initSocket = useCallback(() => {
+    if (socketRef.current?.connected) return socketRef.current;
+
     const socket = io(SOCKET_SERVER_URL, {
       transports: ['websocket', 'polling'],
       forceNew: true,
@@ -162,200 +149,164 @@ const JoinAsGuest = () => {
       timeout: 20000,
     });
 
-    socket.on('connect', () => console.log("✅ [SOCKET] Connected, Socket ID:", socket.id));
-    socket.on('connect_error', (err) => console.error("❌ [SOCKET] Connection Error:", err.message));
-    socket.on('disconnect', (reason) => console.warn("⚠️ [SOCKET] Disconnected:", reason));
+    socket.on('connect', () => console.log('✅ [SOCKET] Connected ID:', socket.id));
+    socket.on('connect_error', (err) => console.error('❌ [SOCKET] Error:', err.message));
 
     socketRef.current = socket;
     return socket;
-  };
+  }, []);
 
   const connectToHostStream = (guestMediaStream, mode, directHostId = null) => {
     const targetHostId = directHostId || hostUserIdRef.current || hostUserId;
     const activeUserId = currentUserIdRef.current || currentUserId;
 
-    console.log("🏁 [WEBRTC HALT CHECK] Preparing handshake:", { targetHostId, activeUserId, streamId });
-
     if (!targetHostId) {
-      console.error("🛑 [HALT CAUSE 1] hostUserId is null/undefined! WebRTC handshake stopped.");
-      alert("Host details not loaded yet. Please try again.");
+      alert('Host connection details are missing. Please refresh.');
       return;
     }
 
     if (pcRef.current) {
-      console.warn("🛑 [HALT CAUSE 2] RTCPeerConnection already active. Blocking double initialization.");
+      console.warn('⚠️ WebRTC connection already exists. Bypassing duplication.');
       return;
     }
 
     const socket = initSocket();
 
-    const setupSocketListeners = () => {
-      console.log("📡 [SOCKET] Registering user session & joining call room...");
+    const registerSession = () => {
       socket.emit('register_user_session', { userId: activeUserId });
       socket.emit('join_call_room', { roomId: streamId, userId: activeUserId, targetPeerId: targetHostId });
       socket.emit('peer_ready', { roomId: streamId, userId: activeUserId });
     };
 
-    if (socket.connected) {
-      setupSocketListeners();
-    } else {
-      socket.on('connect', setupSocketListeners);
-    }
+    if (socket.connected) registerSession();
+    else socket.on('connect', registerSession);
 
-    console.log("⚙️ [WEBRTC] Instantiating RTCPeerConnection...");
     const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
     pcRef.current = pc;
-
-    pc.onconnectionstatechange = () => {
-      console.log(`🌐 [WEBRTC STATE] Connection State: %c${pc.connectionState}`, "color: yellow; font-weight: bold;");
-      if (pc.connectionState === 'failed') {
-        console.error("🛑 [HALT CAUSE 3] PeerConnection state failed! STUN/TURN servers unreadable or blocked.");
-      }
-    };
-
-    pc.onsignalingstatechange = () => console.log(`🚦 [WEBRTC STATE] Signaling State: ${pc.signalingState}`);
-    pc.oniceconnectionstatechange = () => console.log(`❄️ [WEBRTC STATE] ICE State: ${pc.iceConnectionState}`);
 
     if (guestMediaStream) {
       const videoTrack = guestMediaStream.getVideoTracks()[0];
       if (videoTrack) videoTrack.enabled = mode === 'video' && isCamOn;
 
-      guestMediaStream.getTracks().forEach(track => {
-        console.log(`➕ [WEBRTC] Adding track: ${track.kind}`);
+      guestMediaStream.getTracks().forEach((track) => {
         pc.addTrack(track, guestMediaStream);
       });
-    } else {
-      console.warn("⚠️ [WEBRTC] No local guestMediaStream available to attach.");
     }
 
     pc.ontrack = (event) => {
-      console.log("🎬 [WEBRTC] Host track event received!", event);
-      if (event.streams && event.streams[0] && hostVideoRef.current) {
-        console.log("✅ [WEBRTC] Attaching stream to host video element");
+      if (event.streams?.[0] && hostVideoRef.current) {
         hostVideoRef.current.srcObject = event.streams[0];
-        hostVideoRef.current.play().catch(e => console.error("❌ [VIDEO] Playback blocked:", e));
+        hostVideoRef.current.play().catch((e) => console.error('❌ Playback error:', e));
       }
     };
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current?.connected) {
-        console.log("📤 [ICE] Emitting ICE candidate to host:", targetHostId);
         socketRef.current.emit('webrtc_ice_candidate', {
           roomId: streamId,
-          streamId: streamId,
+          streamId,
           candidate: event.candidate,
-          to: targetHostId
+          to: targetHostId,
         });
       }
     };
 
-    const createAndSendOffer = async () => {
+    const createOffer = async () => {
       try {
-        console.log("📝 [WEBRTC] Creating local offer...");
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        console.log("📤 [WEBRTC] Offer set locally, emitting offer to host:", targetHostId);
         socket.emit('send_webrtc_offer', {
           roomId: streamId,
-          streamId: streamId,
+          streamId,
           offer,
           targetViewerId: targetHostId,
-          to: targetHostId
+          to: targetHostId,
         });
       } catch (err) {
-        console.error("❌ [WEBRTC] Offer Creation Error:", err);
+        console.error('❌ Offer creation failed:', err);
       }
     };
 
-    createAndSendOffer();
+    createOffer();
 
-    socket.on('webrtc_answer_received', async ({ answer, from }) => {
-      console.log("📥 [WEBRTC] Answer received from host/peer:", from);
+    socket.off('webrtc_answer_received');
+    socket.on('webrtc_answer_received', async ({ answer }) => {
       if (!pcRef.current || pcRef.current.signalingState === 'closed') return;
       try {
         if (pcRef.current.signalingState === 'have-local-offer') {
-          console.log("✅ [WEBRTC] Setting Remote Description from answer...");
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
           await processIceQueue();
-        } else {
-          console.warn(`⚠️ [WEBRTC] Answer ignored due to state: ${pcRef.current.signalingState}`);
         }
       } catch (err) {
-        console.error("❌ [WEBRTC] Remote answer error:", err);
+        console.error('❌ Answer processing failed:', err);
       }
     });
 
-    socket.on('webrtc_offer_received', async ({ offer, from }) => {
-      console.log("📥 [WEBRTC] Renegotiation offer received from:", from);
+    socket.off('webrtc_offer_received');
+    socket.on('webrtc_offer_received', async ({ offer }) => {
       if (!pcRef.current || pcRef.current.signalingState === 'closed') return;
       try {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pcRef.current.createAnswer();
         await pcRef.current.setLocalDescription(answer);
-        console.log("📤 [WEBRTC] Sending renegotiation answer back to:", targetHostId);
-        socket.emit('send_webrtc_answer', {
-          roomId: streamId,
-          streamId: streamId,
-          answer,
-          to: targetHostId
-        });
+        socket.emit('send_webrtc_answer', { roomId: streamId, streamId, answer, to: targetHostId });
         await processIceQueue();
       } catch (err) {
-        console.error("❌ [WEBRTC] Offer process error:", err);
+        console.error('❌ Dynamic renegotiation failed:', err);
       }
     });
 
-    socket.on('incoming_ice_candidate', async ({ candidate, from }) => {
-      console.log("📥 [ICE] Received candidate from:", from);
-      const currentPc = pcRef.current;
-      if (currentPc && currentPc.remoteDescription && currentPc.remoteDescription.type) {
+    socket.off('incoming_ice_candidate');
+    socket.on('incoming_ice_candidate', async ({ candidate }) => {
+      if (pcRef.current?.remoteDescription?.type) {
         try {
-          await currentPc.addIceCandidate(new RTCIceCandidate(candidate));
-          console.log("✅ [ICE] Candidate added");
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
         } catch (e) {
-          console.warn("⚠️ [ICE] Candidate addition warning:", e);
+          console.warn('⚠️ ICE Candidate add failed:', e);
         }
       } else {
-        console.log("📦 [ICE] Remote description not set yet. Queueing candidate...");
         iceQueueRef.current.push(candidate);
       }
     });
 
+    socket.off('kicked_cohost');
     socket.on('kicked_cohost', () => {
-      console.warn("🚫 [HOST] Session ended by host.");
-      alert('Host ended the panel session.');
+      alert('Host ended panel session.');
       navigate(`/live/watch/${streamId}`);
     });
   };
 
-  const handleApprovalTrigger = (mode, dynamicHostId = null) => {
-    console.log("🎉 [APPROVAL] Triggering panel join in mode:", mode, "Host ID:", dynamicHostId);
-    setIsRequesting(false);
-    setIsApproved(true);
-    setAssignedMode(mode);
+  const handleApprovalTrigger = useCallback(
+    (mode, dynamicHostId = null) => {
+      if (isConnectingRef.current) return;
+      isConnectingRef.current = true;
 
-    if (dynamicHostId) {
-      setHostUserId(dynamicHostId);
-      hostUserIdRef.current = dynamicHostId;
-    }
+      setIsRequesting(false);
+      setIsApproved(true);
+      setAssignedMode(mode);
 
-    if (mode === 'audio' && localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) videoTrack.enabled = false;
-      setIsCamOn(false);
-    }
+      if (dynamicHostId) {
+        setHostUserId(dynamicHostId);
+        hostUserIdRef.current = dynamicHostId;
+      }
 
-    connectToHostStream(localStreamRef.current, mode, dynamicHostId);
-  };
+      if (mode === 'audio' && localStreamRef.current) {
+        const videoTrack = localStreamRef.current.getVideoTracks()[0];
+        if (videoTrack) videoTrack.enabled = false;
+        setIsCamOn(false);
+      }
+
+      connectToHostStream(localStreamRef.current, mode, dynamicHostId);
+    },
+    [streamId]
+  );
 
   const handleSendRequest = async () => {
-    console.log("📩 [REQUEST] Initiating join request...");
     setIsRequesting(true);
 
     const socket = initSocket();
     socket.off('approve_cohost');
     socket.on('approve_cohost', ({ mode, hostId }) => {
-      console.log("⚡ [SOCKET] Received approve_cohost event!");
       handleApprovalTrigger(mode || 'video', hostId);
     });
 
@@ -363,25 +314,25 @@ const JoinAsGuest = () => {
 
     const { data: request, error } = await supabase
       .from('live_guest_requests')
-      .insert([{
-        stream_id: streamId,
-        user_id: activeUser,
-        status: 'pending',
-        username: userProfile?.username,
-        avatar_url: userProfile?.avatar_url
-      }])
+      .insert([
+        {
+          stream_id: streamId,
+          user_id: activeUser,
+          status: 'pending',
+          username: userProfile?.username,
+          avatar_url: userProfile?.avatar_url,
+        },
+      ])
       .select()
       .single();
 
     if (!error && request) {
-      console.log("✅ [SUPABASE] Inserted guest request:", request.id, "Listening for realtime updates...");
       const subscription = supabase
         .channel(`guest_request_${request.id}`)
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'live_guest_requests', filter: `id=eq.${request.id}` },
           (payload) => {
-            console.log("🔔 [REALTIME] Request updated:", payload.new);
             const mode = payload.new.mode || 'video';
 
             if (payload.new.status === 'approved') {
@@ -396,25 +347,21 @@ const JoinAsGuest = () => {
             }
           }
         )
-        .subscribe((status) => console.log("📡 [REALTIME SUBSCRIPTION] Status:", status));
+        .subscribe();
     } else {
       setIsRequesting(false);
-      console.error("❌ [SUPABASE] Error inserting request:", error);
+      console.error('❌ Supabase insert request error:', error);
     }
   };
 
   const toggleCamera = () => {
-    if (assignedMode === 'audio' && isApproved) {
-      alert("Host has approved this link in Audio-only mode.");
-      return;
-    }
+    if (assignedMode === 'audio' && isApproved) return;
 
     if (localStreamRef.current) {
       const track = localStreamRef.current.getVideoTracks()[0];
       if (track) {
         track.enabled = !track.enabled;
         setIsCamOn(track.enabled);
-        console.log("🎥 [MEDIA] Camera toggled:", track.enabled);
       }
     }
   };
@@ -425,7 +372,6 @@ const JoinAsGuest = () => {
       if (track) {
         track.enabled = !track.enabled;
         setIsMicOn(track.enabled);
-        console.log("🎙️ [MEDIA] Mic toggled:", track.enabled);
       }
     }
   };
@@ -433,7 +379,10 @@ const JoinAsGuest = () => {
   return (
     <div className="h-screen w-screen bg-black flex flex-col items-center justify-center relative p-6 font-sans">
       <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-50">
-        <button onClick={() => navigate(-1)} className="p-3 bg-white/10 backdrop-blur-xl rounded-full border border-white/10 text-white hover:bg-white/20 transition-all">
+        <button
+          onClick={() => navigate(-1)}
+          className="p-3 bg-white/10 backdrop-blur-xl rounded-full border border-white/10 text-white hover:bg-white/20 transition-all"
+        >
           <X size={20} />
         </button>
         <div className="flex flex-col items-end">
@@ -472,21 +421,32 @@ const JoinAsGuest = () => {
       </div>
 
       <div className="mt-8 flex items-center gap-6 z-50">
-        <button onClick={toggleMic} className={`w-14 h-14 rounded-full flex items-center justify-center border transition-all ${isMicOn ? 'bg-white/10 text-white border-white/20' : 'bg-red-500/20 text-red-500 border-red-500/30'}`}>
+        <button
+          onClick={toggleMic}
+          className={`w-14 h-14 rounded-full flex items-center justify-center border transition-all ${
+            isMicOn ? 'bg-white/10 text-white border-white/20' : 'bg-red-500/20 text-red-500 border-red-500/30'
+          }`}
+        >
           {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
         </button>
 
         {!isApproved && (
-          <button onClick={handleSendRequest} disabled={isRequesting} className="bg-[#fe2c55] px-8 py-4 rounded-full text-white font-black uppercase text-xs tracking-widest flex items-center gap-2 hover:bg-[#e0264b] transition-all disabled:opacity-50">
+          <button
+            onClick={handleSendRequest}
+            disabled={isRequesting}
+            className="bg-[#fe2c55] px-8 py-4 rounded-full text-white font-black uppercase text-xs tracking-widest flex items-center gap-2 hover:bg-[#e0264b] transition-all disabled:opacity-50"
+          >
             {isRequesting ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} fill="white" />}
             {isRequesting ? 'Waiting for Host...' : 'Request to Join Panel'}
           </button>
         )}
 
-        <button 
-          onClick={toggleCamera} 
+        <button
+          onClick={toggleCamera}
           disabled={assignedMode === 'audio' && isApproved}
-          className={`w-14 h-14 rounded-full flex items-center justify-center border transition-all ${isCamOn && assignedMode === 'video' ? 'bg-white/10 text-white border-white/20' : 'bg-red-500/20 text-red-500 border-red-500/30'} ${assignedMode === 'audio' && isApproved ? 'opacity-40 cursor-not-allowed' : ''}`}
+          className={`w-14 h-14 rounded-full flex items-center justify-center border transition-all ${
+            isCamOn && assignedMode === 'video' ? 'bg-white/10 text-white border-white/20' : 'bg-red-500/20 text-red-500 border-red-500/30'
+          } ${assignedMode === 'audio' && isApproved ? 'opacity-40 cursor-not-allowed' : ''}`}
         >
           {isCamOn && assignedMode === 'video' ? <Camera size={24} /> : <VideoOff size={24} />}
         </button>
