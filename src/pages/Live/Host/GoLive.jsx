@@ -74,10 +74,18 @@ const GoLive = () => {
   const tabs = [
     { name: 'POST', path: '/create/post', icon: null },
     { name: 'CREATE', path: '/create/story', icon: null },
-    { name: 'DEVICE CAMERA', path: '/live/device-camera', icon: <Camera size={14}/> },
+    { name: 'DEVICE CAMERA', action: 'direct_stream', icon: <Camera size={14}/> },
     { name: 'GO WITH GUEST', path: '/live/guest', icon: <Users size={14}/> },
     { name: 'MOBILE GAMING', path: '/live/gaming', icon: <Gamepad2 size={14}/> },
   ];
+
+  const handleTabClick = (tab) => {
+    if (tab.action === 'direct_stream') {
+      handleStartStream();
+    } else if (tab.path) {
+      navigate(tab.path);
+    }
+  };
 
   return (
     <div className="h-screen bg-[#030308] text-white flex flex-col overflow-hidden font-sans selection:bg-pink-500/40 relative">
@@ -161,29 +169,33 @@ const GoLive = () => {
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
         
         <div className="flex items-center justify-center gap-8 min-w-max relative z-10">
-          {tabs.map((tab) => (
-            <button
-              key={tab.name}
-              onClick={() => navigate(tab.path)}
-              className={`flex flex-col items-center gap-1.5 transition-all ${
-                location.pathname === tab.path ? 'opacity-100' : 'opacity-40 hover:opacity-75'
-              }`}
-            >
-              {tab.icon && (
-                <span className={location.pathname === tab.path ? 'text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-cyan-300'}>
-                  {tab.icon}
+          {tabs.map((tab) => {
+            const isActive = tab.path ? location.pathname === tab.path : false;
+            return (
+              <button
+                key={tab.name}
+                onClick={() => handleTabClick(tab)}
+                disabled={loading}
+                className={`flex flex-col items-center gap-1.5 transition-all ${
+                  isActive ? 'opacity-100' : 'opacity-40 hover:opacity-75'
+                }`}
+              >
+                {tab.icon && (
+                  <span className={isActive ? 'text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-cyan-300'}>
+                    {tab.icon}
+                  </span>
+                )}
+                <span className={`text-[11px] font-black tracking-widest whitespace-nowrap ${
+                  tab.name === 'DEVICE CAMERA' ? 'text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-cyan-100 drop-shadow-[0_0_4px_rgba(6,182,212,0.4)]'
+                }`}>
+                  {tab.name}
                 </span>
-              )}
-              <span className={`text-[11px] font-black tracking-widest whitespace-nowrap ${
-                location.pathname === tab.path ? 'text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-cyan-100 drop-shadow-[0_0_4px_rgba(6,182,212,0.4)]'
-              }`}>
-                {tab.name}
-              </span>
-              {location.pathname === tab.path && (
-                <motion.div layoutId="tab-underline" className="w-1.5 h-1.5 bg-pink-400 rounded-full shadow-[0_0_10px_rgba(244,63,94,1)]" />
-              )}
-            </button>
-          ))}
+                {isActive && (
+                  <motion.div layoutId="tab-underline" className="w-1.5 h-1.5 bg-pink-400 rounded-full shadow-[0_0_10px_rgba(244,63,94,1)]" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
