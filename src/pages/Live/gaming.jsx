@@ -115,16 +115,7 @@ const MobileGamingSetup = () => {
     });
     signalingChannelRef.current = channel;
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        channel.send({
-          type: 'broadcast',
-          event: 'host-ice-candidate',
-          payload: { candidate: event.candidate }
-        });
-      }
-    };
-
+    // Attach ICE candidates broadcast only after subscription completes to prevent REST fallback warnings
     channel
       .on('broadcast', { event: 'viewer-answer' }, async ({ payload }) => {
         if (payload.answer && pc.signalingState !== 'closed') {
@@ -139,12 +130,22 @@ const MobileGamingSetup = () => {
       })
       .subscribe((status) => {
         console.log(`📡 [Supabase Realtime] Signaling channel status: ${status}`);
+        if (status === 'SUBSCRIBED') {
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              channel.send({
+                type: 'broadcast',
+                event: 'host-ice-candidate',
+                payload: { candidate: event.candidate }
+              });
+            }
+          };
+        }
       });
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // FIXED: Updated 'sdp_offer' to 'offer' to align with Postgres schema
     const { error: updateError } = await supabase
       .from('live_streams')
       .update({ 
@@ -176,7 +177,9 @@ const MobileGamingSetup = () => {
 
       if (!error && data) {
         await initWebRTCSignaling(data.id);
-        navigate(`/live/dashboard/${data.id}`);
+        
+        // Navigate specifically to the Gaming route instead of the standard dashboard
+        navigate(`/live/gaming/${data.id}`);
       } else {
         console.error("❌ Failed to insert stream in Supabase:", error);
       }
