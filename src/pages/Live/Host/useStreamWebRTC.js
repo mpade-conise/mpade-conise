@@ -33,8 +33,33 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const iceCandidatesQueueRef = useRef({}); 
+  const remoteStreamRef = useRef(null); // Stores incoming guest stream reference across renders
   const [hardwareReady, setHardwareReady] = useState(false);
-  const [guestStreams, setGuestStreams] = useState({}); // Stores remote guest MediaStreams mapped by socketId
+
+  // Helper to bind remote guest stream to challenger DOM node
+  const bindRemoteStreamToDOM = (stream) => {
+    if (stream) {
+      remoteStreamRef.current = stream;
+    }
+    const targetRef = challengerVideoRef?.current;
+    if (targetRef && remoteStreamRef.current) {
+      if (targetRef.srcObject !== remoteStreamRef.current) {
+        targetRef.srcObject = remoteStreamRef.current;
+        targetRef.play().catch(e => console.warn("Autoplay interaction requirement:", e));
+        console.log("🎥 Guest remote media stream attached to challenger video element.");
+      }
+    }
+  };
+
+  // Late-binding checker for challenger DOM element
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (challengerVideoRef?.current && remoteStreamRef.current) {
+        bindRemoteStreamToDOM(remoteStreamRef.current);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [challengerVideoRef]);
 
   // 1. Hardware Stream Capturing
   useEffect(() => {
@@ -77,6 +102,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
       }
       Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
       peerConnectionsRef.current = {};
+      remoteStreamRef.current = null;
     };
   }, [streamId]);
 
@@ -99,24 +125,10 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
     }
   }, [isMuted, isCameraOff]);
 
-  // Helper to attach inbound track safely to DOM / State
-  const attachRemoteStream = (peerId, stream) => {
-    console.log(`🌐 Remote media stream bound for peer: ${peerId}`);
-    
-    // Update map state for dynamic tile components
-    setGuestStreams(prev => ({ ...prev, [peerId]: stream }));
-
-    // Fallback binding directly to passed DOM ref
-    if (challengerVideoRef && challengerVideoRef.current) {
-      challengerVideoRef.current.srcObject = stream;
-    }
-  };
-
   // 2. Signaling Matrix Pipeline via Socket.io
   useEffect(() => {
     if (!socket || !streamId || !hardwareReady) return;
 
-    // Helper to create & setup PC instance
     const createPeerConnection = (targetSocketId) => {
       if (peerConnectionsRef.current[targetSocketId]) {
         return peerConnectionsRef.current[targetSocketId];
@@ -130,8 +142,9 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
       }
 
       pc.ontrack = (event) => {
+        console.log("🌐 Remote battle/guest track received from peer connection.");
         if (event.streams && event.streams[0]) {
-          attachRemoteStream(targetSocketId, event.streams[0]);
+          bindRemoteStreamToDOM(event.streams[0]);
         }
       };
 
@@ -146,21 +159,9 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
         }
       };
 
-      pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-          console.warn(`Peer disconnected: ${targetSocketId}`);
-          setGuestStreams(prev => {
-            const updated = { ...prev };
-            delete updated[targetSocketId];
-            return updated;
-          });
-        }
-      };
-
       return pc;
     };
 
-    // Standard Viewer / Host Initiated Offer
     const handleViewerRequest = async (payload) => {
       const viewerId = payload.viewerSocketId;
       if (!localStreamRef.current) return;
@@ -183,7 +184,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
       }
     };
 
-    // Direct Incoming Offer from Co-Host/Guest
+    // Handle direct offers initiated by guest co-hosts
     const handleIncomingOffer = async (payload) => {
       const senderId = payload.senderSocketId || payload.guestSocketId;
       if (!senderId || !payload.offer) return;
@@ -195,7 +196,6 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
         const pc = createPeerConnection(senderId);
         await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
 
-        // Process queued ICE candidates
         if (iceCandidatesQueueRef.current[senderId]) {
           for (const candidate of iceCandidatesQueueRef.current[senderId]) {
             await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
@@ -216,7 +216,6 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
       }
     };
 
-    // Host receiving answer back from viewer or guest
     const handleAnswerReceived = async (payload) => {
       const viewerId = payload.viewerSocketId || payload.senderSocketId;
       const pc = peerConnectionsRef.current[viewerId];
@@ -239,7 +238,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
     };
 
     const handleIncomingIceCandidate = async (payload) => {
-      const senderId = payload.senderSocketId;
+      const senderId = payload.senderSocketId || payload.targetSocketId;
       const pc = peerConnectionsRef.current[senderId];
       
       if (pc) {
@@ -271,5 +270,5 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
     };
   }, [socket, streamId, hardwareReady]);
 
-  return { localVideoRef, hardwareReady, guestStreams };
+  return { localVideoRef, hardwareReady };
 };
