@@ -1,8 +1,24 @@
-// src/pages/Live/Host/GuestManager.jsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ArrowLeft, Radio, Video, Mic, X, Users, UserX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
+
+const GLOBAL_ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    {
+      urls: 'turn:global.relay.metered.ca:80',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn',
+    },
+    {
+      urls: 'turn:global.relay.metered.ca:443',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn',
+    }
+  ],
+  iceCandidatePoolSize: 10,
+};
 
 const GuestManager = ({ 
   streamId,
@@ -11,14 +27,115 @@ const GuestManager = ({
   pendingRequests = [], 
   setPendingRequests, 
   onBack,
-  socket
+  socket,
+  onGuestStreamReceived // Optional callback to pass stream up to parent UI grid
 }) => {
+
+  const peerConnections = useRef({}); // Store active RTCPeerConnections mapped by guestId
+
+  // 1. WebRTC Signaling Listener for incoming Guest Streams
+  useEffect(() => {
+    if (!socket || !streamId) return;
+
+    console.log("⚡ [GuestManager] Initializing WebRTC Host Listeners...");
+
+    // Listener when Guest sends SDP Offer
+    const handleReceiveOffer = async (payload) => {
+      const { guestId, offer, mode } = payload;
+      console.log(`📥 [HOST WebRTC] Offer received from Guest ID: ${guestId}`, payload);
+
+      try {
+        // Create PeerConnection for this specific guest
+        const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
+        peerConnections.current[guestId] = pc;
+
+        // Handle incoming remote media tracks from the guest
+        pc.ontrack = (event) => {
+          console.log(`🎉 [HOST WebRTC] Received guest stream track! Kind: ${event.track.kind}`);
+          if (event.streams && event.streams[0]) {
+            const guestStream = event.streams[0];
+            
+            // Attach stream object to active guest state
+            setActiveGuests(prev => 
+              (prev || []).map(g => g.user_id === guestId ? { ...g, stream: guestStream } : g)
+            );
+
+            if (onGuestStreamReceived) {
+              onGuestStreamReceived(guestId, guestStream);
+            }
+          }
+        };
+
+        // Emit Host ICE Candidates back to Guest
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            console.log(`📡 [HOST WebRTC] Sending ICE Candidate to Guest ${guestId}`);
+            socket.emit('webrtc_ice_candidate', {
+              streamId,
+              candidate: event.candidate,
+              to: guestId,
+              senderType: 'host'
+            });
+          }
+        };
+
+        // Set Remote SDP Offer and create SDP Answer
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        console.log(`✅ [HOST WebRTC] Remote description set for guest ${guestId}`);
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        console.log(`📤 [HOST WebRTC] Answer created and local description set for guest ${guestId}`);
+
+        // Emit Answer back to Guest
+        socket.emit('send_webrtc_answer', {
+          streamId,
+          guestId,
+          answer: answer
+        });
+
+      } catch (err) {
+        console.error(`❌ [HOST WebRTC] Error processing offer from guest ${guestId}:`, err);
+      }
+    };
+
+    // Listener for incoming Guest ICE Candidates
+    const handleIncomingIce = async (payload) => {
+      const { candidate, senderId, guestId } = payload;
+      const targetGuestId = guestId || senderId;
+      const pc = peerConnections.current[targetGuestId];
+
+      if (pc && candidate) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log(`✅ [HOST WebRTC] ICE candidate added for guest ${targetGuestId}`);
+        } catch (err) {
+          console.warn(`⚠️ [HOST WebRTC] Failed to add ICE candidate:`, err);
+        }
+      }
+    };
+
+    socket.on('send_webrtc_offer', handleReceiveOffer);
+    socket.on('receive_webrtc_offer', handleReceiveOffer);
+    socket.on('incoming_ice_candidate', handleIncomingIce);
+    socket.on('webrtc_ice_candidate', handleIncomingIce);
+
+    return () => {
+      socket.off('send_webrtc_offer', handleReceiveOffer);
+      socket.off('receive_webrtc_offer', handleReceiveOffer);
+      socket.off('incoming_ice_candidate', handleIncomingIce);
+      socket.off('webrtc_ice_candidate', handleIncomingIce);
+
+      // Clean up PeerConnections on unmount
+      Object.values(peerConnections.current).forEach(pc => pc.close());
+      peerConnections.current = {};
+    };
+  }, [socket, streamId, setActiveGuests, onGuestStreamReceived]);
 
   // Fetch initial requests & establish real-time database listener
   useEffect(() => {
     if (!streamId) return;
 
-    // Fetch existing pending requests from Supabase
     const fetchRequests = async () => {
       const { data, error } = await supabase
         .from('live_guest_requests')
@@ -33,7 +150,6 @@ const GuestManager = ({
 
     fetchRequests();
 
-    // Listen for real-time join request inserts and status updates
     const channel = supabase
       .channel(`guest_manager_requests_${streamId}`)
       .on(
@@ -53,7 +169,6 @@ const GuestManager = ({
               });
             }
           } else if (payload.eventType === 'UPDATE') {
-            // Automatically clear out processed requests from pending state
             if (payload.new.status !== 'pending') {
               setPendingRequests(prev => (prev || []).filter(r => r.id !== payload.new.id));
             }
@@ -79,7 +194,6 @@ const GuestManager = ({
       return;
     }
 
-    // 1. Optimistically update local queues first to prevent UI flashes
     if (setPendingRequests) {
       setPendingRequests(prev => (prev || []).filter(item => item.id !== request.id));
     }
@@ -102,7 +216,6 @@ const GuestManager = ({
       });
     }
 
-    // 2. Update Supabase record status to 'approved'
     const { data, error } = await supabase
       .from('live_guest_requests')
       .update({ status: 'approved', mode: assignedMode })
@@ -117,7 +230,6 @@ const GuestManager = ({
 
     console.log("✅ Guest status updated to approved in DB:", data[0]);
 
-    // 3. Emit WebSockets signal to notify guest peer to initiate RTC offer
     if (socket) {
       socket.emit('approve_cohost', { 
         streamId, 
@@ -130,6 +242,7 @@ const GuestManager = ({
   // Handle Rejecting or Removing a Guest
   const handleRejectRemove = async (target, isRequestQueue = true) => {
     const targetId = typeof target === 'object' ? target.id : target;
+    const guestUserId = typeof target === 'object' ? target.user_id : null;
 
     if (isRequestQueue) {
       if (setPendingRequests) {
@@ -141,6 +254,12 @@ const GuestManager = ({
         .update({ status: 'rejected' })
         .eq('id', targetId);
     } else {
+      // Close WebRTC connection for this guest
+      if (guestUserId && peerConnections.current[guestUserId]) {
+        peerConnections.current[guestUserId].close();
+        delete peerConnections.current[guestUserId];
+      }
+
       if (setActiveGuests) {
         setActiveGuests(prev => (prev || []).filter(item => item.id !== targetId));
       }
@@ -150,8 +269,8 @@ const GuestManager = ({
         .update({ status: 'disconnected' })
         .eq('id', targetId);
 
-      if (socket && target.user_id) {
-        socket.emit('kick_cohost', { streamId, guestId: target.user_id });
+      if (socket && guestUserId) {
+        socket.emit('kick_cohost', { streamId, guestId: guestUserId });
       }
     }
   };
