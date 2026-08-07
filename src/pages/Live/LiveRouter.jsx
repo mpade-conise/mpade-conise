@@ -4,8 +4,8 @@ import { Compass, Video, Home, Zap, ShieldCheck } from 'lucide-react';
 
 // Host Pages
 import GoLive from './Host/GoLive';
-import GuestLiveSetup from './Host/GuestLiveSetup'; // 🔥 NEW: 8-Panel Guest Setup
-import MobileGamingSetup from './Host/MobileGamingSetup'; // 🔥 NEW: Mobile Gaming Setup
+import GuestLiveSetup from './guest'; // 🔥 NEW: 8-Panel Guest Setup
+import MobileGamingSetup from './gaming'; // 🔥 NEW: Mobile Gaming Setup
 import StreamDashboard from './Host/StreamDashboard';
 import HostAnalytics from './Host/HostAnalytics';
 
