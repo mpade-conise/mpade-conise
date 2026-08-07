@@ -33,22 +33,31 @@ const GuestManager = ({
 
     fetchRequests();
 
-    // Listen for real-time join request inserts from viewers
+    // Listen for real-time join request inserts and status updates
     const channel = supabase
       .channel(`guest_manager_requests_${streamId}`)
       .on(
         'postgres_changes',
         { 
-          event: 'INSERT', 
+          event: '*', 
           schema: 'public', 
           table: 'live_guest_requests', 
           filter: `stream_id=eq.${streamId}` 
         },
         (payload) => {
-          setPendingRequests(prev => {
-            const exists = (prev || []).some(r => r.id === payload.new.id);
-            return exists ? prev : [...(prev || []), payload.new];
-          });
+          if (payload.eventType === 'INSERT') {
+            if (payload.new.status === 'pending') {
+              setPendingRequests(prev => {
+                const exists = (prev || []).some(r => r.id === payload.new.id);
+                return exists ? prev : [...(prev || []), payload.new];
+              });
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            // Automatically clear out processed requests from pending state
+            if (payload.new.status !== 'pending') {
+              setPendingRequests(prev => (prev || []).filter(r => r.id !== payload.new.id));
+            }
+          }
         }
       )
       .subscribe();
@@ -58,7 +67,7 @@ const GuestManager = ({
     };
   }, [streamId, setPendingRequests]);
 
-  // Handle Accept Request (Updates Supabase with RLS Verification, Socket, and local grid state)
+  // Handle Accept Request (Updates Supabase, updates local state, & triggers Socket event)
   const handleAcceptRequest = async (request, assignedMode) => {
     if (!request?.id) {
       console.error("❌ Missing request ID:", request);
@@ -70,49 +79,45 @@ const GuestManager = ({
       return;
     }
 
-    // 1. Update Supabase record status to 'approved' and call .select() to verify execution
+    // 1. Optimistically update local queues first to prevent UI flashes
+    if (setPendingRequests) {
+      setPendingRequests(prev => (prev || []).filter(item => item.id !== request.id));
+    }
+
+    if (setActiveGuests) {
+      setActiveGuests(prev => {
+        const exists = (prev || []).some(g => g.user_id === request.user_id);
+        if (exists) return prev;
+        return [
+          ...prev,
+          { 
+            id: request.id, 
+            user_id: request.user_id, 
+            username: request.username, 
+            avatar_url: request.avatar_url,
+            mode: assignedMode, 
+            isMuted: false 
+          }
+        ];
+      });
+    }
+
+    // 2. Update Supabase record status to 'approved'
     const { data, error } = await supabase
       .from('live_guest_requests')
       .update({ status: 'approved', mode: assignedMode })
       .eq('id', request.id)
       .select();
 
-    if (error) {
-      console.error("❌ Failed DB Update Error:", error.message);
-      alert(`Error accepting request: ${error.message}`);
+    if (error || !data || data.length === 0) {
+      console.error("❌ DB Update failed:", error?.message || "Check Supabase RLS policies");
+      alert("Failed to update guest status in database.");
       return;
     }
 
-    // Check if RLS blocked the write operation silently
-    if (!data || data.length === 0) {
-      console.error("❌ DB Update failed: 0 rows updated. Check Supabase RLS policies.");
-      alert("Failed to update database. Ensure Supabase Row Level Security (RLS) allows hosts to UPDATE live_guest_requests.");
-      return;
-    }
+    console.log("✅ Guest status updated to approved in DB:", data[0]);
 
-    console.log("✅ Successfully updated DB status to approved:", data);
-
-    // 2. Add guest to active state list for multi-grid rendering
-    if (setActiveGuests) {
-      setActiveGuests(prev => [
-        ...(prev || []),
-        { 
-          id: request.id, 
-          user_id: request.user_id, 
-          username: request.username, 
-          avatar_url: request.avatar_url,
-          mode: assignedMode, 
-          isMuted: false 
-        }
-      ]);
-    }
-
-    // 3. Remove from pending state array
-    if (setPendingRequests) {
-      setPendingRequests(prev => (prev || []).filter(item => item.id !== request.id));
-    }
-
-    // 4. Emit WebSockets signal to notify guest peer to start RTC handshake
+    // 3. Emit WebSockets signal to notify guest peer to initiate RTC offer
     if (socket) {
       socket.emit('approve_cohost', { 
         streamId, 
@@ -127,25 +132,23 @@ const GuestManager = ({
     const targetId = typeof target === 'object' ? target.id : target;
 
     if (isRequestQueue) {
-      // Reject incoming request in DB
+      if (setPendingRequests) {
+        setPendingRequests(prev => (prev || []).filter(item => item.id !== targetId));
+      }
+
       await supabase
         .from('live_guest_requests')
         .update({ status: 'rejected' })
         .eq('id', targetId);
-
-      if (setPendingRequests) {
-        setPendingRequests(prev => (prev || []).filter(item => item.id !== targetId));
-      }
     } else {
-      // Remove an active connected guest from grid
+      if (setActiveGuests) {
+        setActiveGuests(prev => (prev || []).filter(item => item.id !== targetId));
+      }
+
       await supabase
         .from('live_guest_requests')
         .update({ status: 'disconnected' })
         .eq('id', targetId);
-
-      if (setActiveGuests) {
-        setActiveGuests(prev => (prev || []).filter(item => item.id !== targetId));
-      }
 
       if (socket && target.user_id) {
         socket.emit('kick_cohost', { streamId, guestId: target.user_id });
