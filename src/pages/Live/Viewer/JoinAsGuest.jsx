@@ -47,29 +47,45 @@ const JoinAsGuest = () => {
   const hostUserIdRef = useRef(null);
   const currentUserIdRef = useRef(null);
 
-  useEffect(() => { hostUserIdRef.current = hostUserId; }, [hostUserId]);
-  useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
+  useEffect(() => { 
+    hostUserIdRef.current = hostUserId; 
+    console.log('[DEBUG] Updated hostUserIdRef:', hostUserId);
+  }, [hostUserId]);
+
+  useEffect(() => { 
+    currentUserIdRef.current = currentUserId; 
+    console.log('[DEBUG] Updated currentUserIdRef:', currentUserId);
+  }, [currentUserId]);
 
   const processIceQueue = async () => {
+    console.log(`🧊 [ICE] Processing queued candidates. Queue length: ${iceQueueRef.current.length}`);
     if (pcRef.current && pcRef.current.remoteDescription && iceQueueRef.current.length > 0) {
       const candidates = [...iceQueueRef.current];
       iceQueueRef.current = [];
       for (const candidate of candidates) {
         try {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log('✅ [ICE] Added queued ICE Candidate successfully');
         } catch (e) {
           console.warn('⚠️ [ICE] Candidate add warning:', e);
         }
       }
+    } else {
+      console.log('ℹ️ [ICE] Queue processing skipped (No PC, remote description missing, or empty queue)');
     }
   };
 
   const startPreview = async () => {
+    console.log('📹 [MEDIA] Requesting user media permissions...');
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      console.log('✅ [MEDIA] User media stream obtained successfully:', mediaStream.id);
       localStreamRef.current = mediaStream;
       setStream(mediaStream);
-      if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = mediaStream;
+        console.log('🎥 [MEDIA] Assigned media stream to local video element');
+      }
     } catch (err) {
       console.error('❌ [MEDIA] Access Error:', err);
       setIsCamOn(false);
@@ -77,20 +93,36 @@ const JoinAsGuest = () => {
   };
 
   const fetchDetails = async () => {
+    console.log('🔍 [INIT] Fetching user profile and live stream metadata...');
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      console.log('👤 [AUTH] Authenticated User ID:', user.id);
       setCurrentUserId(user.id);
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      const { data: profile, error: profileErr } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (profileErr) console.error('❌ [SUPABASE] Error fetching user profile:', profileErr);
+      else console.log('✅ [SUPABASE] User profile retrieved:', profile?.username);
       setUserProfile(profile);
+    } else {
+      console.warn('⚠️ [AUTH] No authenticated user found.');
     }
 
-    const { data: streamData } = await supabase.from('live_streams').select('*').eq('id', streamId).single();
-    if (streamData) setHostUserId(streamData.host_id || streamData.user_id);
+    const { data: streamData, error: streamErr } = await supabase.from('live_streams').select('*').eq('id', streamId).single();
+    if (streamErr) {
+      console.error('❌ [SUPABASE] Error fetching stream details:', streamErr);
+    } else if (streamData) {
+      const detectedHost = streamData.host_id || streamData.user_id;
+      console.log('✅ [SUPABASE] Live Stream host retrieved:', detectedHost);
+      setHostUserId(detectedHost);
+    }
   };
 
   const initSocket = useCallback(() => {
-    if (socketRef.current?.connected) return socketRef.current;
+    if (socketRef.current?.connected) {
+      console.log('🌐 [SOCKET] Reusing existing connected socket:', socketRef.current.id);
+      return socketRef.current;
+    }
 
+    console.log('🌐 [SOCKET] Initializing Socket.io connection to:', SOCKET_SERVER_URL);
     const socket = io(SOCKET_SERVER_URL, { 
       transports: ['websocket'],
       reconnection: true,
@@ -101,7 +133,16 @@ const JoinAsGuest = () => {
 
     socket.on('connect', () => {
       console.log("🌐 [Guest Socket] Connected to signaling server with ID:", socket.id);
+      console.log(`📡 [SOCKET] Emitting 'join_room' for stream: ${streamId}, user: ${currentUserIdRef.current}`);
       socket.emit('join_room', { streamId, userId: currentUserIdRef.current });
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('⚠️ [SOCKET] Disconnected from signaling server:', reason);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ [SOCKET] Connection Error:', error);
     });
 
     return socket;
@@ -110,26 +151,45 @@ const JoinAsGuest = () => {
   // Ingest-Only Connection: Guest acts as stream source for the Host
   const startBroadcastIngest = useCallback((guestMediaStream, mode, targetHost) => {
     const activeUser = currentUserIdRef.current || currentUserId;
+    console.log(`🚀 [WEBRTC] Initializing broadcast ingest process. ActiveUser: ${activeUser}, TargetHost: ${targetHost}, Mode: ${mode}`);
     const socket = initSocket();
 
     if (pcRef.current) {
+      console.log('🔄 [WEBRTC] Closing existing RTCPeerConnection before recreating');
       pcRef.current.close();
     }
 
+    console.log('🛠️ [WEBRTC] Creating new RTCPeerConnection with ICE config');
     const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
     pcRef.current = pc;
 
+    // Track Connection State Changes
+    pc.onconnectionstatechange = () => {
+      console.log(`⚡ [WEBRTC State] Connection State Changed: ${pc.connectionState}`);
+    };
+    pc.onsignalingstatechange = () => {
+      console.log(`⚡ [WEBRTC State] Signaling State Changed: ${pc.signalingState}`);
+    };
+    pc.oniceconnectionstatechange = () => {
+      console.log(`⚡ [WEBRTC State] ICE Connection State Changed: ${pc.iceConnectionState}`);
+    };
+
     // Attach local tracks to send stream upstream to host server/mixer
     if (guestMediaStream) {
+      console.log('🎵 [WEBRTC] Attaching local tracks to Peer Connection...');
       guestMediaStream.getTracks().forEach((track) => {
         if (track.kind === 'video') track.enabled = mode === 'video' && isCamOn;
         if (track.kind === 'audio') track.enabled = isMicOn;
+        console.log(`➕ [WEBRTC] Added track: ${track.kind} (Enabled: ${track.enabled})`);
         pc.addTrack(track, guestMediaStream);
       });
+    } else {
+      console.warn('⚠️ [WEBRTC] No local media stream provided to attach tracks!');
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current?.connected) {
+        console.log('📡 [WEBRTC] Generated local ICE Candidate, emitting to host:', targetHost);
         socket.emit('webrtc_ice_candidate', {
           streamId,
           candidate: event.candidate,
@@ -142,13 +202,15 @@ const JoinAsGuest = () => {
     // Configure connection strictly for publishing outbound stream
     const publishStreamFeed = async () => {
       try {
+        console.log('📄 [WEBRTC] Creating WebRTC offer...');
         const offer = await pc.createOffer({
           offerToReceiveAudio: false,
           offerToReceiveVideo: false,
         });
         await pc.setLocalDescription(offer);
+        console.log('✅ [WEBRTC] Local description set to offer');
 
-        console.log("🚀 [Guest WebRTC] Dispatching offer to host...");
+        console.log("🚀 [Guest WebRTC] Dispatching offer to host via socket event 'send_webrtc_offer'");
         socket.emit('send_webrtc_offer', {
           streamId,
           guestId: activeUser,
@@ -166,10 +228,15 @@ const JoinAsGuest = () => {
     socket.off('webrtc_answer_received');
     socket.on('webrtc_answer_received', async ({ answer, sdpAnswer }) => {
       const incomingAnswer = answer || sdpAnswer;
-      if (!pcRef.current || pcRef.current.signalingState === 'closed' || !incomingAnswer) return;
+      console.log('📩 [SOCKET] Event received: "webrtc_answer_received"', { incomingAnswer });
+      if (!pcRef.current || pcRef.current.signalingState === 'closed' || !incomingAnswer) {
+        console.warn('⚠️ [WEBRTC] Ignored answer. PC invalid or state closed.');
+        return;
+      }
       try {
         console.log("⚡ [Guest WebRTC] Host Answer received! Setting Remote Description...");
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(incomingAnswer));
+        console.log('✅ [WEBRTC] Remote Description set successfully');
         await processIceQueue();
       } catch (err) {
         console.error('❌ Remote SDP processing failed:', err);
@@ -178,15 +245,23 @@ const JoinAsGuest = () => {
 
     socket.off('incoming_ice_candidate');
     socket.on('incoming_ice_candidate', async ({ candidate }) => {
+      console.log('📩 [SOCKET] Event received: "incoming_ice_candidate"', candidate);
       if (pcRef.current?.remoteDescription && candidate) {
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log('✅ [WEBRTC] Added incoming ICE candidate directly');
+        } catch (e) {
+          console.error('❌ [WEBRTC] Failed to add incoming ICE candidate:', e);
+        }
       } else if (candidate) {
+        console.log('📥 [WEBRTC] Remote description not ready, queuing incoming candidate');
         iceQueueRef.current.push(candidate);
       }
     });
 
     socket.off('removed_from_panel');
     socket.on('removed_from_panel', () => {
+      console.warn('🚨 [SOCKET] Event received: "removed_from_panel". Navigating back...');
       alert('You have been removed from the panel stream.');
       navigate(`/live/watch/${streamId}`);
     });
@@ -199,19 +274,25 @@ const JoinAsGuest = () => {
     setAssignedMode(mode);
 
     const resolvedHost = hostId || hostUserIdRef.current;
+    console.log(`📌 [APPROVAL] Resolved Host ID for ingest: ${resolvedHost}`);
     startBroadcastIngest(localStreamRef.current, mode, resolvedHost);
   }, [startBroadcastIngest]);
 
   useEffect(() => {
+    console.log('🚀 [LIFECYCLE] Component mounted. Initializing preview, details, and socket listeners...');
     startPreview();
     fetchDetails();
     const socket = initSocket();
 
     // Listen for real-time approval directly on active socket
     const onApproveCohost = (payload) => {
+      console.log('📩 [SOCKET] Approval event received:', payload);
       const guestMatch = payload.guestId ? payload.guestId === currentUserIdRef.current : true;
       if (guestMatch) {
+        console.log('✅ [APPROVAL] Match confirmed for current guest!');
         handleApproval(payload.mode || 'video', payload.hostId);
+      } else {
+        console.log(`ℹ️ [APPROVAL] Approval ignored (Target Guest ID ${payload.guestId} != Current User ${currentUserIdRef.current})`);
       }
     };
 
@@ -219,9 +300,17 @@ const JoinAsGuest = () => {
     socket.on('cohost_approved', onApproveCohost);
 
     return () => {
-      if (localStreamRef.current) localStreamRef.current.getTracks().forEach((t) => t.stop());
-      if (pcRef.current) pcRef.current.close();
+      console.log('🧹 [CLEANUP] Unmounting component. Cleaning up streams, PC, and socket listeners...');
+      if (localStreamRef.current) {
+        console.log('🛑 [MEDIA] Stopping local media tracks');
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      if (pcRef.current) {
+        console.log('🛑 [WEBRTC] Closing PeerConnection');
+        pcRef.current.close();
+      }
       if (socketRef.current) {
+        console.log('🔌 [SOCKET] Removing socket listeners and disconnecting');
         socketRef.current.off('approve_cohost', onApproveCohost);
         socketRef.current.off('cohost_approved', onApproveCohost);
         socketRef.current.disconnect();
@@ -230,11 +319,13 @@ const JoinAsGuest = () => {
   }, [streamId, initSocket, handleApproval]);
 
   const handleSendRequest = async () => {
+    console.log('👆 [ACTION] "Request Stream Panel" clicked');
     setIsRequesting(true);
     const activeUser = userProfile?.id || currentUserId;
+    console.log(`📤 [SUPABASE] Inserting panel request for user: ${activeUser}`);
 
     // 1. Send via Supabase
-    const { data: request } = await supabase
+    const { data: request, error: reqErr } = await supabase
       .from('live_guest_requests')
       .insert([
         {
@@ -248,23 +339,37 @@ const JoinAsGuest = () => {
       .select()
       .single();
 
+    if (reqErr) {
+      console.error('❌ [SUPABASE] Request submission error:', reqErr);
+      setIsRequesting(false);
+      return;
+    }
+
     if (request) {
+      console.log('✅ [SUPABASE] Request submitted successfully. Request ID:', request.id);
+      console.log(`📡 [SUPABASE] Subscribing to changes for channel: guest_request_${request.id}`);
+      
       const subscription = supabase
         .channel(`guest_request_${request.id}`)
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'live_guest_requests', filter: `id=eq.${request.id}` },
           (payload) => {
+            console.log('🔔 [SUPABASE Realtime] Guest request updated:', payload.new);
             if (payload.new.status === 'approved') {
+              console.log('🎉 [SUPABASE Realtime] Request APPROVED by host');
               handleApproval(payload.new.mode || 'video', payload.new.host_id);
               supabase.removeChannel(subscription);
             } else if (payload.new.status === 'rejected') {
+              console.warn('🚫 [SUPABASE Realtime] Request REJECTED by host');
               setIsRequesting(false);
               alert('Request to join stream panel was rejected.');
             }
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log(`📡 [SUPABASE Realtime] Subscription status: ${status}`);
+        });
     }
   };
 
@@ -274,6 +379,9 @@ const JoinAsGuest = () => {
       if (track) {
         track.enabled = !track.enabled;
         setIsCamOn(track.enabled);
+        console.log(`🎥 [MEDIA] Camera state toggled to: ${track.enabled}`);
+      } else {
+        console.warn('⚠️ [MEDIA] No video track found to toggle');
       }
     }
   };
@@ -284,6 +392,9 @@ const JoinAsGuest = () => {
       if (track) {
         track.enabled = !track.enabled;
         setIsMicOn(track.enabled);
+        console.log(`🎙️ [MEDIA] Microphone state toggled to: ${track.enabled}`);
+      } else {
+        console.warn('⚠️ [MEDIA] No audio track found to toggle');
       }
     }
   };
@@ -292,7 +403,10 @@ const JoinAsGuest = () => {
     <div className="h-screen w-screen bg-black flex flex-col items-center justify-center relative p-6 font-sans">
       <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-50">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => {
+            console.log('🚪 [ACTION] Navigating back...');
+            navigate(-1);
+          }}
           className="p-3 bg-white/10 backdrop-blur-xl rounded-full border border-white/10 text-white hover:bg-white/20 transition-all"
         >
           <X size={20} />
