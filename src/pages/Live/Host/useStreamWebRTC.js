@@ -34,6 +34,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
   const peerConnectionsRef = useRef({});
   const iceCandidatesQueueRef = useRef({}); 
   const [hardwareReady, setHardwareReady] = useState(false);
+  const [guestStreams, setGuestStreams] = useState({}); // Stores remote guest MediaStreams mapped by socketId
 
   // 1. Hardware Stream Capturing
   useEffect(() => {
@@ -86,7 +87,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
     }
   }, [hardwareReady, localVideoRef.current]);
 
-  // Sync Hardware Track States (Combined cleanly so state sync never gets lost)
+  // Sync Hardware Track States
   useEffect(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => { 
@@ -98,10 +99,68 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
     }
   }, [isMuted, isCameraOff]);
 
+  // Helper to attach inbound track safely to DOM / State
+  const attachRemoteStream = (peerId, stream) => {
+    console.log(`🌐 Remote media stream bound for peer: ${peerId}`);
+    
+    // Update map state for dynamic tile components
+    setGuestStreams(prev => ({ ...prev, [peerId]: stream }));
+
+    // Fallback binding directly to passed DOM ref
+    if (challengerVideoRef && challengerVideoRef.current) {
+      challengerVideoRef.current.srcObject = stream;
+    }
+  };
+
   // 2. Signaling Matrix Pipeline via Socket.io
   useEffect(() => {
     if (!socket || !streamId || !hardwareReady) return;
 
+    // Helper to create & setup PC instance
+    const createPeerConnection = (targetSocketId) => {
+      if (peerConnectionsRef.current[targetSocketId]) {
+        return peerConnectionsRef.current[targetSocketId];
+      }
+
+      const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
+      peerConnectionsRef.current[targetSocketId] = pc;
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
+      }
+
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          attachRemoteStream(targetSocketId, event.streams[0]);
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('webrtc_ice_candidate', {
+            streamId,
+            candidate: event.candidate,
+            targetSocketId,
+            senderType: 'host'
+          });
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+          console.warn(`Peer disconnected: ${targetSocketId}`);
+          setGuestStreams(prev => {
+            const updated = { ...prev };
+            delete updated[targetSocketId];
+            return updated;
+          });
+        }
+      };
+
+      return pc;
+    };
+
+    // Standard Viewer / Host Initiated Offer
     const handleViewerRequest = async (payload) => {
       const viewerId = payload.viewerSocketId;
       if (!localStreamRef.current) return;
@@ -110,30 +169,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
       iceCandidatesQueueRef.current[viewerId] = [];
       
       try {
-        const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
-        peerConnectionsRef.current[viewerId] = pc;
-
-        localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
-
-        // Listen for incoming remote streams (from challengers joining into the host room)
-        pc.ontrack = (event) => {
-          console.log("🌐 Remote battle track received from peer connection.");
-          if (challengerVideoRef && challengerVideoRef.current && event.streams[0]) {
-            challengerVideoRef.current.srcObject = event.streams[0];
-          }
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit('webrtc_ice_candidate', {
-              streamId,
-              candidate: event.candidate,
-              targetSocketId: viewerId,
-              senderType: 'host'
-            });
-          }
-        };
-
+        const pc = createPeerConnection(viewerId);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
@@ -147,18 +183,52 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
       }
     };
 
+    // Direct Incoming Offer from Co-Host/Guest
+    const handleIncomingOffer = async (payload) => {
+      const senderId = payload.senderSocketId || payload.guestSocketId;
+      if (!senderId || !payload.offer) return;
+
+      console.log(`📥 Incoming guest offer from [${senderId}]`);
+      iceCandidatesQueueRef.current[senderId] = [];
+
+      try {
+        const pc = createPeerConnection(senderId);
+        await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+
+        // Process queued ICE candidates
+        if (iceCandidatesQueueRef.current[senderId]) {
+          for (const candidate of iceCandidatesQueueRef.current[senderId]) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+          }
+          delete iceCandidatesQueueRef.current[senderId];
+        }
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit('send_webrtc_answer', {
+          streamId,
+          answer,
+          targetSocketId: senderId
+        });
+      } catch (err) {
+        console.error("❌ Error responding to guest offer:", err);
+      }
+    };
+
+    // Host receiving answer back from viewer or guest
     const handleAnswerReceived = async (payload) => {
-      const viewerId = payload.viewerSocketId;
+      const viewerId = payload.viewerSocketId || payload.senderSocketId;
       const pc = peerConnectionsRef.current[viewerId];
       
       if (pc && !pc.currentRemoteDescription) {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-          console.log(`⚡ Connection stabilized for viewer: ${viewerId}`);
+          console.log(`⚡ Connection stabilized for peer: ${viewerId}`);
           
           if (iceCandidatesQueueRef.current[viewerId]) {
             for (const candidate of iceCandidatesQueueRef.current[viewerId]) {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
+              await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
             }
             delete iceCandidatesQueueRef.current[viewerId];
           }
@@ -169,37 +239,37 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
     };
 
     const handleIncomingIceCandidate = async (payload) => {
-      if (payload.senderType === 'viewer') {
-        const viewerId = payload.senderSocketId;
-        const pc = peerConnectionsRef.current[viewerId];
-        
-        if (pc) {
-          if (pc.remoteDescription) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-            } catch (e) {
-              console.warn("Skipped candidate insertion:", e);
-            }
-          } else {
-            if (!iceCandidatesQueueRef.current[viewerId]) {
-              iceCandidatesQueueRef.current[viewerId] = [];
-            }
-            iceCandidatesQueueRef.current[viewerId].push(payload.candidate);
+      const senderId = payload.senderSocketId;
+      const pc = peerConnectionsRef.current[senderId];
+      
+      if (pc) {
+        if (pc.remoteDescription) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          } catch (e) {
+            console.warn("Skipped candidate insertion:", e);
           }
+        } else {
+          if (!iceCandidatesQueueRef.current[senderId]) {
+            iceCandidatesQueueRef.current[senderId] = [];
+          }
+          iceCandidatesQueueRef.current[senderId].push(payload.candidate);
         }
       }
     };
 
     socket.on('viewer_requesting_stream', handleViewerRequest);
+    socket.on('receive_webrtc_offer', handleIncomingOffer);
     socket.on('webrtc_answer_received', handleAnswerReceived);
     socket.on('incoming_ice_candidate', handleIncomingIceCandidate);
 
     return () => {
       socket.off('viewer_requesting_stream', handleViewerRequest);
+      socket.off('receive_webrtc_offer', handleIncomingOffer);
       socket.off('webrtc_answer_received', handleAnswerReceived);
       socket.off('incoming_ice_candidate', handleIncomingIceCandidate);
     };
   }, [socket, streamId, hardwareReady]);
 
-  return { localVideoRef, hardwareReady };
+  return { localVideoRef, hardwareReady, guestStreams };
 };
