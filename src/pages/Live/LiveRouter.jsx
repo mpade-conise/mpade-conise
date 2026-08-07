@@ -4,6 +4,8 @@ import { Compass, Video, Home, Zap, ShieldCheck } from 'lucide-react';
 
 // Host Pages
 import GoLive from './Host/GoLive';
+import GuestLiveSetup from './Host/GuestLiveSetup'; // 🔥 NEW: 8-Panel Guest Setup
+import MobileGamingSetup from './Host/MobileGamingSetup'; // 🔥 NEW: Mobile Gaming Setup
 import StreamDashboard from './Host/StreamDashboard';
 import HostAnalytics from './Host/HostAnalytics';
 
@@ -11,8 +13,8 @@ import HostAnalytics from './Host/HostAnalytics';
 import StreamDiscovery from './Viewer/StreamDiscovery';
 import LivePlayer from './Viewer/LivePlayer';
 import Recharge from './Viewer/Recharge'; 
-import PaymentVerify from './Viewer/PaymentVerify'; // 🔥 ADDED: The verification logic
-import JoinAsGuest from './Viewer/JoinAsGuest'; // 🔥 NEW: Guest Module
+import PaymentVerify from './Viewer/PaymentVerify';
+import JoinAsGuest from './Viewer/JoinAsGuest';
 
 // Moderator Pages
 import ModDashboard from './Moderator/ModDashboard';
@@ -20,15 +22,20 @@ import ModDashboard from './Moderator/ModDashboard';
 const LiveRouter = () => {
   const location = useLocation();
 
-  // 🔥 UI Logic: Hide navigation when watching a stream or joining as guest
-  // This keeps the "TikTok" feel clean without overlapping buttons
-  const isWatching = location.pathname.includes('/watch/') || location.pathname.includes('/join-guest');
+  // 🔥 Hide global bottom navigation during streaming, pre-stream setups, or watching
+  const isFullscreenExperience = 
+    location.pathname.includes('/watch/') || 
+    location.pathname.includes('/join-guest') ||
+    location.pathname.includes('/live/device-camera') ||
+    location.pathname.includes('/live/guest') ||
+    location.pathname.includes('/live/gaming') ||
+    location.pathname.includes('/live/go-live');
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       
       {/* --- GLOBAL LIVE NAVIGATION --- */}
-      {!isWatching && (
+      {!isFullscreenExperience && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-zinc-900/80 backdrop-blur-2xl border border-white/10 px-6 py-3 rounded-full shadow-2xl flex items-center gap-8">
           <NavLink to="/live" icon={<Compass size={20} />} label="Explore" />
           
@@ -36,7 +43,7 @@ const LiveRouter = () => {
 
           {/* THE CENTERPIECE: GO LIVE BUTTON */}
           <Link 
-            to="/live/go-live" 
+            to="/live/device-camera" 
             className="bg-[#fe2c55] p-4 rounded-2xl shadow-[0_0_20px_rgba(254,44,85,0.4)] hover:scale-110 transition-all active:scale-95"
           >
             <Video size={24} className="text-white" />
@@ -47,26 +54,29 @@ const LiveRouter = () => {
       )}
 
       {/* --- PAGE CONTENT --- */}
-      <div className={`flex-1 ${!isWatching ? 'pb-24' : ''}`}> 
+      <div className={`flex-1 ${!isFullscreenExperience ? 'pb-24' : ''}`}> 
         <Routes>
           {/* Discovery */}
           <Route index element={<StreamDiscovery />} />
           <Route path="explore" element={<StreamDiscovery />} />
 
-          {/* 🔥 Recharge & Verification Flow 🔥 */}
+          {/* Recharge & Verification Flow */}
           <Route path="recharge" element={<Recharge />} />
           <Route path="payment-verify" element={<PaymentVerify />} />
 
-          {/* Host Flow */}
+          {/* Host Setup & Live Modes Flow */}
           <Route path="go-live" element={<GoLive />} />
+          <Route path="device-camera" element={<GoLive />} />
+          <Route path="guest" element={<GuestLiveSetup />} />
+          <Route path="gaming" element={<MobileGamingSetup />} />
+
+          {/* Host Management */}
           <Route path="dashboard/:streamId" element={<StreamDashboard />} />
           <Route path="analytics/:streamId" element={<HostAnalytics />} />
 
           {/* Viewer Flow */}
           <Route path="watch/:streamId" element={<LivePlayer />} />
-          
-         {/* Inside the <Routes> block of LiveRouter.jsx */}
-<Route path="watch/:streamId/join-guest" element={<JoinAsGuest />} />
+          <Route path="watch/:streamId/join-guest" element={<JoinAsGuest />} />
 
           {/* Mod Flow */}
           <Route path="mod/:streamId" element={<ModDashboard />} />
