@@ -15,6 +15,7 @@ const MobileGamingSetup = () => {
   const camVideoRef = useRef(null);
   
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('MOBILE GAMING');
 
   // WEBRTC & SIGNALING REFS
   const pcRef = useRef(null);
@@ -102,7 +103,6 @@ const MobileGamingSetup = () => {
     const pc = new RTCPeerConnection(iceServers);
     pcRef.current = pc;
 
-    // Attach local screen capture and webcam tracks to connection
     if (screenStream) {
       screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
     }
@@ -110,13 +110,11 @@ const MobileGamingSetup = () => {
       camStream.getTracks().forEach(track => pc.addTrack(track, camStream));
     }
 
-    // Connect to Supabase Realtime Channel for WebRTC SDP signaling exchange
     const channel = supabase.channel(`stream_signaling:${streamId}`, {
       config: { broadcast: { self: false } }
     });
     signalingChannelRef.current = channel;
 
-    // Send host ICE candidates to connecting viewers
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         channel.send({
@@ -127,7 +125,6 @@ const MobileGamingSetup = () => {
       }
     };
 
-    // Handle incoming signals from viewers (Answers and Viewer ICE Candidates)
     channel
       .on('broadcast', { event: 'viewer-answer' }, async ({ payload }) => {
         if (payload.answer && pc.signalingState !== 'closed') {
@@ -144,11 +141,9 @@ const MobileGamingSetup = () => {
         console.log(`📡 [Supabase Realtime] Signaling channel status: ${status}`);
       });
 
-    // Create host Offer SDP
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // Save initial WebRTC offer directly into Supabase live_streams table for new viewers
     const { error: updateError } = await supabase
       .from('live_streams')
       .update({ 
@@ -167,7 +162,6 @@ const MobileGamingSetup = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Insert stream entry into Postgres (Removed stream_type and has_cam_overlay)
       const { data, error } = await supabase
         .from('live_streams')
         .insert([{ 
@@ -180,7 +174,6 @@ const MobileGamingSetup = () => {
         .select().single();
 
       if (!error && data) {
-        // Complete WebRTC peer signaling initialization with the generated stream ID
         await initWebRTCSignaling(data.id);
         navigate(`/live/dashboard/${data.id}`);
       } else {
@@ -196,14 +189,17 @@ const MobileGamingSetup = () => {
   const tabs = [
     { name: 'POST', path: '/create/post', icon: null },
     { name: 'CREATE', path: '/create/story', icon: null },
-    { name: 'DEVICE CAMERA', path: '/live/device-camera', icon: <Camera size={14}/> },
-    { name: 'GO WITH GUEST', path: '/live/guest', icon: <Users size={14}/> },
-    { name: 'MOBILE GAMING', action: 'direct_gaming_stream', icon: <Gamepad2 size={14}/> },
+    { name: 'DEVICE CAMERA', mode: 'camera', icon: <Camera size={14}/> },
+    { name: 'GO WITH GUEST', mode: 'guest', icon: <Users size={14}/> },
+    { name: 'MOBILE GAMING', mode: 'gaming', icon: <Gamepad2 size={14}/> },
   ];
 
   const handleTabClick = (tab) => {
-    if (tab.action === 'direct_gaming_stream') {
-      handleStartGamingStream();
+    if (tab.mode) {
+      setActiveTab(tab.name);
+      if (tab.mode === 'camera') {
+        setIsCamOverlayOn(true);
+      }
     } else if (tab.path) {
       navigate(tab.path);
     }
@@ -311,7 +307,7 @@ const MobileGamingSetup = () => {
         
         <div className="flex items-center justify-center gap-8 min-w-max relative z-10">
           {tabs.map((tab) => {
-            const isActive = tab.name === 'MOBILE GAMING';
+            const isActive = activeTab === tab.name;
             return (
               <button
                 key={tab.name}
