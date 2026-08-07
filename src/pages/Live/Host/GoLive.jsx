@@ -74,8 +74,8 @@ const GoLive = () => {
   const tabs = [
     { name: 'POST', path: '/create/post', icon: null },
     { name: 'CREATE', path: '/create/story', icon: null },
-    { name: 'LIVE', path: '/live/setup', icon: null },
     { name: 'DEVICE CAMERA', path: '/live/device-camera', icon: <Camera size={14}/> },
+    { name: 'GO WITH GUEST', path: '/live/guest', icon: <Users size={14}/> },
     { name: 'MOBILE GAMING', path: '/live/gaming', icon: <Gamepad2 size={14}/> },
   ];
 
@@ -175,7 +175,7 @@ const GoLive = () => {
                 </span>
               )}
               <span className={`text-[11px] font-black tracking-widest whitespace-nowrap ${
-                tab.name === 'LIVE' ? 'text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-cyan-100 drop-shadow-[0_0_4px_rgba(6,182,212,0.4)]'
+                location.pathname === tab.path ? 'text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-cyan-100 drop-shadow-[0_0_4px_rgba(6,182,212,0.4)]'
               }`}>
                 {tab.name}
               </span>
