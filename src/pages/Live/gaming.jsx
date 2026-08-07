@@ -16,6 +16,10 @@ const MobileGamingSetup = () => {
   
   const [loading, setLoading] = useState(false);
 
+  // WEBRTC & SIGNALING REFS
+  const pcRef = useRef(null);
+  const channelRef = useRef(null);
+
   // STREAM & GAME STATE
   const [title, setTitle] = useState("");
   const [selectedGame, setSelectedGame] = useState("PUBG Mobile");
@@ -44,7 +48,6 @@ const MobileGamingSetup = () => {
       setIsScreenSharing(true);
       if (screenVideoRef.current) screenVideoRef.current.srcObject = displayStream;
 
-      // Handle user stopping stream from browser bar
       displayStream.getVideoTracks()[0].onended = () => {
         setIsScreenSharing(false);
         setScreenStream(null);
@@ -87,25 +90,91 @@ const MobileGamingSetup = () => {
     }
   };
 
+  // WEBRTC INITIALIZATION & OFFER CREATION
+  const initWebRTC = async (streamId) => {
+    const iceServers = {
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    };
+
+    const pc = new RTCPeerConnection(iceServers);
+    pcRef.current = pc;
+
+    // Attach active stream tracks to the peer connection
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
+    }
+    if (isCamOverlayOn && camStream) {
+      camStream.getTracks().forEach(track => pc.addTrack(track, camStream));
+    }
+
+    // Set up Supabase Realtime channel for WebRTC signaling
+    const channel = supabase.channel(`stream_signaling:${streamId}`);
+    channelRef.current = channel;
+
+    // Send local ICE candidates to joiners
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        channel.send({
+          type: 'broadcast',
+          event: 'ice-candidate',
+          payload: { candidate: event.candidate }
+        });
+      }
+    };
+
+    // Listen for Answer SDP from incoming viewers/receivers
+    channel
+      .on('broadcast', { event: 'answer' }, async ({ payload }) => {
+        if (payload.answer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+        }
+      })
+      .on('broadcast', { event: 'viewer-candidate' }, async ({ payload }) => {
+        if (payload.candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+        }
+      })
+      .subscribe();
+
+    // Create SDP Offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Save initial Offer SDP to stream record or broadcast
+    await supabase
+      .from('live_streams')
+      .update({ sdp_offer: offer })
+      .eq('id', streamId);
+  };
+
   const handleStartGamingStream = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase
-      .from('live_streams')
-      .insert([{ 
-        title: title || `${user.user_metadata?.username || 'User'}'s ${selectedGame} Stream`,
-        host_id: user.id,
-        category: selectedGame,
-        privacy,
-        status: 'live',
-        stream_type: 'gaming',
-        has_cam_overlay: isCamOverlayOn
-      }])
-      .select().single();
+      const { data, error } = await supabase
+        .from('live_streams')
+        .insert([{ 
+          title: title || `${user.user_metadata?.username || 'User'}'s ${selectedGame} Stream`,
+          host_id: user.id,
+          category: selectedGame,
+          privacy,
+          status: 'live',
+          stream_type: 'gaming',
+          has_cam_overlay: isCamOverlayOn
+        }])
+        .select().single();
 
-    if (!error) navigate(`/live/dashboard/${data.id}`);
-    setLoading(false);
+      if (!error && data) {
+        // Initialize WebRTC connection with the created stream ID
+        await initWebRTC(data.id);
+        navigate(`/live/dashboard/${data.id}`);
+      }
+    } catch (err) {
+      console.error("Failed to start WebRTC live stream", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const tabs = [
