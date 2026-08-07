@@ -167,7 +167,7 @@ const MobileGamingSetup = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Insert stream entry into Postgres
+      // Insert stream entry into Postgres (Removed invalid 'has_cam_overlay' key)
       const { data, error } = await supabase
         .from('live_streams')
         .insert([{ 
@@ -176,8 +176,7 @@ const MobileGamingSetup = () => {
           category: selectedGame,
           privacy,
           status: 'pending',
-          stream_type: 'gaming',
-          has_cam_overlay: isCamOverlayOn
+          stream_type: 'gaming'
         }])
         .select().single();
 
