@@ -144,10 +144,11 @@ const MobileGamingSetup = () => {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
+    // FIXED: Updated 'sdp_offer' to 'offer' to align with Postgres schema
     const { error: updateError } = await supabase
       .from('live_streams')
       .update({ 
-        sdp_offer: offer,
+        offer: offer,
         status: 'live' 
       })
       .eq('id', streamId);
