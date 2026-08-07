@@ -55,6 +55,19 @@ const MobileGamingSetup = () => {
     }
   }, [streamId]);
 
+  // BIND MEDIA STREAMS TO VIDEO ELEMENTS WHEN DOM IS READY
+  useEffect(() => {
+    if (screenVideoRef.current && screenStream) {
+      screenVideoRef.current.srcObject = screenStream;
+    }
+  }, [screenStream, streamId, isScreenSharing]);
+
+  useEffect(() => {
+    if (camVideoRef.current && camStream) {
+      camVideoRef.current.srcObject = camStream;
+    }
+  }, [camStream, streamId, isCamOverlayOn]);
+
   // START SCREEN SHARE CAPTURE
   const startScreenCapture = async () => {
     try {
@@ -64,7 +77,6 @@ const MobileGamingSetup = () => {
       });
       setScreenStream(displayStream);
       setIsScreenSharing(true);
-      if (screenVideoRef.current) screenVideoRef.current.srcObject = displayStream;
 
       displayStream.getVideoTracks()[0].onended = () => {
         setIsScreenSharing(false);
@@ -86,16 +98,17 @@ const MobileGamingSetup = () => {
 
   // WEBCAM OVERLAY PREVIEW
   useEffect(() => {
-    if (isCamOverlayOn && !streamId) startCamPreview();
+    if (isCamOverlayOn && !camStream) startCamPreview();
     else if (!isCamOverlayOn) stopCamPreview();
-    return () => stopCamPreview();
-  }, [isCamOverlayOn, streamId]);
+    return () => {
+      if (!streamId) stopCamPreview();
+    };
+  }, [isCamOverlayOn]);
 
   const startCamPreview = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       setCamStream(mediaStream);
-      if (camVideoRef.current) camVideoRef.current.srcObject = mediaStream;
     } catch (err) {
       setIsCamOverlayOn(false);
     }
@@ -132,7 +145,6 @@ const MobileGamingSetup = () => {
     });
     signalingChannelRef.current = channel;
 
-    // Attach ICE candidates broadcast only after subscription completes
     channel
       .on('broadcast', { event: 'viewer-answer' }, async ({ payload }) => {
         if (payload.answer && pc.signalingState !== 'closed') {
@@ -262,15 +274,31 @@ const MobileGamingSetup = () => {
         {/* ACTIVE STREAM CANVAS */}
         <div className="flex-1 relative bg-zinc-950 flex flex-col items-center justify-center p-6">
           <div className="w-full max-w-4xl aspect-video rounded-3xl overflow-hidden border-2 border-pink-500/50 shadow-[0_0_40px_rgba(244,63,94,0.3)] relative bg-black flex items-center justify-center">
-            {isScreenSharing ? (
-              <video ref={screenVideoRef} autoPlay muted playsInline className="w-full h-full object-contain" />
-            ) : (
-              <div className="flex flex-col items-center gap-2">
+            
+            {/* SCREEN SHARE STREAM DISPLAY */}
+            <video 
+              ref={screenVideoRef} 
+              autoPlay 
+              muted 
+              playsInline 
+              className={`w-full h-full object-contain ${screenStream ? 'block' : 'hidden'}`} 
+            />
+
+            {/* FALLBACK IF NO SCREEN STREAM IS ACTIVE */}
+            {!screenStream && (
+              <div className="flex flex-col items-center gap-3">
                 <Radio size={48} className="text-pink-500 animate-pulse" />
                 <span className="text-sm font-black text-pink-300 tracking-widest uppercase">Broadcasting Live</span>
+                <button 
+                  onClick={startScreenCapture}
+                  className="mt-2 px-4 py-2 bg-pink-600/30 border border-pink-400/60 rounded-xl text-pink-200 text-xs font-bold uppercase tracking-wider hover:bg-pink-600 transition-all"
+                >
+                  Share Screen / Game
+                </button>
               </div>
             )}
 
+            {/* PIP FACE-CAM OVERLAY */}
             {isCamOverlayOn && (
               <div className="absolute bottom-4 right-4 w-32 h-32 rounded-2xl overflow-hidden border-2 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.6)] bg-zinc-900 z-30">
                 <video ref={camVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
