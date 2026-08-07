@@ -15,8 +15,13 @@ const GLOBAL_ICE_CONFIG = {
       username: '28087eceaa61e6de7d551200',
       credential: 'KW6Vsm7ZTUwjjDWn',
     },
+    {
+      urls: 'turn:global.relay.metered.ca:443',
+      username: '28087eceaa61e6de7d551200',
+      credential: 'KW6Vsm7ZTUwjjDWn',
+    }
   ],
-  iceCandidatePoolSize: 5,
+  iceCandidatePoolSize: 10,
 };
 
 const JoinAsGuest = () => {
@@ -83,28 +88,33 @@ const JoinAsGuest = () => {
     if (streamData) setHostUserId(streamData.host_id || streamData.user_id);
   };
 
-  useEffect(() => {
-    startPreview();
-    fetchDetails();
-
-    return () => {
-      if (localStreamRef.current) localStreamRef.current.getTracks().forEach((t) => t.stop());
-      if (pcRef.current) pcRef.current.close();
-      if (socketRef.current) socketRef.current.disconnect();
-    };
-  }, [streamId]);
-
   const initSocket = useCallback(() => {
     if (socketRef.current?.connected) return socketRef.current;
-    const socket = io(SOCKET_SERVER_URL, { transports: ['websocket'] });
-    socketRef.current = socket;
-    return socket;
-  }, []);
 
-  // Ingest-Only Connection: Guest acts as stream source for the Broadcast Mixer
-  const startBroadcastIngest = (guestMediaStream, mode, targetHost) => {
+    const socket = io(SOCKET_SERVER_URL, { 
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 10
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log("🌐 [Guest Socket] Connected to signaling server with ID:", socket.id);
+      socket.emit('join_room', { streamId, userId: currentUserIdRef.current });
+    });
+
+    return socket;
+  }, [streamId]);
+
+  // Ingest-Only Connection: Guest acts as stream source for the Host
+  const startBroadcastIngest = useCallback((guestMediaStream, mode, targetHost) => {
     const activeUser = currentUserIdRef.current || currentUserId;
     const socket = initSocket();
+
+    if (pcRef.current) {
+      pcRef.current.close();
+    }
 
     const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
     pcRef.current = pc;
@@ -113,16 +123,18 @@ const JoinAsGuest = () => {
     if (guestMediaStream) {
       guestMediaStream.getTracks().forEach((track) => {
         if (track.kind === 'video') track.enabled = mode === 'video' && isCamOn;
+        if (track.kind === 'audio') track.enabled = isMicOn;
         pc.addTrack(track, guestMediaStream);
       });
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current?.connected) {
-        socket.emit('guest_ice_candidate', {
+        socket.emit('webrtc_ice_candidate', {
           streamId,
           candidate: event.candidate,
           to: targetHost,
+          senderType: 'guest'
         });
       }
     };
@@ -136,11 +148,12 @@ const JoinAsGuest = () => {
         });
         await pc.setLocalDescription(offer);
 
-        socket.emit('publish_guest_feed', {
+        console.log("🚀 [Guest WebRTC] Dispatching offer to host...");
+        socket.emit('send_webrtc_offer', {
           streamId,
           guestId: activeUser,
           targetHostId: targetHost,
-          sdpOffer: offer,
+          offer: offer,
           mode,
         });
       } catch (err) {
@@ -150,22 +163,24 @@ const JoinAsGuest = () => {
 
     publishStreamFeed();
 
-    socket.off('broadcast_ack_received');
-    socket.on('broadcast_ack_received', async ({ sdpAnswer }) => {
-      if (!pcRef.current || pcRef.current.signalingState === 'closed') return;
+    socket.off('webrtc_answer_received');
+    socket.on('webrtc_answer_received', async ({ answer, sdpAnswer }) => {
+      const incomingAnswer = answer || sdpAnswer;
+      if (!pcRef.current || pcRef.current.signalingState === 'closed' || !incomingAnswer) return;
       try {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(sdpAnswer));
+        console.log("⚡ [Guest WebRTC] Host Answer received! Setting Remote Description...");
+        await pcRef.current.setRemoteDescription(new RTCSessionDescription(incomingAnswer));
         await processIceQueue();
       } catch (err) {
         console.error('❌ Remote SDP processing failed:', err);
       }
     });
 
-    socket.off('incoming_host_ice');
-    socket.on('incoming_host_ice', async ({ candidate }) => {
-      if (pcRef.current?.remoteDescription) {
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-      } else {
+    socket.off('incoming_ice_candidate');
+    socket.on('incoming_ice_candidate', async ({ candidate }) => {
+      if (pcRef.current?.remoteDescription && candidate) {
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+      } else if (candidate) {
         iceQueueRef.current.push(candidate);
       }
     });
@@ -175,28 +190,50 @@ const JoinAsGuest = () => {
       alert('You have been removed from the panel stream.');
       navigate(`/live/watch/${streamId}`);
     });
-  };
+  }, [initSocket, streamId, currentUserId, isCamOn, isMicOn, navigate]);
 
   const handleApproval = useCallback((mode, hostId) => {
+    console.log("🎉 [Guest] Received host approval, setting up WebRTC stream...", { mode, hostId });
     setIsRequesting(false);
     setIsLiveOnPanel(true);
     setAssignedMode(mode);
 
     const resolvedHost = hostId || hostUserIdRef.current;
     startBroadcastIngest(localStreamRef.current, mode, resolvedHost);
-  }, [streamId]);
+  }, [startBroadcastIngest]);
+
+  useEffect(() => {
+    startPreview();
+    fetchDetails();
+    const socket = initSocket();
+
+    // Listen for real-time approval directly on active socket
+    const onApproveCohost = (payload) => {
+      const guestMatch = payload.guestId ? payload.guestId === currentUserIdRef.current : true;
+      if (guestMatch) {
+        handleApproval(payload.mode || 'video', payload.hostId);
+      }
+    };
+
+    socket.on('approve_cohost', onApproveCohost);
+    socket.on('cohost_approved', onApproveCohost);
+
+    return () => {
+      if (localStreamRef.current) localStreamRef.current.getTracks().forEach((t) => t.stop());
+      if (pcRef.current) pcRef.current.close();
+      if (socketRef.current) {
+        socketRef.current.off('approve_cohost', onApproveCohost);
+        socketRef.current.off('cohost_approved', onApproveCohost);
+        socketRef.current.disconnect();
+      }
+    };
+  }, [streamId, initSocket, handleApproval]);
 
   const handleSendRequest = async () => {
     setIsRequesting(true);
-    const socket = initSocket();
-
-    socket.off('approve_cohost');
-    socket.on('approve_cohost', ({ mode, hostId }) => {
-      handleApproval(mode || 'video', hostId);
-    });
-
     const activeUser = userProfile?.id || currentUserId;
 
+    // 1. Send via Supabase
     const { data: request } = await supabase
       .from('live_guest_requests')
       .insert([
