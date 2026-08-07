@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../../../supabaseClient';
+import { supabase } from '../../supabaseClient';
 import { 
   Camera, Users, Gamepad2, Settings, Sparkles, Wand2, 
   LayoutGrid, X, UserPlus, Shield, Mic, MicOff, VideoOff, 
