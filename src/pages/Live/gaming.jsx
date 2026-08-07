@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Camera, Users, Gamepad2, Settings, Sparkles, Wand2, 
-  X, RefreshCw, Monitor, MonitorOff, Video, VideoOff, 
-  Search, Shield, Play
+  Users, Gift, BarChart3, Share2, HelpCircle, BarChart, 
+  Smile, X, UserPlus, Swords, Mic, MicOff, Video, VideoOff, Settings, Radio, UserCheck, UserX,
+  Camera, Gamepad2, Sparkles, Wand2, RefreshCw, Monitor, MonitorOff, Search, Shield, Play
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 const MobileGamingSetup = () => {
   const navigate = useNavigate();
@@ -18,7 +18,7 @@ const MobileGamingSetup = () => {
 
   // WEBRTC & SIGNALING REFS
   const pcRef = useRef(null);
-  const channelRef = useRef(null);
+  const signalingChannelRef = useRef(null);
 
   // STREAM & GAME STATE
   const [title, setTitle] = useState("");
@@ -90,16 +90,19 @@ const MobileGamingSetup = () => {
     }
   };
 
-  // WEBRTC INITIALIZATION & OFFER CREATION
-  const initWebRTC = async (streamId) => {
+  // INITIALIZE WEBRTC & REALTIME SIGNALING VIA SUPABASE / POSTGRES
+  const initWebRTCSignaling = async (streamId) => {
     const iceServers = {
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
     };
 
     const pc = new RTCPeerConnection(iceServers);
     pcRef.current = pc;
 
-    // Attach active stream tracks to the peer connection
+    // Attach local screen capture and webcam tracks to connection
     if (screenStream) {
       screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
     }
@@ -107,44 +110,56 @@ const MobileGamingSetup = () => {
       camStream.getTracks().forEach(track => pc.addTrack(track, camStream));
     }
 
-    // Set up Supabase Realtime channel for WebRTC signaling
-    const channel = supabase.channel(`stream_signaling:${streamId}`);
-    channelRef.current = channel;
+    // Connect to Supabase Realtime Channel for WebRTC SDP signaling exchange
+    const channel = supabase.channel(`stream_signaling:${streamId}`, {
+      config: { broadcast: { self: false } }
+    });
+    signalingChannelRef.current = channel;
 
-    // Send local ICE candidates to joiners
+    // Send host ICE candidates to connecting viewers
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         channel.send({
           type: 'broadcast',
-          event: 'ice-candidate',
+          event: 'host-ice-candidate',
           payload: { candidate: event.candidate }
         });
       }
     };
 
-    // Listen for Answer SDP from incoming viewers/receivers
+    // Handle incoming signals from viewers (Answers and Viewer ICE Candidates)
     channel
-      .on('broadcast', { event: 'answer' }, async ({ payload }) => {
-        if (payload.answer) {
+      .on('broadcast', { event: 'viewer-answer' }, async ({ payload }) => {
+        if (payload.answer && pc.signalingState !== 'closed') {
+          console.log("📡 [WebRTC] Received Viewer SDP Answer");
           await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
         }
       })
-      .on('broadcast', { event: 'viewer-candidate' }, async ({ payload }) => {
+      .on('broadcast', { event: 'viewer-ice-candidate' }, async ({ payload }) => {
         if (payload.candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`📡 [Supabase Realtime] Signaling channel status: ${status}`);
+      });
 
-    // Create SDP Offer
+    // Create host Offer SDP
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // Save initial Offer SDP to stream record or broadcast
-    await supabase
+    // Save initial WebRTC offer directly into Supabase live_streams table for new viewers
+    const { error: updateError } = await supabase
       .from('live_streams')
-      .update({ sdp_offer: offer })
+      .update({ 
+        sdp_offer: offer,
+        status: 'live' 
+      })
       .eq('id', streamId);
+
+    if (updateError) {
+      console.error("❌ Failed to update stream SDP offer in Postgres database:", updateError);
+    }
   };
 
   const handleStartGamingStream = async () => {
@@ -152,26 +167,29 @@ const MobileGamingSetup = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
+      // Insert stream entry into Postgres
       const { data, error } = await supabase
         .from('live_streams')
         .insert([{ 
-          title: title || `${user.user_metadata?.username || 'User'}'s ${selectedGame} Stream`,
-          host_id: user.id,
+          title: title || `${user?.user_metadata?.username || 'User'}'s ${selectedGame} Stream`,
+          host_id: user?.id,
           category: selectedGame,
           privacy,
-          status: 'live',
+          status: 'pending',
           stream_type: 'gaming',
           has_cam_overlay: isCamOverlayOn
         }])
         .select().single();
 
       if (!error && data) {
-        // Initialize WebRTC connection with the created stream ID
-        await initWebRTC(data.id);
+        // Complete WebRTC peer signaling initialization with the generated stream ID
+        await initWebRTCSignaling(data.id);
         navigate(`/live/dashboard/${data.id}`);
+      } else {
+        console.error("❌ Failed to insert stream in Supabase:", error);
       }
     } catch (err) {
-      console.error("Failed to start WebRTC live stream", err);
+      console.error("⚠️ Error starting game stream:", err);
     } finally {
       setLoading(false);
     }
