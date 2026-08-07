@@ -29,7 +29,8 @@ const LiveRouter = () => {
     location.pathname.includes('/live/device-camera') ||
     location.pathname.includes('/live/guest') ||
     location.pathname.includes('/live/gaming') ||
-    location.pathname.includes('/live/go-live');
+    location.pathname.includes('/live/go-live') ||
+    location.pathname.includes('/live/dashboard');
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
@@ -68,7 +69,10 @@ const LiveRouter = () => {
           <Route path="go-live" element={<GoLive />} />
           <Route path="device-camera" element={<GoLive />} />
           <Route path="guest" element={<GuestLiveSetup />} />
+          
+          {/* Gaming Setup & Live Stream Routes */}
           <Route path="gaming" element={<MobileGamingSetup />} />
+          <Route path="gaming/:streamId" element={<MobileGamingSetup />} />
 
           {/* Host Management */}
           <Route path="dashboard/:streamId" element={<StreamDashboard />} />
