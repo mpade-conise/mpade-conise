@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 
-// CORRECTED GLOBAL ICE CONFIG MATCHING METERED METRICS
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.relay.metered.ca:80" },
@@ -33,35 +32,31 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const iceCandidatesQueueRef = useRef({}); 
-  const remoteStreamRef = useRef(null); // Stores incoming guest stream reference across renders
+  const remoteStreamRef = useRef(null);
   const [hardwareReady, setHardwareReady] = useState(false);
 
-  // Helper to bind remote guest stream to challenger DOM node
   const bindRemoteStreamToDOM = (stream) => {
-    if (stream) {
-      remoteStreamRef.current = stream;
-    }
+    if (stream) remoteStreamRef.current = stream;
     const targetRef = challengerVideoRef?.current;
     if (targetRef && remoteStreamRef.current) {
       if (targetRef.srcObject !== remoteStreamRef.current) {
         targetRef.srcObject = remoteStreamRef.current;
-        targetRef.play().catch(e => console.warn("Autoplay interaction requirement:", e));
+        targetRef.play().catch(e => console.warn("Autoplay restriction:", e));
         console.log("🎥 Guest remote media stream attached to challenger video element.");
       }
     }
   };
 
-  // Late-binding checker for challenger DOM element
   useEffect(() => {
     const interval = setInterval(() => {
       if (challengerVideoRef?.current && remoteStreamRef.current) {
         bindRemoteStreamToDOM(remoteStreamRef.current);
       }
-    }, 500);
+    }, 300);
     return () => clearInterval(interval);
   }, [challengerVideoRef]);
 
-  // 1. Hardware Stream Capturing
+  // Hardware Setup
   useEffect(() => {
     let mediaStream = null;
     let isMounted = true;
@@ -71,11 +66,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
         console.log("🎥 Accessing media hardware devices...");
         mediaStream = await navigator.mediaDevices.getUserMedia({ 
           video: { width: 1280, height: 720 }, 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
         
         if (!isMounted) {
@@ -84,9 +75,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
         }
 
         localStreamRef.current = mediaStream;
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = mediaStream;
-        }
+        if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
         setHardwareReady(true);
       } catch (err) {
         console.error("Broadcasting hardware failure:", err);
@@ -97,35 +86,27 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
 
     return () => {
       isMounted = false;
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-      }
+      if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
       Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
       peerConnectionsRef.current = {};
       remoteStreamRef.current = null;
     };
   }, [streamId]);
 
-  // Late-binding stream video DOM attachment
   useEffect(() => {
     if (hardwareReady && localStreamRef.current && localVideoRef.current && !localVideoRef.current.srcObject) {
       localVideoRef.current.srcObject = localStreamRef.current;
     }
   }, [hardwareReady, localVideoRef.current]);
 
-  // Sync Hardware Track States
   useEffect(() => {
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => { 
-        track.enabled = !isMuted; 
-      });
-      localStreamRef.current.getVideoTracks().forEach(track => { 
-        track.enabled = !isCameraOff; 
-      });
+      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
+      localStreamRef.current.getVideoTracks().forEach(track => { track.enabled = !isCameraOff; });
     }
   }, [isMuted, isCameraOff]);
 
-  // 2. Signaling Matrix Pipeline via Socket.io
+  // Signaling Matrix Pipeline
   useEffect(() => {
     if (!socket || !streamId || !hardwareReady) return;
 
@@ -142,7 +123,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
       }
 
       pc.ontrack = (event) => {
-        console.log("🌐 Remote battle/guest track received from peer connection.");
+        console.log("🌐 Remote guest track received from peer:", targetSocketId);
         if (event.streams && event.streams[0]) {
           bindRemoteStreamToDOM(event.streams[0]);
         }
@@ -184,13 +165,12 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
       }
     };
 
-    // Handle direct offers initiated by guest co-hosts
     const handleIncomingOffer = async (payload) => {
-      const senderId = payload.senderSocketId || payload.guestSocketId;
+      const senderId = payload.senderSocketId || payload.guestSocketId || payload.socketId;
       if (!senderId || !payload.offer) return;
 
       console.log(`📥 Incoming guest offer from [${senderId}]`);
-      iceCandidatesQueueRef.current[senderId] = [];
+      iceCandidatesQueueRef.current[senderId] = iceCandidatesQueueRef.current[senderId] || [];
 
       try {
         const pc = createPeerConnection(senderId);
@@ -217,7 +197,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
     };
 
     const handleAnswerReceived = async (payload) => {
-      const viewerId = payload.viewerSocketId || payload.senderSocketId;
+      const viewerId = payload.viewerSocketId || payload.senderSocketId || payload.targetSocketId;
       const pc = peerConnectionsRef.current[viewerId];
       
       if (pc && !pc.currentRemoteDescription) {
@@ -249,9 +229,7 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
             console.warn("Skipped candidate insertion:", e);
           }
         } else {
-          if (!iceCandidatesQueueRef.current[senderId]) {
-            iceCandidatesQueueRef.current[senderId] = [];
-          }
+          iceCandidatesQueueRef.current[senderId] = iceCandidatesQueueRef.current[senderId] || [];
           iceCandidatesQueueRef.current[senderId].push(payload.candidate);
         }
       }
