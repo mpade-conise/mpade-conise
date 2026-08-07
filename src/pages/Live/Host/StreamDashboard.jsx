@@ -22,6 +22,26 @@ import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting';
 import GuestManager from '../Shared/GuestManager';
 
+// Subcomponent to bind guest WebRTC media streams cleanly into dynamic video elements
+const GuestTileVideo = ({ stream }) => {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return (
+    <video 
+      ref={videoRef} 
+      autoPlay 
+      playsInline 
+      className="w-full h-full object-cover" 
+    />
+  );
+};
+
 const StreamDashboard = () => {
   const { streamId } = useParams();
   const navigate = useNavigate();
@@ -371,6 +391,8 @@ const StreamDashboard = () => {
                   <p className="text-xs font-bold text-zinc-200 mt-2">@{guest.username}</p>
                   <p className="text-[9px] text-emerald-400 font-mono tracking-wider uppercase mt-0.5">Audio Linked</p>
                 </div>
+              ) : guest.stream ? (
+                <GuestTileVideo stream={guest.stream} />
               ) : (
                 <video 
                   ref={idx === 0 ? challengerVideoRef : null} 
