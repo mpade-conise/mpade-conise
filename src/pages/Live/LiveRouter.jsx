@@ -4,8 +4,8 @@ import { Compass, Video, Home, Zap, ShieldCheck } from 'lucide-react';
 
 // Host Pages
 import GoLive from './Host/GoLive';
-import GuestLiveSetup from './guest'; // 🔥 NEW: 8-Panel Guest Setup
-import MobileGamingSetup from './gaming'; // 🔥 NEW: Mobile Gaming Setup
+import GuestLiveSetup from './guest'; // 8-Panel Guest Setup
+import MobileGamingSetup from './gaming'; // Mobile Gaming Setup
 import StreamDashboard from './Host/StreamDashboard';
 import HostAnalytics from './Host/HostAnalytics';
 
@@ -67,8 +67,12 @@ const LiveRouter = () => {
 
           {/* Host Setup & Live Modes Flow */}
           <Route path="go-live" element={<GoLive />} />
+          <Route path="go-live/:streamId" element={<GoLive />} />
           <Route path="device-camera" element={<GoLive />} />
+          
+          {/* Multi-Guest Live Routes */}
           <Route path="guest" element={<GuestLiveSetup />} />
+          <Route path="guest/:streamId" element={<GuestLiveSetup />} />
           
           {/* Gaming Setup & Live Stream Routes */}
           <Route path="gaming" element={<MobileGamingSetup />} />
