@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import { 
@@ -15,6 +15,8 @@ const SOCKET_URL = 'https://mpade-backend.onrender.com';
 const GuestLiveSetup = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { streamId } = useParams();
+  
   const videoRef = useRef(null);
   const socketRef = useRef(null);
   
@@ -48,6 +50,9 @@ const GuestLiveSetup = () => {
 
     socketRef.current.on('connect', () => {
       console.log('WebRTC Socket connected:', socketRef.current.id);
+      if (streamId) {
+        socketRef.current.emit('join_room', { roomId: streamId });
+      }
     });
 
     socketRef.current.on('connect_error', (err) => {
@@ -57,7 +62,7 @@ const GuestLiveSetup = () => {
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
     };
-  }, []);
+  }, [streamId]);
 
   // CAMERA PREVIEW LIFECYCLE
   useEffect(() => {
@@ -99,6 +104,11 @@ const GuestLiveSetup = () => {
   };
 
   const handleStartGuestStream = async () => {
+    // If stream already exists on URL, avoid creating a duplicate entry
+    if (streamId) {
+      return;
+    }
+
     setLoading(true);
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -136,7 +146,9 @@ const GuestLiveSetup = () => {
         if (socketRef.current) {
           socketRef.current.emit('create_room', { roomId: data.id, hostId: user.id });
         }
-        navigate(`/live/dashboard/${data.id}`);
+        
+        // REDIRECT TO GUEST ROUTE INSTEAD OF DASHBOARD
+        navigate(`/live/guest/${data.id}`, { replace: true });
       }
     } catch (err) {
       console.error("Unexpected error:", err);
@@ -244,22 +256,28 @@ const GuestLiveSetup = () => {
 
       {/* ACTION CONTROLS */}
       <div className="w-full flex flex-col items-center px-4 sm:px-8 gap-2.5 z-40 my-2">
-        <div className="w-full max-w-md bg-black/50 backdrop-blur-2xl p-2.5 sm:p-3 rounded-2xl border border-cyan-500/40">
-          <input 
-            type="text"
-            placeholder="Room Title (e.g. 7-Guest Talk Show)..."
-            className="bg-transparent w-full border-none outline-none font-bold text-xs sm:text-sm text-cyan-50 placeholder:text-cyan-200/40 px-2"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
+        {!streamId && (
+          <div className="w-full max-w-md bg-black/50 backdrop-blur-2xl p-2.5 sm:p-3 rounded-2xl border border-cyan-500/40">
+            <input 
+              type="text"
+              placeholder="Room Title (e.g. 7-Guest Talk Show)..."
+              className="bg-transparent w-full border-none outline-none font-bold text-xs sm:text-sm text-cyan-50 placeholder:text-cyan-200/40 px-2"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+        )}
 
         <button 
           onClick={handleStartGuestStream}
-          disabled={loading}
+          disabled={loading || !!streamId}
           className="w-full max-w-md bg-pink-600 hover:bg-pink-500 text-white py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-black uppercase tracking-[0.15em] text-xs sm:text-sm shadow-[0_0_30px_rgba(244,63,94,0.8)] border border-pink-400/60 active:scale-95 transition-all flex items-center justify-center relative overflow-hidden"
         >
-          {loading ? <RefreshCw className="animate-spin w-5 h-5" /> : <span>Start 8-Panel Room</span>}
+          {loading ? (
+            <RefreshCw className="animate-spin w-5 h-5" />
+          ) : (
+            <span>{streamId ? "Room Active (Live)" : "Start 8-Panel Room"}</span>
+          )}
         </button>
       </div>
 
