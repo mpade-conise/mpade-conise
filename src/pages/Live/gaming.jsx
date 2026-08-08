@@ -212,7 +212,7 @@ const MobileGamingSetup = () => {
       }
     } catch (err) {
       console.error("⚠️ Error starting game stream:", err);
-    } fontally {
+    } finally {
       setLoading(false);
     }
   };
