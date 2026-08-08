@@ -68,8 +68,13 @@ const MobileGamingSetup = () => {
     }
   }, [camStream, streamId, isCamOverlayOn]);
 
-  // START SCREEN SHARE CAPTURE
+  // START SCREEN SHARE CAPTURE WITH MOBILE FEATURE DETECTION
   const startScreenCapture = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      alert("Screen sharing is not supported on mobile web browsers. Please stream from a desktop browser or use camera mode.");
+      return;
+    }
+
     try {
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: { cursor: "always" },
