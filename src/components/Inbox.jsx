@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  MessageCircle, UserPlus, Heart, Users, Search, ArrowLeft, Bell, Loader2 
+  MessageCircle, UserPlus, Heart, Users, Search, ArrowLeft, Bell, Loader2,
+  Radio, Sparkles, X
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatDistanceToNow } from 'date-fns';
@@ -12,6 +13,8 @@ const Inbox = () => {
   const [liveStreams, setLiveStreams] = useState([]);
   const [activities, setActivities] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [liveInvites, setLiveInvites] = useState([]);
+  const [acceptingInviteId, setAcceptingInviteId] = useState(null);
   const [myFollows, setMyFollows] = useState(new Set()); // Tracks who you already follow back
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -22,7 +25,7 @@ const Inbox = () => {
 
   const fetchData = useCallback(async (uid) => {
     try {
-      const [streamsRes, activitiesRes, messagesRes, followsRes] = await Promise.all([
+      const [streamsRes, activitiesRes, messagesRes, followsRes, invitesRes] = await Promise.all([
         supabase.from('live_streams').select('*, profiles:host_id(avatar_url, username)').eq('status', 'live'),
         supabase.from('activities')
           .select(`
@@ -39,8 +42,13 @@ const Inbox = () => {
             receiver:profiles(id, avatar_url, username)
           `)
           .or(`receiver_id.eq.${uid},sender_id.eq.${uid}`)
-          .order('updated_at', { ascending: false }), // Corrected ordering criteria string to updated_at
-        supabase.from('follows').select('following_id').eq('follower_id', uid)
+          .order('updated_at', { ascending: false }),
+        supabase.from('follows').select('following_id').eq('follower_id', uid),
+        supabase.from('live_guest_requests')
+          .select('*')
+          .eq('user_id', uid)
+          .eq('status', 'invited')
+          .order('created_at', { ascending: false })
       ]);
 
       if (streamsRes.data) setLiveStreams(streamsRes.data);
@@ -48,6 +56,29 @@ const Inbox = () => {
       
       if (followsRes.data) {
         setMyFollows(new Set(followsRes.data.map(f => f.following_id)));
+      }
+
+      // Process Live Co-Host Invites
+      if (invitesRes.data && invitesRes.data.length > 0) {
+        const streamIds = [...new Set(invitesRes.data.map(i => i.stream_id))];
+        const { data: activeStreamsData } = await supabase
+          .from('live_streams')
+          .select('*, host:profiles!host_id(id, username, avatar_url)')
+          .in('id', streamIds)
+          .eq('status', 'live');
+
+        const streamsMap = new Map((activeStreamsData || []).map(s => [s.id, s]));
+
+        const validInvites = invitesRes.data
+          .filter(inv => streamsMap.has(inv.stream_id))
+          .map(inv => ({
+            ...inv,
+            stream: streamsMap.get(inv.stream_id)
+          }));
+
+        setLiveInvites(validInvites);
+      } else {
+        setLiveInvites([]);
       }
       
       if (messagesRes.data) {
@@ -133,6 +164,79 @@ const Inbox = () => {
     }
   };
 
+  // ACCEPT CO-HOST INVITATION FROM INBOX
+  const handleAcceptLiveInvite = async (invite) => {
+    setAcceptingInviteId(invite.id);
+    try {
+      // 1. Verify stream is still active/live
+      const { data: streamData } = await supabase
+        .from('live_streams')
+        .select('status')
+        .eq('id', invite.stream_id)
+        .single();
+
+      if (!streamData || streamData.status !== 'live') {
+        alert("This live stream session has ended or is no longer live.");
+        setLiveInvites(prev => prev.filter(i => i.id !== invite.id));
+        return;
+      }
+
+      // 2. Check if space is still available in the room
+      const { count, error: countErr } = await supabase
+        .from('live_guest_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('stream_id', invite.stream_id)
+        .eq('status', 'approved');
+
+      const MAX_GUEST_SLOTS = 7; // Host + 7 guest slots = 8 seats
+      if (!countErr && count >= MAX_GUEST_SLOTS) {
+        alert("Sorry, all co-host slots in this live room are currently taken!");
+        await supabase
+          .from('live_guest_requests')
+          .update({ status: 'full' })
+          .eq('id', invite.id);
+
+        setLiveInvites(prev => prev.filter(i => i.id !== invite.id));
+        return;
+      }
+
+      // 3. Approve invitation request
+      const { error: updateErr } = await supabase
+        .from('live_guest_requests')
+        .update({ status: 'approved' })
+        .eq('id', invite.id);
+
+      if (updateErr) {
+        console.error("Error approving invite:", updateErr);
+        alert("Unable to join panel at this moment. Please try again.");
+        return;
+      }
+
+      // 4. Remove invite card and navigate directly to guest stage
+      setLiveInvites(prev => prev.filter(i => i.id !== invite.id));
+      navigate(`/live/watch/${invite.stream_id}/join-guest`);
+
+    } catch (err) {
+      console.error("Accept invite error:", err);
+    } finally {
+      setAcceptingInviteId(null);
+    }
+  };
+
+  // DECLINE CO-HOST INVITATION
+  const handleDeclineLiveInvite = async (invite) => {
+    try {
+      await supabase
+        .from('live_guest_requests')
+        .update({ status: 'rejected' })
+        .eq('id', invite.id);
+
+      setLiveInvites(prev => prev.filter(i => i.id !== invite.id));
+    } catch (err) {
+      console.error("Decline invite error:", err);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     
@@ -165,6 +269,14 @@ const Inbox = () => {
 
             setActivities(prev => [fullActivity, ...prev]);
           }
+        })
+        .on('postgres_changes', {
+            event: '*', 
+            schema: 'public', 
+            table: 'live_guest_requests',
+            filter: `user_id=eq.${user.id}`
+        }, () => {
+          if (mounted) fetchData(user.id);
         })
         .on('postgres_changes', { 
             event: '*', // Listen to INSERTs & UPDATEs from messaging stream
@@ -316,6 +428,87 @@ const Inbox = () => {
         )}
 
         <div className="px-4 py-4 space-y-2">
+          {/* LIVE CO-HOST INVITES CARDS */}
+          {liveInvites.length > 0 && (
+            <div className="mb-4 space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                <h3 className="text-[11px] font-black uppercase tracking-wider text-cyan-300">
+                  Live Co-Host Invites ({liveInvites.length})
+                </h3>
+              </div>
+
+              <div className="space-y-3">
+                {liveInvites.map((invite) => {
+                  const hostProfile = invite.stream?.host;
+                  const isVideo = invite.mode === 'video' || !invite.mode;
+
+                  return (
+                    <div 
+                      key={invite.id} 
+                      className="bg-gradient-to-r from-cyan-950/40 via-zinc-900 to-pink-950/30 border border-cyan-500/40 p-4 rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.15)] space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="relative shrink-0">
+                            <img 
+                              src={hostProfile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
+                              alt="" 
+                              className="w-12 h-12 rounded-full object-cover border-2 border-cyan-400 p-0.5 shadow-md"
+                            />
+                            <div className="absolute -bottom-1 -right-1 bg-pink-600 text-white p-1 rounded-full text-[10px] shadow">
+                              <Radio size={10} className="animate-pulse" />
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-black text-white">@{hostProfile?.username || 'Host'}</p>
+                              <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 border border-pink-500/30 rounded text-[9px] font-black uppercase">
+                                Live Room
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-cyan-200 font-medium mt-0.5">
+                              Invited you to co-host on {isVideo ? '📹 Video' : '🎙️ Mic'} panel
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+                        <button
+                          type="button"
+                          disabled={acceptingInviteId === invite.id}
+                          onClick={() => handleAcceptLiveInvite(invite)}
+                          className="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          {acceptingInviteId === invite.id ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" /> Checking space...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={14} /> Accept & Join Stage
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeclineLiveInvite(invite)}
+                          className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-zinc-300 font-bold text-xs rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1"
+                        >
+                          <X size={14} /> Decline
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div onClick={() => { setIsFollowerPanelOpen(true); markAsRead('follow'); }} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 cursor-pointer hover:bg-white/10 transition-colors">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center"><UserPlus size={22} /></div>
