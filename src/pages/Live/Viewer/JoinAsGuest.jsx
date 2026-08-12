@@ -107,12 +107,30 @@ const JoinAsGuest = () => {
     }
 
     const { data: streamData, error: streamErr } = await supabase.from('live_streams').select('*').eq('id', streamId).single();
+    let detectedHost = null;
     if (streamErr) {
       console.error('❌ [SUPABASE] Error fetching stream details:', streamErr);
     } else if (streamData) {
-      const detectedHost = streamData.host_id || streamData.user_id;
+      detectedHost = streamData.host_id || streamData.user_id;
       console.log('✅ [SUPABASE] Live Stream host retrieved:', detectedHost);
       setHostUserId(detectedHost);
+    }
+
+    // Auto-connect if user has pre-approved invitation (e.g. accepted from Inbox)
+    if (authResp?.data?.user?.id) {
+      const activeUid = authResp.data.user.id;
+      const { data: existingAppr } = await supabase
+        .from('live_guest_requests')
+        .select('*')
+        .eq('stream_id', streamId)
+        .eq('user_id', activeUid)
+        .eq('status', 'approved')
+        .maybeSingle();
+
+      if (existingAppr) {
+        console.log("🎉 User has pre-approved invitation! Auto-connecting to panel stage...");
+        handleApproval(existingAppr.mode || 'video', detectedHost);
+      }
     }
   };
 
@@ -347,6 +365,19 @@ const JoinAsGuest = () => {
 
     if (request) {
       console.log('✅ [SUPABASE] Request submitted successfully. Request ID:', request.id);
+
+      // 2. Emit instant socket signal to Host
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('guest_cohost_request', {
+          streamId,
+          requestId: request.id,
+          userId: activeUser,
+          username: userProfile?.username || 'Guest',
+          avatar: userProfile?.avatar_url,
+          mode: 'video'
+        });
+      }
+
       console.log(`📡 [SUPABASE] Subscribing to changes for channel: guest_request_${request.id}`);
       
       const subscription = supabase
