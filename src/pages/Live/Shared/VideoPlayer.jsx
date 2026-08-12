@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -60,7 +61,7 @@ const VideoPlayer = ({
   const isHost = initialIsHost || 
                  currentPath.includes('dashboard') || 
                  currentPath.includes('/live/gaming') || 
-                 currentPath.includes('/live/guest/setup') ||
+                 currentPath.includes('/live/guest') ||
                  currentPath.includes('/create/live');
 
   useEffect(() => {
@@ -70,10 +71,10 @@ const VideoPlayer = ({
     }
 
     let isComponentMounted = true;
-    const globalIo = typeof window !== 'undefined' ? window.io : null;
+    const globalIo = io || (typeof window !== 'undefined' ? window.io : null);
 
     if (!globalIo) {
-      console.error("❌ Socket.io CDN script missing from global context.");
+      console.error("❌ Socket.io client initialization failed.");
       setConnectionStatus("Engine Missing");
       return;
     }
