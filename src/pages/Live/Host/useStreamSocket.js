@@ -1,5 +1,6 @@
 // hooks/useStreamSocket.js
 import { useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -15,14 +16,14 @@ export const useStreamSocket = (streamId, isHost = true) => {
   useEffect(() => {
     if (!streamId) return;
 
-    const globalIo = typeof window !== 'undefined' ? window.io : null;
+    const globalIo = io || (typeof window !== 'undefined' ? window.io : null);
     if (!globalIo) {
       console.error("Socket.io client script not found on window context.");
       return;
     }
 
     const socketInstance = globalIo(SOCKET_SERVER_URL, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       query: { room: streamId, role: isHost ? 'host' : 'viewer' },
       forceNew: true
     });
