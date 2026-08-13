@@ -208,13 +208,13 @@ const VoiceCall = () => {
 
         // C. Spin up Socket Context AFTER WebRTC Instance is safely created
         const socket = io(SOCKET_SERVER_URL, {
-          transports: ['websocket', 'polling'],
+          transports: ['polling', 'websocket'],
           forceNew: true
         });
         socketRef.current = socket;
 
         // D. Setup Synchronous Context Handlers inside Socket Connection Frame
-        socket.on('connect', () => {
+        socket.on('connect', async () => {
           console.log(`🟢 Connected to signaling server. Socket ID: ${socket.id} | Room: ${roomId}`);
 
           // Step 1: Register active session dynamically on backend
@@ -225,6 +225,43 @@ const VoiceCall = () => {
 
           if (callRole === 'caller') {
             setCallStatus("Calling user...");
+
+            // Dispatch global incoming call overlay signal to receiver device
+            const { data: myProfile } = await supabase
+              .from('profiles')
+              .select('username, avatar_url')
+              .eq('id', currentUserId)
+              .maybeSingle();
+
+            const callSignalData = {
+              receiverId: peerUserId,
+              to: peerUserId,
+              targetUserId: peerUserId,
+              callerId: currentUserId,
+              fromUserId: currentUserId,
+              callerName: myProfile?.username || 'User',
+              callerUsername: myProfile?.username || 'User',
+              callerAvatar: myProfile?.avatar_url || null,
+              callType: 'voice',
+              roomId: roomId
+            };
+
+            socket.emit('initiate_call_signal', callSignalData);
+            socket.emit('incoming_call_signal', callSignalData);
+            socket.emit('incoming_call', callSignalData);
+
+            // Supabase Realtime broadcast fallback for instant popup
+            const realtimeChan = supabase.channel(`user-call-signals-${peerUserId}`);
+            realtimeChan.subscribe((status) => {
+              if (status === 'SUBSCRIBED') {
+                realtimeChan.send({
+                  type: 'broadcast',
+                  event: 'incoming_call_broadcast',
+                  payload: callSignalData
+                });
+              }
+            });
+
             createAndSendOffer();
           } else {
             setCallStatus("Awaiting Connection...");
@@ -371,7 +408,24 @@ const VoiceCall = () => {
     }
     if (socketRef.current && peerUserId && peerUserId !== 'undefined') {
       const roomId = [currentUserId, peerUserId].sort().join("-");
-      socketRef.current.emit('reject_incoming_call', { roomId, to: peerUserId });
+      const cancelPayload = { roomId, to: peerUserId, receiverId: peerUserId, callerId: currentUserId };
+
+      socketRef.current.emit('reject_incoming_call', cancelPayload);
+      socketRef.current.emit('call_cancelled_by_caller', cancelPayload);
+      socketRef.current.emit('decline_call', cancelPayload);
+      socketRef.current.emit('cancel_call_signal', cancelPayload);
+
+      const realtimeChan = supabase.channel(`user-call-signals-${peerUserId}`);
+      realtimeChan.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          realtimeChan.send({
+            type: 'broadcast',
+            event: 'cancel_call_broadcast',
+            payload: cancelPayload
+          });
+        }
+      });
+
       socketRef.current.disconnect();
       socketRef.current = null;
     }
