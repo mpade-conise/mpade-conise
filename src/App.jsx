@@ -54,6 +54,7 @@ function App() {
   // Passive Global Signaling Notification Hooks
   const [incomingCall, setIncomingCall] = useState(null);
   const [globalSocket, setGlobalSocket] = useState(null);
+  const persistentSocketRef = useRef(null);
   const [isRingtoneMuted, setIsRingtoneMuted] = useState(false);
   const [selectedRingtone, setSelectedRingtone] = useState('whatsapp');
 
@@ -140,28 +141,46 @@ function App() {
 
   // Persistent Global Receiver Signaling Listener Pipeline
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id) {
+      if (persistentSocketRef.current) {
+        persistentSocketRef.current.disconnect();
+        persistentSocketRef.current = null;
+        setGlobalSocket(null);
+      }
+      return;
+    }
 
-    const socket = io(SOCKET_SERVER_URL, {
-      transports: ['websocket', 'polling'],
-      forceNew: false,
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      autoConnect: true
-    });
+    if (!persistentSocketRef.current) {
+      persistentSocketRef.current = io(SOCKET_SERVER_URL, {
+        transports: ['polling', 'websocket'],
+        forceNew: false,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        autoConnect: true
+      });
+    }
+
+    const socket = persistentSocketRef.current;
     setGlobalSocket(socket);
 
-    socket.on('connect', () => {
+    const handleConnect = () => {
       console.log(`🌐 Global Socket Operational: ${socket.id}`);
       socket.emit('register_user_session', { userId: session.user.id });
-    });
+    };
 
-    socket.on('reconnect', (attemptNumber) => {
+    if (socket.connected) {
+      socket.emit('register_user_session', { userId: session.user.id });
+    } else {
+      socket.on('connect', handleConnect);
+    }
+
+    const handleReconnect = (attemptNumber) => {
       console.log(`🔄 Global Socket Reconnected on attempt: ${attemptNumber}`);
       socket.emit('register_user_session', { userId: session.user.id });
-    });
+    };
+    socket.on('reconnect', handleReconnect);
 
     const processIncomingCallSignal = async (data) => {
       console.log("📞 Incoming Call Signal Received globally:", data);
@@ -185,13 +204,15 @@ function App() {
       });
     };
 
-    // Attach multiple incoming call signal aliases
-    socket.on('incoming_call_signal', processIncomingCallSignal);
-    socket.on('initiate_call_signal', (data) => {
+    const handleInitiateSignal = (data) => {
       if (data?.receiverId === session.user.id) {
         processIncomingCallSignal(data);
       }
-    });
+    };
+
+    // Attach multiple incoming call signal aliases
+    socket.on('incoming_call_signal', processIncomingCallSignal);
+    socket.on('initiate_call_signal', handleInitiateSignal);
     socket.on('incoming_call', processIncomingCallSignal);
     socket.on('call_offer', processIncomingCallSignal);
 
@@ -220,10 +241,20 @@ function App() {
       .subscribe();
 
     return () => {
-      socket.disconnect();
+      socket.off('connect', handleConnect);
+      socket.off('reconnect', handleReconnect);
+      socket.off('incoming_call_signal', processIncomingCallSignal);
+      socket.off('initiate_call_signal', handleInitiateSignal);
+      socket.off('incoming_call', processIncomingCallSignal);
+      socket.off('call_offer', processIncomingCallSignal);
+      socket.off('call_cancelled_by_caller', handleCallCancel);
+      socket.off('cancel_call_signal', handleCallCancel);
+      socket.off('decline_call', handleCallCancel);
+      socket.off('reject_incoming_call', handleCallCancel);
+      socket.off('peer_hung_up', handleCallCancel);
       supabase.removeChannel(realtimeCallChannel);
     };
-  }, [session]);
+  }, [session?.user?.id]);
 
   if (!session) return <Auth onGuestLogin={(guestSession) => setSession(guestSession)} />;
 
