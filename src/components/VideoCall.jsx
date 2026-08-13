@@ -2,8 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { io } from 'socket.io-client';
-import { PhoneOff, Mic, MicOff, Shield, PhoneCall, MessageSquare, Send, X, Volume2 } from 'lucide-react';
+import { PhoneOff, Mic, MicOff, Video, VideoOff, Shield, Monitor, MessageSquare, Send, X, Heart, Flame, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { startRingbackTone, stopRingbackTone } from '../utils/callNotificationEngine';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -34,7 +35,7 @@ const GLOBAL_ICE_CONFIG = {
   iceCandidatePoolSize: 10
 };
 
-const VoiceCall = () => {
+const VideoCall = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const peerUserId = searchParams.get('userId');
@@ -44,6 +45,8 @@ const VoiceCall = () => {
   const [peerProfile, setPeerProfile] = useState(null);
   const [callStatus, setCallStatus] = useState("Initializing...");
   const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [showChat, setShowChat] = useState(false);
   const [inCallMessages, setInCallMessages] = useState([]);
@@ -53,9 +56,11 @@ const VoiceCall = () => {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
+  const screenTrackRef = useRef(null);
   const iceQueueRef = useRef([]);
   
-  const remoteAudioRef = useRef(null);
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
 
   // Call Duration Timer
   useEffect(() => {
@@ -70,11 +75,16 @@ const VoiceCall = () => {
     return () => clearInterval(timer);
   }, [callStatus]);
 
-  const formatTime = (secs) => {
-    const mins = Math.floor(secs / 60);
-    const remSecs = secs % 60;
-    return `${mins.toString().padStart(2, '0')}:${remSecs.toString().padStart(2, '0')}`;
-  };
+  // Outgoing Call Ringback Sound Management
+  useEffect(() => {
+    const statusLower = callStatus.toLowerCase();
+    if (statusLower.includes("calling") || statusLower.includes("connecting") || statusLower.includes("initializing")) {
+      startRingbackTone();
+    } else {
+      stopRingbackTone();
+    }
+    return () => stopRingbackTone();
+  }, [callStatus]);
 
   // Helper to drain queued ICE candidates once remoteDescription is ready
   const processIceQueue = async () => {
@@ -94,7 +104,7 @@ const VoiceCall = () => {
   // 1. Fetch user authentication and peer profile info
   useEffect(() => {
     const initProfiles = async () => {
-      console.log("🔍 Incoming Voice Call Routing State Check -> peerUserId:", peerUserId, "| Role Parameter:", URLRole);
+      console.log("🔍 Incoming Call Routing State Check -> peerUserId:", peerUserId, "| Role Parameter:", URLRole);
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -124,15 +134,15 @@ const VoiceCall = () => {
     if (!currentUserId || !peerUserId || peerUserId === 'undefined') return;
 
     let isComponentMounted = true;
-
+    
     // Strict deterministic role checking logic
-    const callRole = URLRole === 'caller' || URLRole === 'receiver'
-      ? URLRole
+    const callRole = URLRole === 'caller' || URLRole === 'receiver' 
+      ? URLRole 
       : (currentUserId < peerUserId ? 'caller' : 'receiver');
-
+      
     const roomId = [currentUserId, peerUserId].sort().join("-");
 
-    console.log(`Setting up voice signaling as [${callRole}] for Room: ${roomId}`);
+    console.log(`Setting up signaling as [${callRole}] for Room: ${roomId}`);
 
     const createAndSendOffer = async () => {
       if (!pcRef.current || !socketRef.current) return;
@@ -140,25 +150,25 @@ const VoiceCall = () => {
         setCallStatus("Calling user...");
         const offer = await pcRef.current.createOffer();
         await pcRef.current.setLocalDescription(offer);
-
-        socketRef.current.emit('send_webrtc_offer', {
+        
+        socketRef.current.emit('send_webrtc_offer', { 
           roomId: roomId,
-          streamId: roomId,
-          offer,
+          streamId: roomId, 
+          offer, 
           targetViewerId: peerUserId,
           to: peerUserId
         });
       } catch (err) {
-        console.error("Failed creating signaling offer Matrix:", err);
+        console.error("Failed creating signaling offer:", err);
       }
     };
 
     const initializeMediaAndSignaling = async () => {
       try {
-        // A. Mount Local Media Tracks First (Audio Only)
-        setCallStatus("Accessing microphone...");
+        // A. Mount Local Media Tracks First
+        setCallStatus("Accessing devices...");
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: false, 
+          video: { width: 1280, height: 720 }, 
           audio: true 
         });
 
@@ -168,6 +178,7 @@ const VoiceCall = () => {
         }
         
         localStreamRef.current = stream;
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
         // B. Set Up Peer Connection Structure
         const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
@@ -176,10 +187,10 @@ const VoiceCall = () => {
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
         pc.ontrack = (event) => {
-          console.log("🔊 Remote audio stream attached successfully.");
+          console.log("🎬 Remote stream attached successfully.");
           setCallStatus("Connected");
-          if (remoteAudioRef.current && event.streams[0]) {
-            remoteAudioRef.current.srcObject = event.streams[0];
+          if (remoteVideoRef.current && event.streams[0]) {
+            remoteVideoRef.current.srcObject = event.streams[0];
           }
         };
 
@@ -204,7 +215,7 @@ const VoiceCall = () => {
         // D. Setup Synchronous Context Handlers inside Socket Connection Frame
         socket.on('connect', () => {
           console.log(`🟢 Connected to signaling server. Socket ID: ${socket.id} | Room: ${roomId}`);
-
+          
           // Step 1: Register active session dynamically on backend
           socket.emit('register_user_session', { userId: currentUserId });
 
@@ -241,9 +252,9 @@ const VoiceCall = () => {
             const answer = await pcRef.current.createAnswer();
             await pcRef.current.setLocalDescription(answer);
 
-            socket.emit('send_webrtc_answer', {
+            socket.emit('send_webrtc_answer', { 
               roomId: roomId,
-              streamId: roomId,
+              streamId: roomId, 
               answer,
               to: peerUserId
             });
@@ -311,6 +322,42 @@ const VoiceCall = () => {
     };
   }, [currentUserId, peerUserId, URLRole]); 
 
+  // Toggle Screen Sharing
+  const toggleScreenShare = async () => {
+    if (!pcRef.current) return;
+    try {
+      if (isScreenSharing) {
+        // Revert to camera stream
+        if (screenTrackRef.current) {
+          screenTrackRef.current.stop();
+          screenTrackRef.current = null;
+        }
+        const videoTrack = localStreamRef.current?.getVideoTracks()[0];
+        if (videoTrack) {
+          const sender = pcRef.current.getSenders().find((s) => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(videoTrack);
+        }
+        setIsScreenSharing(false);
+      } else {
+        // Capture screen
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenTrack = screenStream.getVideoTracks()[0];
+        screenTrackRef.current = screenTrack;
+
+        const sender = pcRef.current.getSenders().find((s) => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(screenTrack);
+
+        screenTrack.onended = () => {
+          toggleScreenShare();
+        };
+
+        setIsScreenSharing(true);
+      }
+    } catch (err) {
+      console.warn("Screen share cancelled or failed:", err);
+    }
+  };
+
   // Send In-Call Text Message
   const sendInCallMessage = (e) => {
     e?.preventDefault();
@@ -348,6 +395,12 @@ const VoiceCall = () => {
     }
   }, [isMuted]);
 
+  useEffect(() => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => { track.enabled = !isVideoOff; });
+    }
+  }, [isVideoOff]);
+
   const cleanUpCall = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -366,18 +419,21 @@ const VoiceCall = () => {
     navigate(-1);
   };
 
+  const formatTime = (secs) => {
+    const mins = Math.floor(secs / 60);
+    const remSecs = secs % 60;
+    return `${mins.toString().padStart(2, '0')}:${remSecs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col items-center justify-between p-4 sm:p-6 font-sans select-none overflow-hidden">
-      {/* Hidden Audio Output Element for WebRTC Stream Processing */}
-      <audio ref={remoteAudioRef} autoPlay />
-
       {/* Top Header Bar */}
-      <div className="w-full max-w-md flex justify-between items-center bg-white/5 px-4 py-3 rounded-2xl border border-white/10 backdrop-blur-md z-30 shadow-xl">
+      <div className="w-full max-w-lg flex justify-between items-center bg-white/5 px-4 py-3 rounded-2xl border border-white/10 backdrop-blur-md z-30 shadow-xl">
         <div className="flex items-center gap-2">
           <Shield size={16} className="text-cyan-400" />
           <span className="text-[10px] sm:text-xs font-semibold tracking-wide text-zinc-300 uppercase">Encrypted</span>
         </div>
-
+        
         {/* Call Timer Display */}
         <div className="flex items-center gap-2">
           {callStatus === "Connected" && (
@@ -391,16 +447,22 @@ const VoiceCall = () => {
         </div>
       </div>
 
-      {/* Profile Audio Sandbox Container */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-6 my-6 relative w-full max-w-md rounded-3xl bg-zinc-900/80 border border-white/10 shadow-2xl p-8 backdrop-blur-xl overflow-hidden">
-        
+      {/* Main Video Stage */}
+      <div className="flex-1 flex flex-col items-center justify-center my-4 relative w-full max-w-lg rounded-3xl overflow-hidden bg-zinc-900 border border-white/10 shadow-2xl">
+        <video 
+          ref={remoteVideoRef} 
+          autoPlay 
+          playsInline 
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+
         {/* Floating In-Call Reactions Overlay */}
         <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
           <AnimatePresence>
             {floatingReactions.map((r) => (
               <motion.div
                 key={r.id}
-                initial={{ y: 150, opacity: 0, scale: 0.5, x: Math.random() * 80 - 40 }}
+                initial={{ y: 200, opacity: 0, scale: 0.5, x: Math.random() * 100 - 50 }}
                 animate={{ y: -150, opacity: [0, 1, 1, 0], scale: [0.5, 1.8, 2, 1] }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 2.2, ease: "easeOut" }}
@@ -412,48 +474,52 @@ const VoiceCall = () => {
           </AnimatePresence>
         </div>
 
-        <div className="flex flex-col items-center gap-6 z-10">
-          {peerProfile?.avatar_url ? (
-            <img 
-              src={peerProfile.avatar_url} 
-              alt="Peer Avatar" 
-              className={`w-32 h-32 rounded-full object-cover border-4 border-cyan-500/30 shadow-2xl ${callStatus !== "Connected" ? 'animate-pulse' : 'ring-4 ring-cyan-500/20'}`}
-            />
-          ) : (
-            <div className="w-32 h-32 rounded-full bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-center animate-pulse shadow-2xl">
-              <PhoneCall size={44} className="text-cyan-400" />
-            </div>
-          )}
-          
-          <div className="text-center">
-            <h2 className="text-2xl font-black tracking-tight text-white">@{peerProfile?.username || 'User'}</h2>
-            <p className="text-xs text-cyan-400 font-mono mt-1 capitalize animate-pulse">{callStatus}</p>
-          </div>
-        </div>
-
-        {/* Ambient Equalizer Waves */}
-        {callStatus === "Connected" && (
-          <div className="flex items-center gap-1.5 h-8 mt-2 z-10">
-            {[0.4, 0.8, 0.3, 0.9, 0.5, 0.7, 0.2].map((height, i) => (
-              <motion.div
-                key={i}
-                animate={{ height: ['20%', '100%', '30%'] }}
-                transition={{ repeat: Infinity, duration: 0.8 + i * 0.1, ease: "easeInOut" }}
-                className="w-1.5 bg-cyan-400 rounded-full"
+        {callStatus !== "Connected" && (
+          <div className="absolute inset-0 bg-zinc-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-4 z-20">
+            {peerProfile?.avatar_url ? (
+              <img 
+                src={peerProfile.avatar_url} 
+                alt="Peer Avatar" 
+                className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/40 animate-pulse shadow-2xl shadow-cyan-500/20"
               />
-            ))}
+            ) : (
+              <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-500/40 flex items-center justify-center animate-pulse shadow-2xl shadow-cyan-500/20">
+                <Video size={36} className="text-cyan-400" />
+              </div>
+            )}
+            <div className="text-center">
+              <h2 className="text-xl font-black tracking-tight text-white">@{peerProfile?.username || 'User'}</h2>
+              <p className="text-xs text-cyan-400 font-mono mt-1 capitalize animate-pulse">{callStatus}</p>
+            </div>
           </div>
         )}
 
+        {/* Local Camera Picture-in-Picture Box */}
+        <div className="absolute bottom-4 right-4 w-28 h-40 bg-black/70 border border-white/20 rounded-2xl backdrop-blur-md overflow-hidden flex items-center justify-center z-20 shadow-2xl">
+          <video 
+            ref={localVideoRef} 
+            autoPlay 
+            muted 
+            playsInline 
+            className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : ''}`}
+          />
+          {isVideoOff && (
+            <div className="flex flex-col items-center gap-1 text-zinc-500">
+              <VideoOff size={18} />
+              <p className="text-[9px] font-bold uppercase tracking-wider">Cam Off</p>
+            </div>
+          )}
+        </div>
+
         {/* Quick In-Call Reaction Bar Overlay */}
         {callStatus === "Connected" && (
-          <div className="flex gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/10 z-20 mt-2">
+          <div className="absolute top-4 left-4 z-20 flex gap-1.5 bg-black/40 backdrop-blur-md p-1.5 rounded-2xl border border-white/10">
             {['❤️', '🔥', '👏', '🎉', '😮'].map((emoji) => (
               <button
                 key={emoji}
                 type="button"
                 onClick={() => sendReactionBurst(emoji)}
-                className="p-1 hover:bg-white/10 rounded-xl transition-transform active:scale-125 text-lg"
+                className="p-1.5 hover:bg-white/10 rounded-xl transition-transform active:scale-125 text-base"
               >
                 {emoji}
               </button>
@@ -468,7 +534,7 @@ const VoiceCall = () => {
               initial={{ y: 200, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 200, opacity: 0 }}
-              className="absolute inset-x-0 bottom-0 top-1/4 bg-zinc-950/95 border-t border-white/10 backdrop-blur-2xl z-40 p-4 flex flex-col justify-between rounded-t-3xl shadow-2xl"
+              className="absolute inset-x-0 bottom-0 top-1/3 bg-zinc-950/95 border-t border-white/10 backdrop-blur-2xl z-40 p-4 flex flex-col justify-between rounded-t-3xl shadow-2xl"
             >
               <div className="flex justify-between items-center border-b border-white/10 pb-2">
                 <span className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
@@ -514,24 +580,42 @@ const VoiceCall = () => {
         </AnimatePresence>
       </div>
 
-      {/* Control Dock */}
-      <div className="w-full max-w-md flex items-center justify-around bg-zinc-900/90 border border-white/10 px-6 py-4 rounded-3xl backdrop-blur-xl shadow-2xl z-30">
+      {/* Floating Control Console */}
+      <div className="w-full max-w-lg flex items-center justify-around bg-zinc-900/90 border border-white/10 px-4 py-3 rounded-3xl backdrop-blur-xl shadow-2xl z-30">
         <button 
           type="button"
           onClick={() => setIsMuted(!isMuted)} 
           title={isMuted ? "Unmute Mic" : "Mute Mic"}
-          className={`p-4 rounded-2xl transition-all ${isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+          className={`p-3.5 rounded-2xl transition-all ${isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
         >
-          {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+          {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
+        </button>
+
+        <button 
+          type="button"
+          onClick={() => setIsVideoOff(!isVideoOff)} 
+          title={isVideoOff ? "Turn On Cam" : "Turn Off Cam"}
+          className={`p-3.5 rounded-2xl transition-all ${isVideoOff ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+        >
+          {isVideoOff ? <VideoOff size={18} /> : <Video size={18} />}
+        </button>
+
+        <button 
+          type="button"
+          onClick={toggleScreenShare} 
+          title={isScreenSharing ? "Stop Screen Share" : "Share Screen"}
+          className={`p-3.5 rounded-2xl transition-all ${isScreenSharing ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+        >
+          <Monitor size={18} />
         </button>
 
         <button 
           type="button"
           onClick={() => setShowChat(!showChat)} 
           title="Toggle In-Call Chat"
-          className={`p-4 rounded-2xl transition-all relative ${showChat ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+          className={`p-3.5 rounded-2xl transition-all relative ${showChat ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
         >
-          <MessageSquare size={20} />
+          <MessageSquare size={18} />
           {inCallMessages.length > 0 && !showChat && (
             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse" />
           )}
@@ -541,13 +625,13 @@ const VoiceCall = () => {
           type="button"
           onClick={cleanUpCall} 
           title="End Call"
-          className="p-5 bg-red-600 hover:bg-red-500 text-white rounded-2xl transition-transform active:scale-95 shadow-xl shadow-red-600/40"
+          className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl transition-transform active:scale-95 shadow-xl shadow-red-600/40"
         >
-          <PhoneOff size={22} />
+          <PhoneOff size={20} />
         </button>
       </div>
     </div>
   );
 };
 
-export default VoiceCall;
+export default VideoCall;
