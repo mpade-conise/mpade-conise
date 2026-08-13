@@ -188,6 +188,9 @@ function App() {
       const callerId = data?.callerId || data?.fromUserId || data?.senderId || data?.userId;
       if (!callerId || callerId === session.user.id) return;
 
+      const targetId = data?.receiverId || data?.to || data?.targetUserId || data?.targetId;
+      if (targetId && targetId !== session.user.id) return;
+
       // Fetch caller profile
       const { data: callerProfile } = await supabase
         .from('profiles')
@@ -197,26 +200,25 @@ function App() {
 
       setIncomingCall({
         callerId: callerId,
-        callerUsername: callerProfile?.username || data?.callerName || 'User',
-        callerAvatar: callerProfile?.avatar_url || null,
+        callerUsername: callerProfile?.username || data?.callerName || data?.callerUsername || 'User',
+        callerAvatar: callerProfile?.avatar_url || data?.callerAvatar || null,
         callType: data?.callType || 'video',
         roomId: data?.roomId || [session.user.id, callerId].sort().join("-")
       });
     };
 
     const handleInitiateSignal = (data) => {
-      if (data?.receiverId === session.user.id) {
-        processIncomingCallSignal(data);
-      }
+      processIncomingCallSignal(data);
     };
 
     // Attach multiple incoming call signal aliases
-    socket.on('incoming_call_signal', processIncomingCallSignal);
+    socket.on('incoming_call_signal', handleInitiateSignal);
     socket.on('initiate_call_signal', handleInitiateSignal);
-    socket.on('incoming_call', processIncomingCallSignal);
-    socket.on('call_offer', processIncomingCallSignal);
+    socket.on('incoming_call', handleInitiateSignal);
+    socket.on('call_offer', handleInitiateSignal);
 
-    const handleCallCancel = () => {
+    const handleCallCancel = (data) => {
+      console.log("📵 Call ended or cancelled signal received globally:", data);
       setIncomingCall(null);
     };
 
@@ -233,9 +235,15 @@ function App() {
         'broadcast',
         { event: 'incoming_call_broadcast' },
         (payload) => {
-          if (payload?.payload?.receiverId === session.user.id) {
-            processIncomingCallSignal(payload.payload);
-          }
+          const payloadData = payload?.payload || payload;
+          processIncomingCallSignal(payloadData);
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'cancel_call_broadcast' },
+        () => {
+          setIncomingCall(null);
         }
       )
       .subscribe();
