@@ -638,267 +638,195 @@ const GuestLiveSetup = () => {
         </AnimatePresence>
       </div>
 
-      {/* 8-PANEL GRID CONTAINER WITH DYNAMIC SPLIT SCREEN LAYOUT */}
-      <div className="flex-1 relative p-3 sm:p-4 overflow-y-auto no-scrollbar z-20">
-        {isCoHostingActive && activeCoHosts.length === 1 ? (
-          /* 1v1 CO-HOSTING STAGE LAYOUT: 2 EQUAL SIDE-BY-SIDE PANELS + COMPACT SEATS BELOW */
-          <div className="max-w-4xl mx-auto space-y-4">
-            {/* STAGE PANELS: HOST (LEFT/TOP) & CO-HOST (RIGHT/BOTTOM) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full">
-              {/* HOST STAGE PANEL */}
-              <div className="relative rounded-2xl overflow-hidden bg-zinc-950 border-2 border-pink-500/90 aspect-video sm:aspect-[4/3] min-h-[200px] shadow-[0_0_25px_rgba(244,63,94,0.35)] flex flex-col justify-between">
-                {isCamOn ? (
-                  <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover absolute inset-0" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-zinc-900 absolute inset-0">
-                    <VideoOff size={36} className="text-pink-500/50" />
-                  </div>
-                )}
-
-                {/* Host Controls & Header Badges */}
-                <div className="relative z-10 p-3 flex justify-between items-center pointer-events-none">
-                  <div className="bg-pink-600/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5 border border-pink-400/50 shadow-lg text-white pointer-events-auto">
-                    <Radio size={12} className="animate-pulse text-white"/> HOST
-                  </div>
-                </div>
-
-                {/* Host Footer Bar */}
-                <div className="relative z-10 p-2.5">
-                  <div className="flex items-center justify-between bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 shadow-lg">
-                    <span className="text-xs font-bold text-white truncate">@Host (You)</span>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => setIsMicOn(!isMicOn)} className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors">
-                        {isMicOn ? <Mic size={14}/> : <MicOff size={14} className="text-rose-400"/>}
-                      </button>
-                      <button onClick={() => setIsCamOn(!isCamOn)} className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors">
-                        {isCamOn ? <Video size={14}/> : <VideoOff size={14} className="text-rose-400"/>}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+      {/* STAGE & GUEST SEATS CONTAINER */}
+      <div className="flex-1 relative p-2 sm:p-4 overflow-y-auto no-scrollbar z-20">
+        <div className="max-w-4xl mx-auto space-y-3">
+          
+          {/* PRIMARY HOST STAGE (MAIN DISPLAY) */}
+          <div className="relative rounded-3xl overflow-hidden bg-zinc-950 border-2 border-pink-500/90 aspect-video sm:aspect-[16/9] min-h-[220px] sm:min-h-[320px] shadow-[0_0_30px_rgba(244,63,94,0.3)] flex flex-col justify-between">
+            {isCamOn ? (
+              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover absolute inset-0" />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 absolute inset-0">
+                <VideoOff size={40} className="text-pink-500/50 mb-2" />
+                <span className="text-xs font-bold text-zinc-400">Host Camera Off</span>
               </div>
+            )}
 
-              {/* CO-HOST PRIMARY STAGE PANEL */}
-              {(() => {
-                const primarySlot = activeCoHosts[0];
-                return (
-                  <div 
-                    key={primarySlot.id}
-                    onClick={() => setSelectedSlotId(primarySlot.id)}
-                    className="relative rounded-2xl overflow-hidden bg-zinc-950 border-2 border-cyan-400/90 aspect-video sm:aspect-[4/3] min-h-[200px] shadow-[0_0_25px_rgba(34,211,238,0.35)] flex flex-col justify-between cursor-pointer group"
-                  >
-                    {/* Background Avatar / Video */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-zinc-900 to-black flex flex-col items-center justify-center p-4">
-                      {!primarySlot.isVideoOff ? (
-                        <img src={primarySlot.occupant.avatar} alt="Co-Host" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-cyan-400 object-cover shadow-[0_0_25px_rgba(34,211,238,0.5)] animate-pulse" />
-                      ) : (
-                        <div className="w-20 h-20 rounded-full bg-zinc-900 border-2 border-cyan-500/40 flex items-center justify-center">
-                          <VideoOff size={32} className="text-cyan-400/60" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Co-Host Header Badge */}
-                    <div className="relative z-10 p-3 flex justify-between items-center pointer-events-none">
-                      <div className="bg-cyan-500 text-black px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg flex items-center gap-1">
-                        <Sparkles size={12} /> CO-HOST
-                      </div>
-                      <button 
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); toggleSlotLock(primarySlot.id); }}
-                        className="p-1.5 rounded-lg bg-black/60 text-cyan-400 hover:text-pink-400 pointer-events-auto transition-colors"
-                      >
-                        {primarySlot.isLocked ? <Lock size={14}/> : <Unlock size={14}/>}
-                      </button>
-                    </div>
-
-                    {/* Co-Host Footer Bar */}
-                    <div className="relative z-10 p-2.5">
-                      <div className="flex items-center justify-between bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 shadow-lg">
-                        <span className="text-xs font-bold text-cyan-200 truncate">@{primarySlot.occupant.username}</span>
-                        <div className="flex items-center gap-2">
-                          {primarySlot.isMuted ? (
-                            <span className="p-1 bg-rose-500/80 rounded-lg text-white"><MicOff size={12}/></span>
-                          ) : (
-                            <div className="flex items-center gap-0.5 h-3">
-                              <div className="w-0.5 bg-cyan-400 h-full rounded-full animate-pulse" />
-                              <div className="w-0.5 bg-cyan-400 h-2 rounded-full animate-bounce" />
-                              <div className="w-0.5 bg-cyan-400 h-full rounded-full animate-pulse" />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+            {/* Host Header Badges */}
+            <div className="relative z-10 p-3 flex justify-between items-center pointer-events-none">
+              <div className="bg-pink-600/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5 border border-pink-400/50 shadow-lg text-white pointer-events-auto">
+                <Radio size={12} className="animate-pulse text-white"/> HOST
+              </div>
+              {isCoHostingActive && (
+                <div className="bg-cyan-500/90 text-black px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg flex items-center gap-1">
+                  <Sparkles size={12} /> CO-HOSTING ACTIVE
+                </div>
+              )}
             </div>
 
-            {/* COMPACT SUB-GRID FOR REMAINING GUEST SEATS */}
-            <div className="bg-zinc-950/60 backdrop-blur-xl border border-white/10 rounded-2xl p-3">
-              <p className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-2 px-1">Audience Guest Seats</p>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {guestSlots.filter(s => s.id !== activeCoHosts[0]?.id).map((slot) => {
-                  const isOccupied = !!slot.occupant;
-                  return (
-                    <div 
-                      key={slot.id} 
-                      onClick={() => isOccupied ? setSelectedSlotId(slot.id) : setShowRequestDrawer(true)}
-                      className={`relative rounded-xl border flex flex-col items-center justify-center p-2 min-h-[90px] transition-all cursor-pointer ${
-                        slot.isSpeaking 
-                          ? 'ring-2 ring-cyan-400 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]' 
-                          : isOccupied
-                          ? 'bg-zinc-900 border-cyan-500/40 text-cyan-300'
-                          : 'bg-black/40 border-white/10 hover:border-cyan-400/50 text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      {isOccupied ? (
-                        <div className="flex flex-col items-center gap-1 w-full text-center">
-                          <img src={slot.occupant.avatar} alt="Guest" className="w-8 h-8 rounded-full border border-cyan-400 object-cover" />
-                          <span className="text-[9px] font-bold text-cyan-100 truncate max-w-full">@{slot.occupant.username}</span>
+            {/* COMPACT CO-HOST FLOATING OVERLAY PANEL (~20% MOBILE FIT) */}
+            {activeCoHosts.length > 0 && (() => {
+              const primarySlot = activeCoHosts[0];
+              const isAudioOnly = primarySlot.occupant?.mode === 'audio' || primarySlot.isVideoOff;
+
+              return (
+                <div 
+                  key={primarySlot.id}
+                  onClick={() => setSelectedSlotId(primarySlot.id)}
+                  className="absolute bottom-14 right-3 sm:bottom-16 sm:right-4 w-24 h-32 sm:w-32 sm:h-44 rounded-2xl overflow-hidden bg-zinc-950 border-2 border-cyan-400/90 shadow-[0_0_25px_rgba(34,211,238,0.6)] z-30 flex flex-col justify-between cursor-pointer group"
+                >
+                  {/* CO-HOST CONTENT: AUDIO ONLY vs VIDEO */}
+                  {isAudioOnly ? (
+                    <div className="w-full h-full bg-gradient-to-b from-zinc-900 to-black flex flex-col items-center justify-center p-2 text-center relative">
+                      <div className="relative mb-1">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-cyan-950 border-2 border-cyan-400 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.5)] animate-pulse">
+                          <img src={primarySlot.occupant.avatar} alt="Co-Host Avatar" className="w-full h-full rounded-full object-cover" />
                         </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1 opacity-70 hover:opacity-100">
-                          <UserPlus size={14} className="text-cyan-400" />
-                          <span className="text-[8px] font-bold uppercase">{slot.label}</span>
-                        </div>
-                      )}
+                        <span className="absolute -bottom-1 -right-1 p-0.5 bg-cyan-500 text-black rounded-full border border-black shadow">
+                          <Mic size={9} />
+                        </span>
+                      </div>
+                      <span className="text-[9px] sm:text-[10px] font-black text-cyan-200 truncate max-w-full px-1">
+                        @{primarySlot.occupant.username}
+                      </span>
+                      <span className="text-[7px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/80 px-1.5 py-0.5 rounded-full border border-cyan-500/30">
+                        🎙️ Audio Only
+                      </span>
                     </div>
-                  );
-                })}
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-b from-zinc-900 to-black flex flex-col items-center justify-center p-2 text-center relative">
+                      <img src={primarySlot.occupant.avatar} alt="Co-Host" className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-2 border-cyan-400 object-cover shadow-[0_0_15px_rgba(34,211,238,0.5)] animate-pulse mb-1" />
+                      <span className="text-[9px] font-black text-white truncate max-w-full">@{primarySlot.occupant.username}</span>
+                    </div>
+                  )}
+
+                  {/* Co-Host Overlay Badges */}
+                  <div className="absolute top-1 left-1 z-20">
+                    <span className="bg-cyan-500 text-black font-black text-[8px] px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow">
+                      CO-HOST
+                    </span>
+                  </div>
+
+                  <div className="absolute bottom-1 right-1 z-20 bg-black/70 backdrop-blur-md p-1 rounded-full border border-white/10">
+                    {primarySlot.isMuted ? (
+                      <MicOff size={10} className="text-rose-400" />
+                    ) : (
+                      <Mic size={10} className="text-cyan-400" />
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Host Footer Bar */}
+            <div className="relative z-10 p-2.5">
+              <div className="flex items-center justify-between bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 shadow-lg">
+                <span className="text-xs font-bold text-white truncate">@Host (You)</span>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setIsMicOn(!isMicOn)} className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors">
+                    {isMicOn ? <Mic size={14}/> : <MicOff size={14} className="text-rose-400"/>}
+                  </button>
+                  <button onClick={() => setIsCamOn(!isCamOn)} className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors">
+                    {isCamOn ? <Video size={14}/> : <VideoOff size={14} className="text-rose-400"/>}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        ) : (
-          /* STANDARD 8-PANEL GRID LAYOUT */
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 max-w-4xl mx-auto h-full">
-            
-            {/* HOST PANEL */}
-            <div className="relative rounded-2xl overflow-hidden bg-zinc-950 border-2 border-pink-500/90 col-span-2 row-span-2 min-h-[200px] sm:min-h-[260px] shadow-[0_0_25px_rgba(244,63,94,0.3)] flex flex-col justify-between">
-              {isCamOn ? (
-                <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover absolute inset-0" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-zinc-900 absolute inset-0">
-                  <VideoOff size={32} className="text-pink-500/50" />
-                </div>
-              )}
 
-              {/* Host Header Badge */}
-              <div className="relative z-10 p-3 flex justify-between items-center pointer-events-none">
-                <div className="bg-pink-600/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5 border border-pink-400/50 shadow-lg text-white pointer-events-auto">
-                  <Radio size={12} className="animate-pulse text-white"/> HOST
-                </div>
-              </div>
-
-              {/* Host Footer Bar */}
-              <div className="relative z-10 p-2.5">
-                <div className="flex items-center justify-between bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 shadow-lg">
-                  <span className="text-xs font-bold text-white truncate">@Host (You)</span>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={() => setIsMicOn(!isMicOn)} className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors">
-                      {isMicOn ? <Mic size={14}/> : <MicOff size={14} className="text-rose-400"/>}
-                    </button>
-                    <button onClick={() => setIsCamOn(!isCamOn)} className="p-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors">
-                      {isCamOn ? <Video size={14}/> : <VideoOff size={14} className="text-rose-400"/>}
-                    </button>
-                  </div>
-                </div>
-              </div>
+          {/* COMPACT AUDIENCE / GUEST SEATS GRID (SMALL 20x20 TILES FOR MOBILE) */}
+          <div className="bg-zinc-950/70 backdrop-blur-xl border border-white/10 rounded-2xl p-2.5">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <p className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">Audience Guest Seats (20x20)</p>
+              <span className="text-[9px] text-cyan-400 font-bold">{activeCoHosts.length}/7 Active</span>
             </div>
+            
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+              {guestSlots.map((slot) => {
+                const isOccupied = !!slot.occupant;
+                const isAudioOnly = slot.occupant?.mode === 'audio' || slot.isVideoOff;
 
-            {/* 7 GUEST PANELS */}
-            {guestSlots.map((slot) => {
-              const isOccupied = !!slot.occupant;
-              return (
-                <div 
-                  key={slot.id} 
-                  onClick={() => isOccupied ? setSelectedSlotId(slot.id) : setShowRequestDrawer(true)}
-                  className={`relative rounded-2xl border flex flex-col justify-between p-2.5 min-h-[120px] sm:min-h-[140px] transition-all overflow-hidden cursor-pointer group ${
-                    slot.isSpeaking 
-                      ? 'ring-2 ring-cyan-400 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.6)] bg-zinc-900' 
-                      : slot.isLocked 
-                      ? 'bg-black/60 border-zinc-800 opacity-60' 
-                      : isOccupied
-                      ? 'bg-zinc-950 border-cyan-500/40 hover:border-cyan-400'
-                      : 'bg-zinc-900/60 backdrop-blur-xl border-white/10 hover:border-cyan-400/60 hover:bg-zinc-900'
-                  }`}
-                >
-                  {/* Top Header Bar */}
-                  <div className="flex items-center justify-between w-full relative z-10">
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                      isOccupied ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-zinc-500'
-                    }`}>
-                      {slot.label}
-                    </span>
-                    <button 
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); toggleSlotLock(slot.id); }}
-                      className="p-1 rounded-lg bg-black/50 text-zinc-400 hover:text-cyan-400 transition-colors"
-                    >
-                      {slot.isLocked ? <Lock size={12}/> : <Unlock size={12}/>}
-                    </button>
-                  </div>
+                return (
+                  <div 
+                    key={slot.id} 
+                    onClick={() => isOccupied ? setSelectedSlotId(slot.id) : setShowRequestDrawer(true)}
+                    className={`relative rounded-xl border flex flex-col items-center justify-between p-1.5 min-h-[75px] sm:min-h-[85px] transition-all cursor-pointer group ${
+                      slot.isSpeaking 
+                        ? 'ring-2 ring-cyan-400 border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.5)] bg-zinc-900' 
+                        : slot.isLocked 
+                        ? 'bg-black/60 border-zinc-800 opacity-60' 
+                        : isOccupied
+                        ? 'bg-zinc-900 border-cyan-500/40 text-cyan-300'
+                        : 'bg-black/40 border-white/10 hover:border-cyan-400/50 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {/* Floating Reactions */}
+                    <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+                      {floatingReactions.filter(r => r.slotId === slot.id).map(r => (
+                        <motion.div
+                          key={r.id}
+                          initial={{ y: 20, opacity: 0, scale: 0.5 }}
+                          animate={{ y: -40, opacity: [0, 1, 0], scale: 1.3 }}
+                          transition={{ duration: 1.5 }}
+                          className="absolute bottom-1 left-1/2 -translate-x-1/2 text-lg"
+                        >
+                          {r.emoji}
+                        </motion.div>
+                      ))}
+                    </div>
 
-                  {/* Floating reactions over this slot */}
-                  <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-                    {floatingReactions.filter(r => r.slotId === slot.id).map(r => (
-                      <motion.div
-                        key={r.id}
-                        initial={{ y: 30, opacity: 0, scale: 0.5 }}
-                        animate={{ y: -60, opacity: [0, 1, 0], scale: 1.5 }}
-                        transition={{ duration: 1.8 }}
-                        className="absolute bottom-2 left-1/2 -translate-x-1/2 text-2xl"
-                      >
-                        {r.emoji}
-                      </motion.div>
-                    ))}
-                  </div>
+                    {/* Slot Header */}
+                    <div className="flex items-center justify-between w-full">
+                      <span className={`text-[8px] font-black uppercase px-1 py-0.2 rounded ${
+                        isOccupied ? 'bg-cyan-500/20 text-cyan-300' : 'text-zinc-500'
+                      }`}>
+                        {slot.label}
+                      </span>
+                      {isOccupied && (
+                        <span className="text-[7px]">
+                          {isAudioOnly ? '🎙️' : '📹'}
+                        </span>
+                      )}
+                    </div>
 
-                  {/* Panel Center Content */}
-                  <div className="flex-1 flex flex-col items-center justify-center relative z-10 py-1">
-                    {isOccupied ? (
-                      <div className="flex flex-col items-center gap-1">
-                        {!slot.isVideoOff ? (
-                          <img src={slot.occupant.avatar} alt="Guest" className="w-12 h-12 rounded-full border-2 border-cyan-400 object-cover shadow-md" />
+                    {/* Slot Content */}
+                    <div className="flex-1 flex flex-col items-center justify-center my-0.5">
+                      {isOccupied ? (
+                        <div className="flex flex-col items-center gap-0.5 text-center">
+                          <img src={slot.occupant.avatar} alt="Guest" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-cyan-400 object-cover shadow-sm" />
+                          <span className="text-[8px] font-bold text-cyan-100 truncate max-w-[55px]">@{slot.occupant.username}</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                          <div className="w-6 h-6 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                            <UserPlus size={12} className="text-cyan-400" />
+                          </div>
+                          <span className="text-[7px] font-bold uppercase text-zinc-400">Invite</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Slot Footer Indicator */}
+                    {isOccupied && (
+                      <div className="w-full flex items-center justify-between bg-black/60 px-1 py-0.5 rounded text-[8px]">
+                        {slot.isMuted ? (
+                          <MicOff size={8} className="text-rose-400" />
                         ) : (
-                          <div className="w-12 h-12 rounded-full bg-zinc-900 border border-cyan-500/30 flex items-center justify-center">
-                            <VideoOff size={18} className="text-zinc-500" />
+                          <div className="flex items-center gap-0.5 h-2">
+                            <div className="w-0.5 bg-cyan-400 h-full animate-pulse" />
+                            <div className="w-0.5 bg-cyan-400 h-1 animate-bounce" />
                           </div>
                         )}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-1 group-hover:scale-105 transition-transform">
-                        <div className="w-9 h-9 rounded-full bg-cyan-500/10 border border-cyan-500/30 group-hover:border-cyan-400 flex items-center justify-center">
-                          <UserPlus size={16} className="text-cyan-400"/>
-                        </div>
-                        <span className="text-[9px] font-bold text-cyan-200/70 group-hover:text-cyan-300">Tap to Invite</span>
                       </div>
                     )}
                   </div>
-
-                  {/* Panel Footer Bar */}
-                  {isOccupied && (
-                    <div className="relative z-10 flex items-center justify-between bg-black/70 backdrop-blur-md px-2 py-1 rounded-xl border border-white/10">
-                      <span className="text-[10px] font-bold text-cyan-100 truncate max-w-[80%]">@{slot.occupant.username}</span>
-                      <div className="flex items-center gap-1">
-                        {slot.isMuted && (
-                          <span className="p-0.5 bg-rose-500/80 rounded text-white text-[8px]"><MicOff size={10}/></span>
-                        )}
-                        {slot.isSpeaking && (
-                          <div className="flex items-center gap-0.5 h-2.5">
-                            <div className="w-0.5 bg-cyan-400 h-full rounded-full animate-pulse" />
-                            <div className="w-0.5 bg-cyan-400 h-1.5 rounded-full animate-bounce" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
+                );
+              })}
+            </div>
           </div>
-        )}
+
+        </div>
       </div>
 
       {/* ACTION CONTROLS */}
