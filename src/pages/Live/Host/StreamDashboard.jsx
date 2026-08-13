@@ -4,8 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Users, Gift, BarChart3, Share2, HelpCircle, BarChart, 
-  Smile, X, UserPlus, Swords, Mic, MicOff, Video, VideoOff, Settings, Radio, UserCheck, UserX
+  Mic, Video, UserX
 } from 'lucide-react';
 
 // Isolated Logic Hook Injectors
@@ -21,32 +20,7 @@ import StreamHeader from '../Shared/StreamHeader';
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting';
 import GuestManager from '../Shared/GuestManager';
-
-// Subcomponent to bind guest WebRTC media streams cleanly into dynamic video elements
-const GuestTileVideo = ({ stream }) => {
-  const videoRef = useRef(null);
-
-  useEffect(() => {
-    console.log("🎥 [GuestTileVideo] Component mounted/updated with stream:", stream);
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-      console.log("✅ [GuestTileVideo] Successfully assigned stream to video srcObject.", {
-        tracks: stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState }))
-      });
-    } else if (!stream) {
-      console.warn("⚠️ [GuestTileVideo] Rendered without an active stream object!");
-    }
-  }, [stream]);
-
-  return (
-    <video 
-      ref={videoRef} 
-      autoPlay 
-      playsInline 
-      className="w-full h-full object-cover" 
-    />
-  );
-};
+import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
@@ -82,7 +56,7 @@ const StreamDashboard = () => {
   } = useStreamSocket(streamId, true);
 
   // 2. EXECUTE ABSTRACTED WEBRTC HARDWARE CONTROLLER
-  const { localVideoRef, hardwareReady } = useStreamWebRTC(streamId, socket, isCameraOff, isMuted, challengerVideoRef);
+  const { localVideoRef, hardwareReady, primaryRemoteStream } = useStreamWebRTC(streamId, socket, isCameraOff, isMuted, challengerVideoRef);
 
   // Fetch Metadata & Sync Database Lifecycle Status
   useEffect(() => {
@@ -321,16 +295,6 @@ const StreamDashboard = () => {
     );
   }
 
-  // Calculate dynamic grid layout parameters based on active guest count
-  const totalSlots = 1 + activeCoHosts.length;
-  const gridClasses = isBattleMode 
-    ? 'grid-cols-2 grid-rows-1' 
-    : totalSlots === 1 
-      ? 'grid-cols-1 grid-rows-1' 
-      : totalSlots === 2 
-        ? 'grid-cols-2 grid-rows-1' 
-        : 'grid-cols-2 grid-rows-2';
-
   return (
     <div className="h-[100dvh] w-full bg-zinc-950 text-white overflow-hidden relative font-sans flex flex-row">
       
@@ -381,92 +345,55 @@ const StreamDashboard = () => {
           )}
         </AnimatePresence>
 
-        {/* 2. DYNAMIC STAGE MULTIPLEX VIEWPORT GRID MATRIX */}
-        <div className={`absolute inset-0 z-0 grid gap-1 p-1 transition-all duration-500 bg-zinc-950 ${gridClasses}`}>
-          
-          {/* PANEL A: PRIMARY HOST (YOU) */}
-          <div className="relative h-full w-full overflow-hidden bg-zinc-900 rounded-2xl border border-white/5">
-            <video 
-              ref={localVideoRef} 
-              autoPlay 
-              muted 
-              playsInline 
-              className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} 
-            />
-            {isCameraOff && (
-              <div className="absolute inset-0 flex items-center justify-center text-zinc-500 bg-zinc-900 font-black tracking-widest text-xs italic">
-                Camera Off
-              </div>
-            )}
-
-            <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] uppercase font-bold tracking-wider">
-              @{streamData?.host?.username} <span className="text-cyan-400 font-black ml-1">● Host</span>
-            </div>
-            
-            {isBattleMode && (
-              <BattleOverlay 
-                score={battleScores} 
-                hostProfile={streamData?.host} 
-                coHost={{ username: 'Challenger' }} 
-                onInviteClick={() => {}} 
-              />
-            )}
-          </div>
-
-          {/* BATTLE CHALLENGER FEED */}
-          {isBattleMode && (
-            <div className="relative h-full w-full overflow-hidden bg-zinc-900 rounded-2xl border border-white/5">
-              <video 
-                ref={challengerVideoRef} 
-                autoPlay 
-                playsInline 
-                className="w-full h-full object-cover" 
-              />
-              <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] uppercase font-bold tracking-wider">
-                Challenger <span className="text-[#fe2c55] font-black ml-1">● Live</span>
-              </div>
-            </div>
-          )}
-
-          {/* DYNAMIC CO-HOST GUEST FEEDS */}
-          {!isBattleMode && activeCoHosts.map((guest, idx) => {
-            console.log(`🎨 [StreamDashboard] Rendering active guest panel #${idx}:`, guest);
-            return (
-              <div key={guest.id || idx} className="relative h-full w-full overflow-hidden bg-zinc-900 rounded-2xl border border-white/5">
-                {guest.mode === 'audio' ? (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900/90 relative">
-                    <div className="relative">
-                      <img 
-                        src={guest.avatar_url || 'https://via.placeholder.com/150'} 
-                        className="w-16 h-16 rounded-full border-2 border-emerald-500/50 shadow-lg object-cover" 
-                        alt="" 
-                      />
-                      <div className="absolute -bottom-1 -right-1 p-1.5 bg-emerald-500 text-black rounded-full shadow">
-                        <Mic size={12} />
-                      </div>
-                    </div>
-                    <p className="text-xs font-bold text-zinc-200 mt-2">@{guest.username}</p>
-                    <p className="text-[9px] text-emerald-400 font-mono tracking-wider uppercase mt-0.5">Audio Linked</p>
+        {/* 2. DYNAMIC STAGE VIEWPORT WITH 50/50 SPLITTING LINE */}
+        <div className="absolute inset-0 z-0 bg-zinc-950 overflow-hidden">
+          <DynamicStreamGrid 
+            streamId={streamId}
+            hostVideo={
+              <div className="relative w-full h-full">
+                <video 
+                  ref={localVideoRef} 
+                  autoPlay 
+                  muted 
+                  playsInline 
+                  className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} 
+                />
+                {isCameraOff && (
+                  <div className="absolute inset-0 flex items-center justify-center text-zinc-500 bg-zinc-900 font-black tracking-widest text-xs italic">
+                    Camera Off
                   </div>
-                ) : guest.stream ? (
-                  <GuestTileVideo stream={guest.stream} />
-                ) : (
+                )}
+                {isBattleMode && (
+                  <BattleOverlay 
+                    score={battleScores} 
+                    hostProfile={streamData?.host} 
+                    coHost={{ username: 'Challenger' }} 
+                    onInviteClick={() => {}} 
+                  />
+                )}
+              </div>
+            }
+            hostInfo={{
+              username: streamData?.host?.username || 'Host 1',
+              avatar_url: streamData?.host?.avatar_url
+            }}
+            coHosts={activeCoHosts}
+            coHostStream={primaryRemoteStream}
+            coHostVideo={
+              primaryRemoteStream ? null : (
+                <div className="relative w-full h-full">
                   <video 
-                    ref={idx === 0 ? challengerVideoRef : null} 
+                    ref={challengerVideoRef} 
                     autoPlay 
                     playsInline 
                     className="w-full h-full object-cover" 
                   />
-                )}
-
-                <div className="absolute bottom-3 left-4 z-20 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
-                  <span>@{guest.username}</span> 
-                  <span className="text-emerald-400 font-black ml-1">● Guest</span>
                 </div>
-              </div>
-            );
-          })}
-
+              )
+            }
+            coHostInfo={activeCoHosts[0] ? activeCoHosts[0] : (primaryRemoteStream ? { username: 'Co-Host' } : null)}
+            isHostView={true}
+          />
         </div>
 
         {/* Control Console Dock Bar at bottom */}
