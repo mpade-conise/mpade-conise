@@ -14,6 +14,9 @@ const DynamicStreamGrid = ({
   hostStream,
   hostInfo = { username: 'Host', avatar_url: null },
   coHosts: propCoHosts = null,
+  coHostStream = null,
+  coHostVideo = null,
+  coHostInfo = null,
   isHostView = false,
   className = ''
 }) => {
@@ -63,9 +66,16 @@ const DynamicStreamGrid = ({
     };
   }, [streamId, propCoHosts]);
 
-  // Derived state: Co-host is active if activeCoHosts array has at least 1 entry
-  const primaryCoHost = activeCoHosts.length > 0 ? activeCoHosts[0] : null;
-  const isCoHostActive = Boolean(primaryCoHost);
+  // Derived state: Co-host is active if coHostStream/coHostVideo/coHostInfo or activeCoHosts array is present
+  const primaryCoHost = activeCoHosts.length > 0 ? activeCoHosts[0] : (coHostInfo || (coHostStream ? { username: 'Co-Host' } : null));
+  const isCoHostActive = Boolean(coHostStream || coHostVideo || primaryCoHost);
+
+  const effectiveCoHostInfo = {
+    username: coHostInfo?.username || primaryCoHost?.username || 'Co-Host',
+    avatar_url: coHostInfo?.avatar_url || primaryCoHost?.avatar_url,
+    mode: coHostInfo?.mode || primaryCoHost?.mode || 'video',
+    isMuted: coHostInfo?.isMuted || primaryCoHost?.isMuted || false
+  };
 
   return (
     <div className={`relative w-full h-full overflow-hidden bg-black flex flex-col ${className}`}>
@@ -74,20 +84,10 @@ const DynamicStreamGrid = ({
         className="w-full h-full flex flex-col md:flex-row relative overflow-hidden transition-all duration-500 ease-in-out"
         layout
       >
-        {/* HOST STREAM CONTAINER (Occupies 100% when solo, 50% when co-hosting) */}
+        {/* HOST 1 STREAM CONTAINER (Occupies 100% of background stage) */}
         <motion.div 
           layout
-          initial={false}
-          animate={{
-            height: isCoHostActive ? '50%' : '100%',
-            width: isCoHostActive ? '100%' : '100%'
-          }}
-          transition={{ type: 'spring', damping: 25, stiffness: 120 }}
-          className={`relative overflow-hidden flex items-center justify-center transition-all duration-500 ${
-            isCoHostActive 
-              ? 'border-b-2 md:border-b-0 md:border-r-2 border-pink-500/80 shadow-[0_0_20px_rgba(244,63,94,0.3)] z-10' 
-              : 'z-0'
-          }`}
+          className="relative w-full h-full overflow-hidden flex items-center justify-center z-0"
         >
           {/* Host Video Render / Fallback */}
           {hostVideo ? (
@@ -95,7 +95,7 @@ const DynamicStreamGrid = ({
           ) : hostStream ? (
             <video 
               ref={(node) => {
-                if (node && hostStream) {
+                if (node && hostStream && node.srcObject !== hostStream) {
                   node.srcObject = hostStream;
                 }
               }} 
@@ -120,7 +120,7 @@ const DynamicStreamGrid = ({
           <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
             <span className="bg-pink-600/90 text-white font-black text-[10px] sm:text-xs px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-lg border border-pink-400/40">
               <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-              HOST
+              HOST 1
             </span>
             <span className="text-white text-xs font-bold drop-shadow-md bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
               {hostInfo.username || 'Host'}
@@ -136,40 +136,67 @@ const DynamicStreamGrid = ({
           </div>
         </motion.div>
 
-        {/* CO-HOST SPLIT DIVIDER BAR (Appears dynamically when co-host joins) */}
-        <AnimatePresence>
-          {isCoHostActive && (
-            <motion.div 
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex items-center justify-center"
-            >
-              <div className="bg-zinc-950/90 border-2 border-cyan-400 text-cyan-300 px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(34,211,238,0.6)] flex items-center gap-1.5 backdrop-blur-xl">
-                <Sparkles size={12} className="text-cyan-400 animate-spin" />
-                <span>50/50 CO-HOST STAGE</span>
-                <Flame size={12} className="text-pink-500" />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* CO-HOST STREAM CONTAINER (Occupies 50% when active, hidden/collapsed when disconnected) */}
+        {/* HOST 2 / CO-HOST STREAM CONTAINER (Compact Picture-in-Picture Floating Panel ~20% size fitting mobile) */}
         <AnimatePresence>
           {isCoHostActive && (
             <motion.div 
               layout
-              initial={{ height: '0%', opacity: 0 }}
-              animate={{ height: '50%', opacity: 1 }}
-              exit={{ height: '0%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 120 }}
-              className="relative w-full md:w-full overflow-hidden bg-zinc-950 flex items-center justify-center border-t-2 md:border-t-0 md:border-l-2 border-cyan-500/80 shadow-[0_0_20px_rgba(34,211,238,0.3)] z-10"
+              initial={{ scale: 0.8, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 150 }}
+              className="absolute bottom-20 right-4 sm:bottom-24 sm:right-6 w-24 h-32 sm:w-32 sm:h-44 rounded-2xl overflow-hidden bg-zinc-950 border-2 border-cyan-400/90 shadow-[0_0_25px_rgba(34,211,238,0.6)] z-30 flex flex-col justify-between"
             >
-              {/* Co-Host Video Stream or Avatar Tile */}
-              {primaryCoHost.stream ? (
+              {/* If mode is 'audio', hide video and display audio tile with hidden audio player */}
+              {effectiveCoHostInfo.mode === 'audio' ? (
+                <div className="w-full h-full bg-gradient-to-b from-zinc-900 to-black flex flex-col items-center justify-center p-2 text-center relative">
+                  {/* Invisible audio element to transmit and play audio stream */}
+                  {coHostStream && (
+                    <audio 
+                      ref={(node) => {
+                        if (node && coHostStream && node.srcObject !== coHostStream) {
+                          node.srcObject = coHostStream;
+                        }
+                      }}
+                      autoPlay
+                    />
+                  )}
+                  <div className="relative mb-1">
+                    <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-cyan-950 border-2 border-cyan-400 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.5)] animate-pulse">
+                      {effectiveCoHostInfo.avatar_url ? (
+                        <img src={effectiveCoHostInfo.avatar_url} alt="Co-Host Avatar" className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        <UserCheck className="text-cyan-400" size={20} />
+                      )}
+                    </div>
+                    <span className="absolute -bottom-1 -right-1 p-0.5 bg-cyan-500 text-black rounded-full border border-black shadow">
+                      <Mic size={9} />
+                    </span>
+                  </div>
+                  <span className="text-[9px] sm:text-[10px] font-black text-cyan-200 truncate max-w-full px-1">
+                    @{effectiveCoHostInfo.username}
+                  </span>
+                  <span className="text-[7px] font-black text-cyan-400 uppercase tracking-widest bg-cyan-950/80 px-1.5 py-0.5 rounded-full border border-cyan-500/30">
+                    🎙️ Audio Only
+                  </span>
+                </div>
+              ) : coHostVideo ? (
+                <div className="w-full h-full object-cover">{coHostVideo}</div>
+              ) : coHostStream ? (
                 <video 
                   ref={(node) => {
-                    if (node && primaryCoHost.stream) {
+                    if (node && coHostStream && node.srcObject !== coHostStream) {
+                      node.srcObject = coHostStream;
+                    }
+                  }}
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-full object-cover"
+                />
+              ) : primaryCoHost?.stream ? (
+                <video 
+                  ref={(node) => {
+                    if (node && primaryCoHost.stream && node.srcObject !== primaryCoHost.stream) {
                       node.srcObject = primaryCoHost.stream;
                     }
                   }}
@@ -178,50 +205,36 @@ const DynamicStreamGrid = ({
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full bg-gradient-to-b from-zinc-900 to-black flex flex-col items-center justify-center relative p-4">
+                <div className="w-full h-full bg-gradient-to-b from-zinc-900 to-black flex flex-col items-center justify-center relative p-2 text-center">
                   <div className="relative">
-                    <div className="w-20 h-20 rounded-full bg-cyan-500/20 border-2 border-cyan-400 flex items-center justify-center shadow-[0_0_30px_rgba(34,211,238,0.5)] animate-pulse">
-                      {primaryCoHost.avatar_url ? (
-                        <img src={primaryCoHost.avatar_url} alt="Co-Host Avatar" className="w-full h-full rounded-full object-cover" />
+                    <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-cyan-500/20 border-2 border-cyan-400 flex items-center justify-center shadow-[0_0_20px_rgba(34,211,238,0.5)] animate-pulse">
+                      {effectiveCoHostInfo.avatar_url ? (
+                        <img src={effectiveCoHostInfo.avatar_url} alt="Co-Host Avatar" className="w-full h-full rounded-full object-cover" />
                       ) : (
-                        <UserCheck className="text-cyan-400" size={32} />
+                        <UserCheck className="text-cyan-400" size={20} />
                       )}
                     </div>
-                    <span className="absolute bottom-0 right-0 w-5 h-5 bg-cyan-500 rounded-full border-2 border-black flex items-center justify-center shadow">
-                      <Radio size={10} className="text-black" />
-                    </span>
                   </div>
 
-                  <p className="mt-3 text-sm font-black text-white tracking-wide">
-                    {primaryCoHost.username || 'Co-Host Guest'}
-                  </p>
-                  <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">
-                    {primaryCoHost.mode === 'audio' ? '🎙️ Audio Guest' : '📹 Video Co-Host'}
+                  <p className="mt-1 text-[9px] sm:text-[10px] font-black text-white truncate max-w-full px-1">
+                    @{effectiveCoHostInfo.username}
                   </p>
                 </div>
               )}
 
-              {/* Co-Host Tag Overlay */}
-              <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
-                <span className="bg-cyan-500 text-black font-black text-[10px] sm:text-xs px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-lg border border-cyan-300">
-                  <span className="w-2 h-2 rounded-full bg-black animate-ping" />
+              {/* Co-Host Badge Overlay */}
+              <div className="absolute top-1 left-1 z-20 flex items-center gap-1">
+                <span className="bg-cyan-500 text-black font-black text-[8px] px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow border border-cyan-300">
                   CO-HOST
-                </span>
-                <span className="text-white text-xs font-bold drop-shadow-md bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
-                  {primaryCoHost.username || 'Co-Host'}
                 </span>
               </div>
 
-              {/* Co-Host Controls / Status */}
-              <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
-                {primaryCoHost.isMuted ? (
-                  <span className="flex items-center gap-1 text-rose-400 text-[10px] font-bold">
-                    <MicOff size={12} /> Muted
-                  </span>
+              {/* Co-Host Mic Status */}
+              <div className="absolute bottom-1 right-1 z-20 bg-black/70 backdrop-blur-md p-1 rounded-full border border-white/10">
+                {effectiveCoHostInfo.isMuted ? (
+                  <MicOff size={10} className="text-rose-400" />
                 ) : (
-                  <span className="flex items-center gap-1 text-cyan-400 text-[10px] font-bold">
-                    <Mic size={12} /> Mic On
-                  </span>
+                  <Mic size={10} className="text-cyan-400" />
                 )}
               </div>
             </motion.div>
