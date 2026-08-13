@@ -8,6 +8,7 @@ import {
   ArrowUpRight, Share2, Download
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import StreamMetricsDashboard from '../../../components/StreamMetricsDashboard';
 
 const HostAnalytics = () => {
   const { streamId } = useParams();
@@ -160,45 +161,9 @@ const HostAnalytics = () => {
           <StatCard label="Peak Reach" value={stats?.peak?.toLocaleString()} icon={<BarChart2 className="text-purple-400 drop-shadow-[0_0_8px_rgba(192,132,252,0.8)]" />} border="border-purple-500/40" glow="shadow-[0_0_20px_rgba(192,132,252,0.25)]" />
           <StatCard label="Engagement" value={`${stats?.engagement}%`} icon={<Zap className="text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]" />} color="text-pink-400 drop-shadow-[0_0_10px_rgba(244,63,94,0.8)]" border="border-pink-500/40" glow="shadow-[0_0_20px_rgba(244,63,94,0.25)]" />
 
-          {/* Graphical Pulse Element Section */}
-          <div className="lg:col-span-3 bg-black/40 border border-pink-500/30 rounded-[40px] p-8 backdrop-blur-xl relative overflow-hidden flex flex-col shadow-[0_0_30px_rgba(244,63,94,0.2)]">
-            {/* Top Internal Reflection Line */}
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-pink-400/60 to-transparent" />
-            
-            <div className="flex justify-between items-start mb-8 relative z-10">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-widest text-pink-400 mb-1 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]">Audience Pulse</h3>
-                <p className="text-[10px] text-cyan-400/80 font-mono drop-shadow-[0_0_4px_rgba(6,182,212,0.4)]">Interaction density node mapping</p>
-              </div>
-              <div className="px-3 py-1 bg-pink-500/10 rounded-lg text-[9px] font-bold border border-pink-500/30 text-pink-300 italic shadow-[0_0_10px_rgba(244,63,94,0.3)]">PEAK: {stats?.peak}</div>
-            </div>
-
-            <div className="flex-grow flex items-end gap-2 md:gap-3 min-h-[200px] relative z-10">
-              {[30, 50, 45, 80, 100, 70, 90, 60, 40, 85, 30].map((h, i) => (
-                <motion.div 
-                  key={`pulse-bar-${i}`}
-                  initial={{ height: 0 }}
-                  animate={{ height: `${h}%` }}
-                  transition={{ delay: i * 0.03, duration: 0.8, ease: "circOut" }}
-                  className="flex-1 group relative"
-                >
-                  {/* Neon Bar Body */}
-                  <div className="w-full h-full bg-gradient-to-t from-cyan-500/20 via-pink-500/60 to-pink-400 rounded-t-xl group-hover:brightness-150 group-hover:shadow-[0_0_20px_rgba(244,63,94,0.8)] transition-all shadow-[0_0_10px_rgba(244,63,94,0.4)]" />
-                  {/* Neon Tip Glow */}
-                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-cyan-300 rounded-full shadow-[0_0_8px_#ffffff]" />
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Bottom Reflection Effect */}
-            <div className="flex justify-between mt-6 text-[8px] font-black text-pink-300/60 uppercase tracking-[0.4em] border-t border-pink-500/20 pt-4 relative z-10">
-              <span className="drop-shadow-[0_0_4px_rgba(244,63,94,0.4)]">Start</span>
-              <span className="drop-shadow-[0_0_4px_rgba(244,63,94,0.4)]">Peak Pulse</span>
-              <span className="drop-shadow-[0_0_4px_rgba(244,63,94,0.4)]">Session End</span>
-            </div>
-            
-            {/* Floor Ambient Glow */}
-            <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-pink-500/10 to-transparent pointer-events-none" />
+          {/* Recharts Data Dashboard Section */}
+          <div className="lg:col-span-3">
+            <StreamMetricsDashboard streamId={streamId} currentViewers={stats?.viewers || 35} />
           </div>
 
           {/* Sidebar Modules */}
