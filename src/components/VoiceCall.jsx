@@ -2,7 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { io } from 'socket.io-client';
-import { PhoneOff, Mic, MicOff, Shield, PhoneCall } from 'lucide-react';
+import { PhoneOff, Mic, MicOff, Shield, PhoneCall, MessageSquare, Send, X, Volume2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { startRingbackTone, stopRingbackTone } from '../utils/callNotificationEngine';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -43,6 +45,11 @@ const VoiceCall = () => {
   const [peerProfile, setPeerProfile] = useState(null);
   const [callStatus, setCallStatus] = useState("Initializing...");
   const [isMuted, setIsMuted] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+  const [showChat, setShowChat] = useState(false);
+  const [inCallMessages, setInCallMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [floatingReactions, setFloatingReactions] = useState([]);
 
   const socketRef = useRef(null);
   const pcRef = useRef(null);
@@ -50,6 +57,36 @@ const VoiceCall = () => {
   const iceQueueRef = useRef([]);
   
   const remoteAudioRef = useRef(null);
+
+  // Call Duration Timer
+  useEffect(() => {
+    let timer = null;
+    if (callStatus === "Connected") {
+      timer = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setCallDuration(0);
+    }
+    return () => clearInterval(timer);
+  }, [callStatus]);
+
+  // Outgoing Call Ringback Sound Management
+  useEffect(() => {
+    const statusLower = callStatus.toLowerCase();
+    if (statusLower.includes("calling") || statusLower.includes("connecting") || statusLower.includes("initializing")) {
+      startRingbackTone();
+    } else {
+      stopRingbackTone();
+    }
+    return () => stopRingbackTone();
+  }, [callStatus]);
+
+  const formatTime = (secs) => {
+    const mins = Math.floor(secs / 60);
+    const remSecs = secs % 60;
+    return `${mins.toString().padStart(2, '0')}:${remSecs.toString().padStart(2, '0')}`;
+  };
 
   // Helper to drain queued ICE candidates once remoteDescription is ready
   const processIceQueue = async () => {
@@ -259,6 +296,19 @@ const VoiceCall = () => {
           if (isComponentMounted) cleanUpCall();
         });
 
+        // In-Call Chat & Reaction Event Listeners
+        socket.on('in_call_text_message', (data) => {
+          setInCallMessages((prev) => [...prev, data]);
+        });
+
+        socket.on('in_call_reaction_burst', (data) => {
+          const reactionId = Date.now() + Math.random();
+          setFloatingReactions((prev) => [...prev, { id: reactionId, emoji: data.emoji }]);
+          setTimeout(() => {
+            setFloatingReactions((prev) => prev.filter((r) => r.id !== reactionId));
+          }, 2500);
+        });
+
       } catch (err) {
         console.error("System device acquisition or socket binding fault:", err);
         if (isComponentMounted) setCallStatus("Hardware Error");
@@ -272,6 +322,36 @@ const VoiceCall = () => {
       cleanUpCall();
     };
   }, [currentUserId, peerUserId, URLRole]); 
+
+  // Send In-Call Text Message
+  const sendInCallMessage = (e) => {
+    e?.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const msgPayload = {
+      id: Date.now(),
+      senderId: currentUserId,
+      text: chatInput.trim(),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setInCallMessages((prev) => [...prev, msgPayload]);
+    const roomId = [currentUserId, peerUserId].sort().join("-");
+    socketRef.current?.emit('in_call_text_message', { roomId, ...msgPayload });
+    setChatInput("");
+  };
+
+  // Send In-Call Reaction Burst
+  const sendReactionBurst = (emoji) => {
+    const reactionId = Date.now() + Math.random();
+    setFloatingReactions((prev) => [...prev, { id: reactionId, emoji }]);
+    setTimeout(() => {
+      setFloatingReactions((prev) => prev.filter((r) => r.id !== reactionId));
+    }, 2500);
+
+    const roomId = [currentUserId, peerUserId].sort().join("-");
+    socketRef.current?.emit('in_call_reaction_burst', { roomId, emoji });
+  }; 
 
   // Track State Synchronization Shifters
   useEffect(() => {
@@ -299,27 +379,57 @@ const VoiceCall = () => {
   };
 
   return (
-    <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col items-center justify-between p-6 font-sans">
+    <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col items-center justify-between p-4 sm:p-6 font-sans select-none overflow-hidden">
       {/* Hidden Audio Output Element for WebRTC Stream Processing */}
       <audio ref={remoteAudioRef} autoPlay />
 
-      {/* Top Bar */}
-      <div className="w-full flex justify-between items-center bg-white/5 px-4 py-3 rounded-2xl border border-white/5 backdrop-blur-md z-10">
+      {/* Top Header Bar */}
+      <div className="w-full max-w-md flex justify-between items-center bg-white/5 px-4 py-3 rounded-2xl border border-white/10 backdrop-blur-md z-30 shadow-xl">
         <div className="flex items-center gap-2">
           <Shield size={16} className="text-cyan-400" />
-          <span className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">End-to-End Encrypted</span>
+          <span className="text-[10px] sm:text-xs font-semibold tracking-wide text-zinc-300 uppercase">Encrypted</span>
         </div>
-        <span className="text-xs bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded-full font-bold">{callStatus}</span>
+
+        {/* Call Timer Display */}
+        <div className="flex items-center gap-2">
+          {callStatus === "Connected" && (
+            <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+              {formatTime(callDuration)}
+            </span>
+          )}
+          <span className="text-xs bg-cyan-500/10 text-cyan-400 px-2.5 py-1 rounded-full font-extrabold border border-cyan-500/20">
+            {callStatus}
+          </span>
+        </div>
       </div>
 
       {/* Profile Audio Sandbox Container */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 my-8 relative w-full max-w-md rounded-3xl bg-zinc-900 border border-white/5 shadow-2xl p-8">
-        <div className="flex flex-col items-center gap-6">
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 my-6 relative w-full max-w-md rounded-3xl bg-zinc-900/80 border border-white/10 shadow-2xl p-8 backdrop-blur-xl overflow-hidden">
+        
+        {/* Floating In-Call Reactions Overlay */}
+        <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+          <AnimatePresence>
+            {floatingReactions.map((r) => (
+              <motion.div
+                key={r.id}
+                initial={{ y: 150, opacity: 0, scale: 0.5, x: Math.random() * 80 - 40 }}
+                animate={{ y: -150, opacity: [0, 1, 1, 0], scale: [0.5, 1.8, 2, 1] }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 2.2, ease: "easeOut" }}
+                className="absolute bottom-10 left-1/2 text-4xl drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]"
+              >
+                {r.emoji}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+
+        <div className="flex flex-col items-center gap-6 z-10">
           {peerProfile?.avatar_url ? (
             <img 
               src={peerProfile.avatar_url} 
               alt="Peer Avatar" 
-              className={`w-32 h-32 rounded-full object-cover border-4 border-cyan-500/20 shadow-2xl ${callStatus !== "Connected" ? 'animate-pulse' : ''}`}
+              className={`w-32 h-32 rounded-full object-cover border-4 border-cyan-500/30 shadow-2xl ${callStatus !== "Connected" ? 'animate-pulse' : 'ring-4 ring-cyan-500/20'}`}
             />
           ) : (
             <div className="w-32 h-32 rounded-full bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-center animate-pulse shadow-2xl">
@@ -328,35 +438,124 @@ const VoiceCall = () => {
           )}
           
           <div className="text-center">
-            <h2 className="text-2xl font-bold tracking-tight">@{peerProfile?.username || 'User'}</h2>
-            <p className="text-sm text-zinc-400 mt-2 font-medium tracking-wide">{callStatus}</p>
+            <h2 className="text-2xl font-black tracking-tight text-white">@{peerProfile?.username || 'User'}</h2>
+            <p className="text-xs text-cyan-400 font-mono mt-1 capitalize animate-pulse">{callStatus}</p>
           </div>
         </div>
 
-        {/* Ambient Ring Wave Effect */}
+        {/* Ambient Equalizer Waves */}
         {callStatus === "Connected" && (
-          <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
-            <div className="absolute w-64 h-64 border-2 border-cyan-400 rounded-full animate-ping duration-1000" />
+          <div className="flex items-center gap-1.5 h-8 mt-2 z-10">
+            {[0.4, 0.8, 0.3, 0.9, 0.5, 0.7, 0.2].map((height, i) => (
+              <motion.div
+                key={i}
+                animate={{ height: ['20%', '100%', '30%'] }}
+                transition={{ repeat: Infinity, duration: 0.8 + i * 0.1, ease: "easeInOut" }}
+                className="w-1.5 bg-cyan-400 rounded-full"
+              />
+            ))}
           </div>
         )}
+
+        {/* Quick In-Call Reaction Bar Overlay */}
+        {callStatus === "Connected" && (
+          <div className="flex gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/10 z-20 mt-2">
+            {['❤️', '🔥', '👏', '🎉', '😮'].map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => sendReactionBurst(emoji)}
+                className="p-1 hover:bg-white/10 rounded-xl transition-transform active:scale-125 text-lg"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* In-Call Text Messages Drawer Overlay */}
+        <AnimatePresence>
+          {showChat && (
+            <motion.div 
+              initial={{ y: 200, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 200, opacity: 0 }}
+              className="absolute inset-x-0 bottom-0 top-1/4 bg-zinc-950/95 border-t border-white/10 backdrop-blur-2xl z-40 p-4 flex flex-col justify-between rounded-t-3xl shadow-2xl"
+            >
+              <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                <span className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                  <MessageSquare size={14} /> In-Call Chat
+                </span>
+                <button type="button" onClick={() => setShowChat(false)} className="text-zinc-400 hover:text-white p-1">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto my-3 space-y-2 pr-1 no-scrollbar text-xs">
+                {inCallMessages.length === 0 ? (
+                  <p className="text-center text-zinc-600 italic py-6">No chat messages yet. Type below!</p>
+                ) : (
+                  inCallMessages.map((msg) => {
+                    const isMe = msg.senderId === currentUserId;
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                        <div className={`px-3 py-1.5 rounded-xl max-w-[80%] ${isMe ? 'bg-cyan-500 text-black font-semibold' : 'bg-zinc-800 text-white border border-white/10'}`}>
+                          <p>{msg.text}</p>
+                        </div>
+                        <span className="text-[8px] text-zinc-500 mt-0.5">{msg.time}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <form onSubmit={sendInCallMessage} className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={chatInput} 
+                  onChange={(e) => setChatInput(e.target.value)} 
+                  placeholder="Send a quick text..." 
+                  className="flex-1 bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+                <button type="submit" className="p-2 bg-cyan-500 text-black rounded-xl hover:bg-cyan-400 transition-colors">
+                  <Send size={14} />
+                </button>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Control Dock */}
-      <div className="flex items-center gap-6 bg-zinc-900/80 border border-white/5 px-8 py-4 rounded-full backdrop-blur-xl shadow-xl z-10">
+      <div className="w-full max-w-md flex items-center justify-around bg-zinc-900/90 border border-white/10 px-6 py-4 rounded-3xl backdrop-blur-xl shadow-2xl z-30">
         <button 
           type="button"
           onClick={() => setIsMuted(!isMuted)} 
-          className={`p-4 rounded-full transition-colors ${isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+          title={isMuted ? "Unmute Mic" : "Mute Mic"}
+          className={`p-4 rounded-2xl transition-all ${isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
         >
-          {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
+          {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+        </button>
+
+        <button 
+          type="button"
+          onClick={() => setShowChat(!showChat)} 
+          title="Toggle In-Call Chat"
+          className={`p-4 rounded-2xl transition-all relative ${showChat ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+        >
+          <MessageSquare size={20} />
+          {inCallMessages.length > 0 && !showChat && (
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse" />
+          )}
         </button>
 
         <button 
           type="button"
           onClick={cleanUpCall} 
-          className="p-5 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/30"
+          title="End Call"
+          className="p-5 bg-red-600 hover:bg-red-500 text-white rounded-2xl transition-transform active:scale-95 shadow-xl shadow-red-600/40"
         >
-          <PhoneOff size={24} />
+          <PhoneOff size={22} />
         </button>
       </div>
     </div>
