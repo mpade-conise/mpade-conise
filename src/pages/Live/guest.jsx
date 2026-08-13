@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { io } from 'socket.io-client';
 import VideoPlayer from './Shared/VideoPlayer';
+import StreamHeader from './Shared/StreamHeader';
 import { 
   Camera, Users, Gamepad2, Settings, Sparkles, Wand2, 
   X, UserPlus, Mic, MicOff, VideoOff, Video,
@@ -56,6 +57,20 @@ const GuestLiveSetup = () => {
   const [category, setCategory] = useState("Guest Hangout");
   const [privacy, setPrivacy] = useState("public");
   const [isRoomLocked, setIsRoomLocked] = useState(false);
+  const [streamData, setStreamData] = useState(null);
+
+  // FETCH STREAM DETAILS FOR STREAMHEADER
+  useEffect(() => {
+    if (!streamId) return;
+    supabase
+      .from('live_streams')
+      .select('*, host:host_id(username, avatar_url)')
+      .eq('id', streamId)
+      .single()
+      .then(({ data }) => {
+        if (data) setStreamData(data);
+      });
+  }, [streamId]);
 
   // MEDIA & WEBRTC STATE
   const [isCamOn, setIsCamOn] = useState(true);
@@ -530,24 +545,22 @@ const GuestLiveSetup = () => {
       <div className="fixed top-0 left-1/4 w-[250px] sm:w-[400px] h-[250px] sm:h-[400px] bg-pink-600/20 rounded-full blur-[100px] sm:blur-[140px] pointer-events-none animate-pulse z-10" />
       <div className="fixed bottom-0 right-1/4 w-[250px] sm:w-[400px] h-[250px] sm:h-[400px] bg-cyan-500/20 rounded-full blur-[100px] sm:blur-[140px] pointer-events-none animate-pulse delay-700 z-10" />
 
-      {/* TOP BAR CONTROLS */}
-      <div className="w-full z-50 p-4 sm:p-5 flex justify-between items-center pointer-events-none">
-        <button onClick={() => navigate(-1)} className="p-2 sm:p-2.5 bg-black/50 backdrop-blur-xl rounded-full border border-pink-500/30 text-pink-300 hover:border-pink-500/80 pointer-events-auto transition-all">
-          <X size={20} className="sm:w-5 sm:h-5 drop-shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
-        </button>
-        
-        {/* ROOM TOPIC BANNER */}
-        <div className="pointer-events-auto bg-black/60 backdrop-blur-xl px-4 py-1.5 rounded-full border border-pink-500/30 flex items-center gap-2 max-w-[220px] sm:max-w-md shadow-xl">
-          <Radio size={14} className="text-pink-500 animate-pulse shrink-0" />
-          <input 
-            type="text" 
-            value={roomTopic} 
-            onChange={(e) => setRoomTopic(e.target.value)}
-            className="bg-transparent text-xs sm:text-sm font-black text-cyan-200 focus:outline-none w-full truncate placeholder:text-zinc-500"
+      {/* TOP STREAM HEADER & BAR CONTROLS */}
+      <div className="w-full z-50 p-2 sm:p-4 flex justify-between items-center gap-2 pointer-events-none">
+        <div className="pointer-events-auto flex-1 max-w-[65%] sm:max-w-md">
+          <StreamHeader 
+            data={streamData || {
+              title: title || roomTopic || 'Guest Multi-Live Room',
+              category: category || 'Guest Hangout',
+              created_at: new Date().toISOString()
+            }} 
+            isHost={true} 
+            viewerCount={activeCoHosts.length + 1} 
+            onLeave={() => navigate(-1)} 
           />
         </div>
 
-        <div className="flex items-center gap-2 pointer-events-auto">
+        <div className="flex items-center gap-2 pointer-events-auto shrink-0">
           {/* PENDING REQUEST BADGE BUTTON */}
           <button 
             onClick={() => setShowRequestDrawer(true)}
