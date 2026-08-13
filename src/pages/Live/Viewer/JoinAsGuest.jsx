@@ -17,7 +17,7 @@ import VideoPlayer from '../Shared/VideoPlayer';
 import FloatingHearts from './FloatingHearts';
 import StreamHeader from '../Shared/StreamHeader'; 
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
-import DynamicStreamGrid from '../../../components/DynamicStreamGrid';
+import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -64,6 +64,7 @@ const JoinAsGuest = () => {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [hostUserId, setHostUserId] = useState(null);
   const [streamData, setStreamData] = useState(null);
+  const [hostRemoteStream, setHostRemoteStream] = useState(null);
 
   // Interactive Overlays State (Full Panel Visibility)
   const [showChat, setShowChat] = useState(true);
@@ -183,6 +184,13 @@ const JoinAsGuest = () => {
 
     const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
     pcRef.current = pc;
+
+    pc.ontrack = (event) => {
+      console.log('🎥 [JoinAsGuest] Remote track received from host:', event.streams[0]);
+      if (event.streams && event.streams[0]) {
+        setHostRemoteStream(event.streams[0]);
+      }
+    };
 
     // Attach local tracks (Video & Audio) to stream upstream to host
     if (guestMediaStream) {
@@ -504,22 +512,29 @@ const JoinAsGuest = () => {
         {isLiveOnPanel ? (
           <div className="w-full h-full relative overflow-hidden flex flex-col">
             
-            {/* DYNAMIC STREAM GRID: SHOWS HOST & ACTIVE CO-HOSTS 50/50 */}
+            {/* DYNAMIC STREAM GRID: SHOWS HOST 1 & HOST 2 MERGED 50/50 WITH SPLITTING LINE */}
             <div className="w-full h-full relative z-0">
               <DynamicStreamGrid 
                 streamId={streamId}
-                hostVideo={<VideoPlayer streamId={streamId} isHost={false} />}
+                hostStream={hostRemoteStream}
+                hostVideo={!hostRemoteStream ? <VideoPlayer streamId={streamId} isHost={false} /> : null}
                 hostInfo={{
-                  username: streamData?.host?.username || 'Host',
+                  username: streamData?.host?.username || 'Host 1',
                   avatar_url: streamData?.host?.avatar_url
+                }}
+                coHostStream={localStreamRef.current}
+                coHostInfo={{
+                  username: userProfile?.username || 'Host 2 (You)',
+                  avatar_url: userProfile?.avatar_url,
+                  mode: assignedMode
                 }}
                 isHostView={false}
               />
             </div>
 
-            {/* FLOATING GUEST CAMERA PiP OVERLAY FOR INSTANT SELF-MONITORING */}
-            <div className="absolute top-20 right-4 w-28 h-36 sm:w-36 sm:h-48 rounded-2xl overflow-hidden border-2 border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.5)] bg-zinc-950 z-30 group">
-              {isCamOn ? (
+            {/* FLOATING GUEST CAMERA PiP OVERLAY FOR INSTANT SELF-MONITORING (~20% COMPACT FOR MOBILE) */}
+            <div className="absolute top-20 right-4 w-20 h-28 sm:w-28 sm:h-36 rounded-2xl overflow-hidden border-2 border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.5)] bg-zinc-950 z-30 group">
+              {isCamOn && assignedMode === 'video' ? (
                 <video 
                   ref={localVideoRef} 
                   autoPlay 
@@ -528,9 +543,11 @@ const JoinAsGuest = () => {
                   className={`w-full h-full object-cover ${facingMode === 'user' ? '-scale-x-100' : ''}`} 
                 />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 p-2">
-                  <img src={userProfile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} className="w-10 h-10 rounded-full border border-cyan-400 mb-1 object-cover" alt="" />
-                  <span className="text-[9px] text-cyan-300 font-bold uppercase">Camera Off</span>
+                <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 p-2 text-center">
+                  <img src={userProfile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} className="w-8 h-8 rounded-full border border-cyan-400 mb-1 object-cover" alt="" />
+                  <span className="text-[8px] text-cyan-300 font-bold uppercase">
+                    {assignedMode === 'audio' ? '🎙️ Audio Only' : 'Camera Off'}
+                  </span>
                 </div>
               )}
 
