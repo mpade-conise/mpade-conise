@@ -23,9 +23,17 @@ import { supabase } from './supabaseClient';
 
 import LiveRouter from './pages/Live/LiveRouter'; 
 
-import { LayoutGrid, Compass, Plus, MessageSquareCode, UserCheck, Phone, PhoneOff, Video } from 'lucide-react';
+import { LayoutGrid, Compass, Plus, MessageSquareCode, UserCheck, Phone, PhoneOff, Video, Volume2, VolumeX, MessageSquare, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
+import { 
+  startWhatsAppRingtone, 
+  stopWhatsAppRingtone, 
+  showSystemCallNotification, 
+  dismissSystemCallNotification, 
+  triggerCallVibration, 
+  requestNotificationPermission 
+} from './utils/callNotificationEngine';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -46,6 +54,8 @@ function App() {
   // Passive Global Signaling Notification Hooks
   const [incomingCall, setIncomingCall] = useState(null);
   const [globalSocket, setGlobalSocket] = useState(null);
+  const [isRingtoneMuted, setIsRingtoneMuted] = useState(false);
+  const [selectedRingtone, setSelectedRingtone] = useState('whatsapp');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -86,6 +96,48 @@ function App() {
     return () => supabase.removeChannel(prefChannel);
   }, [session]);
 
+  // Handle WhatsApp Ringtone Audio, Vibration, System Notification & Title Updates on Incoming Call
+  useEffect(() => {
+    if (incomingCall) {
+      // 1. Request Notification Permission if default
+      requestNotificationPermission();
+
+      // 2. Play Ringtone Chime
+      if (!isRingtoneMuted) {
+        startWhatsAppRingtone(selectedRingtone);
+      }
+
+      // 3. Trigger vibration pattern
+      triggerCallVibration();
+
+      // 4. Trigger System Native Web Notification
+      const targetRoute = incomingCall.callType === 'voice' ? '/voice-call' : '/video-call';
+      const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
+      showSystemCallNotification({
+        callerUsername: incomingCall.callerUsername,
+        callerAvatar: incomingCall.callerAvatar,
+        callType: incomingCall.callType,
+        onAccept: () => {
+          navigate(`${targetRoute}?userId=${targetUserId}&role=receiver`);
+          setIncomingCall(null);
+        }
+      });
+
+      // 5. Update browser title
+      const prevTitle = document.title;
+      document.title = `📲 WhatsApp Incoming ${incomingCall.callType.toUpperCase()} Call (@${incomingCall.callerUsername})`;
+
+      return () => {
+        stopWhatsAppRingtone();
+        dismissSystemCallNotification();
+        document.title = prevTitle;
+      };
+    } else {
+      stopWhatsAppRingtone();
+      dismissSystemCallNotification();
+    }
+  }, [incomingCall, isRingtoneMuted, selectedRingtone, navigate]);
+
   // Persistent Global Receiver Signaling Listener Pipeline
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -111,17 +163,13 @@ function App() {
       socket.emit('register_user_session', { userId: session.user.id });
     });
 
-    socket.on('incoming_call_signal', async (data) => {
+    const processIncomingCallSignal = async (data) => {
       console.log("📞 Incoming Call Signal Received globally:", data);
       
-      // Robust extraction of caller ID across common backend event structures
       const callerId = data?.callerId || data?.fromUserId || data?.senderId || data?.userId;
-      if (!callerId) {
-        console.error("⚠️ Call payload received without a valid caller ID:", data);
-        return;
-      }
+      if (!callerId || callerId === session.user.id) return;
 
-      // Fetch caller profile information from Supabase
+      // Fetch caller profile
       const { data: callerProfile } = await supabase
         .from('profiles')
         .select('*')
@@ -130,27 +178,54 @@ function App() {
 
       setIncomingCall({
         callerId: callerId,
-        callerUsername: callerProfile?.username || 'User',
+        callerUsername: callerProfile?.username || data?.callerName || 'User',
         callerAvatar: callerProfile?.avatar_url || null,
-        callType: data?.callType || 'video', // Defaults to video
+        callType: data?.callType || 'video',
         roomId: data?.roomId || [session.user.id, callerId].sort().join("-")
       });
-    });
+    };
 
-    socket.on('call_cancelled_by_caller', () => {
-      setIncomingCall(null);
+    // Attach multiple incoming call signal aliases
+    socket.on('incoming_call_signal', processIncomingCallSignal);
+    socket.on('initiate_call_signal', (data) => {
+      if (data?.receiverId === session.user.id) {
+        processIncomingCallSignal(data);
+      }
     });
+    socket.on('incoming_call', processIncomingCallSignal);
+    socket.on('call_offer', processIncomingCallSignal);
 
-    socket.on('peer_hung_up', () => {
+    const handleCallCancel = () => {
       setIncomingCall(null);
-    });
+    };
+
+    socket.on('call_cancelled_by_caller', handleCallCancel);
+    socket.on('cancel_call_signal', handleCallCancel);
+    socket.on('decline_call', handleCallCancel);
+    socket.on('reject_incoming_call', handleCallCancel);
+    socket.on('peer_hung_up', handleCallCancel);
+
+    // Supabase Realtime Fallback Signal Channel for "Ring Anywhere" Guarantee
+    const realtimeCallChannel = supabase
+      .channel(`user-call-signals-${session.user.id}`)
+      .on(
+        'broadcast',
+        { event: 'incoming_call_broadcast' },
+        (payload) => {
+          if (payload?.payload?.receiverId === session.user.id) {
+            processIncomingCallSignal(payload.payload);
+          }
+        }
+      )
+      .subscribe();
 
     return () => {
       socket.disconnect();
+      supabase.removeChannel(realtimeCallChannel);
     };
   }, [session]);
 
-  if (!session) return <Auth />;
+  if (!session) return <Auth onGuestLogin={(guestSession) => setSession(guestSession)} />;
 
   // --- UPDATED DYNAMIC CALL ACCEPT/REJECT HANDLERS ---
   const handleAcceptCall = () => {
@@ -253,61 +328,111 @@ function App() {
         </AnimatePresence>
       </main>
 
-      {/* Floating Global Incoming Call Overlay UI */}
+      {/* Floating Global Incoming Call Overlay UI (WhatsApp Style) */}
       <AnimatePresence>
         {incomingCall && (
           <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999] bg-black/80 flex items-center justify-center backdrop-blur-md p-4"
+            initial={{ opacity: 0, scale: 0.95 }} 
+            animate={{ opacity: 1, scale: 1 }} 
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed inset-0 z-[9999] bg-[#0b141a]/90 backdrop-blur-2xl flex items-center justify-center p-4"
           >
-            <div className="bg-zinc-900 border border-white/10 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl flex flex-col items-center gap-6">
+            <div className="bg-[#111b21] border border-emerald-500/30 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(16,185,129,0.2)] flex flex-col items-center gap-6 relative overflow-hidden">
               
-              {/* Profile / Call Avatar */}
-              <div className="relative">
+              {/* WhatsApp Call Header */}
+              <div className="flex items-center gap-2 bg-emerald-950/80 border border-emerald-500/30 px-3.5 py-1.5 rounded-full text-emerald-400 text-xs font-black uppercase tracking-wider">
+                <ShieldCheck size={14} />
+                <span>WhatsApp {incomingCall.callType} Call</span>
+              </div>
+
+              {/* Pulsing Avatar Radar Container */}
+              <div className="relative my-2">
+                <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping scale-125 pointer-events-none" />
+                <div className="absolute -inset-4 rounded-full bg-emerald-500/10 animate-pulse pointer-events-none" />
+                
                 {incomingCall.callerAvatar ? (
                   <img 
                     src={incomingCall.callerAvatar} 
                     alt="Caller Avatar" 
-                    className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/30 animate-pulse shadow-xl"
+                    className="w-28 h-28 rounded-full object-cover border-4 border-emerald-500/50 relative z-10 shadow-2xl"
                   />
                 ) : (
-                  <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-center animate-pulse shadow-xl">
+                  <div className="w-28 h-28 rounded-full bg-emerald-950/80 border-4 border-emerald-500/50 flex items-center justify-center relative z-10 shadow-2xl">
                     {incomingCall.callType === 'video' ? (
-                      <Video size={40} className="text-cyan-400" />
+                      <Video size={48} className="text-emerald-400" />
                     ) : (
-                      <Phone size={40} className="text-cyan-400" />
+                      <Phone size={48} className="text-emerald-400" />
                     )}
                   </div>
                 )}
-                <span className="absolute -bottom-1 -right-1 bg-cyan-500 text-black px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
-                  {incomingCall.callType}
-                </span>
               </div>
 
+              {/* Caller Meta */}
               <div>
-                <h3 className="text-xl font-bold text-white">@{incomingCall.callerUsername}</h3>
-                <p className="text-sm text-zinc-400 mt-1 capitalize">Incoming {incomingCall.callType} call...</p>
+                <h3 className="text-2xl font-black text-white tracking-tight">@{incomingCall.callerUsername}</h3>
+                <p className="text-xs text-emerald-400/90 font-medium mt-1 tracking-wide uppercase">
+                  Incoming {incomingCall.callType} call • Ringing...
+                </p>
               </div>
-              
+
+              {/* Ringtone Controls Bar */}
+              <div className="flex items-center justify-center gap-2 bg-black/40 border border-white/5 p-1.5 rounded-2xl w-full">
+                <button
+                  type="button"
+                  onClick={() => setIsRingtoneMuted(!isRingtoneMuted)}
+                  className={`flex-1 py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                    isRingtoneMuted ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-white/10 text-emerald-300'
+                  }`}
+                >
+                  {isRingtoneMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                  <span>{isRingtoneMuted ? 'Muted' : 'Ringtone On'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedRingtone(prev => prev === 'whatsapp' ? 'classic' : 'whatsapp')}
+                  className="flex-1 py-1.5 px-2 bg-white/5 hover:bg-white/10 text-zinc-300 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors"
+                >
+                  {selectedRingtone === 'whatsapp' ? '🔔 WhatsApp Sound' : '☎️ Classic Ring'}
+                </button>
+              </div>
+
+              {/* Action Buttons Bar */}
               <div className="flex items-center gap-6 w-full justify-center mt-2">
                 <button 
                   type="button"
                   onClick={handleRejectCall}
-                  className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-red-600/30"
+                  className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-full transition-transform active:scale-90 shadow-xl shadow-red-600/40 flex items-center justify-center"
+                  title="Decline Call"
                 >
-                  <PhoneOff size={24} />
+                  <PhoneOff size={26} />
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => {
+                    handleRejectCall();
+                    const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
+                    if (targetUserId) {
+                      navigate(`/messaging?userId=${targetUserId}`);
+                    }
+                  }}
+                  className="p-3.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full transition-transform active:scale-90 border border-white/10"
+                  title="Quick Reply Message"
+                >
+                  <MessageSquare size={20} />
                 </button>
 
                 <button 
                   type="button"
                   onClick={handleAcceptCall}
-                  className="p-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full transition-transform active:scale-95 shadow-lg shadow-emerald-600/30 animate-pulse"
+                  className="p-4 bg-emerald-500 hover:bg-emerald-400 text-black rounded-full transition-transform active:scale-90 shadow-xl shadow-emerald-500/50 animate-pulse flex items-center justify-center"
+                  title="Answer Call"
                 >
-                  <Phone size={24} />
+                  <Phone size={26} fill="currentColor" />
                 </button>
               </div>
+
             </div>
           </motion.div>
         )}
