@@ -24,11 +24,19 @@ if (typeof globalThis !== 'undefined') {
 // ---------------------------------------------
 
 // Service worker registration for global incoming call notifications
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      console.warn("ServiceWorker registration failed:", err);
-    });
+if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+  window.addEventListener('load', async () => {
+    try {
+      const res = await fetch('/sw.js', { method: 'HEAD' });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('javascript')) {
+        await navigator.serviceWorker.register('/sw.js');
+      } else {
+        console.info("ServiceWorker /sw.js not served as application/javascript, registration skipped.");
+      }
+    } catch (err) {
+      console.warn("ServiceWorker registration skipped:", err.message || err);
+    }
   });
 }
 
