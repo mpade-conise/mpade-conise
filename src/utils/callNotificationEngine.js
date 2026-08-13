@@ -106,7 +106,7 @@ export const stopWhatsAppRingtone = () => {
   if (ringtoneAudioCtx) {
     try {
       ringtoneAudioCtx.close();
-    } catch (e) {
+    } catch {
       // ignore
     }
     ringtoneAudioCtx = null;
@@ -167,7 +167,7 @@ export const stopRingbackTone = () => {
   if (ringbackAudioCtx) {
     try {
       ringbackAudioCtx.close();
-    } catch (e) {
+    } catch {
       // ignore
     }
     ringbackAudioCtx = null;
@@ -212,7 +212,7 @@ export const dismissSystemCallNotification = () => {
   if (activeNotification) {
     try {
       activeNotification.close();
-    } catch (e) {
+    } catch {
       // ignore
     }
     activeNotification = null;
@@ -223,8 +223,11 @@ export const dismissSystemCallNotification = () => {
 export const triggerCallVibration = () => {
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
     try {
-      navigator.vibrate([400, 200, 400, 200, 600, 200, 400]);
-    } catch (e) {
+      // Guard against Chrome intervention warning if user has not interacted with frame yet
+      if (!navigator.userActivation || navigator.userActivation.hasBeenActive) {
+        navigator.vibrate([400, 200, 400, 200, 600, 200, 400]);
+      }
+    } catch {
       // ignore
     }
   }
