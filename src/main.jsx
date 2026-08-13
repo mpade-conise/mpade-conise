@@ -23,6 +23,15 @@ if (typeof globalThis !== 'undefined') {
 }
 // ---------------------------------------------
 
+// Service worker registration for global incoming call notifications
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn("ServiceWorker registration failed:", err);
+    });
+  });
+}
+
 const rootElement = document.getElementById('root');
 const root = createRoot(rootElement);
 
