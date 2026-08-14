@@ -13,14 +13,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { startRingbackTone, stopRingbackTone } from '../utils/callNotificationEngine';
 
-// Sub-components for premium video call features (explicit extensions added for Vite/Vercel)
-import VideoCallWhiteboard from './videocall/VideoCallWhiteboard.jsx';
-import VideoCallFilters, { VIDEO_FILTERS, VIRTUAL_BACKDROPS } from './videocall/VideoCallFilters.jsx';
-import VideoCallGifts, { CALL_GIFTS } from './videocall/VideoCallGifts.jsx';
-import VideoCallDeviceSettings from './videocall/VideoCallDeviceSettings.jsx';
-import VideoCallCaptions from './videocall/VideoCallCaptions.jsx';
-import VideoCallNotes from './videocall/VideoCallNotes.jsx';
-import VideoCallTelemetry from './videocall/VideoCallTelemetry.jsx';
+// Sub-components for premium video call features
+import VideoCallWhiteboard from './videocall/VideoCallWhiteboard';
+import VideoCallFilters, { VIDEO_FILTERS, VIRTUAL_BACKDROPS } from './videocall/VideoCallFilters';
+import VideoCallGifts, { CALL_GIFTS } from './videocall/VideoCallGifts';
+import VideoCallDeviceSettings from './videocall/VideoCallDeviceSettings';
+import VideoCallCaptions from './videocall/VideoCallCaptions';
+import VideoCallNotes from './videocall/VideoCallNotes';
+import VideoCallTelemetry from './videocall/VideoCallTelemetry';
+import FloatingReactionsOverlay from './videocall/FloatingReactionsOverlay';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -486,10 +487,14 @@ const VideoCall = () => {
 
         socket.on('in_call_reaction_burst', (data) => {
           const reactionId = Date.now() + Math.random();
-          setFloatingReactions((prev) => [...prev, { id: reactionId, emoji: data.emoji }]);
-          setTimeout(() => {
-            setFloatingReactions((prev) => prev.filter((r) => r.id !== reactionId));
-          }, 2500);
+          setFloatingReactions((prev) => [
+            ...prev,
+            {
+              id: reactionId,
+              emoji: data.emoji,
+              senderName: data.senderName || peerProfile?.username || 'Peer'
+            }
+          ]);
         });
 
         // In-Call Luxury Gift Broadcast
@@ -739,16 +744,73 @@ const VideoCall = () => {
     setChatInput("");
   };
 
+  // Supabase Realtime Channel for Instant Reaction Synchronization fallback
+  useEffect(() => {
+    if (!currentUserId || !peerUserId || peerUserId === 'undefined') return;
+    const roomId = [currentUserId, peerUserId].sort().join("-");
+    const realtimeChan = supabase.channel(`call-reactions-${roomId}`);
+
+    realtimeChan.on('broadcast', { event: 'reaction_burst_event' }, ({ payload }) => {
+      if (payload && payload.senderId !== currentUserId) {
+        setFloatingReactions((prev) => [
+          ...prev,
+          {
+            id: payload.id || Date.now() + Math.random(),
+            emoji: payload.emoji,
+            senderName: payload.senderName || peerProfile?.username || 'Peer'
+          }
+        ]);
+      }
+    });
+
+    realtimeChan.subscribe();
+
+    return () => {
+      supabase.removeChannel(realtimeChan);
+    };
+  }, [currentUserId, peerUserId, peerProfile]);
+
   // Send In-Call Reaction Burst
   const sendReactionBurst = (emoji) => {
     const reactionId = Date.now() + Math.random();
-    setFloatingReactions((prev) => [...prev, { id: reactionId, emoji }]);
-    setTimeout(() => {
-      setFloatingReactions((prev) => prev.filter((r) => r.id !== reactionId));
-    }, 2500);
+    const myName = peerProfile ? 'You' : 'User';
+
+    // Append to local reactions list
+    setFloatingReactions((prev) => [
+      ...prev,
+      { id: reactionId, emoji, senderName: 'You' }
+    ]);
 
     const roomId = [currentUserId, peerUserId].sort().join("-");
-    socketRef.current?.emit('in_call_reaction_burst', { roomId, emoji });
+    
+    // 1. Socket.IO Broadcast
+    socketRef.current?.emit('in_call_reaction_burst', {
+      roomId,
+      emoji,
+      senderId: currentUserId,
+      senderName: myName
+    });
+
+    // 2. Supabase Realtime Broadcast fallback
+    try {
+      const realtimeChan = supabase.channel(`call-reactions-${roomId}`);
+      realtimeChan.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          realtimeChan.send({
+            type: 'broadcast',
+            event: 'reaction_burst_event',
+            payload: {
+              id: reactionId,
+              emoji,
+              senderId: currentUserId,
+              senderName: peerProfile?.username || 'Peer'
+            }
+          });
+        }
+      });
+    } catch (e) {
+      console.warn("Realtime reaction broadcast notice:", e);
+    }
   }; 
 
   // Track State Synchronization Shifters
@@ -1010,23 +1072,15 @@ const VideoCall = () => {
           </div>
         )}
 
-        {/* Floating In-Call Reactions Overlay */}
-        <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-          <AnimatePresence>
-            {floatingReactions.map((r) => (
-              <motion.div
-                key={r.id}
-                initial={{ y: 200, opacity: 0, scale: 0.5, x: Math.random() * 100 - 50 }}
-                animate={{ y: -150, opacity: [0, 1, 1, 0], scale: [0.5, 1.8, 2, 1] }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 2.2, ease: "easeOut" }}
-                className="absolute bottom-10 left-1/2 text-4xl drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]"
-              >
-                {r.emoji}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+        {/* Floating In-Call Reactions Overlay (Bursts, Floating Particles, Combo Multiplier & Tray) */}
+        {callStatus === "Connected" && (
+          <FloatingReactionsOverlay
+            onTriggerReaction={sendReactionBurst}
+            externalReactions={floatingReactions}
+            peerName={peerProfile?.username || 'Peer'}
+            soundEnabled={true}
+          />
+        )}
 
         {/* Connecting / Ringing Placeholder with Speaking Ripple */}
         {callStatus !== "Connected" && (
@@ -1056,29 +1110,15 @@ const VideoCall = () => {
 
         {/* Top Quick Actions Bar (Gifts, Snapshot, Filter, Whiteboard, Captions) */}
         {callStatus === "Connected" && layoutMode !== 'theater' && (
-          <div className="absolute top-3 inset-x-3 z-20 flex justify-between items-center pointer-events-none">
-            {/* Reactions Bar */}
-            <div className="flex gap-1 bg-black/50 backdrop-blur-md p-1 rounded-2xl border border-white/10 pointer-events-auto">
-              {['❤️', '🔥', '👏', '🎉', '😮'].map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => sendReactionBurst(emoji)}
-                  className="p-1 hover:bg-white/15 rounded-xl transition-transform active:scale-125 text-sm"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-
+          <div className="absolute top-3 right-3 z-30 pointer-events-none">
             {/* Quick Utility Cluster */}
-            <div className="flex items-center gap-1 bg-black/50 backdrop-blur-md p-1 rounded-2xl border border-white/10 pointer-events-auto">
+            <div className="flex items-center gap-1 bg-black/60 hover:bg-black/80 backdrop-blur-xl p-1.5 rounded-2xl border border-white/15 shadow-2xl pointer-events-auto">
               {/* Snapshot Button */}
               <button
                 type="button"
                 onClick={handleTakeSnapshot}
                 title="Take HD Call Snapshot"
-                className="p-1.5 hover:bg-white/15 rounded-xl text-cyan-300 transition-transform active:scale-95"
+                className="p-1.5 hover:bg-white/20 rounded-xl text-cyan-300 transition-transform active:scale-95"
               >
                 <Camera size={15} />
               </button>
@@ -1088,7 +1128,7 @@ const VideoCall = () => {
                 type="button"
                 onClick={() => setShowFilters(!showFilters)}
                 title="AI Video Filters & Lighting"
-                className={`p-1.5 rounded-xl transition-colors ${showFilters || activeFilter !== 'normal' ? 'bg-cyan-500 text-black' : 'hover:bg-white/15 text-pink-300'}`}
+                className={`p-1.5 rounded-xl transition-colors ${showFilters || activeFilter !== 'normal' ? 'bg-cyan-500 text-black' : 'hover:bg-white/20 text-pink-300'}`}
               >
                 <Wand2 size={15} />
               </button>
@@ -1098,7 +1138,7 @@ const VideoCall = () => {
                 type="button"
                 onClick={() => setShowWhiteboard(!showWhiteboard)}
                 title="Collaborative Whiteboard"
-                className={`p-1.5 rounded-xl transition-colors ${showWhiteboard ? 'bg-amber-400 text-black' : 'hover:bg-white/15 text-amber-300'}`}
+                className={`p-1.5 rounded-xl transition-colors ${showWhiteboard ? 'bg-amber-400 text-black' : 'hover:bg-white/20 text-amber-300'}`}
               >
                 <Radio size={15} />
               </button>
@@ -1108,7 +1148,7 @@ const VideoCall = () => {
                 type="button"
                 onClick={() => setShowGifts(!showGifts)}
                 title="Send Luxury Gift"
-                className="p-1.5 hover:bg-white/15 rounded-xl text-rose-300 transition-transform active:scale-95"
+                className="p-1.5 hover:bg-white/20 rounded-xl text-rose-300 transition-transform active:scale-95"
               >
                 <Gift size={15} />
               </button>
@@ -1118,7 +1158,7 @@ const VideoCall = () => {
                 type="button"
                 onClick={() => setShowCaptions(!showCaptions)}
                 title="Live Subtitles / Closed Captions"
-                className={`p-1.5 rounded-xl transition-colors ${showCaptions ? 'bg-cyan-500 text-black' : 'hover:bg-white/15 text-zinc-300'}`}
+                className={`p-1.5 rounded-xl transition-colors ${showCaptions ? 'bg-cyan-500 text-black' : 'hover:bg-white/20 text-zinc-300'}`}
               >
                 <Subtitles size={15} />
               </button>
