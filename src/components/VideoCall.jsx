@@ -13,14 +13,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { startRingbackTone, stopRingbackTone } from '../utils/callNotificationEngine';
 
-// Sub-components for premium video call features
-import VideoCallWhiteboard from './videocall/VideoCallWhiteboard';
-import VideoCallFilters, { VIDEO_FILTERS, VIRTUAL_BACKDROPS } from './videocall/VideoCallFilters';
-import VideoCallGifts, { CALL_GIFTS } from './videocall/VideoCallGifts';
-import VideoCallDeviceSettings from './videocall/VideoCallDeviceSettings';
-import VideoCallCaptions from './videocall/VideoCallCaptions';
-import VideoCallNotes from './videocall/VideoCallNotes';
-import VideoCallTelemetry from './videocall/VideoCallTelemetry';
+// Sub-components for premium video call features (explicit extensions added for Vite/Vercel)
+import VideoCallWhiteboard from './videocall/VideoCallWhiteboard.jsx';
+import VideoCallFilters, { VIDEO_FILTERS, VIRTUAL_BACKDROPS } from './videocall/VideoCallFilters.jsx';
+import VideoCallGifts, { CALL_GIFTS } from './videocall/VideoCallGifts.jsx';
+import VideoCallDeviceSettings from './videocall/VideoCallDeviceSettings.jsx';
+import VideoCallCaptions from './videocall/VideoCallCaptions.jsx';
+import VideoCallNotes from './videocall/VideoCallNotes.jsx';
+import VideoCallTelemetry from './videocall/VideoCallTelemetry.jsx';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
