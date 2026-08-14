@@ -198,24 +198,30 @@ const Messaging = () => {
 
     // Initial query targeting direct communication match matrix
     const loadConversationStream = async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},receiver_id.eq.${currentUserId})`)
-        .order('updated_at', { ascending: true });
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},receiver_id.eq.${currentUserId})`)
+    .order('updated_at', { ascending: true });
 
-      if (!error && data) {
-        setMessages(data);
-        // Mark messages as read when viewing conversation thread
-        await supabase
-          .from('messages')
-          .update({ unread: false, status: 'read' })
-          .eq('sender_id', peerUserId)
-          .eq('receiver_id', currentUserId);
-      }
-    };
+  if (!error && data) {
+    setMessages(data);
 
-    loadConversationStream();
+    // Mark messages sent by the peer to the current user as read
+    const { error: updateError } = await supabase
+      .from('messages')
+      .update({ unread: false }) // Only update columns that exist in the table
+      .eq('sender_id', peerUserId)
+      .eq('receiver_id', currentUserId)
+      .eq('unread', true); // Add this so it only updates messages that are actually unread
+
+    if (updateError) {
+      console.error('Error updating unread status:', updateError);
+    }
+  }
+};
+
+loadConversationStream();
 
     // Socket Event Pipeline Matrix Mapping
     socketRef.current.on('received_chat_message', (incoming) => {
