@@ -100,17 +100,13 @@ const Inbox = () => {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      // 3. Fetch direct messages (with resilient fallback handling)
+      // 3. Fetch direct messages directly from messages table
       const messagesPromise = supabase
         .from('messages')
-        .select(`
-          *,
-          sender:profiles!sender_id(id, avatar_url, username),
-          receiver:profiles!receiver_id(id, avatar_url, username)
-        `)
+        .select('*')
         .or(`receiver_id.eq.${uid},sender_id.eq.${uid}`)
-        .order('created_at', { ascending: false })
-        .limit(200);
+        .order('updated_at', { ascending: false })
+        .limit(300);
 
       // 4. Fetch follows
       const followsPromise = supabase
@@ -227,86 +223,84 @@ const Inbox = () => {
         setLiveInvites([]);
       }
 
-      // F. Process Direct Messages & Group by Conversation Partner
-      let rawMsgs = messagesRes.data || [];
+      // F. Process Direct Messages & Group by Conversation Partner (matching public.messages schema)
+      let rawMsgs = [];
       if (messagesRes.error || !messagesRes.data) {
-        // Fallback: fetch plain messages without join
+        // Fallback: fetch plain messages
         const { data: plainMsgs } = await supabase
           .from('messages')
           .select('*')
-          .or(`receiver_id.eq.${uid},sender_id.eq.${uid}`)
-          .order('created_at', { ascending: false })
-          .limit(200);
+          .or(`receiver_id.eq.${uid},sender_id.eq.${uid}`);
 
         if (plainMsgs && plainMsgs.length > 0) {
-          const involvedUserIds = [...new Set([
-            ...plainMsgs.map(m => m.sender_id),
-            ...plainMsgs.map(m => m.receiver_id)
-          ].filter(Boolean))];
-
-          const profilesMap = await fetchProfilesBatch(involvedUserIds);
-
-          rawMsgs = plainMsgs.map(m => ({
-            ...m,
-            sender: profilesMap.get(m.sender_id) || { id: m.sender_id, username: 'user' },
-            receiver: profilesMap.get(m.receiver_id) || { id: m.receiver_id, username: 'user' }
-          }));
+          rawMsgs = plainMsgs;
         }
       } else {
-        // In case join profiles were partially missing
-        const missingUserIds = [];
-        rawMsgs.forEach(m => {
-          if (m.sender_id && !m.sender) missingUserIds.push(m.sender_id);
-          if (m.receiver_id && !m.receiver) missingUserIds.push(m.receiver_id);
-        });
-        if (missingUserIds.length > 0) {
-          const profilesMap = await fetchProfilesBatch(missingUserIds);
-          rawMsgs = rawMsgs.map(m => ({
-            ...m,
-            sender: m.sender || profilesMap.get(m.sender_id) || null,
-            receiver: m.receiver || profilesMap.get(m.receiver_id) || null
-          }));
-        }
+        rawMsgs = messagesRes.data || [];
       }
 
       if (rawMsgs && rawMsgs.length > 0) {
+        // Sort chronologically newest first by updated_at or created_at
+        rawMsgs.sort((a, b) => {
+          const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+          const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+          return timeB - timeA;
+        });
+
+        // Collect all distinct peer user IDs involved
+        const peerUserIds = [...new Set(
+          rawMsgs.map(m => (m.sender_id === uid ? m.receiver_id : m.sender_id)).filter(Boolean)
+        )];
+
+        const profilesMap = await fetchProfilesBatch(peerUserIds);
+
         // Calculate unread count per sender
-        const unreadCountPerSender = {};
+        const unreadCountPerPeer = {};
         rawMsgs.forEach(m => {
-          const isUnread = m.receiver_id === uid && (
+          const isForMe = m.receiver_id === uid;
+          const isUnread = isForMe && (
             m.unread === true || 
-            m.is_read === false || 
+            m.unread === 'true' || 
             m.status === 'unread' || 
             m.status === 'sent' || 
             m.status === 'delivered'
           );
           if (isUnread) {
-            unreadCountPerSender[m.sender_id] = (unreadCountPerSender[m.sender_id] || 0) + 1;
+            const peerId = m.sender_id;
+            unreadCountPerPeer[peerId] = (unreadCountPerPeer[peerId] || 0) + 1;
           }
         });
 
-        // Group into latest thread preview per unique user
+        // Group into latest thread preview per unique peer user
         const uniqueThreads = [];
-        const seenUserIds = new Set();
+        const seenPeerIds = new Set();
 
         rawMsgs.forEach(m => {
-          const otherUser = m.sender_id === uid ? m.receiver : m.sender;
-          const otherUserId = m.sender_id === uid ? m.receiver_id : m.sender_id;
+          const isFromMe = m.sender_id === uid;
+          const peerId = isFromMe ? m.receiver_id : m.sender_id;
           
-          if (otherUserId && !seenUserIds.has(otherUserId)) {
-            seenUserIds.add(otherUserId);
+          if (peerId && !seenPeerIds.has(peerId)) {
+            seenPeerIds.add(peerId);
             
-            const displayProf = otherUser || {
-              id: otherUserId,
-              username: `user_${otherUserId.substring(0, 5)}`,
-              avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherUserId}`
+            const profile = profilesMap.get(peerId);
+            const fallbackUsername = !isFromMe && m.user_name ? m.user_name : `user_${peerId.substring(0, 5)}`;
+
+            const displayProf = {
+              id: peerId,
+              username: profile?.username || fallbackUsername,
+              full_name: profile?.full_name || '',
+              avatar_url: profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId}`,
+              is_verified: profile?.is_verified || false,
+              online: profile?.online ?? m.online ?? false
             };
 
             uniqueThreads.push({
               ...m,
               displayProfile: displayProf,
-              unreadCount: unreadCountPerSender[otherUserId] || 0,
-              isFromMe: m.sender_id === uid
+              unreadCount: unreadCountPerPeer[peerId] || 0,
+              isFromMe,
+              last_msg: m.last_msg || m.content || '',
+              updated_at: m.updated_at || m.created_at
             });
           }
         });
@@ -327,23 +321,23 @@ const Inbox = () => {
 
   // Format rich message preview snippet
   const getMessagePreviewText = (msg) => {
-    if (msg.media_type === 'voice' || msg.type === 'voice' || msg.audio_url) {
+    if (msg.type === 'voice' || msg.media_type === 'voice' || msg.audio_url || msg.metadata?.type === 'voice') {
       return '🎙️ Voice message';
     }
-    if (msg.media_type === 'image' || msg.type === 'image' || (msg.media_url && !msg.content)) {
+    if (msg.type === 'image' || msg.media_type === 'image' || (msg.media_url && !msg.last_msg)) {
       return '📷 Photo';
     }
-    if (msg.media_type === 'video' || msg.type === 'video') {
+    if (msg.type === 'video' || msg.media_type === 'video') {
       return '🎬 Video attachment';
     }
-    if (msg.media_type === 'file' || msg.type === 'file') {
+    if (msg.type === 'file' || msg.media_type === 'file') {
       return '📁 Document attached';
     }
-    if (msg.call_type || msg.type === 'call') {
-      return msg.call_type === 'video' ? '📹 Video Call' : '📞 Voice Call';
+    if (msg.type === 'call' || (msg.call_duration && msg.call_duration > 0) || msg.metadata?.call_type) {
+      return msg.metadata?.call_type === 'video' ? '📹 Video Call' : '📞 Voice Call';
     }
-    if (msg.content) return msg.content;
     if (msg.last_msg) return msg.last_msg;
+    if (msg.content) return msg.content;
     return 'Sent a message';
   };
 
@@ -385,7 +379,7 @@ const Inbox = () => {
 
     // Immediately update local states for instant visual feedback
     setActivities(prev => prev.map(a => ({ ...a, is_read: true })));
-    setMessages(prev => prev.map(m => ({ ...m, unreadCount: 0, unread: false, is_read: true, status: 'read' })));
+    setMessages(prev => prev.map(m => ({ ...m, unreadCount: 0, unread: false, status: 'read' })));
 
     try {
       await Promise.all([
@@ -396,8 +390,9 @@ const Inbox = () => {
           .eq('is_read', false),
         supabase
           .from('messages')
-          .update({ unread: false, is_read: true, status: 'read' })
+          .update({ unread: false, status: 'read' })
           .eq('receiver_id', currentUserId)
+          .eq('unread', true)
       ]);
     } catch (err) {
       console.error("Mark all read query failed:", err);
@@ -509,7 +504,7 @@ const Inbox = () => {
     // Immediately clear unread badge for this sender in local state
     setMessages(prev => prev.map(m => {
       if (m.displayProfile?.id === peerId) {
-        return { ...m, unreadCount: 0, unread: false, is_read: true, status: 'read' };
+        return { ...m, unreadCount: 0, unread: false, status: 'read' };
       }
       return m;
     }));
@@ -518,9 +513,10 @@ const Inbox = () => {
     try {
       await supabase
         .from('messages')
-        .update({ unread: false, is_read: true, status: 'read' })
+        .update({ unread: false, status: 'read' })
         .eq('sender_id', peerId)
-        .eq('receiver_id', currentUserId);
+        .eq('receiver_id', currentUserId)
+        .eq('unread', true);
     } catch (err) {
       console.error("Failed to mark messages as read:", err);
     }
@@ -714,8 +710,9 @@ const Inbox = () => {
     return (
       m.displayProfile?.username?.toLowerCase().includes(q) ||
       m.displayProfile?.full_name?.toLowerCase().includes(q) ||
-      m.content?.toLowerCase().includes(q) ||
-      m.last_msg?.toLowerCase().includes(q)
+      m.user_name?.toLowerCase().includes(q) ||
+      m.last_msg?.toLowerCase().includes(q) ||
+      m.content?.toLowerCase().includes(q)
     );
   });
 
@@ -1555,7 +1552,7 @@ const Inbox = () => {
                             )}
                           </div>
                           <span className="text-[10px] text-zinc-500 font-bold shrink-0">
-                            {msg.created_at ? formatDistanceToNow(new Date(msg.created_at), { addSuffix: false }) : ''}
+                            {(msg.updated_at || msg.created_at) ? formatDistanceToNow(new Date(msg.updated_at || msg.created_at), { addSuffix: false }) : ''}
                           </span>
                         </div>
                         
