@@ -1,10 +1,26 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { io } from 'socket.io-client';
-import { PhoneOff, Mic, MicOff, Video, VideoOff, Shield, Monitor, MessageSquare, Send, X, Heart, Flame, Sparkles } from 'lucide-react';
+import { 
+  PhoneOff, Mic, MicOff, Video, VideoOff, Shield, Monitor, 
+  MessageSquare, Send, X, Heart, Flame, Sparkles, Wand2, 
+  Gift, Settings, Subtitles, FileText, Activity, Camera, 
+  RefreshCw, LayoutGrid, Disc, Maximize2, Minimize2, 
+  Volume2, VolumeX, Radio, Eye, CornerDownRight, Check
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import confetti from 'canvas-confetti';
 import { startRingbackTone, stopRingbackTone } from '../utils/callNotificationEngine';
+
+// Sub-components for premium video call features
+import VideoCallWhiteboard from './videocall/VideoCallWhiteboard';
+import VideoCallFilters, { VIDEO_FILTERS, VIRTUAL_BACKDROPS } from './videocall/VideoCallFilters';
+import VideoCallGifts, { CALL_GIFTS } from './videocall/VideoCallGifts';
+import VideoCallDeviceSettings from './videocall/VideoCallDeviceSettings';
+import VideoCallCaptions from './videocall/VideoCallCaptions';
+import VideoCallNotes from './videocall/VideoCallNotes';
+import VideoCallTelemetry from './videocall/VideoCallTelemetry';
 
 const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
 
@@ -41,6 +57,7 @@ const VideoCall = () => {
   const peerUserId = searchParams.get('userId');
   const URLRole = searchParams.get('role'); 
   
+  // Core State
   const [currentUserId, setCurrentUserId] = useState(null);
   const [peerProfile, setPeerProfile] = useState(null);
   const [callStatus, setCallStatus] = useState("Initializing...");
@@ -52,6 +69,65 @@ const VideoCall = () => {
   const [inCallMessages, setInCallMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [floatingReactions, setFloatingReactions] = useState([]);
+
+  // --- 15 Premium Features State ---
+  // Feature 1: Whiteboard & Live Annotation
+  const [showWhiteboard, setShowWhiteboard] = useState(false);
+
+  // Feature 2: AI Video Filters & Color Grading
+  const [showFilters, setShowFilters] = useState(false);
+  const [activeFilter, setActiveFilter] = useState('normal');
+  const [beautyGlow, setBeautyGlow] = useState(false);
+
+  // Feature 3: Virtual Backdrops & Ambient Lighting
+  const [activeBackdrop, setActiveBackdrop] = useState('none');
+
+  // Feature 4: In-Call Virtual Luxury Gifts & Coin Tipping
+  const [showGifts, setShowGifts] = useState(false);
+  const [userCoins, setUserCoins] = useState(1500);
+  const [activeGiftAnimation, setActiveGiftAnimation] = useState(null);
+
+  // Feature 5: Peripheral & Device Management Modal
+  const [showDeviceSettings, setShowDeviceSettings] = useState(false);
+  const [activeVideoDeviceId, setActiveVideoDeviceId] = useState(null);
+  const [activeAudioDeviceId, setActiveAudioDeviceId] = useState(null);
+
+  // Feature 6: Camera Front/Back Switcher
+  const [facingMode, setFacingMode] = useState('user');
+
+  // Feature 7: Studio Audio Noise Suppression
+  const [noiseSuppression, setNoiseSuppression] = useState(true);
+
+  // Feature 8: Live Speech-to-Text Closed Captions
+  const [showCaptions, setShowCaptions] = useState(false);
+
+  // Feature 9: In-Call Encrypted Notes & Agenda Scratchpad
+  const [showNotes, setShowNotes] = useState(false);
+
+  // Feature 10: WebRTC Telemetry & Signal Quality Health Monitor
+  const [showTelemetry, setShowTelemetry] = useState(false);
+
+  // Feature 11: Multi-View Dynamic Layout Engine (Focus / Bento Duo Split / Swapped / Theater)
+  const [layoutMode, setLayoutMode] = useState('focus'); // 'focus' | 'split' | 'swapped' | 'theater'
+
+  // Feature 12: Call Session HD Recorder
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+
+  // Feature 13: Instant HD Video Call Snapshot with Flash FX
+  const [isFlashActive, setIsFlashActive] = useState(false);
+  const [snapshotToast, setSnapshotToast] = useState(false);
+
+  // Feature 14: Audio Frequency Spectrum & Speaking Visualizer Level
+  const [micAudioLevel, setMicAudioLevel] = useState(0);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animFrameRef = useRef(null);
+
+  // Feature 15: Native Picture-in-Picture & Video Feed Swapping
+  const [isPiPActive, setIsPiPActive] = useState(false);
 
   const socketRef = useRef(null);
   const pcRef = useRef(null);
@@ -74,6 +150,19 @@ const VideoCall = () => {
     }
     return () => clearInterval(timer);
   }, [callStatus]);
+
+  // Recording Timer
+  useEffect(() => {
+    let recTimer = null;
+    if (isRecording) {
+      recTimer = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setRecordingDuration(0);
+    }
+    return () => clearInterval(recTimer);
+  }, [isRecording]);
 
   // Outgoing Call Ringback Sound Management
   useEffect(() => {
@@ -101,7 +190,42 @@ const VideoCall = () => {
     }
   };
 
-  // 1. Fetch user authentication and peer profile info
+  // Audio Level Visualizer Setup
+  const setupAudioVisualizer = useCallback((stream) => {
+    try {
+      if (!window.AudioContext && !window.webkitAudioContext) return;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioContextRef.current = audioCtx;
+
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      analyserRef.current = analyser;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const updateMeter = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        setMicAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
+        animFrameRef.current = requestAnimationFrame(updateMeter);
+      };
+
+      updateMeter();
+    } catch (err) {
+      console.warn("Audio visualizer initialization skipped:", err);
+    }
+  }, []);
+
+  // 1. Fetch user authentication, coins, and peer profile info
   useEffect(() => {
     const initProfiles = async () => {
       console.log("🔍 Incoming Call Routing State Check -> peerUserId:", peerUserId, "| Role Parameter:", URLRole);
@@ -112,6 +236,16 @@ const VideoCall = () => {
         return;
       }
       setCurrentUserId(user.id);
+
+      // Fetch user coins / balance for gift tipping
+      const { data: myProf } = await supabase
+        .from('profiles')
+        .select('coins, balance')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (myProf) {
+        setUserCoins(myProf.coins || Math.round(Number(myProf.balance || 0) * 10) || 1200);
+      }
 
       if (!peerUserId || peerUserId === 'undefined') {
         console.error("❌ Aborting profile fetching loop: peerUserId url parameter resolved to an undefined state.");
@@ -165,12 +299,22 @@ const VideoCall = () => {
 
     const initializeMediaAndSignaling = async () => {
       try {
-        // A. Mount Local Media Tracks First
+        // A. Mount Local Media Tracks First with high-definition constraints
         setCallStatus("Accessing devices...");
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: 1280, height: 720 }, 
-          audio: true 
-        });
+        const streamConstraints = { 
+          video: { 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 },
+            facingMode: facingMode
+          }, 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: noiseSuppression,
+            autoGainControl: true
+          }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(streamConstraints);
 
         if (!isComponentMounted) {
           stream.getTracks().forEach(track => track.stop());
@@ -179,6 +323,9 @@ const VideoCall = () => {
         
         localStreamRef.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+
+        // Setup audio visualizer for live mic speaking ripple
+        setupAudioVisualizer(stream);
 
         // B. Set Up Peer Connection Structure
         const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
@@ -345,6 +492,21 @@ const VideoCall = () => {
           }, 2500);
         });
 
+        // In-Call Luxury Gift Broadcast
+        socket.on('in_call_luxury_gift', (gift) => {
+          setActiveGiftAnimation(gift);
+          try {
+            confetti({
+              particleCount: 60,
+              spread: 70,
+              origin: { y: 0.6 }
+            });
+          } catch (e) {
+            console.warn(e);
+          }
+          setTimeout(() => setActiveGiftAnimation(null), 3500);
+        });
+
       } catch (err) {
         console.error("System device acquisition or socket binding fault:", err);
         if (isComponentMounted) setCallStatus("Hardware Error");
@@ -355,11 +517,72 @@ const VideoCall = () => {
 
     return () => {
       isComponentMounted = false;
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
       cleanUpCall();
     };
-  }, [currentUserId, peerUserId, URLRole]); 
+  }, [currentUserId, peerUserId, URLRole, facingMode, noiseSuppression, setupAudioVisualizer]); 
 
-  // Toggle Screen Sharing
+  // Feature: Flip Camera Switcher (Front/Back)
+  const handleFlipCamera = async () => {
+    const nextMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(nextMode);
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: nextMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true
+      });
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      if (pcRef.current && newVideoTrack) {
+        const sender = pcRef.current.getSenders().find((s) => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(newVideoTrack);
+      }
+      if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
+      localStreamRef.current = newStream;
+    } catch (e) {
+      console.warn("Could not switch camera facing mode:", e);
+    }
+  };
+
+  // Feature: Switch Camera Device by ID
+  const handleSwitchCamera = async (deviceId) => {
+    setActiveVideoDeviceId(deviceId);
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId } },
+        audio: true
+      });
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      if (pcRef.current && newVideoTrack) {
+        const sender = pcRef.current.getSenders().find((s) => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(newVideoTrack);
+      }
+      if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
+      localStreamRef.current = newStream;
+    } catch (e) {
+      console.warn("Could not switch camera device:", e);
+    }
+  };
+
+  // Feature: Switch Microphone Device by ID
+  const handleSwitchMicrophone = async (deviceId) => {
+    setActiveAudioDeviceId(deviceId);
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: { deviceId: { exact: deviceId } }
+      });
+      const newAudioTrack = newStream.getAudioTracks()[0];
+      if (pcRef.current && newAudioTrack) {
+        const sender = pcRef.current.getSenders().find((s) => s.track?.kind === 'audio');
+        if (sender) sender.replaceTrack(newAudioTrack);
+      }
+    } catch (e) {
+      console.warn("Could not switch microphone device:", e);
+    }
+  };
+
+  // Feature: Toggle Screen Sharing
   const toggleScreenShare = async () => {
     if (!pcRef.current) return;
     try {
@@ -393,6 +616,109 @@ const VideoCall = () => {
     } catch (err) {
       console.warn("Screen share cancelled or failed:", err);
     }
+  };
+
+  // Feature: HD Snapshot Shutter Flash Capture
+  const handleTakeSnapshot = () => {
+    setIsFlashActive(true);
+    setTimeout(() => setIsFlashActive(false), 250);
+
+    const videoEl = remoteVideoRef.current || localVideoRef.current;
+    if (!videoEl) return;
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth || 1280;
+      canvas.height = videoEl.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+      // Add watermark timestamp
+      ctx.font = 'bold 16px monospace';
+      ctx.fillStyle = '#06b6d4';
+      ctx.fillText(`MPADE UNIVERSE HD • ${new Date().toLocaleTimeString()}`, 24, canvas.height - 24);
+
+      const link = document.createElement('a');
+      link.download = `universe-call-snapshot-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+
+      setSnapshotToast(true);
+      setTimeout(() => setSnapshotToast(false), 3000);
+    } catch (e) {
+      console.warn("Snapshot capture failed:", e);
+    }
+  };
+
+  // Feature: Call Session Recorder (MediaRecorder)
+  const toggleCallRecording = () => {
+    if (isRecording) {
+      // Stop recording and save file
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecording(false);
+    } else {
+      // Start recording
+      const streamToRecord = localStreamRef.current;
+      if (!streamToRecord) return;
+
+      try {
+        recordedChunksRef.current = [];
+        const recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm;codecs=vp8,opus' });
+        mediaRecorderRef.current = recorder;
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+
+        recorder.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `universe-call-recording-${Date.now()}.webm`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        recorder.start(1000);
+        setIsRecording(true);
+      } catch (err) {
+        console.warn("Recording setup failed:", err);
+      }
+    }
+  };
+
+  // Feature: Native Picture-in-Picture Mode
+  const togglePictureInPicture = async () => {
+    if (!remoteVideoRef.current) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        setIsPiPActive(false);
+      } else if (document.pictureInPictureEnabled) {
+        await remoteVideoRef.current.requestPictureInPicture();
+        setIsPiPActive(true);
+      }
+    } catch (err) {
+      console.warn("Picture in picture toggling failed:", err);
+    }
+  };
+
+  // Feature: Send Luxury Virtual Gift
+  const handleSendGift = (gift) => {
+    if (userCoins < gift.price) {
+      alert("Insufficient coins! Top up your balance to send this gift.");
+      return;
+    }
+
+    setUserCoins((prev) => Math.max(0, prev - gift.price));
+    setActiveGiftAnimation(gift);
+    setTimeout(() => setActiveGiftAnimation(null), 3500);
+
+    const roomId = [currentUserId, peerUserId].sort().join("-");
+    socketRef.current?.emit('in_call_luxury_gift', { roomId, gift });
   };
 
   // Send In-Call Text Message
@@ -479,36 +805,210 @@ const VideoCall = () => {
     return `${mins.toString().padStart(2, '0')}:${remSecs.toString().padStart(2, '0')}`;
   };
 
+  // Get active CSS filter string
+  const currentFilterStyle = VIDEO_FILTERS.find((f) => f.id === activeFilter)?.filter || 'none';
+  const filterBeautyCombined = beautyGlow ? `${currentFilterStyle} brightness(1.06) saturate(1.1)` : currentFilterStyle;
+  const currentBackdropClass = VIRTUAL_BACKDROPS.find((b) => b.id === activeBackdrop)?.bg || '';
+
   return (
-    <div className="fixed inset-0 bg-zinc-950 text-white flex flex-col items-center justify-between p-4 sm:p-6 font-sans select-none overflow-hidden">
-      {/* Top Header Bar */}
-      <div className="w-full max-w-lg flex justify-between items-center bg-white/5 px-4 py-3 rounded-2xl border border-white/10 backdrop-blur-md z-30 shadow-xl">
+    <div className={`fixed inset-0 bg-zinc-950 text-white flex flex-col items-center justify-between p-3 sm:p-5 font-sans select-none overflow-hidden ${currentBackdropClass}`}>
+      
+      {/* Shutter Flash Animation Overlay */}
+      <AnimatePresence>
+        {isFlashActive && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 bg-white z-50 pointer-events-none"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Snapshot Toast Confirmation */}
+      <AnimatePresence>
+        {snapshotToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-20 z-50 bg-cyan-500 text-black font-black text-xs px-4 py-2 rounded-full shadow-2xl flex items-center gap-2"
+          >
+            <Check size={14} /> HD Call Snapshot Saved to Device!
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Animated 3D Luxury Gift Burst Overlay */}
+      <AnimatePresence>
+        {activeGiftAnimation && (
+          <motion.div
+            initial={{ scale: 0.2, opacity: 0, y: 50 }}
+            animate={{ scale: [0.2, 1.4, 1.2, 1], opacity: 1, y: 0 }}
+            exit={{ scale: 1.6, opacity: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-center"
+          >
+            <div className="text-7xl sm:text-9xl drop-shadow-[0_0_40px_rgba(236,72,153,0.9)] animate-bounce">
+              {activeGiftAnimation.icon}
+            </div>
+            <div className="mt-4 bg-black/80 backdrop-blur-xl border border-pink-500/40 px-6 py-2 rounded-full text-center shadow-2xl">
+              <p className="text-sm font-black text-pink-400 uppercase tracking-widest">{activeGiftAnimation.name}</p>
+              <p className="text-[10px] text-amber-300 font-mono">+{activeGiftAnimation.price} Coins</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Top Header Bar with Multi-Tool Status Badges */}
+      <div className="w-full max-w-xl flex justify-between items-center bg-zinc-900/80 px-3.5 py-2.5 rounded-2xl border border-white/10 backdrop-blur-xl z-30 shadow-2xl">
         <div className="flex items-center gap-2">
-          <Shield size={16} className="text-cyan-400" />
-          <span className="text-[10px] sm:text-xs font-semibold tracking-wide text-zinc-300 uppercase">Encrypted</span>
+          {/* Encryption Indicator & Telemetry Modal Toggle */}
+          <button
+            onClick={() => setShowTelemetry(!showTelemetry)}
+            title="View Connection Health & Telemetry"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/5 transition-colors"
+          >
+            <Shield size={13} className="text-cyan-400" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">HD • E2EE</span>
+            <Activity size={12} className="text-emerald-400 ml-0.5 animate-pulse" />
+          </button>
+
+          {/* Recording Badge */}
+          {isRecording && (
+            <div className="flex items-center gap-1.5 bg-red-500/20 border border-red-500/40 text-red-400 px-2.5 py-1 rounded-xl text-[10px] font-mono font-black animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              REC {formatTime(recordingDuration)}
+            </div>
+          )}
         </div>
         
-        {/* Call Timer Display */}
-        <div className="flex items-center gap-2">
+        {/* Call Timer & Secondary Header Tools */}
+        <div className="flex items-center gap-1.5">
           {callStatus === "Connected" && (
-            <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+            <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20">
               {formatTime(callDuration)}
             </span>
           )}
-          <span className="text-xs bg-cyan-500/10 text-cyan-400 px-2.5 py-1 rounded-full font-extrabold border border-cyan-500/20">
-            {callStatus}
-          </span>
+
+          {/* Layout Mode Cycle Button */}
+          <button
+            onClick={() => {
+              const modes = ['focus', 'split', 'theater'];
+              const nextIndex = (modes.indexOf(layoutMode) + 1) % modes.length;
+              setLayoutMode(modes[nextIndex]);
+            }}
+            title={`Current Layout: ${layoutMode.toUpperCase()} (Click to toggle)`}
+            className={`p-1.5 rounded-xl transition-colors ${layoutMode !== 'focus' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+          >
+            <LayoutGrid size={15} />
+          </button>
+
+          {/* In-Call Notes Toggle Button */}
+          <button
+            onClick={() => setShowNotes(!showNotes)}
+            title="In-Call Notes & Agenda"
+            className={`p-1.5 rounded-xl transition-colors ${showNotes ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-white/5 text-zinc-300 hover:bg-white/10'}`}
+          >
+            <FileText size={15} />
+          </button>
+
+          {/* Device & Audio Manager Settings Button */}
+          <button
+            onClick={() => setShowDeviceSettings(!showDeviceSettings)}
+            title="Hardware Device Settings"
+            className="p-1.5 rounded-xl bg-white/5 text-zinc-300 hover:bg-white/10 transition-colors"
+          >
+            <Settings size={15} />
+          </button>
         </div>
       </div>
 
-      {/* Main Video Stage */}
-      <div className="flex-1 flex flex-col items-center justify-center my-4 relative w-full max-w-lg rounded-3xl overflow-hidden bg-zinc-900 border border-white/10 shadow-2xl">
-        <video 
-          ref={remoteVideoRef} 
-          autoPlay 
-          playsInline 
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+      {/* Main Video Stage with Dynamic Multi-View Grid Support */}
+      <div className="flex-1 flex flex-col items-center justify-center my-3 relative w-full max-w-xl rounded-3xl overflow-hidden bg-zinc-900 border border-white/10 shadow-2xl">
+        
+        {/* Layout Mode: Split 50/50 Duo View */}
+        {layoutMode === 'split' ? (
+          <div className="w-full h-full grid grid-cols-1 sm:grid-cols-2 gap-1 p-1 bg-black">
+            <div className="relative rounded-2xl overflow-hidden bg-zinc-950 flex items-center justify-center border border-white/10">
+              <video 
+                ref={remoteVideoRef} 
+                autoPlay 
+                playsInline 
+                style={{ filter: filterBeautyCombined }}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-bold text-zinc-300">
+                @{peerProfile?.username || 'Peer'}
+              </div>
+            </div>
+
+            <div className="relative rounded-2xl overflow-hidden bg-zinc-950 flex items-center justify-center border border-white/10">
+              <video 
+                ref={localVideoRef} 
+                autoPlay 
+                muted 
+                playsInline 
+                style={{ filter: filterBeautyCombined }}
+                className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : ''}`}
+              />
+              {isVideoOff && (
+                <div className="flex flex-col items-center gap-1 text-zinc-500">
+                  <VideoOff size={20} />
+                  <p className="text-[10px] font-bold uppercase">You (Cam Off)</p>
+                </div>
+              )}
+              <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-bold text-zinc-300 flex items-center gap-1">
+                <span>You</span>
+                {micAudioLevel > 15 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Layout Mode: Focus / Speaker Mode */
+          <div className="w-full h-full relative">
+            <video 
+              ref={remoteVideoRef} 
+              autoPlay 
+              playsInline 
+              style={{ filter: filterBeautyCombined }}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+
+            {/* Local Camera Picture-in-Picture Box with Interactive Swap & Audio Meter Ring */}
+            <motion.div 
+              drag
+              dragConstraints={{ left: -150, right: 10, top: -250, bottom: 10 }}
+              onClick={() => setLayoutMode(layoutMode === 'swapped' ? 'focus' : 'swapped')}
+              title="Click to swap feeds or drag around"
+              className={`absolute bottom-4 right-4 w-28 h-40 bg-black/75 border-2 rounded-2xl backdrop-blur-md overflow-hidden flex items-center justify-center z-20 shadow-2xl cursor-pointer transition-all ${
+                micAudioLevel > 20 ? 'border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'border-white/20'
+              }`}
+            >
+              <video 
+                ref={localVideoRef} 
+                autoPlay 
+                muted 
+                playsInline 
+                style={{ filter: filterBeautyCombined }}
+                className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : ''}`}
+              />
+              {isVideoOff && (
+                <div className="flex flex-col items-center gap-1 text-zinc-500">
+                  <VideoOff size={18} />
+                  <p className="text-[9px] font-bold uppercase tracking-wider">Cam Off</p>
+                </div>
+              )}
+              
+              {/* Speaking audio wave indicator on PiP tile */}
+              <div className="absolute bottom-1.5 left-1.5 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] font-bold text-zinc-300 flex items-center gap-1">
+                <span>You</span>
+                {micAudioLevel > 15 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+              </div>
+            </motion.div>
+          </div>
+        )}
 
         {/* Floating In-Call Reactions Overlay */}
         <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
@@ -528,58 +1028,162 @@ const VideoCall = () => {
           </AnimatePresence>
         </div>
 
+        {/* Connecting / Ringing Placeholder with Speaking Ripple */}
         {callStatus !== "Connected" && (
           <div className="absolute inset-0 bg-zinc-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-4 z-20">
-            {peerProfile?.avatar_url ? (
-              <img 
-                src={peerProfile.avatar_url} 
-                alt="Peer Avatar" 
-                className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/40 animate-pulse shadow-2xl shadow-cyan-500/20"
-              />
-            ) : (
-              <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-500/40 flex items-center justify-center animate-pulse shadow-2xl shadow-cyan-500/20">
-                <Video size={36} className="text-cyan-400" />
-              </div>
-            )}
-            <div className="text-center">
+            <div className="relative">
+              {/* Pulsing radar waves */}
+              <div className="absolute -inset-4 rounded-full bg-cyan-500/20 animate-ping" />
+              <div className="absolute -inset-8 rounded-full bg-cyan-500/10 animate-pulse" />
+              {peerProfile?.avatar_url ? (
+                <img 
+                  src={peerProfile.avatar_url} 
+                  alt="Peer Avatar" 
+                  className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/50 relative z-10 shadow-2xl shadow-cyan-500/30"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-cyan-500/10 border-2 border-cyan-500/40 flex items-center justify-center relative z-10 shadow-2xl shadow-cyan-500/30">
+                  <Video size={36} className="text-cyan-400" />
+                </div>
+              )}
+            </div>
+            <div className="text-center z-10">
               <h2 className="text-xl font-black tracking-tight text-white">@{peerProfile?.username || 'User'}</h2>
               <p className="text-xs text-cyan-400 font-mono mt-1 capitalize animate-pulse">{callStatus}</p>
             </div>
           </div>
         )}
 
-        {/* Local Camera Picture-in-Picture Box */}
-        <div className="absolute bottom-4 right-4 w-28 h-40 bg-black/70 border border-white/20 rounded-2xl backdrop-blur-md overflow-hidden flex items-center justify-center z-20 shadow-2xl">
-          <video 
-            ref={localVideoRef} 
-            autoPlay 
-            muted 
-            playsInline 
-            className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : ''}`}
-          />
-          {isVideoOff && (
-            <div className="flex flex-col items-center gap-1 text-zinc-500">
-              <VideoOff size={18} />
-              <p className="text-[9px] font-bold uppercase tracking-wider">Cam Off</p>
+        {/* Top Quick Actions Bar (Gifts, Snapshot, Filter, Whiteboard, Captions) */}
+        {callStatus === "Connected" && layoutMode !== 'theater' && (
+          <div className="absolute top-3 inset-x-3 z-20 flex justify-between items-center pointer-events-none">
+            {/* Reactions Bar */}
+            <div className="flex gap-1 bg-black/50 backdrop-blur-md p-1 rounded-2xl border border-white/10 pointer-events-auto">
+              {['❤️', '🔥', '👏', '🎉', '😮'].map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => sendReactionBurst(emoji)}
+                  className="p-1 hover:bg-white/15 rounded-xl transition-transform active:scale-125 text-sm"
+                >
+                  {emoji}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
 
-        {/* Quick In-Call Reaction Bar Overlay */}
-        {callStatus === "Connected" && (
-          <div className="absolute top-4 left-4 z-20 flex gap-1.5 bg-black/40 backdrop-blur-md p-1.5 rounded-2xl border border-white/10">
-            {['❤️', '🔥', '👏', '🎉', '😮'].map((emoji) => (
+            {/* Quick Utility Cluster */}
+            <div className="flex items-center gap-1 bg-black/50 backdrop-blur-md p-1 rounded-2xl border border-white/10 pointer-events-auto">
+              {/* Snapshot Button */}
               <button
-                key={emoji}
                 type="button"
-                onClick={() => sendReactionBurst(emoji)}
-                className="p-1.5 hover:bg-white/10 rounded-xl transition-transform active:scale-125 text-base"
+                onClick={handleTakeSnapshot}
+                title="Take HD Call Snapshot"
+                className="p-1.5 hover:bg-white/15 rounded-xl text-cyan-300 transition-transform active:scale-95"
               >
-                {emoji}
+                <Camera size={15} />
               </button>
-            ))}
+
+              {/* AI Video Filters & Studio Button */}
+              <button
+                type="button"
+                onClick={() => setShowFilters(!showFilters)}
+                title="AI Video Filters & Lighting"
+                className={`p-1.5 rounded-xl transition-colors ${showFilters || activeFilter !== 'normal' ? 'bg-cyan-500 text-black' : 'hover:bg-white/15 text-pink-300'}`}
+              >
+                <Wand2 size={15} />
+              </button>
+
+              {/* Whiteboard Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowWhiteboard(!showWhiteboard)}
+                title="Collaborative Whiteboard"
+                className={`p-1.5 rounded-xl transition-colors ${showWhiteboard ? 'bg-amber-400 text-black' : 'hover:bg-white/15 text-amber-300'}`}
+              >
+                <Radio size={15} />
+              </button>
+
+              {/* Send Gift Button */}
+              <button
+                type="button"
+                onClick={() => setShowGifts(!showGifts)}
+                title="Send Luxury Gift"
+                className="p-1.5 hover:bg-white/15 rounded-xl text-rose-300 transition-transform active:scale-95"
+              >
+                <Gift size={15} />
+              </button>
+
+              {/* Live Speech Captions Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowCaptions(!showCaptions)}
+                title="Live Subtitles / Closed Captions"
+                className={`p-1.5 rounded-xl transition-colors ${showCaptions ? 'bg-cyan-500 text-black' : 'hover:bg-white/15 text-zinc-300'}`}
+              >
+                <Subtitles size={15} />
+              </button>
+            </div>
           </div>
         )}
+
+        {/* Feature Component Overlays */}
+        {/* 1. Live Closed Captions */}
+        <VideoCallCaptions isEnabled={showCaptions} onClose={() => setShowCaptions(false)} />
+
+        {/* 2. Interactive Whiteboard */}
+        <VideoCallWhiteboard 
+          isOpen={showWhiteboard} 
+          onClose={() => setShowWhiteboard(false)}
+        />
+
+        {/* 3. AI Looks & Studio Filters Modal */}
+        <VideoCallFilters 
+          isOpen={showFilters} 
+          onClose={() => setShowFilters(false)}
+          activeFilter={activeFilter}
+          onSelectFilter={setActiveFilter}
+          activeBackdrop={activeBackdrop}
+          onSelectBackdrop={setActiveBackdrop}
+          beautyGlow={beautyGlow}
+          onToggleBeautyGlow={() => setBeautyGlow(!beautyGlow)}
+        />
+
+        {/* 4. Luxury Gift Tray */}
+        <VideoCallGifts 
+          isOpen={showGifts} 
+          onClose={() => setShowGifts(false)}
+          onSendGift={handleSendGift}
+          userCoins={userCoins}
+        />
+
+        {/* 5. Device Manager Settings */}
+        <VideoCallDeviceSettings 
+          isOpen={showDeviceSettings}
+          onClose={() => setShowDeviceSettings(false)}
+          activeVideoDeviceId={activeVideoDeviceId}
+          activeAudioDeviceId={activeAudioDeviceId}
+          onSwitchCamera={handleSwitchCamera}
+          onSwitchMicrophone={handleSwitchMicrophone}
+          noiseSuppression={noiseSuppression}
+          onToggleNoiseSuppression={() => setNoiseSuppression(!noiseSuppression)}
+          facingMode={facingMode}
+          onFlipCamera={handleFlipCamera}
+        />
+
+        {/* 6. In-Call Notes & Agenda Scratchpad */}
+        <VideoCallNotes 
+          isOpen={showNotes} 
+          onClose={() => setShowNotes(false)} 
+          peerName={peerProfile?.username || 'User'}
+        />
+
+        {/* 7. Connection Telemetry & Health Monitor */}
+        <VideoCallTelemetry 
+          isOpen={showTelemetry} 
+          onClose={() => setShowTelemetry(false)} 
+          pc={pcRef.current} 
+          callStatus={callStatus}
+        />
 
         {/* In-Call Text Messages Drawer Overlay */}
         <AnimatePresence>
@@ -634,40 +1238,67 @@ const VideoCall = () => {
         </AnimatePresence>
       </div>
 
-      {/* Floating Control Console */}
-      <div className="w-full max-w-lg flex items-center justify-around bg-zinc-900/90 border border-white/10 px-4 py-3 rounded-3xl backdrop-blur-xl shadow-2xl z-30">
+      {/* Floating Bottom Control Console */}
+      <div className="w-full max-w-xl flex items-center justify-around bg-zinc-900/90 border border-white/10 px-3.5 py-2.5 rounded-3xl backdrop-blur-xl shadow-2xl z-30">
+        {/* Mic Mute / Unmute */}
         <button 
           type="button"
           onClick={() => setIsMuted(!isMuted)} 
-          title={isMuted ? "Unmute Mic" : "Mute Mic"}
-          className={`p-3.5 rounded-2xl transition-all ${isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+          title={isMuted ? "Unmute Microphone" : "Mute Microphone"}
+          className={`p-3 rounded-2xl transition-all relative ${
+            isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'
+          }`}
         >
           {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
+          {!isMuted && micAudioLevel > 15 && (
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
+          )}
         </button>
 
+        {/* Video Camera Toggle */}
         <button 
           type="button"
           onClick={() => setIsVideoOff(!isVideoOff)} 
-          title={isVideoOff ? "Turn On Cam" : "Turn Off Cam"}
-          className={`p-3.5 rounded-2xl transition-all ${isVideoOff ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+          title={isVideoOff ? "Turn On Camera" : "Turn Off Camera"}
+          className={`p-3 rounded-2xl transition-all ${
+            isVideoOff ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'
+          }`}
         >
           {isVideoOff ? <VideoOff size={18} /> : <Video size={18} />}
         </button>
 
+        {/* Screen Sharing Toggle */}
         <button 
           type="button"
           onClick={toggleScreenShare} 
           title={isScreenSharing ? "Stop Screen Share" : "Share Screen"}
-          className={`p-3.5 rounded-2xl transition-all ${isScreenSharing ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+          className={`p-3 rounded-2xl transition-all ${
+            isScreenSharing ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/30' : 'bg-white/5 text-zinc-200 hover:bg-white/10'
+          }`}
         >
           <Monitor size={18} />
         </button>
 
+        {/* Call Session HD Recording Toggle */}
+        <button 
+          type="button"
+          onClick={toggleCallRecording} 
+          title={isRecording ? "Stop Call Recording" : "Record Video Call Session"}
+          className={`p-3 rounded-2xl transition-all ${
+            isRecording ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/40' : 'bg-white/5 text-zinc-200 hover:bg-white/10'
+          }`}
+        >
+          <Disc size={18} />
+        </button>
+
+        {/* Chat Drawer Toggle */}
         <button 
           type="button"
           onClick={() => setShowChat(!showChat)} 
           title="Toggle In-Call Chat"
-          className={`p-3.5 rounded-2xl transition-all relative ${showChat ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`}
+          className={`p-3 rounded-2xl transition-all relative ${
+            showChat ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-200 hover:bg-white/10'
+          }`}
         >
           <MessageSquare size={18} />
           {inCallMessages.length > 0 && !showChat && (
@@ -675,11 +1306,12 @@ const VideoCall = () => {
           )}
         </button>
 
+        {/* End / Hangup Call Button */}
         <button 
           type="button"
           onClick={cleanUpCall} 
           title="End Call"
-          className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl transition-transform active:scale-95 shadow-xl shadow-red-600/40"
+          className="p-3.5 bg-red-600 hover:bg-red-500 text-white rounded-2xl transition-transform active:scale-95 shadow-xl shadow-red-600/40"
         >
           <PhoneOff size={20} />
         </button>
