@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, MessageSquare, Heart, 
-  UserPlus, Gift, Volume2, Smartphone, 
-  Moon, Loader2, Save
+  UserPlus, Gift, Loader2, Moon, Save, Check,
+  Volume2, Smartphone
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -12,6 +12,7 @@ const NotificationSettings = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
   
   // Current UI State
   const [prefs, setPrefs] = useState({
@@ -39,14 +40,25 @@ const NotificationSettings = () => {
           .maybeSingle();
 
         if (data) {
-          // Exclude database metadata from our state
-          const { user_id, id, created_at, ...purePrefs } = data;
+          const { user_id: _uid, id: _id, created_at: _ca, ...purePrefs } = data;
           setPrefs(purePrefs);
           setInitialPrefs(purePrefs);
         } else {
-          // Initialize for new users
-          await supabase.from('notification_settings').insert({ user_id: user.id });
-          setInitialPrefs(prefs);
+          const defaultPrefs = {
+            likes: true,
+            comments: true,
+            new_followers: true,
+            mentions: true,
+            direct_messages: true,
+            live_streams: true,
+            gifts: true,
+            quiet_mode: false
+          };
+          await supabase.from('notification_settings').upsert(
+            { user_id: user.id, ...defaultPrefs },
+            { onConflict: 'user_id' }
+          );
+          setInitialPrefs(defaultPrefs);
         }
       }
       setLoading(false);
@@ -67,13 +79,21 @@ const NotificationSettings = () => {
     if (user) {
       const { error } = await supabase
         .from('notification_settings')
-        .update(prefs)
-        .eq('user_id', user.id);
+        .upsert(
+          { 
+            user_id: user.id, 
+            ...prefs,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'user_id' }
+        );
 
       if (!error) {
         setInitialPrefs(prefs);
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 2500);
       } else {
-        alert("Failed to sync settings: " + error.message);
+        alert("Failed to sync notification settings: " + error.message);
       }
     }
     setSaving(false);
@@ -88,11 +108,20 @@ const NotificationSettings = () => {
   return (
     <div className="min-h-screen bg-black text-white font-sans pb-32">
       {/* --- HEADER --- */}
-      <nav className="sticky top-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/5 px-4 py-5 flex items-center">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/5 rounded-full transition-colors mr-2">
-          <ChevronLeft size={24} />
-        </button>
-        <h1 className="text-sm font-black uppercase tracking-[3px] italic">Notifications</h1>
+      <nav className="sticky top-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/5 px-4 py-5 flex items-center justify-between">
+        <div className="flex items-center">
+          <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/5 rounded-full transition-colors mr-2">
+            <ChevronLeft size={24} />
+          </button>
+          <h1 className="text-sm font-black uppercase tracking-[3px] italic">Notifications</h1>
+        </div>
+
+        {savedSuccess && (
+          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+            <Check size={14} />
+            <span>Saved</span>
+          </div>
+        )}
       </nav>
 
       <div className="max-w-2xl mx-auto pt-6 px-4">
