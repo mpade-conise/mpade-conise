@@ -9,13 +9,14 @@ import {
   HelpCircle, Eye, EyeOff, Tag, SlidersHorizontal, Layers, Check, Search,
   ChevronLeft, ChevronRight, BarChart2, MessageSquare, AlertTriangle, Radio,
   Send, ExternalLink, Award, Plus, Trash2, Calendar, FileText, ArrowRight,
-  Maximize2, Minimize2, Upload as UploadIcon, CheckSquare, Sparkle
+  Maximize2, Minimize2, Upload as UploadIcon, CheckSquare, Sparkle, Gauge, Smartphone
 } from 'lucide-react';
 
 const Upload = ({ onComplete }) => {
   // Navigation & Step Tabs: 'media' | 'audio_filter' | 'interactive' | 'publish'
-  const [activeStep, setActiveStep] = useState('media'); // 'media' | 'audio_filter' | 'interactive' | 'publish'
+  const [activeStep, setActiveStep] = useState('media');
   const [ingestMode, setIngestMode] = useState('dropzone'); // 'dropzone' | 'camera'
+  const [showMobilePreview, setShowMobilePreview] = useState(false);
   
   // Media Files & Previews
   const [preview, setPreview] = useState(null);
@@ -55,7 +56,7 @@ const Upload = ({ onComplete }) => {
 
   // Feature 3: Custom Cover Thumbnail Badge & Text Sticker
   const [coverText, setCoverText] = useState('');
-  const [coverBadgeStyle, setCoverBadgeStyle] = useState('neon'); // 'neon' | 'minimal' | 'bold' | 'gold'
+  const [coverBadgeStyle, setCoverBadgeStyle] = useState('neon');
 
   // Feature 4: Interactive Poll & Voting Sticker
   const [pollEnabled, setPollEnabled] = useState(false);
@@ -93,10 +94,12 @@ const Upload = ({ onComplete }) => {
   const [ageRestricted, setAgeRestricted] = useState(false);
 
   // Feature 11: 8 Cinematic Color Grading LUT Filters (persisted to player)
-  const [selectedFilter, setSelectedFilter] = useState('original');
+  const [selectedFilter, setSelectedFilter] = useState(() => {
+    return localStorage.getItem('mpade_last_selected_filter') || 'original';
+  });
 
   // Feature 12: AI Voice Clarifier & Audio Enhancement
-  const [audioEnhancement, setAudioEnhancement] = useState('studio_master'); // 'none' | 'crystal_voice' | 'studio_master' | 'bass_boost'
+  const [audioEnhancement, setAudioEnhancement] = useState('studio_master');
 
   // Feature 13: Dual Audio Master Mixer (Original vs Music)
   const [videoVolume, setVideoVolume] = useState(100);
@@ -111,7 +114,7 @@ const Upload = ({ onComplete }) => {
 
   // Standard Social Fields
   const [caption, setCaption] = useState('');
-  const [privacy, setPrivacy] = useState('public'); // 'public' | 'friends' | 'private'
+  const [privacy, setPrivacy] = useState('public');
   const [location, setLocation] = useState('');
   const [tags, setTags] = useState([]);
   const [mentions, setMentions] = useState([]);
@@ -141,7 +144,7 @@ const Upload = ({ onComplete }) => {
   // Upload Progress & Telemetry
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStage, setUploadStage] = useState('ready'); // 'optimizing' | 'thumbnail' | 'uploading' | 'indexing' | 'complete'
+  const [uploadStage, setUploadStage] = useState('ready');
   const [uploadStatusText, setUploadStatusText] = useState('');
 
   // Drag over state
@@ -150,6 +153,7 @@ const Upload = ({ onComplete }) => {
   // Refs
   const videoRef = useRef(null); 
   const editorVideoRef = useRef(null);
+  const mobileEditorVideoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
@@ -170,6 +174,16 @@ const Upload = ({ onComplete }) => {
   ];
 
   const currentFilterObj = filters.find(f => f.id === selectedFilter) || filters[0];
+
+  const handleFilterSelect = (filterId) => {
+    setSelectedFilter(filterId);
+    try {
+      localStorage.setItem('mpade_last_selected_filter', filterId);
+    } catch (e) {}
+    if (preview) {
+      generateVideoThumbnail(preview, thumbScrubTime, filterId);
+    }
+  };
 
   const categories = [
     'Entertainment', 'Music & Beats', 'Gaming & Esports', 'AI & Tech', 
@@ -259,10 +273,13 @@ const Upload = ({ onComplete }) => {
     if (editorVideoRef.current) {
       editorVideoRef.current.volume = videoVolume / 100;
     }
+    if (mobileEditorVideoRef.current) {
+      mobileEditorVideoRef.current.volume = videoVolume / 100;
+    }
   }, [videoVolume]);
 
   // Extract high-definition video thumbnail from frame
-  const generateVideoThumbnail = (sourceUrl, timeOffset = 0.5) => {
+  const generateVideoThumbnail = (sourceUrl, timeOffset = 0.5, overrideFilterId = null) => {
     return new Promise((resolve) => {
       const vid = document.createElement('video');
       vid.src = sourceUrl;
@@ -282,8 +299,9 @@ const Upload = ({ onComplete }) => {
           const ctx = canvas.getContext('2d');
           
           // Apply current filter to thumbnail
-          if (currentFilterObj.css) {
-            ctx.filter = currentFilterObj.css;
+          const activeF = filters.find(f => f.id === (overrideFilterId || selectedFilter)) || filters[0];
+          if (activeF.css) {
+            ctx.filter = activeF.css;
           }
           
           ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
@@ -476,8 +494,30 @@ const Upload = ({ onComplete }) => {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  // Step Switchers
+  const stepList = [
+    { id: 'media', stepNum: 1, label: 'Media', icon: <Film size={15} /> },
+    { id: 'audio_filter', stepNum: 2, label: 'Audio & LUT', icon: <Music size={15} />, disabled: !preview },
+    { id: 'interactive', stepNum: 3, label: 'Interactive', icon: <Sparkles size={15} />, disabled: !preview },
+    { id: 'publish', stepNum: 4, label: 'Publish', icon: <Send size={15} />, disabled: !preview }
+  ];
+
+  const currentStepIndex = stepList.findIndex(s => s.id === activeStep);
+
+  const goToNextStep = () => {
+    if (currentStepIndex < stepList.length - 1) {
+      setActiveStep(stepList[currentStepIndex + 1].id);
+    }
+  };
+
+  const goToPrevStep = () => {
+    if (currentStepIndex > 0) {
+      setActiveStep(stepList[currentStepIndex - 1].id);
+    }
+  };
+
   // ----------------------------------------------------
-  // DUAL-STREAM RESILIENT UPLOAD ENGINE
+  // DUAL-STREAM RESILIENT UPLOAD ENGINE WITH FILTER PRESERVATION
   // ----------------------------------------------------
   const handleUpload = async () => {
     if (!videoFile) return alert("Please select or record a video first!");
@@ -560,6 +600,14 @@ const Upload = ({ onComplete }) => {
 
       const extractedTags = caption.match(/#[a-zA-Z0-9_]+/g)?.map(t => t.replace('#', '')) || tags;
       const extractedMentions = caption.match(/@[a-zA-Z0-9_]+/g)?.map(m => m.replace('@', '')) || mentions;
+      
+      // Permanently embed filter into tags for guaranteed persistence across all database schemas
+      const persistentTags = Array.from(new Set([...extractedTags, `filter_${selectedFilter}`]));
+
+      // Save to local device cache for instant retrieval
+      try {
+        localStorage.setItem(`mpade_filter_${publicUrl}`, selectedFilter);
+      } catch (e) {}
 
       // Full 15-Feature Record
       const fullVideoRecord = {
@@ -572,7 +620,7 @@ const Upload = ({ onComplete }) => {
         privacy: privacy,
         is_private: privacy === 'private',
         location: location.trim(),
-        tags: extractedTags,
+        tags: persistentTags,
         mentions: extractedMentions,
         // The 15 Super Features:
         allow_duet: allowDuet,
@@ -582,7 +630,7 @@ const Upload = ({ onComplete }) => {
         is_commercial: isCommercial,
         sponsor_tag: sponsorTag.trim(),
         age_restricted: ageRestricted,
-        filter_style: selectedFilter,
+        filter_style: selectedFilter, // Persisted filter style
         category: category,
         poll_data: pollEnabled ? pollData : null,
         product_link: productEnabled ? productLink : null,
@@ -600,7 +648,7 @@ const Upload = ({ onComplete }) => {
 
       // Graceful fallback if database table does not yet have newly added custom columns
       if (dbError) {
-        console.warn("Full-column insert notice, trying base schema fallback:", dbError.message);
+        console.warn("Full-column insert notice, trying base schema fallback with embedded filter tag:", dbError.message);
         
         const fallbackRecord = {
           video_url: publicUrl,
@@ -612,7 +660,7 @@ const Upload = ({ onComplete }) => {
           privacy: privacy,
           is_private: privacy === 'private',
           location: location.trim(),
-          tags: extractedTags,
+          tags: persistentTags, // Keeps filter in tags: filter_neon_cyber
           mentions: extractedMentions
         };
 
@@ -648,105 +696,116 @@ const Upload = ({ onComplete }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-2xl">
+    <div className="fixed inset-0 z-[120] flex flex-col md:items-center md:justify-center bg-black/95 md:bg-black/85 md:backdrop-blur-2xl md:p-4 overflow-hidden select-none">
       
       {/* Hidden audio element for preview in editor */}
       <audio ref={audioPreviewRef} src={selectedMusic.url} loop />
       <audio ref={soundLabAudioRef} src={playingTrackUrl} loop />
 
-      {/* MODAL WINDOW CONTAINER */}
+      {/* FULL RESPONSIVE MODAL CONTAINER */}
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        initial={{ opacity: 0, scale: 0.98, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="relative w-full max-w-6xl h-[92vh] max-h-[900px] bg-[#07070d]/95 border border-cyan-500/30 rounded-3xl md:rounded-[2.5rem] shadow-[0_0_80px_rgba(6,182,212,0.25)] flex flex-col overflow-hidden text-white font-sans"
+        exit={{ opacity: 0, scale: 0.98, y: 15 }}
+        className="relative w-full h-[100dvh] md:h-[92vh] md:max-h-[920px] md:max-w-6xl bg-[#080811] border-0 md:border md:border-cyan-500/30 md:rounded-[2.5rem] shadow-none md:shadow-[0_0_80px_rgba(6,182,212,0.25)] flex flex-col overflow-hidden text-white font-sans"
       >
         
         {/* ============================================================ */}
-        {/* 1. TOP MODAL HEADER BAR */}
+        {/* 1. TOP HEADER & STEPPER BAR */}
         {/* ============================================================ */}
-        <header className="h-16 px-4 md:px-8 border-b border-cyan-500/15 bg-black/40 backdrop-blur-xl flex items-center justify-between shrink-0 z-30">
-          <div className="flex items-center gap-3">
+        <header className="h-14 sm:h-16 px-3 sm:px-6 border-b border-cyan-500/15 bg-black/70 backdrop-blur-xl flex items-center justify-between shrink-0 z-30">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button 
               type="button"
               disabled={isUploading}
               onClick={onComplete}
-              className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-all active:scale-90 disabled:opacity-40"
+              className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-all active:scale-90 disabled:opacity-40 shrink-0"
+              aria-label="Close Studio"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
 
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-teal-400 to-pink-500 p-0.5 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.5)]">
-                <Zap size={16} className="text-black fill-black" />
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-teal-400 to-pink-500 p-0.5 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.5)] shrink-0">
+                <Zap size={14} className="text-black fill-black" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-sm md:text-base font-black tracking-wider uppercase bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-pink-400 to-purple-400">
-                    Creator Studio Pro
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h1 className="text-xs sm:text-sm md:text-base font-black tracking-wider uppercase bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-pink-400 to-purple-400 truncate">
+                    Studio Pro
                   </h1>
-                  <span className="px-2 py-0.5 bg-gradient-to-r from-cyan-500/20 to-pink-500/20 border border-cyan-400/40 rounded-full text-[9px] font-black text-cyan-300 uppercase tracking-widest">
+                  <span className="hidden sm:inline-block px-1.5 py-0.5 bg-gradient-to-r from-cyan-500/20 to-pink-500/20 border border-cyan-400/40 rounded-full text-[8px] font-black text-cyan-300 uppercase tracking-widest">
                     v3.0 Ultra
                   </span>
                 </div>
-                <p className="text-[10px] text-zinc-400 font-mono hidden sm:block">
-                  Next-Gen 15-Feature Broadcast Engine
-                </p>
               </div>
             </div>
           </div>
 
-          {/* Stepper Tabs Bar */}
-          <div className="flex items-center gap-1.5 md:gap-2 bg-black/60 border border-white/10 rounded-2xl p-1">
-            {[
-              { id: 'media', label: '1. Media', icon: <Film size={14} /> },
-              { id: 'audio_filter', label: '2. Audio & LUT', icon: <Music size={14} />, disabled: !preview },
-              { id: 'interactive', label: '3. Interactive', icon: <Sparkles size={14} />, disabled: !preview },
-              { id: 'publish', label: '4. Publish', icon: <Send size={14} />, disabled: !preview }
-            ].map(step => (
+          {/* Stepper Tabs Bar (Horizontal Responsive) */}
+          <div className="flex items-center gap-1 bg-black/60 border border-white/10 rounded-2xl p-1 max-w-[55%] sm:max-w-none overflow-x-auto no-scrollbar">
+            {stepList.map(step => (
               <button
                 key={step.id}
                 type="button"
                 disabled={step.disabled || isUploading}
                 onClick={() => setActiveStep(step.id)}
-                className={`flex items-center gap-1.5 px-2.5 md:px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+                className={`flex items-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-wider transition-all shrink-0 disabled:opacity-25 disabled:cursor-not-allowed ${
                   activeStep === step.id 
                     ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-black shadow-[0_0_15px_rgba(6,182,212,0.5)]' 
                     : 'text-zinc-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 {step.icon}
-                <span className="hidden sm:inline">{step.label}</span>
+                <span className="hidden md:inline">{step.label}</span>
+                <span className="md:hidden font-mono text-[10px]">{step.stepNum}</span>
               </button>
             ))}
           </div>
 
-          {/* Quick Publish Action Button */}
-          {preview && activeStep !== 'publish' && (
-            <button
-              type="button"
-              onClick={() => setActiveStep('publish')}
-              className="hidden lg:flex items-center gap-2 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-xs uppercase tracking-wider px-4 py-2 rounded-xl shadow-[0_0_15px_rgba(236,72,153,0.4)] active:scale-95 transition-all"
-            >
-              Master & Publish <ArrowRight size={14} />
-            </button>
-          )}
+          {/* Mobile Preview Switch & Quick Publish Action */}
+          <div className="flex items-center gap-1.5">
+            {preview && (
+              <button
+                type="button"
+                onClick={() => setShowMobilePreview(!showMobilePreview)}
+                className={`md:hidden p-2 rounded-xl text-xs font-bold transition-all border ${
+                  showMobilePreview 
+                    ? 'bg-cyan-500 text-black border-cyan-400 shadow-md' 
+                    : 'bg-white/5 text-zinc-300 border-white/10 hover:text-white'
+                }`}
+                title="Toggle Video Preview"
+              >
+                <Smartphone size={16} />
+              </button>
+            )}
+
+            {preview && activeStep !== 'publish' && (
+              <button
+                type="button"
+                onClick={() => setActiveStep('publish')}
+                className="hidden lg:flex items-center gap-1.5 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-xs uppercase tracking-wider px-3.5 py-2 rounded-xl shadow-[0_0_15px_rgba(236,72,153,0.4)] active:scale-95 transition-all"
+              >
+                Next <ArrowRight size={14} />
+              </button>
+            )}
+          </div>
         </header>
 
         {/* ============================================================ */}
-        {/* 2. MAIN WORKSPACE (SPLIT VIEW) */}
+        {/* 2. MAIN WORKSPACE (RESPONSIVE SPLIT / SINGLE VIEW) */}
         {/* ============================================================ */}
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
           
-          {/* LEFT PANEL: 9:16 PREVIEW & LIVE WORKSTATION */}
-          <div className="w-full md:w-[360px] lg:w-[400px] border-b md:border-b-0 md:border-r border-white/10 p-4 md:p-6 flex flex-col items-center justify-center bg-black/40 relative shrink-0">
+          {/* DESKTOP LEFT PANEL: 9:16 PREVIEW & LIVE WORKSTATION */}
+          <div className="hidden md:flex md:w-[340px] lg:w-[380px] border-r border-white/10 p-4 lg:p-6 flex-col items-center justify-center bg-black/40 relative shrink-0 overflow-y-auto custom-viewport-scrollbar">
             
             {/* Viewport Frame */}
-            <div className="relative w-full max-w-[240px] md:max-w-[260px] aspect-[9/16] bg-zinc-950 rounded-[2.2rem] overflow-hidden border-2 border-cyan-500/40 shadow-[0_0_40px_rgba(6,182,212,0.25)] flex items-center justify-center group">
+            <div className="relative w-full max-w-[240px] lg:max-w-[260px] aspect-[9/16] bg-zinc-950 rounded-[2.2rem] overflow-hidden border-2 border-cyan-500/40 shadow-[0_0_40px_rgba(6,182,212,0.25)] flex items-center justify-center group">
               
               {preview ? (
                 <>
-                  {/* Active Video Preview */}
+                  {/* Active Video Preview with Persisted LUT Filter */}
                   <video 
                     ref={editorVideoRef}
                     src={preview} 
@@ -759,11 +818,19 @@ const Upload = ({ onComplete }) => {
                     onLoadedMetadata={(e) => setVideoDuration(e.currentTarget.duration || 0)}
                   />
 
+                  {/* Active Filter Indicator Badge */}
+                  {selectedFilter !== 'original' && (
+                    <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1 bg-cyan-950/80 backdrop-blur-md px-2 py-0.5 rounded-full border border-cyan-400/50 shadow-lg">
+                      <Wand2 size={10} className="text-cyan-400" />
+                      <span className="text-[9px] font-black uppercase text-cyan-300">{currentFilterObj.name}</span>
+                    </div>
+                  )}
+
                   {/* Feature 6 Overlay: Paid Partnership Badge */}
                   {isCommercial && (
                     <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-full border border-amber-400/50 shadow-lg">
                       <Award size={12} className="text-amber-400" />
-                      <span className="text-[9px] font-black uppercase text-amber-300">
+                      <span className="text-[9px] font-black uppercase text-amber-300 truncate max-w-[120px]">
                         {sponsorTag ? `Paid: ${sponsorTag}` : 'Paid Partnership'}
                       </span>
                     </div>
@@ -910,38 +977,70 @@ const Upload = ({ onComplete }) => {
             )}
           </div>
 
-          {/* RIGHT PANEL: STEP WORKSTATION TABS */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#090911] custom-viewport-scrollbar">
+          {/* MOBILE PREVIEW SLIDEOUT / EXPANDABLE DRAWER */}
+          <AnimatePresence>
+            {showMobilePreview && preview && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="md:hidden border-b border-cyan-500/20 bg-black/90 p-3 flex flex-col items-center shrink-0"
+              >
+                <div className="relative w-36 aspect-[9/16] bg-zinc-950 rounded-2xl overflow-hidden border border-cyan-500/40 shadow-lg">
+                  <video 
+                    ref={mobileEditorVideoRef}
+                    src={preview} 
+                    className="w-full h-full object-cover" 
+                    style={{ filter: currentFilterObj.css }}
+                    autoPlay 
+                    loop 
+                    playsInline
+                  />
+                  {selectedFilter !== 'original' && (
+                    <div className="absolute bottom-1 left-1 bg-black/80 px-1.5 py-0.5 rounded text-[8px] font-black text-cyan-300 uppercase">
+                      {currentFilterObj.name}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] font-mono text-zinc-400 mt-1">
+                  Active LUT: <span className="text-cyan-300">{currentFilterObj.name}</span> • Filter Preserved
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* RIGHT / MAIN PANEL: STEP WORKSTATION TABS */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-[#090911] custom-viewport-scrollbar pb-24 md:pb-8">
             
             {/* ============================================================ */}
             {/* STEP 1: MEDIA INGEST (DROPZONE / STUDIO CAMERA) */}
             {/* ============================================================ */}
             {activeStep === 'media' && (
-              <div className="space-y-6">
+              <div className="space-y-5 max-w-3xl mx-auto">
                 
                 {/* Mode Selector */}
-                <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
                   <div>
-                    <h2 className="text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
-                      <Film size={20} className="text-cyan-400" /> Media Ingestion Engine
+                    <h2 className="text-base sm:text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
+                      <Film size={18} className="text-cyan-400" /> Media Ingestion Engine
                     </h2>
                     <p className="text-xs text-zinc-400">Choose your ingest source or drop 4K media files</p>
                   </div>
 
-                  <div className="flex bg-black/60 border border-white/10 p-1 rounded-2xl">
+                  <div className="flex bg-black/60 border border-white/10 p-1 rounded-2xl self-start sm:self-auto">
                     <button
                       type="button"
                       onClick={() => setIngestMode('dropzone')}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
                         ingestMode === 'dropzone' ? 'bg-cyan-500 text-black shadow-md' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      Dropzone Ingest
+                      Dropzone
                     </button>
                     <button
                       type="button"
                       onClick={() => setIngestMode('camera')}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
                         ingestMode === 'camera' ? 'bg-pink-500 text-white shadow-md' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
@@ -963,31 +1062,31 @@ const Upload = ({ onComplete }) => {
                       }
                     }}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`relative border-2 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                    className={`relative border-2 border-dashed rounded-3xl p-6 sm:p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
                       isDragging 
                         ? 'border-cyan-400 bg-cyan-950/30 scale-[1.01] shadow-[0_0_30px_rgba(6,182,212,0.4)]' 
                         : 'border-cyan-500/30 hover:border-cyan-400/70 bg-gradient-to-b from-cyan-950/20 via-zinc-900/30 to-pink-950/20'
                     }`}
                   >
-                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-cyan-500/20 to-pink-500/20 border border-cyan-500/40 flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-                      <UploadIcon size={32} className="text-cyan-400 animate-bounce" />
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-gradient-to-tr from-cyan-500/20 to-pink-500/20 border border-cyan-500/40 flex items-center justify-center mb-3 sm:mb-4 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
+                      <UploadIcon size={28} className="text-cyan-400 animate-bounce" />
                     </div>
 
-                    <h3 className="text-lg font-black text-white mb-1">
-                      Drag & Drop Video Broadcast Files
+                    <h3 className="text-base sm:text-lg font-black text-white mb-1">
+                      {preview ? 'Change / Replace Video File' : 'Select or Drop Video Broadcast File'}
                     </h3>
-                    <p className="text-xs text-zinc-400 max-w-md mb-6">
-                      Supports MP4, MOV, WebM, M4V with high-bitrate audio sync and automatic 9:16 aspect centering.
+                    <p className="text-xs text-zinc-400 max-w-md mb-4 sm:mb-6">
+                      Supports MP4, MOV, WebM, M4V with high-bitrate audio sync and automatic 9:16 aspect ratio.
                     </p>
 
                     <div className="flex flex-wrap items-center justify-center gap-2">
-                      <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-xl text-[11px] font-mono text-zinc-300">
-                        Max Size: 500 MB
+                      <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] sm:text-[11px] font-mono text-zinc-300">
+                        Max: 500 MB
                       </span>
-                      <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-xl text-[11px] font-mono text-cyan-300">
+                      <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] sm:text-[11px] font-mono text-cyan-300">
                         Resolution: 1080p / 4K UHD
                       </span>
-                      <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-xl text-[11px] font-mono text-pink-300">
+                      <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] sm:text-[11px] font-mono text-pink-300">
                         Bitrate: 60 FPS
                       </span>
                     </div>
@@ -1004,60 +1103,96 @@ const Upload = ({ onComplete }) => {
 
                 {/* Studio Camera Controls */}
                 {ingestMode === 'camera' && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setFacingMode(f => f === 'user' ? 'environment' : 'user')}
-                      className="p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-2 hover:border-cyan-400 transition-colors"
-                    >
-                      <RefreshCw size={20} className="text-cyan-400" />
-                      <span className="text-xs font-bold text-white">Flip Camera</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">{facingMode}</span>
-                    </button>
+                  <div className="space-y-4">
+                    {/* Mobile Camera Viewport if previewing on mobile */}
+                    <div className="md:hidden relative aspect-[9/16] max-h-[340px] mx-auto bg-black rounded-3xl overflow-hidden border-2 border-pink-500/40">
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        muted 
+                        style={{ filter: currentFilterObj.css }} 
+                        className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} 
+                      />
+                      {showGrid && (
+                        <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 border border-white/10 z-10">
+                          <div className="border-r border-b border-white/15" />
+                          <div className="border-r border-b border-white/15" />
+                          <div className="border-b border-white/15" />
+                          <div className="border-r border-b border-white/15" />
+                          <div className="border-r border-b border-white/15" />
+                          <div className="border-b border-white/15" />
+                          <div className="border-r border-b border-white/15" />
+                          <div className="border-r border-b border-white/15" />
+                          <div />
+                        </div>
+                      )}
+                      <div className="absolute bottom-3 left-0 right-0 flex justify-center z-20">
+                        <button 
+                          type="button"
+                          onClick={isRecording ? stopRecording : startRecording}
+                          className="w-12 h-12 rounded-full border-4 border-white flex items-center justify-center p-1 bg-black/40 shadow-2xl"
+                        >
+                          <div className={`transition-all ${isRecording ? 'w-4 h-4 bg-red-600 rounded-sm animate-pulse' : 'w-full h-full bg-pink-500 rounded-full'}`} />
+                        </button>
+                      </div>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowGrid(g => !g)}
-                      className={`p-4 border rounded-2xl flex flex-col items-center gap-2 transition-colors ${
-                        showGrid ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-zinc-900/60 border-white/10 text-white'
-                      }`}
-                    >
-                      <Grid size={20} />
-                      <span className="text-xs font-bold">Rule of Thirds</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">{showGrid ? 'Active' : 'Off'}</span>
-                    </button>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setFacingMode(f => f === 'user' ? 'environment' : 'user')}
+                        className="p-3 sm:p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5 hover:border-cyan-400 transition-colors"
+                      >
+                        <RefreshCw size={18} className="text-cyan-400" />
+                        <span className="text-xs font-bold text-white">Flip Camera</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">{facingMode}</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setRecordingSpeed(s => s === '1x' ? '2x' : s === '2x' ? '0.5x' : '1x')}
-                      className="p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-2 hover:border-cyan-400 transition-colors"
-                    >
-                      <Gauge size={20} className="text-pink-400" />
-                      <span className="text-xs font-bold text-white">Capture Speed</span>
-                      <span className="text-[10px] text-pink-400 font-mono">{recordingSpeed}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowGrid(g => !g)}
+                        className={`p-3 sm:p-4 border rounded-2xl flex flex-col items-center gap-1.5 transition-colors ${
+                          showGrid ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-zinc-900/60 border-white/10 text-white'
+                        }`}
+                      >
+                        <Grid size={18} />
+                        <span className="text-xs font-bold">Rule of Thirds</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">{showGrid ? 'Active' : 'Off'}</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setRecordingLimit(l => l === 60 ? 180 : l === 180 ? 15 : 60)}
-                      className="p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-2 hover:border-cyan-400 transition-colors"
-                    >
-                      <Clock size={20} className="text-amber-400" />
-                      <span className="text-xs font-bold text-white">Time Limit</span>
-                      <span className="text-[10px] text-amber-400 font-mono">{recordingLimit}s max</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setRecordingSpeed(s => s === '1x' ? '2x' : s === '2x' ? '0.5x' : '1x')}
+                        className="p-3 sm:p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5 hover:border-cyan-400 transition-colors"
+                      >
+                        <Gauge size={18} className="text-pink-400" />
+                        <span className="text-xs font-bold text-white">Capture Speed</span>
+                        <span className="text-[10px] text-pink-400 font-mono">{recordingSpeed}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setRecordingLimit(l => l === 60 ? 180 : l === 180 ? 15 : 60)}
+                        className="p-3 sm:p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5 hover:border-cyan-400 transition-colors"
+                      >
+                        <Clock size={18} className="text-amber-400" />
+                        <span className="text-xs font-bold text-white">Time Limit</span>
+                        <span className="text-[10px] text-amber-400 font-mono">{recordingLimit}s max</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 
                 {/* Cover Frame Scrubber (Feature 3) */}
                 {preview && (
-                  <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-3">
+                  <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-2">
-                        <Tag size={16} /> Feature 3: Cover Frame Scrubber & Text Sticker
+                      <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
+                        <Tag size={15} /> Feature 3: Cover Frame Scrubber & Headline Sticker
                       </h4>
-                      <span className="text-[11px] font-mono text-zinc-400">
-                        Scrub Offset: {thumbScrubTime.toFixed(1)}s
+                      <span className="text-[10px] sm:text-[11px] font-mono text-zinc-400">
+                        {thumbScrubTime.toFixed(1)}s
                       </span>
                     </div>
 
@@ -1072,15 +1207,15 @@ const Upload = ({ onComplete }) => {
                         setThumbScrubTime(val);
                         await generateVideoThumbnail(preview, val);
                       }}
-                      className="w-full accent-cyan-400 cursor-pointer"
+                      className="w-full accent-cyan-400 cursor-pointer h-2 bg-zinc-800 rounded-lg"
                     />
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                       <input 
                         type="text" 
                         value={coverText}
                         onChange={(e) => setCoverText(e.target.value)}
-                        placeholder="Add Cover Headline Text Sticker..."
+                        placeholder="Cover Headline Sticker..."
                         className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-cyan-400"
                       />
                       <button
@@ -1100,47 +1235,57 @@ const Upload = ({ onComplete }) => {
             {/* STEP 2: AUDIO & CINEMATIC LUT FILTERS */}
             {/* ============================================================ */}
             {activeStep === 'audio_filter' && (
-              <div className="space-y-6">
+              <div className="space-y-5 max-w-3xl mx-auto">
                 
                 {/* Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-white/10">
-                  <div>
-                    <h2 className="text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
-                      <Sliders size={20} className="text-pink-400" /> Sound Lab & Cinematic LUT Grading
-                    </h2>
-                    <p className="text-xs text-zinc-400">Master audio levels, voice clarity, and color palettes</p>
-                  </div>
+                <div className="pb-3 border-b border-white/10">
+                  <h2 className="text-base sm:text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
+                    <Sliders size={18} className="text-pink-400" /> Sound Lab & Cinematic LUT Grading
+                  </h2>
+                  <p className="text-xs text-zinc-400">Master audio levels, voice clarity, and color grading LUT filters</p>
                 </div>
 
-                {/* Feature 11: 8 Cinematic LUT Color Filters */}
+                {/* Feature 11: 8 Cinematic LUT Color Filters (Persisted to Database & Feed) */}
                 <div className="space-y-3">
-                  <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-2">
-                    <Wand2 size={16} /> Feature 11: 8 Cinematic LUT Filters (Applied to Feed)
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
+                      <Wand2 size={15} /> Feature 11: 8 Cinematic LUT Color Filters
+                    </h4>
+                    <span className="text-[10px] font-mono text-zinc-400 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded-full">
+                      Active: {currentFilterObj.name}
+                    </span>
+                  </div>
+
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                     {filters.map((f) => (
                       <button
                         key={f.id}
                         type="button"
-                        onClick={() => setSelectedFilter(f.id)}
-                        className={`p-3 rounded-2xl border text-left transition-all ${
+                        onClick={() => handleFilterSelect(f.id)}
+                        className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden active:scale-[0.98] ${
                           selectedFilter === f.id 
-                            ? 'bg-cyan-950/40 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)]' 
+                            ? 'bg-cyan-950/50 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.4)]' 
                             : 'bg-zinc-900/40 border-white/10 hover:bg-zinc-900/80 hover:border-white/20'
                         }`}
                       >
-                        <div className={`w-full h-8 rounded-xl mb-2 ${f.color}`} />
-                        <p className="text-xs font-bold text-white">{f.name}</p>
-                        <p className="text-[10px] text-zinc-500 font-mono">{selectedFilter === f.id ? 'Active Filter' : 'Select'}</p>
+                        <div className={`w-full h-10 rounded-xl mb-2 flex items-center justify-center ${f.color}`}>
+                          {selectedFilter === f.id && (
+                            <Check size={16} className="text-white drop-shadow-md" />
+                          )}
+                        </div>
+                        <p className="text-xs font-bold text-white truncate">{f.name}</p>
+                        <p className="text-[10px] text-zinc-500 font-mono">
+                          {selectedFilter === f.id ? 'Applied to Feed' : 'Select'}
+                        </p>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Feature 12: AI Voice Clarifier & Audio Enhancer */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-3">
-                  <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-2">
-                    <Sparkle size={16} /> Feature 12: AI Audio Enhancement & Voice Clarifier
+                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
+                  <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
+                    <Sparkle size={15} /> Feature 12: AI Audio Enhancement & Voice Clarifier
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
@@ -1167,9 +1312,9 @@ const Upload = ({ onComplete }) => {
                 </div>
 
                 {/* Feature 13: Dual Audio Master Mixer */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
-                  <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-2">
-                    <SlidersHorizontal size={16} /> Feature 13: Dual Audio Master Mixer
+                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
+                  <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
+                    <SlidersHorizontal size={15} /> Feature 13: Dual Audio Master Mixer
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -1183,7 +1328,7 @@ const Upload = ({ onComplete }) => {
                         max="100" 
                         value={videoVolume} 
                         onChange={(e) => setVideoVolume(Number(e.target.value))}
-                        className="w-full accent-cyan-400" 
+                        className="w-full accent-cyan-400 h-2 bg-zinc-800 rounded-lg" 
                       />
                     </div>
 
@@ -1198,7 +1343,7 @@ const Upload = ({ onComplete }) => {
                         max="100" 
                         value={musicVolume} 
                         onChange={(e) => setMusicVolume(Number(e.target.value))}
-                        className="w-full accent-pink-500" 
+                        className="w-full accent-pink-500 h-2 bg-zinc-800 rounded-lg" 
                       />
                     </div>
                   </div>
@@ -1207,11 +1352,11 @@ const Upload = ({ onComplete }) => {
                 {/* iTunes Sound Lab Search */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-zinc-300 tracking-wider flex items-center gap-2">
-                      <Music size={16} className="text-pink-500" /> Global Music Search & Ingestion
+                    <h4 className="text-xs font-black uppercase text-zinc-300 tracking-wider flex items-center gap-1.5">
+                      <Music size={15} className="text-pink-500" /> Global Music Search & Ingestion
                     </h4>
-                    <span className="text-[11px] font-bold text-cyan-400 truncate max-w-[180px]">
-                      Selected: {selectedMusic.name}
+                    <span className="text-[11px] font-bold text-cyan-400 truncate max-w-[150px]">
+                      {selectedMusic.name}
                     </span>
                   </div>
 
@@ -1223,14 +1368,14 @@ const Upload = ({ onComplete }) => {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleMusicSearch()}
-                        placeholder="Search global hit tracks, artists, afrobeats..." 
+                        placeholder="Search songs, artists, afrobeats..." 
                         className="w-full bg-black/60 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs text-white placeholder-zinc-500 outline-none focus:border-cyan-400"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => handleMusicSearch()}
-                      className="px-5 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-black text-xs uppercase rounded-2xl active:scale-95 transition-all shadow-md"
+                      className="px-4 sm:px-5 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-black text-xs uppercase rounded-2xl active:scale-95 transition-all shadow-md shrink-0"
                     >
                       {isSearching ? <Loader2 size={16} className="animate-spin" /> : 'Find Beat'}
                     </button>
@@ -1245,7 +1390,7 @@ const Upload = ({ onComplete }) => {
                           className="flex items-center justify-between p-2.5 bg-black/40 border border-white/5 rounded-2xl hover:border-cyan-400/40 transition-all"
                         >
                           <div className="flex items-center gap-3 min-w-0 pr-2">
-                            <img src={track.artworkUrl60} className="w-10 h-10 rounded-xl object-cover" alt="" />
+                            <img src={track.artworkUrl60} className="w-10 h-10 rounded-xl object-cover shrink-0" alt="" />
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-white truncate">{track.trackName}</p>
                               <p className="text-[10px] text-zinc-400 truncate">{track.artistName}</p>
@@ -1276,23 +1421,21 @@ const Upload = ({ onComplete }) => {
             {/* STEP 3: INTERACTIVE FEATURES & STICKERS */}
             {/* ============================================================ */}
             {activeStep === 'interactive' && (
-              <div className="space-y-6">
+              <div className="space-y-5 max-w-3xl mx-auto">
                 
                 {/* Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-white/10">
-                  <div>
-                    <h2 className="text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
-                      <Sparkles size={20} className="text-yellow-400" /> Interactive Stickers & Community Tools
-                    </h2>
-                    <p className="text-xs text-zinc-400">Chapters, Closed Captions, Polls, and Product showcases</p>
-                  </div>
+                <div className="pb-3 border-b border-white/10">
+                  <h2 className="text-base sm:text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
+                    <Sparkles size={18} className="text-yellow-400" /> Interactive Stickers & Community Tools
+                  </h2>
+                  <p className="text-xs text-zinc-400">Chapters, Closed Captions, Polls, and Product showcase pins</p>
                 </div>
 
                 {/* Feature 1: Chapters & Timeline Markers */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
+                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-2">
-                      <BarChart2 size={16} /> Feature 1: Interactive Video Chapters & Markers
+                    <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
+                      <BarChart2 size={15} /> Feature 1: Interactive Video Chapters & Markers
                     </h4>
                     <span className="text-[11px] font-mono text-zinc-400">
                       {chapters.length} Marker(s)
@@ -1307,19 +1450,19 @@ const Upload = ({ onComplete }) => {
                       value={newChapterTime}
                       onChange={(e) => setNewChapterTime(e.target.value)}
                       placeholder="Sec" 
-                      className="w-20 bg-black/60 border border-white/10 rounded-2xl px-3 py-2.5 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                      className="w-16 sm:w-20 bg-black/60 border border-white/10 rounded-2xl px-3 py-2.5 text-xs text-white outline-none focus:border-cyan-400 font-mono"
                     />
                     <input 
                       type="text" 
                       value={newChapterTitle}
                       onChange={(e) => setNewChapterTitle(e.target.value)}
-                      placeholder="Chapter Label (e.g. 0:15 Drop, 0:45 Finale)..." 
-                      className="flex-1 bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white outline-none focus:border-cyan-400"
+                      placeholder="Chapter Label (e.g. 0:15 Drop)..." 
+                      className="flex-1 min-w-0 bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white outline-none focus:border-cyan-400"
                     />
                     <button
                       type="button"
                       onClick={handleAddChapter}
-                      className="px-4 bg-cyan-500 text-black font-black text-xs uppercase rounded-2xl active:scale-95 transition-all"
+                      className="px-4 bg-cyan-500 text-black font-black text-xs uppercase rounded-2xl active:scale-95 transition-all shrink-0"
                     >
                       <Plus size={16} />
                     </button>
@@ -1344,17 +1487,17 @@ const Upload = ({ onComplete }) => {
                 </div>
 
                 {/* Feature 2: Auto Subtitles & Closed Captions (CC) */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-3">
+                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-yellow-300 tracking-wider flex items-center gap-2">
-                      <FileText size={16} /> Feature 2: Auto Closed Captions (CC Subtitles)
+                    <h4 className="text-xs font-black uppercase text-yellow-300 tracking-wider flex items-center gap-1.5">
+                      <FileText size={15} /> Feature 2: Auto Closed Captions (CC Subtitles)
                     </h4>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={subtitlesEnabled}
                         onChange={(e) => setSubtitlesEnabled(e.target.checked)}
-                        className="accent-yellow-400 rounded"
+                        className="accent-yellow-400 rounded w-4 h-4"
                       />
                       <span className="text-xs font-bold text-zinc-300">Enable CC</span>
                     </label>
@@ -1371,11 +1514,11 @@ const Upload = ({ onComplete }) => {
                         {isGeneratingCC ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
                         Auto-Sync Subtitles with AI
                       </button>
-                      <div className="space-y-1.5 pt-1">
+                      <div className="space-y-1.5 pt-1 max-h-36 overflow-y-auto custom-viewport-scrollbar">
                         {subtitles.map((sub, idx) => (
                           <div key={idx} className="flex items-center gap-2 text-xs font-mono text-zinc-400 bg-black/40 p-2 rounded-xl border border-white/5">
-                            <span className="text-yellow-400">{sub.start}s - {sub.end}s:</span>
-                            <span className="text-zinc-200">{sub.text}</span>
+                            <span className="text-yellow-400 shrink-0">{sub.start}s-{sub.end}s:</span>
+                            <span className="text-zinc-200 truncate">{sub.text}</span>
                           </div>
                         ))}
                       </div>
@@ -1384,17 +1527,17 @@ const Upload = ({ onComplete }) => {
                 </div>
 
                 {/* Feature 4: Interactive Poll / Voting Sticker */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
+                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-2">
-                      <HelpCircle size={16} /> Feature 4: Interactive Video Poll & Voting Sticker
+                    <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
+                      <HelpCircle size={15} /> Feature 4: Interactive Poll & Voting Sticker
                     </h4>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={pollEnabled}
                         onChange={(e) => setPollEnabled(e.target.checked)}
-                        className="accent-pink-500 rounded"
+                        className="accent-pink-500 rounded w-4 h-4"
                       />
                       <span className="text-xs font-bold text-zinc-300">Pin Poll</span>
                     </label>
@@ -1430,24 +1573,24 @@ const Upload = ({ onComplete }) => {
                 </div>
 
                 {/* Feature 5: Product / External Link Pin Showcase */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
+                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider flex items-center gap-2">
-                      <ShoppingBag size={16} /> Feature 5: Product / Web Link Showcase Pin
+                    <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider flex items-center gap-1.5">
+                      <ShoppingBag size={15} /> Feature 5: Product / Web Link Showcase Pin
                     </h4>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={productEnabled}
                         onChange={(e) => setProductEnabled(e.target.checked)}
-                        className="accent-emerald-400 rounded"
+                        className="accent-emerald-400 rounded w-4 h-4"
                       />
                       <span className="text-xs font-bold text-zinc-300">Attach Product</span>
                     </label>
                   </div>
 
                   {productEnabled && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
                       <input 
                         type="text" 
                         value={productLink.title}
@@ -1480,16 +1623,14 @@ const Upload = ({ onComplete }) => {
             {/* STEP 4: METADATA & BROADCAST PUBLISH */}
             {/* ============================================================ */}
             {activeStep === 'publish' && (
-              <div className="space-y-6">
+              <div className="space-y-5 max-w-3xl mx-auto">
                 
                 {/* Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-white/10">
-                  <div>
-                    <h2 className="text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
-                      <Globe size={20} className="text-cyan-400" /> Broadcast Distribution Deck
-                    </h2>
-                    <p className="text-xs text-zinc-400">Configure caption, category, permissions, and release options</p>
-                  </div>
+                <div className="pb-3 border-b border-white/10">
+                  <h2 className="text-base sm:text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
+                    <Globe size={18} className="text-cyan-400" /> Broadcast Distribution Deck
+                  </h2>
+                  <p className="text-xs text-zinc-400">Configure caption, category, permissions, and release options</p>
                 </div>
 
                 {/* Caption & AI Viral Hooks */}
@@ -1620,9 +1761,9 @@ const Upload = ({ onComplete }) => {
                 </div>
 
                 {/* Feature 6, 7, 8, 9, 10, 14: ADVANCED TOGGLES GRID */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
-                  <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-2">
-                    <Shield size={16} /> Pro Creator Permissions & Compliance
+                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
+                  <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
+                    <Shield size={15} /> Pro Creator Permissions & Compliance
                   </h4>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1737,7 +1878,7 @@ const Upload = ({ onComplete }) => {
                 {/* UPLOAD TELEMETRY COCKPIT & PROGRESS BAR */}
                 {/* ============================================================ */}
                 {isUploading ? (
-                  <div className="p-6 bg-black/90 border border-cyan-400/50 rounded-3xl space-y-4 shadow-[0_0_30px_rgba(6,182,212,0.3)]">
+                  <div className="p-5 sm:p-6 bg-black/90 border border-cyan-400/50 rounded-3xl space-y-4 shadow-[0_0_30px_rgba(6,182,212,0.3)]">
                     <div className="flex items-center justify-between text-xs font-black uppercase">
                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500 flex items-center gap-2">
                         <Loader2 size={16} className="animate-spin text-cyan-400" />
@@ -1760,14 +1901,14 @@ const Upload = ({ onComplete }) => {
 
                     <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500">
                       <span>Stage: {uploadStage.toUpperCase()}</span>
-                      <span>Dual-Stream Resilient Engine</span>
+                      <span>LUT: {currentFilterObj.name} (Preserved)</span>
                     </div>
                   </div>
                 ) : (
                   <button
                     type="button"
                     onClick={handleUpload}
-                    className="w-full py-4 bg-gradient-to-r from-cyan-500 via-pink-500 to-rose-600 text-white font-black text-sm uppercase tracking-widest rounded-2xl shadow-[0_0_30px_rgba(236,72,153,0.5)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:brightness-110"
+                    className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-cyan-500 via-pink-500 to-rose-600 text-white font-black text-xs sm:text-sm uppercase tracking-widest rounded-2xl shadow-[0_0_30px_rgba(236,72,153,0.5)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:brightness-110"
                   >
                     <Zap size={18} className="fill-white" /> Broadcast Video Now
                   </button>
@@ -1779,6 +1920,43 @@ const Upload = ({ onComplete }) => {
           </div>
 
         </div>
+
+        {/* ============================================================ */}
+        {/* 3. MOBILE BOTTOM ACTION BAR */}
+        {/* ============================================================ */}
+        <footer className="md:hidden border-t border-cyan-500/15 bg-black/90 backdrop-blur-xl p-3 flex items-center justify-between gap-2 shrink-0 z-30">
+          {currentStepIndex > 0 ? (
+            <button
+              type="button"
+              disabled={isUploading}
+              onClick={goToPrevStep}
+              className="px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-zinc-300 flex items-center gap-1 active:scale-95 transition-all"
+            >
+              <ChevronLeft size={16} /> Back
+            </button>
+          ) : (
+            <div />
+          )}
+
+          {activeStep !== 'publish' && preview ? (
+            <button
+              type="button"
+              disabled={isUploading}
+              onClick={goToNextStep}
+              className="flex-1 max-w-[200px] py-2.5 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95 transition-all"
+            >
+              Next Step <ChevronRight size={16} />
+            </button>
+          ) : activeStep === 'publish' && !isUploading ? (
+            <button
+              type="button"
+              onClick={handleUpload}
+              className="flex-1 py-2.5 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(236,72,153,0.4)] active:scale-95 transition-all"
+            >
+              <Zap size={15} className="fill-white" /> Broadcast
+            </button>
+          ) : null}
+        </footer>
 
       </motion.div>
     </div>
