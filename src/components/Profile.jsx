@@ -1,29 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { 
   Settings, 
   UserPlus, 
+  UserCheck,
+  MessageSquare,
   Share2, 
   Grid, 
   Heart, 
   Lock, 
-  Check,
-  Bookmark,
-  Play,
-  BarChart3,
-  Radio,
-  X,
-  Edit3,
-  ExternalLink
+  Check, 
+  Bookmark, 
+  Play, 
+  BarChart3, 
+  Radio, 
+  X, 
+  Edit3, 
+  ExternalLink,
+  ArrowLeft
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 const Profile = () => {
   const navigate = useNavigate();
+  const { id: paramUserId } = useParams();
   const [activeTab, setActiveTab] = useState('videos');
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [targetUserId, setTargetUserId] = useState(null);
+  const [isOwnProfile, setIsOwnProfile] = useState(true);
+  const [isFollowingTarget, setIsFollowingTarget] = useState(false);
   const [displayVideos, setDisplayVideos] = useState([]); 
   const [loading, setLoading] = useState(true);
   
@@ -40,13 +47,13 @@ const Profile = () => {
 
   useEffect(() => {
     fetchProfileData();
-  }, []);
+  }, [paramUserId]);
 
   useEffect(() => {
-    if (user) {
+    if (targetUserId) {
       fetchTabData();
     }
-  }, [activeTab, user]);
+  }, [activeTab, targetUserId]);
 
   const formatCount = (num) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -56,32 +63,39 @@ const Profile = () => {
 
   const fetchProfileData = async () => {
     try {
+      setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
       const authUser = session?.user;
+      setUser(authUser);
 
-      if (authUser) {
-        setUser(authUser);
-        
-        const { data: profileData } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
-        setProfile(profileData);
+      const effectiveId = paramUserId || authUser?.id;
+      if (!effectiveId) return;
 
-        const [following, followers, videosForLikes, myFollows] = await Promise.all([
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', authUser.id),
-          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', authUser.id),
-          supabase.from('videos').select('likes_count').eq('user_id', authUser.id),
-          supabase.from('follows').select('following_id').eq('follower_id', authUser.id)
-        ]);
+      setTargetUserId(effectiveId);
+      const isOwner = authUser?.id && effectiveId === authUser.id;
+      setIsOwnProfile(isOwner);
+      
+      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', effectiveId).single();
+      setProfile(profileData);
 
-        const totalLikes = videosForLikes.data?.reduce((acc, video) => acc + (video.likes_count || 0), 0) || 0;
+      const [following, followers, videosForLikes, myFollows] = await Promise.all([
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', effectiveId),
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', effectiveId),
+        supabase.from('videos').select('likes_count').eq('user_id', effectiveId),
+        authUser ? supabase.from('follows').select('following_id').eq('follower_id', authUser.id) : { data: [] }
+      ]);
 
-        setStats({
-          following: following.count || 0,
-          followers: followers.count || 0,
-          likes: totalLikes
-        });
-        
-        setMyFollowingIds(new Set(myFollows.data?.map(f => f.following_id)));
-      }
+      const totalLikes = videosForLikes.data?.reduce((acc, video) => acc + (video.likes_count || 0), 0) || 0;
+
+      setStats({
+        following: following.count || 0,
+        followers: followers.count || 0,
+        likes: totalLikes
+      });
+      
+      const followSet = new Set(myFollows.data?.map(f => f.following_id));
+      setMyFollowingIds(followSet);
+      setIsFollowingTarget(followSet.has(effectiveId));
     } catch (err) {
       console.error("Profile Data Error:", err);
     } finally {
@@ -90,6 +104,7 @@ const Profile = () => {
   };
 
   const openFollowList = async (type) => {
+    if (!targetUserId) return;
     setModalType(type);
     setIsModalOpen(true);
     setLoading(true);
@@ -97,7 +112,7 @@ const Profile = () => {
       const { data: followData, error: followError } = await supabase
         .from('follows')
         .select(type === 'followers' ? 'follower_id' : 'following_id')
-        .eq(type === 'followers' ? 'following_id' : 'follower_id', user.id);
+        .eq(type === 'followers' ? 'following_id' : 'follower_id', targetUserId);
 
       if (followError) throw followError;
 
@@ -120,6 +135,28 @@ const Profile = () => {
     }
   };
 
+  const handleToggleFollow = async () => {
+    if (!user?.id || !targetUserId || isOwnProfile) return;
+
+    if (isFollowingTarget) {
+      setIsFollowingTarget(false);
+      setStats(prev => ({ ...prev, followers: Math.max(0, prev.followers - 1) }));
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetUserId);
+    } else {
+      setIsFollowingTarget(true);
+      setStats(prev => ({ ...prev, followers: prev.followers + 1 }));
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: targetUserId });
+      
+      // Activity notification
+      await supabase.from('activities').insert({
+        user_id: targetUserId,
+        actor_id: user.id,
+        type: 'follow',
+        is_read: false
+      });
+    }
+  };
+
   const handleFollowBack = async (targetId) => {
     if (!user?.id || !targetId) return;
 
@@ -134,8 +171,16 @@ const Profile = () => {
         });
 
       if (error) throw error;
-      setStats(prev => ({ ...prev, following: prev.following + 1 }));
+      if (isOwnProfile) {
+        setStats(prev => ({ ...prev, following: prev.following + 1 }));
+      }
 
+      await supabase.from('activities').insert({
+        user_id: targetId,
+        actor_id: user.id,
+        type: 'follow',
+        is_read: false
+      });
     } catch (err) {
       console.error("Follow Back Failed:", err.message);
       setMyFollowingIds(prev => {
@@ -147,6 +192,7 @@ const Profile = () => {
   };
 
   const fetchTabData = async () => {
+    if (!targetUserId) return;
     setLoading(true);
     try {
       let videosData = [];
@@ -155,12 +201,12 @@ const Profile = () => {
         const { data } = await supabase
           .from('videos')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .order('created_at', { ascending: false });
         videosData = data || [];
       } 
       else if (activeTab === 'liked') {
-        const { data: likedRefs, error } = await supabase.from('video_likes').select('video_id').eq('user_id', user.id);
+        const { data: likedRefs, error } = await supabase.from('video_likes').select('video_id').eq('user_id', targetUserId);
         if (!error && likedRefs?.length > 0) {
           const ids = likedRefs.map(ref => ref.video_id);
           const { data } = await supabase.from('videos').select('*').in('id', ids);
@@ -168,16 +214,18 @@ const Profile = () => {
         }
       } 
       else if (activeTab === 'saved') {
-        const { data: savedRefs, error } = await supabase.from('favorites').select('video_id').eq('user_id', user.id);
+        const { data: savedRefs, error } = await supabase.from('favorites').select('video_id').eq('user_id', targetUserId);
         if (!error && savedRefs?.length > 0) {
           const ids = savedRefs.map(ref => ref.video_id);
           const { data } = await supabase.from('videos').select('*').in('id', ids);
           videosData = data || [];
         }
-      }
+      } 
       else if (activeTab === 'private') {
-        const { data } = await supabase.from('videos').select('*').eq('user_id', user.id).eq('is_private', true);
-        videosData = data || [];
+        if (isOwnProfile) {
+          const { data } = await supabase.from('videos').select('*').eq('user_id', targetUserId).eq('is_private', true);
+          videosData = data || [];
+        }
       }
 
       setDisplayVideos(videosData);
@@ -229,9 +277,18 @@ const Profile = () => {
       </div>
 
       <nav className="flex items-center justify-between px-6 py-4 bg-[#0a0a14]/80 backdrop-blur-xl border-b border-cyan-500/30 z-50 shrink-0 shadow-[0_0_20px_rgba(0,243,255,0.15)]">
-        <Link to="/find-friends" className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400 shadow-[0_0_10px_rgba(0,243,255,0.3)] active:translate-y-[2px] transition-all">
-          <UserPlus size={22} />
-        </Link>
+        {!isOwnProfile ? (
+          <button 
+            onClick={() => navigate(-1)} 
+            className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400 shadow-[0_0_10px_rgba(0,243,255,0.3)] active:translate-y-[2px] transition-all"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        ) : (
+          <Link to="/find-friends" className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400 shadow-[0_0_10px_rgba(0,243,255,0.3)] active:translate-y-[2px] transition-all">
+            <UserPlus size={22} />
+          </Link>
+        )}
         
         <h2 className="text-sm font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500 drop-shadow-[0_0_10px_rgba(0,243,255,0.5)]">
           {profile?.username || 'Username'}
@@ -241,9 +298,11 @@ const Profile = () => {
           <Link to="/share-profile" className="p-2 bg-[#0d0d1a] border border-pink-500/40 hover:border-pink-400 rounded-full text-pink-500 shadow-[0_0_10px_rgba(255,0,80,0.3)] active:translate-y-[2px] transition-all">
             <Share2 size={20} />
           </Link>
-          <Link to="/settings" className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400 shadow-[0_0_10px_rgba(0,243,255,0.3)] active:translate-y-[2px] transition-all">
-            <Settings size={20} />
-          </Link>
+          {isOwnProfile && (
+            <Link to="/settings" className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400 shadow-[0_0_10px_rgba(0,243,255,0.3)] active:translate-y-[2px] transition-all">
+              <Settings size={20} />
+            </Link>
+          )}
         </div>
       </nav>
 
@@ -258,7 +317,7 @@ const Profile = () => {
             >
               <div className="w-full h-full rounded-full bg-[#090912] p-1">
                 <img 
-                  src={profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id}`} 
+                  src={profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${targetUserId}`} 
                   className="w-full h-full rounded-full object-cover" 
                   alt="Profile" 
                 />
@@ -270,7 +329,7 @@ const Profile = () => {
           </div>
 
           <h1 className="text-lg font-black mb-1 text-white tracking-wide drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">
-            @{profile?.username || 'mpade'}
+            @{profile?.username || 'user'}
           </h1>
           
           <div className="flex gap-8 my-5">
@@ -288,30 +347,62 @@ const Profile = () => {
             </div>
           </div>
 
-          {/* 3D Everywhere Neon Controls */}
-          <div className="flex gap-3 w-full px-6 mb-3">
-            <Link to="/edit-profile" className="flex-1 py-2.5 bg-gradient-to-b from-[#101424] to-[#0a0d18] rounded-xl font-black text-[12px] uppercase tracking-wider text-cyan-400 border border-cyan-500/50 border-b-cyan-950 border-b-4 flex items-center justify-center gap-2 active:translate-y-[2px] active:border-b-2 shadow-[0_0_15px_rgba(0,243,255,0.2)] hover:shadow-[0_0_20px_rgba(0,243,255,0.4)] transition-all">
-              <Edit3 size={14} /> Edit Profile
-            </Link>
-            <Link to="/share-profile" className="flex-1 py-2.5 bg-gradient-to-b from-[#24101a] to-[#180a12] rounded-xl font-black text-[12px] uppercase tracking-wider text-pink-500 border border-pink-500/50 border-b-pink-950 border-b-4 flex items-center justify-center gap-2 active:translate-y-[2px] active:border-b-2 shadow-[0_0_15px_rgba(255,0,80,0.2)] hover:shadow-[0_0_20px_rgba(255,0,80,0.4)] transition-all">
-              <ExternalLink size={14} /> Share Profile
-            </Link>
-          </div>
+          {/* Profile Actions: Own vs Other User */}
+          {isOwnProfile ? (
+            <>
+              <div className="flex gap-3 w-full px-6 mb-3">
+                <Link to="/edit-profile" className="flex-1 py-2.5 bg-gradient-to-b from-[#101424] to-[#0a0d18] rounded-xl font-black text-[12px] uppercase tracking-wider text-cyan-400 border border-cyan-500/50 border-b-cyan-950 border-b-4 flex items-center justify-center gap-2 active:translate-y-[2px] active:border-b-2 shadow-[0_0_15px_rgba(0,243,255,0.2)] hover:shadow-[0_0_20px_rgba(0,243,255,0.4)] transition-all">
+                  <Edit3 size={14} /> Edit Profile
+                </Link>
+                <Link to="/share-profile" className="flex-1 py-2.5 bg-gradient-to-b from-[#24101a] to-[#180a12] rounded-xl font-black text-[12px] uppercase tracking-wider text-pink-500 border border-pink-500/50 border-b-pink-950 border-b-4 flex items-center justify-center gap-2 active:translate-y-[2px] active:border-b-2 shadow-[0_0_15px_rgba(255,0,80,0.2)] hover:shadow-[0_0_20px_rgba(255,0,80,0.4)] transition-all">
+                  <ExternalLink size={14} /> Share Profile
+                </Link>
+              </div>
 
-          <div className="flex gap-3 w-full px-6 mb-6">
-            <Link to="/universe-tools" className="flex-1 py-2.5 bg-gradient-to-b from-[#0a1e28] to-[#051118] rounded-xl font-black text-[11px] uppercase tracking-wider border border-cyan-400/60 border-b-cyan-950 border-b-4 flex items-center justify-center gap-2 text-cyan-300 active:translate-y-[2px] active:border-b-2 shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all">
-              <BarChart3 size={16} /> CON-UNIVERSE TOOLS
-            </Link>
-            <Link 
-              to="/live" 
-              className="flex-1 py-2.5 bg-gradient-to-b from-[#2b0810] to-[#180308] rounded-xl font-black text-[11px] uppercase tracking-wider border border-red-500/60 border-b-red-950 border-b-4 flex items-center justify-center gap-2 text-red-400 active:translate-y-[2px] active:border-b-2 shadow-[0_0_20px_rgba(255,0,80,0.3)] transition-all"
-            >
-              <Radio size={16} /> LIVE UNIVERSE
-            </Link>
-          </div>
+              <div className="flex gap-3 w-full px-6 mb-6">
+                <Link to="/universe-tools" className="flex-1 py-2.5 bg-gradient-to-b from-[#0a1e28] to-[#051118] rounded-xl font-black text-[11px] uppercase tracking-wider border border-cyan-400/60 border-b-cyan-950 border-b-4 flex items-center justify-center gap-2 text-cyan-300 active:translate-y-[2px] active:border-b-2 shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all">
+                  <BarChart3 size={16} /> CON-UNIVERSE TOOLS
+                </Link>
+                <Link 
+                  to="/live" 
+                  className="flex-1 py-2.5 bg-gradient-to-b from-[#2b0810] to-[#180308] rounded-xl font-black text-[11px] uppercase tracking-wider border border-red-500/60 border-b-red-950 border-b-4 flex items-center justify-center gap-2 text-red-400 active:translate-y-[2px] active:border-b-2 shadow-[0_0_20px_rgba(255,0,80,0.3)] transition-all"
+                >
+                  <Radio size={16} /> LIVE UNIVERSE
+                </Link>
+              </div>
+            </>
+          ) : (
+            <div className="flex gap-3 w-full px-6 mb-6">
+              <button
+                onClick={handleToggleFollow}
+                className={`flex-1 py-2.5 rounded-xl font-black text-[12px] uppercase tracking-wider flex items-center justify-center gap-2 active:translate-y-[2px] transition-all shadow-md ${
+                  isFollowingTarget 
+                    ? 'bg-zinc-800 text-zinc-300 border border-white/20 hover:bg-zinc-700' 
+                    : 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-pink-500/30 hover:from-pink-400 hover:to-rose-500'
+                }`}
+              >
+                {isFollowingTarget ? (
+                  <>
+                    <UserCheck size={16} /> Following
+                  </>
+                ) : (
+                  <>
+                    <UserPlus size={16} /> Follow
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => navigate(`/messaging?userId=${targetUserId}`)}
+                className="flex-1 py-2.5 bg-[#0a1524] text-cyan-300 border border-cyan-500/50 rounded-xl font-black text-[12px] uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-cyan-500/20 active:translate-y-[2px] shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all"
+              >
+                <MessageSquare size={16} /> Message
+              </button>
+            </div>
+          )}
 
           <p className="text-xs text-center px-12 text-cyan-200/60 font-medium italic drop-shadow-[0_0_5px_rgba(0,243,255,0.2)]">
-            {profile?.bio || "the progress developer"}
+            {profile?.bio || "No bio yet."}
           </p>
         </section>
 
