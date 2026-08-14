@@ -247,7 +247,13 @@ const Inbox = () => {
       setCurrentUserId(user.id);
       await fetchData(user.id);
       
-      const channel = supabase.channel(`inbox-realtime-${user.id}`)
+      const channelName = `inbox-realtime-${user.id}`;
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+
+      const channel = supabase.channel(channelName)
         .on('postgres_changes', { 
             event: 'INSERT', 
             schema: 'public', 
