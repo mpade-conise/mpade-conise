@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Share2, X, MessageCircle, Gift as GiftIcon, Users, Send, VideoOff, Loader2 } from 'lucide-react';
 
@@ -11,6 +12,9 @@ import VideoPlayer from '../Shared/VideoPlayer';
 import FloatingHearts from './FloatingHearts';
 import StreamHeader from '../Shared/StreamHeader'; 
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
+import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
+import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
+import MultiHostPKBattleBar from '../../../components/live/MultiHostPKBattleBar.jsx';
 
 
 const LivePlayer = () => {
@@ -20,6 +24,7 @@ const LivePlayer = () => {
   const [streamData, setStreamData] = useState(null);
   const [showGifts, setShowGifts] = useState(false);
   const [heartCount, setHeartCount] = useState(0);
+  // eslint-disable-next-line no-unused-vars
   const [viewerCount, setViewerCount] = useState(0);
   const [latestGift, setLatestGift] = useState(null);
   const [eventNotification, setEventNotification] = useState(null);
@@ -162,7 +167,7 @@ const LivePlayer = () => {
         }, 100);
         setTimeout(() => { if (isMounted) { setLatestGift(null); setEventNotification(null); } }, 6500); // Extended time for animations
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_comments', filter: `stream_id=eq.${streamId}` }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_comments', filter: `stream_id=eq.${streamId}` }, () => {
         if (!isMounted) return;
         setLastCommentAt(Date.now());
       })
@@ -182,13 +187,102 @@ const LivePlayer = () => {
     await supabase.rpc('increment_likes', { stream_id_input: streamId });
   };
 
- // 🔥 Update this function inside LivePlayer.jsx
-const handleJoinGuest = () => {
-  // We must include /watch/ to match the definition in LiveRouter
-  navigate(`/live/watch/${streamId}/join-guest`);
-};
-  // 🔥 Split Screen Calculation: Check if the latest gift is a "Big Gift" (100+ coins)
-  const isSplitScreen = latestGift && latestGift.price >= 100;
+  const [isBattleMode, setIsBattleMode] = useState(false);
+  const [activeSmallGift, setActiveSmallGift] = useState(null);
+  const [activeCohostsList, setActiveCohostsList] = useState([]);
+
+  // Realtime check for active approved co-host requests
+  useEffect(() => {
+    if (!streamId) return;
+    let isMounted = true;
+
+    const checkCohosts = async () => {
+      const { data } = await supabase
+        .from('live_guest_requests')
+        .select(`
+          id, user_id, status, role,
+          profiles:user_id ( id, username, avatar_url )
+        `)
+        .eq('stream_id', streamId)
+        .eq('status', 'approved');
+      if (isMounted && data) {
+        setHasActiveCohosts(data.length > 0);
+        setActiveCohostsList(data.map(d => ({
+          id: d.profiles?.id || d.user_id,
+          username: d.profiles?.username || 'Co-Host',
+          avatar_url: d.profiles?.avatar_url
+        })));
+      }
+    };
+
+    checkCohosts();
+
+    const cohostChannel = supabase.channel(`cohosts_${streamId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_guest_requests', filter: `stream_id=eq.${streamId}` }, () => {
+        checkCohosts();
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(cohostChannel);
+    };
+  }, [streamId]);
+
+  // Listener for gifts & comments
+  useEffect(() => {
+    if (!streamId) return;
+    let isMounted = true;
+
+    channelRef.current = supabase.channel(`viewer_stream_${streamId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_gifts', filter: `stream_id=eq.${streamId}` }, async (payload) => {
+        if (!isMounted) return;
+        const { data: userData } = await supabase.from('profiles').select('username, avatar_url').eq('id', payload.new.sender_id).single();
+        const matchedGift = GIFTS_LIST.find(g => g.id === payload.new.gift_id);
+        const price = payload.new.price_total || 50;
+        const formattedGift = {
+          id: payload.new.id,
+          username: userData?.username || 'Supporter',
+          giftName: matchedGift ? matchedGift.name : (payload.new.gift_name || 'Gift'),
+          price: price,
+          avatar: userData?.avatar_url || null,
+          giftModel: matchedGift ? matchedGift.model : '/models/Rose.glb'
+        };
+
+        // If < 50 coins, show as floating emoji on video element
+        if (price < 50) {
+          setActiveSmallGift(formattedGift);
+        } else {
+          // If >= 50 coins, show as full futuristic 3D/AR overlay
+          setLatestGift(null); 
+          setTimeout(() => {
+            if (!isMounted) return;
+            setLatestGift(formattedGift);
+            setEventNotification({ type: 'gift', giftName: formattedGift.giftName, name: formattedGift.username, avatar: formattedGift.avatar });
+          }, 100);
+          setTimeout(() => { if (isMounted) { setLatestGift(null); setEventNotification(null); } }, 6500);
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_comments', filter: `stream_id=eq.${streamId}` }, () => {
+        if (!isMounted) return;
+        setLastCommentAt(Date.now());
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
+    };
+  }, [streamId, GIFTS_LIST, navigate]);
+
+  // 🔥 Update this function inside LivePlayer.jsx
+  const handleJoinGuest = () => {
+    // We must include /watch/ to match the definition in LiveRouter
+    navigate(`/live/watch/${streamId}/join-guest`);
+  };
+
+  // 🔥 Split Screen Calculation: Active Co-Hosts or Big Gift (100+ coins)
+  const isSplitScreen = hasActiveCohosts || (latestGift && latestGift.price >= 100);
 
   if (!streamData) return <div className="h-screen bg-black" />;
 
@@ -196,13 +290,20 @@ const handleJoinGuest = () => {
     <div className="h-screen w-screen bg-black relative overflow-hidden flex flex-col">
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
       
-      {/* Video Container: Animates height when split screen is active */}
-      <motion.div 
-        animate={{ height: isSplitScreen ? '50%' : '100%' }}
-        transition={{ type: 'spring', damping: 20, stiffness: 100 }}
-        className="relative w-full z-0 overflow-hidden"
-      >
-        <VideoPlayer streamId={streamId} isHost={false} />
+      {/* Dynamic Stream Container: Automatically splits 50/50 when co-host joins and reverts to full screen when disconnected */}
+      <div className="relative w-full h-full z-0 overflow-hidden">
+        <DynamicStreamGrid 
+          streamId={streamId}
+          hostVideo={<VideoPlayer streamId={streamId} isHost={false} />}
+          hostInfo={{
+            username: streamData?.host?.username || 'Host',
+            avatar_url: streamData?.host?.avatar_url
+          }}
+          coHosts={activeCohostsList}
+          isHostView={false}
+          isBattleMode={isBattleMode}
+          activeSmallGift={activeSmallGift}
+        />
         
         {/* CAMERA OFF ALERT OVERLAY */}
         <AnimatePresence>
@@ -229,10 +330,10 @@ const handleJoinGuest = () => {
             </motion.div>
           )}
         </AnimatePresence>
-      </motion.div>
+      </div>
 
-      {/* Gift Overlay Section: Occupies bottom 50% during Split Screen */}
-      <div className={`${isSplitScreen ? 'h-1/2 relative' : 'absolute inset-0'} pointer-events-none z-40`}>
+      {/* Gift Overlay Section: Futuristic 3D Overlay for gifts >= 50 coins */}
+      <div className="absolute inset-0 pointer-events-none z-40">
         <FloatingHearts count={heartCount} streamId={streamId} />
         <AnimatePresence mode="wait">
           {latestGift && (
@@ -249,11 +350,57 @@ const handleJoinGuest = () => {
         </AnimatePresence>
       </div>
 
-      {/* UI Elements (Header, Chat, Buttons) */}
-      <div className="fixed top-0 left-0 right-0 z-50 p-4 pointer-events-none">
+      {/* UI Elements (Header, Goal Bar, PK Battle Bar, Buttons) */}
+      <div className="fixed top-0 left-0 right-0 z-50 p-4 pt-8 bg-gradient-to-b from-black/90 via-black/30 to-transparent pointer-events-none flex flex-col gap-2.5">
         <div className="pointer-events-auto">
            <StreamHeader data={streamData} isHost={false} viewerCount={viewerCount} onLeave={() => navigate('/live')} />
         </div>
+
+        {/* Dynamic Cycling Goal Tracker */}
+        <div className="flex justify-start pl-1 pointer-events-auto">
+          <LiveStreamGoalBar streamId={streamId} isHost={false} />
+        </div>
+
+        {/* Segmented Multi-Host PK Battle Bar */}
+        {isBattleMode && (
+          <div className="w-full max-w-lg mx-auto pt-1 pointer-events-auto">
+            <MultiHostPKBattleBar 
+              hosts={[
+                { 
+                  id: 'host', 
+                  username: streamData?.host?.username || 'Host', 
+                  avatar: streamData?.host?.avatar_url, 
+                  score: 1450,
+                  topGifters: [
+                    { id: 'g1', username: 'Alex', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alex', amount: 500 },
+                    { id: 'g2', username: 'Zara', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=zara', amount: 350 }
+                  ]
+                },
+                ...(activeCohostsList.length > 0 ? activeCohostsList.map((c, i) => ({
+                  id: c.id || `cohost-${i}`,
+                  username: c.username || `Host ${i+2}`,
+                  avatar: c.avatar_url,
+                  score: Math.max(200, 980 - (i * 120)),
+                  topGifters: [
+                    { id: `cg1-${i}`, username: 'Leo', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=leo', amount: 420 },
+                    { id: `cg2-${i}`, username: 'Mia', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mia', amount: 210 }
+                  ]
+                })) : [
+                  {
+                    id: 'challenger',
+                    username: 'Challenger',
+                    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=rival',
+                    score: 980,
+                    topGifters: [
+                      { id: 'cg1', username: 'Max', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=max', amount: 400 }
+                    ]
+                  }
+                ])
+              ]}
+              duration={180}
+            />
+          </div>
+        )}
       </div>
 
       <div className="absolute bottom-28 left-4 z-50 flex flex-col gap-2 pointer-events-none">
@@ -273,7 +420,7 @@ const handleJoinGuest = () => {
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 p-4 z-50 flex items-end justify-between pointer-events-none">
-        <div className="flex-1 max-w-[320px] h-[350px] pointer-events-auto overflow-hidden hide-scrollbar">
+        <div className="flex-1 max-w-[340px] h-[340px] pointer-events-auto overflow-hidden hide-scrollbar">
           <LiveChat streamId={streamId} key={`chat-${streamId}-${lastCommentAt}`} hideMessages={false} />
         </div>
 
