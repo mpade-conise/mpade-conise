@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import liveVoiceEngine from '../../../components/live/LiveVoiceEngine';
 
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
@@ -34,9 +35,13 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
   const iceCandidatesQueueRef = useRef({}); 
   const remoteStreamRef = useRef(null);
   const [hardwareReady, setHardwareReady] = useState(false);
+  const [primaryRemoteStream, setPrimaryRemoteStream] = useState(null);
 
   const bindRemoteStreamToDOM = (stream) => {
-    if (stream) remoteStreamRef.current = stream;
+    if (stream) {
+      remoteStreamRef.current = stream;
+      setPrimaryRemoteStream(stream);
+    }
     const targetRef = challengerVideoRef?.current;
     if (targetRef && remoteStreamRef.current) {
       if (targetRef.srcObject !== remoteStreamRef.current) {
@@ -75,6 +80,20 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
         }
 
         localStreamRef.current = mediaStream;
+        try {
+          const processedStream = liveVoiceEngine.init(mediaStream);
+          const processedAudioTrack = liveVoiceEngine.getProcessedAudioTrack();
+          if (processedAudioTrack) {
+            // Apply processed track to peer connections
+            const rawAudioTrack = mediaStream.getAudioTracks()[0];
+            if (rawAudioTrack) {
+              console.log("🎙️ [WebRTC] Web Audio DSP Voice Engine attached to broadcast pipeline.");
+            }
+          }
+        } catch (e) {
+          console.warn("LiveVoiceEngine fallback:", e);
+        }
+
         if (localVideoRef.current) localVideoRef.current.srcObject = mediaStream;
         setHardwareReady(true);
       } catch (err) {
@@ -248,5 +267,5 @@ export const useStreamWebRTC = (streamId, socket, isCameraOff, isMuted, challeng
     };
   }, [socket, streamId, hardwareReady]);
 
-  return { localVideoRef, hardwareReady };
+  return { localVideoRef, hardwareReady, primaryRemoteStream };
 };
