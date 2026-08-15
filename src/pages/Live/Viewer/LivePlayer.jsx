@@ -14,7 +14,7 @@ import StreamHeader from '../Shared/StreamHeader';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
-import { MultiHostPKBattleBar } from "../../../components/live/MultiHostPKBattleBar.js";
+import { MultiHostPKBattleBar } from "../../../components/live/MultiHostPKBattleBar";
 
 
 const LivePlayer = () => {
