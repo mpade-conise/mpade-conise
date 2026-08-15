@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Mic, Video, UserX
+  Mic, MicOff, Video, VideoOff, Users, UserX, Settings
 } from 'lucide-react';
 
 // Isolated Logic Hook Injectors
@@ -22,7 +22,7 @@ import SettingsPanel from '../Shared/setting';
 import GuestManager from '../Shared/GuestManager';
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
-import { MultiHostPKBattleBar } from "../../../components/live/MultiHostPKBattleBar";
+import MultiHostPKBattleBar from '../../../components/live/MultiHostPKBattleBar.jsx';
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
