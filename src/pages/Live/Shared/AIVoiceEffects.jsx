@@ -1,6 +1,7 @@
 // src/pages/Live/Shared/AIVoiceEffects.jsx
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Mic, AudioLines } from 'lucide-react';
+import { ArrowLeft, Mic, AudioLines, Sparkles } from 'lucide-react';
+import liveVoiceEngine from '../../../components/live/LiveVoiceEngine';
 
 const AIVoiceEffects = ({ streamId, onBack, onSelectEffect }) => {
   const [selectedFx, setSelectedFx] = useState(() => {
@@ -54,6 +55,7 @@ const AIVoiceEffects = ({ streamId, onBack, onSelectEffect }) => {
 
   const handleEffectSelect = (id) => {
     setSelectedFx(id);
+    liveVoiceEngine.setPreset(id);
     if (onSelectEffect) {
       const selectedProfile = voiceProfiles.find(v => v.id === id);
       onSelectEffect(id, selectedProfile?.frequency); 
