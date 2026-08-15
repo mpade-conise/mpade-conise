@@ -22,7 +22,7 @@ import SettingsPanel from '../Shared/setting';
 import GuestManager from '../Shared/GuestManager';
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
-import MultiHostPKBattleBar from '../../../components/live/MultiHostPKBattleBar';
+import { MultiHostPKBattleBar } from "../../../components/live/MultiHostPKBattleBar";
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
