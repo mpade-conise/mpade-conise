@@ -78,32 +78,96 @@ const Recharge = () => {
     if (loading || !userProfile) return;
     setLoading(true);
 
+    const mobileNumber = userProfile.phone || userProfile.phone_number;
+    const mobileProvider = userProfile.mobile_provider || 'TNM';
+
+    if (!mobileNumber) {
+      alert("No mobile money number is saved to your profile.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { data, error } = await supabase.functions.invoke('verify-payment', {
-        body: {
-          packageId: pkg.id,
-          mobileNumber: userProfile.phone || userProfile.phone_number,
-          mobileProvider: userProfile.mobile_provider || 'TNM'
-        }
-      });
+      // 1. Start the payment through the Supabase Edge Function
+      const { data: paymentData, error: paymentError } =
+        await supabase.functions.invoke('process-payment', {
+          body: {
+            packageId: pkg.id,
+            mobileNumber,
+            mobileProvider
+          }
+        });
 
-      if (error) {
-        throw error;
+      if (paymentError) {
+        throw paymentError;
       }
 
-      if (!data?.success) {
-        throw new Error(data?.error || 'Payment initialization failed');
+      if (!paymentData?.success || !paymentData?.chargeId) {
+        throw new Error(
+          paymentData?.error || "Payment initialization failed"
+        );
       }
 
+      const chargeId = paymentData.chargeId;
+
+      // 2. Give the user time to approve the payment on their phone
       alert(
-        `Payment request sent. Please approve the K${pkg.price.toLocaleString()} payment on your phone.`
+        `Payment request sent to ${mobileNumber}. Please approve the K${pkg.price.toLocaleString()} payment on your phone.`
       );
+
+      // 3. Check the payment status
+      let verified = false;
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        const {
+          data: verifyData,
+          error: verifyError
+        } = await supabase.functions.invoke('verify-payment', {
+          body: {
+            chargeId
+          }
+        });
+
+        if (verifyError) {
+          throw verifyError;
+        }
+
+        if (verifyData?.success) {
+          verified = true;
+
+          alert(
+            `${pkg.coins.toLocaleString()} coins have been added to your account.`
+          );
+
+          break;
+        }
+
+        if (
+          verifyData?.status === 'failed' ||
+          verifyData?.status === 'cancelled'
+        ) {
+          throw new Error(
+            verifyData?.message || "Payment was not completed."
+          );
+        }
+      }
+
+      if (!verified) {
+        alert(
+          "Your payment is still being processed. Please check your balance shortly."
+        );
+      }
 
       setLoading(false);
 
     } catch (err) {
       console.error("Payment Error:", err);
-      alert(err?.message || "Could not start payment. Please try again.");
+      alert(
+        err?.message ||
+        "Could not start payment. Please try again."
+      );
       setLoading(false);
     }
   };
