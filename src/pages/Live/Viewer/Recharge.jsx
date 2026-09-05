@@ -79,7 +79,7 @@ const Recharge = () => {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('process-payment', {
+      const { data, error } = await supabase.functions.invoke('verify-payment', {
         body: {
           packageId: pkg.id,
           mobileNumber: userProfile.phone || userProfile.phone_number,
