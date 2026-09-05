@@ -69,47 +69,81 @@ import VideoCallTelemetry from "./videocall/VideoCallTelemetry";
 import FloatingReactionsOverlay from "./videocall/FloatingReactionsOverlay";
 
 
+/* ==========================================================================
+   CONFIGURATION
+   ========================================================================== */
+
 const SOCKET_SERVER_URL =
   "https://mpade-backend.onrender.com";
 
 
 /*
-|--------------------------------------------------------------------------
-| WebRTC configuration
-|--------------------------------------------------------------------------
-|
-| DO NOT put permanent TURN credentials in production.
-|
-| The values below are intentionally STUN-only.
-|
-| Recommended production flow:
-|
-| React
-|   ↓
-| Render /api/turn-credentials
-|   ↓
-| temporary TURN credentials
-|   ↓
-| RTCPeerConnection
-|
-*/
+ * WebRTC configuration.
+ *
+ * STUN is used first.
+ *
+ * TURN should be supplied through environment variables.
+ *
+ * Example .env:
+ *
+ * VITE_TURN_URL=turn:global.relay.metered.ca:80
+ * VITE_TURN_USERNAME=your_username
+ * VITE_TURN_CREDENTIAL=your_credential
+ *
+ * You can also use:
+ *
+ * VITE_TURN_URLS=turn:server:80,turn:server:443,turns:server:443?transport=tcp
+ *
+ * IMPORTANT:
+ * VITE_* values are visible to the browser.
+ * For production, use temporary TURN credentials issued by
+ * your Render backend instead of permanent credentials.
+ */
 
-const DEFAULT_ICE_CONFIG = {
-  iceServers: [
+const getIceConfiguration = () => {
+  const iceServers = [
     {
       urls: "stun:stun.relay.metered.ca:80",
     },
-  ],
+  ];
 
-  iceCandidatePoolSize: 10,
+  const turnUrls = import.meta.env.VITE_TURN_URLS
+    ? String(import.meta.env.VITE_TURN_URLS)
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : import.meta.env.VITE_TURN_URL
+      ? [String(import.meta.env.VITE_TURN_URL)]
+      : [];
+
+  const turnUsername =
+    import.meta.env.VITE_TURN_USERNAME;
+
+  const turnCredential =
+    import.meta.env.VITE_TURN_CREDENTIAL;
+
+  if (
+    turnUrls.length &&
+    turnUsername &&
+    turnCredential
+  ) {
+    iceServers.push({
+      urls: turnUrls,
+      username: turnUsername,
+      credential: turnCredential,
+    });
+  }
+
+  return {
+    iceServers,
+    iceCandidatePoolSize: 10,
+  };
 };
 
 
-/*
-|--------------------------------------------------------------------------
-| Component
-|--------------------------------------------------------------------------
-*/
+/* ==========================================================================
+   COMPONENT
+   ========================================================================== */
 
 const VideoCall = () => {
   const [searchParams] =
@@ -118,11 +152,9 @@ const VideoCall = () => {
   const navigate = useNavigate();
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | URL
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     URL
+     ========================================================================== */
 
   const peerUserId =
     searchParams.get("userId");
@@ -134,11 +166,9 @@ const VideoCall = () => {
     searchParams.get("callId");
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Core state
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     CORE STATE
+     ========================================================================== */
 
   const [currentUserId, setCurrentUserId] =
     useState(null);
@@ -174,11 +204,9 @@ const VideoCall = () => {
     useState([]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Premium features
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     PREMIUM FEATURES
+     ========================================================================== */
 
   const [showWhiteboard, setShowWhiteboard] =
     useState(false);
@@ -250,11 +278,9 @@ const VideoCall = () => {
     useState(false);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Refs
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     REFS
+     ========================================================================== */
 
   const socketRef =
     useRef(null);
@@ -265,10 +291,16 @@ const VideoCall = () => {
   const localStreamRef =
     useRef(null);
 
+  const remoteStreamRef =
+    useRef(null);
+
   const screenTrackRef =
     useRef(null);
 
-  const remoteStreamRef =
+  const cameraTrackRef =
+    useRef(null);
+
+  const microphoneTrackRef =
     useRef(null);
 
   const localVideoRef =
@@ -307,11 +339,11 @@ const VideoCall = () => {
   const callRoleRef =
     useRef(null);
 
-  const peerUserIdRef =
-    useRef(peerUserId);
-
   const currentUserIdRef =
     useRef(null);
+
+  const peerUserIdRef =
+    useRef(peerUserId);
 
   const realtimeChannelsRef =
     useRef([]);
@@ -331,12 +363,30 @@ const VideoCall = () => {
   const recordedChunksRef =
     useRef([]);
 
+  const iceRestartTimerRef =
+    useRef(null);
+
+  const incomingOfferProcessingRef =
+    useRef(false);
+
 
   /*
-  |--------------------------------------------------------------------------
-  | Keep refs synchronized
-  |--------------------------------------------------------------------------
-  */
+   * IMPORTANT:
+   *
+   * These refs prevent camera/device settings from restarting
+   * the entire WebRTC connection.
+   */
+
+  const facingModeRef =
+    useRef(facingMode);
+
+  const noiseSuppressionRef =
+    useRef(noiseSuppression);
+
+
+  /* ==========================================================================
+     SYNC REFS
+     ========================================================================== */
 
   useEffect(() => {
     peerUserIdRef.current =
@@ -344,11 +394,21 @@ const VideoCall = () => {
   }, [peerUserId]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Call ID
-  |--------------------------------------------------------------------------
-  */
+  useEffect(() => {
+    facingModeRef.current =
+      facingMode;
+  }, [facingMode]);
+
+
+  useEffect(() => {
+    noiseSuppressionRef.current =
+      noiseSuppression;
+  }, [noiseSuppression]);
+
+
+  /* ==========================================================================
+     CALL ID
+     ========================================================================== */
 
   useEffect(() => {
     if (urlCallId) {
@@ -361,11 +421,9 @@ const VideoCall = () => {
   }, [urlCallId]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Audio visualizer
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     AUDIO VISUALIZER
+     ========================================================================== */
 
   const stopAudioVisualizer =
     useCallback(() => {
@@ -374,7 +432,8 @@ const VideoCall = () => {
           animFrameRef.current
         );
 
-        animFrameRef.current = null;
+        animFrameRef.current =
+          null;
       }
 
       if (audioContextRef.current) {
@@ -382,7 +441,8 @@ const VideoCall = () => {
           .close()
           .catch(() => {});
 
-        audioContextRef.current = null;
+        audioContextRef.current =
+          null;
       }
 
       analyserRef.current =
@@ -406,6 +466,13 @@ const VideoCall = () => {
             return;
           }
 
+          const audioTrack =
+            stream?.getAudioTracks?.()[0];
+
+          if (!audioTrack) {
+            return;
+          }
+
           const audioContext =
             new AudioContext();
 
@@ -425,6 +492,9 @@ const VideoCall = () => {
             audioContext.createAnalyser();
 
           analyser.fftSize = 64;
+
+          analyser.smoothingTimeConstant =
+            0.75;
 
           analyserRef.current =
             analyser;
@@ -449,17 +519,16 @@ const VideoCall = () => {
               return;
             }
 
-            analyserRef.current
-              .getByteFrequencyData(
-                dataArray
-              );
+            analyser.getByteFrequencyData(
+              dataArray
+            );
 
             let sum = 0;
 
             for (
               let i = 0;
               i < dataArray.length;
-              i++
+              i += 1
             ) {
               sum += dataArray[i];
             }
@@ -497,16 +566,14 @@ const VideoCall = () => {
     );
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Call timer
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     TIMERS
+     ========================================================================== */
 
   useEffect(() => {
     if (callStatus !== "Connected") {
       setCallDuration(0);
-      return;
+      return undefined;
     }
 
     const timer =
@@ -523,16 +590,10 @@ const VideoCall = () => {
   }, [callStatus]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Recording timer
-  |--------------------------------------------------------------------------
-  */
-
   useEffect(() => {
     if (!isRecording) {
       setRecordingDuration(0);
-      return;
+      return undefined;
     }
 
     const timer =
@@ -549,11 +610,9 @@ const VideoCall = () => {
   }, [isRecording]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Ringback
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     RINGBACK
+     ========================================================================== */
 
   useEffect(() => {
     const ringingStates = [
@@ -565,7 +624,7 @@ const VideoCall = () => {
     ];
 
     const status =
-      callStatus.toLowerCase();
+      String(callStatus).toLowerCase();
 
     const shouldRing =
       callRoleRef.current ===
@@ -587,22 +646,17 @@ const VideoCall = () => {
   }, [callStatus]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Process queued ICE
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     ICE QUEUE
+     ========================================================================== */
 
   const processIceQueue =
     useCallback(async () => {
       const pc =
         pcRef.current;
 
-      if (!pc) {
-        return;
-      }
-
       if (
+        !pc ||
         !pc.remoteDescription
       ) {
         return;
@@ -614,7 +668,9 @@ const VideoCall = () => {
       iceQueueRef.current =
         [];
 
-      for (const candidate of queue) {
+      for (
+        const candidate of queue
+      ) {
         try {
           await pc.addIceCandidate(
             new RTCIceCandidate(
@@ -631,83 +687,179 @@ const VideoCall = () => {
     }, []);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Attach local stream
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     REMOTE MEDIA
+     ========================================================================== */
+
+  const attachRemoteStream =
+    useCallback(async (stream) => {
+      if (!stream) {
+        return;
+      }
+
+      remoteStreamRef.current =
+        stream;
+
+      const video =
+        remoteVideoRef.current;
+
+      if (!video) {
+        return;
+      }
+
+      /*
+       * Do not repeatedly replace srcObject.
+       *
+       * This fixes:
+       *
+       * AbortError:
+       * play() request was interrupted by a new load request.
+       */
+
+      if (
+        video.srcObject !== stream
+      ) {
+        video.srcObject =
+          stream;
+      }
+
+      const playRemoteVideo =
+        async () => {
+          try {
+            await video.play();
+          } catch (error) {
+            /*
+             * AbortError is harmless when the media source
+             * is being updated. Do not spam the console.
+             */
+
+            if (
+              error?.name !==
+              "AbortError"
+            ) {
+              console.warn(
+                "Remote media playback failed:",
+                error
+              );
+            }
+          }
+        };
+
+      if (
+        video.readyState >= 2
+      ) {
+        await playRemoteVideo();
+      } else {
+        const handler =
+          () => {
+            video.removeEventListener(
+              "loadedmetadata",
+              handler
+            );
+
+            playRemoteVideo();
+          };
+
+        video.addEventListener(
+          "loadedmetadata",
+          handler,
+          {
+            once: true,
+          }
+        );
+      }
+    }, []);
+
+
+  /* ==========================================================================
+     LOCAL MEDIA
+     ========================================================================== */
 
   const attachLocalStream =
     useCallback((stream) => {
       localStreamRef.current =
         stream;
 
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject =
-          stream;
+      cameraTrackRef.current =
+        stream.getVideoTracks()[0] ||
+        null;
 
-        localVideoRef.current
-          .play()
-          .catch(() => {});
+      microphoneTrackRef.current =
+        stream.getAudioTracks()[0] ||
+        null;
+
+      const video =
+        localVideoRef.current;
+
+      if (!video) {
+        return;
       }
+
+      if (
+        video.srcObject !== stream
+      ) {
+        video.srcObject =
+          stream;
+      }
+
+      video.play().catch(() => {});
     }, []);
 
 
   /*
-  |--------------------------------------------------------------------------
-  | Get media
-  |--------------------------------------------------------------------------
-  */
+   * IMPORTANT:
+   *
+   * This function has NO facingMode/noiseSuppression dependencies.
+   * Therefore changing device settings does not recreate the call.
+   */
 
   const getLocalMedia =
-    useCallback(
-      async () => {
-        const constraints = {
-          video: {
-            width: {
-              ideal: 1280,
-            },
-
-            height: {
-              ideal: 720,
-            },
-
-            facingMode,
+    useCallback(async () => {
+      const constraints = {
+        video: {
+          width: {
+            ideal: 1280,
           },
 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression,
-            autoGainControl: true,
+          height: {
+            ideal: 720,
           },
-        };
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia(
-            constraints
-          );
+          facingMode:
+            facingModeRef.current,
+        },
 
-        return stream;
-      },
-      [facingMode, noiseSuppression]
-    );
+        audio: {
+          echoCancellation: true,
+          noiseSuppression:
+            noiseSuppressionRef.current,
+          autoGainControl: true,
+        },
+      };
+
+      return navigator.mediaDevices.getUserMedia(
+        constraints
+      );
+    }, []);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Create peer connection
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     PEER CONNECTION
+     ========================================================================== */
 
   const createPeerConnection =
     useCallback(() => {
-      if (pcRef.current) {
+      if (
+        pcRef.current &&
+        pcRef.current.connectionState !==
+          "closed"
+      ) {
         return pcRef.current;
       }
 
       const pc =
         new RTCPeerConnection(
-          DEFAULT_ICE_CONFIG
+          getIceConfiguration()
         );
 
       pcRef.current =
@@ -720,17 +872,30 @@ const VideoCall = () => {
         localStream
           .getTracks()
           .forEach((track) => {
-            pc.addTrack(
-              track,
-              localStream
-            );
+            try {
+              pc.addTrack(
+                track,
+                localStream
+              );
+            } catch (error) {
+              console.warn(
+                "Failed adding local track:",
+                error
+              );
+            }
           });
       }
 
+
+      /* ----------------------------------------------------------------------
+         REMOTE TRACK
+         ---------------------------------------------------------------------- */
+
       pc.ontrack =
-        (event) => {
+        async (event) => {
           console.log(
-            "🎬 Remote track received"
+            "🎬 Remote track received:",
+            event.track?.kind
           );
 
           let stream =
@@ -747,29 +912,27 @@ const VideoCall = () => {
             stream =
               remoteStreamRef.current;
 
-            stream.addTrack(
-              event.track
-            );
+            if (
+              !stream
+                .getTracks()
+                .some(
+                  (track) =>
+                    track.id ===
+                    event.track.id
+                )
+            ) {
+              stream.addTrack(
+                event.track
+              );
+            }
           } else {
             remoteStreamRef.current =
               stream;
           }
 
-          if (
-            remoteVideoRef.current
-          ) {
-            remoteVideoRef.current.srcObject =
-              stream;
-
-            remoteVideoRef.current
-              .play()
-              .catch((error) => {
-                console.warn(
-                  "Remote media autoplay blocked:",
-                  error
-                );
-              });
-          }
+          await attachRemoteStream(
+            stream
+          );
 
           callConnectedRef.current =
             true;
@@ -781,6 +944,10 @@ const VideoCall = () => {
           stopRingbackTone();
         };
 
+
+      /* ----------------------------------------------------------------------
+         ICE CANDIDATE
+         ---------------------------------------------------------------------- */
 
       pc.onicecandidate =
         (event) => {
@@ -801,6 +968,7 @@ const VideoCall = () => {
 
           if (
             !socket ||
+            !socket.connected ||
             !target ||
             !roomId
           ) {
@@ -812,63 +980,165 @@ const VideoCall = () => {
             {
               roomId,
               streamId: roomId,
+
               candidate:
                 event.candidate,
+
               to: target,
+
               targetUserId:
                 target,
+
               callId:
                 callIdRef.current,
+
+              fromUserId:
+                currentUserIdRef.current,
             }
           );
         };
 
 
+      /* ----------------------------------------------------------------------
+         CONNECTION STATE
+         ---------------------------------------------------------------------- */
+
       pc.onconnectionstatechange =
         () => {
+          if (
+            pc !== pcRef.current
+          ) {
+            return;
+          }
+
           console.log(
             "WebRTC connection state:",
             pc.connectionState
           );
 
-          if (
-            pc.connectionState ===
-            "connected"
+          switch (
+            pc.connectionState
           ) {
-            callConnectedRef.current =
-              true;
+            case "new":
+              break;
 
-            setCallStatus(
-              "Connected"
-            );
+            case "connecting":
+              if (
+                !callConnectedRef.current
+              ) {
+                setCallStatus(
+                  "Connecting..."
+                );
+              }
+              break;
 
-            stopRingbackTone();
-          }
+            case "connected":
+              callConnectedRef.current =
+                true;
 
-          if (
-            pc.connectionState ===
-              "failed" ||
-            pc.connectionState ===
-              "disconnected"
-          ) {
-            console.warn(
-              "WebRTC connection unstable:",
-              pc.connectionState
-            );
-          }
+              setCallStatus(
+                "Connected"
+              );
 
-          if (
-            pc.connectionState ===
-            "closed"
-          ) {
-            callConnectedRef.current =
-              false;
+              stopRingbackTone();
+
+              if (
+                iceRestartTimerRef.current
+              ) {
+                clearTimeout(
+                  iceRestartTimerRef.current
+                );
+
+                iceRestartTimerRef.current =
+                  null;
+              }
+
+              break;
+
+            case "disconnected":
+              console.warn(
+                "⚠️ WebRTC temporarily disconnected"
+              );
+
+              /*
+               * DO NOT clean up immediately.
+               *
+               * Mobile networks can recover.
+               */
+
+              if (
+                !iceRestartTimerRef.current
+              ) {
+                iceRestartTimerRef.current =
+                  setTimeout(() => {
+                    iceRestartTimerRef.current =
+                      null;
+
+                    if (
+                      pcRef.current !==
+                      pc
+                    ) {
+                      return;
+                    }
+
+                    if (
+                      pc.connectionState ===
+                        "disconnected" ||
+                      pc.iceConnectionState ===
+                        "disconnected"
+                    ) {
+                      console.log(
+                        "🔄 Attempting ICE recovery..."
+                      );
+
+                      restartIceConnection();
+                    }
+                  }, 3000);
+              }
+
+              break;
+
+            case "failed":
+              console.error(
+                "❌ WebRTC connection failed"
+              );
+
+              if (
+                callRoleRef.current ===
+                "caller"
+              ) {
+                restartIceConnection();
+              } else {
+                setCallStatus(
+                  "Connection Failed"
+                );
+              }
+
+              break;
+
+            case "closed":
+              callConnectedRef.current =
+                false;
+              break;
+
+            default:
+              break;
           }
         };
 
 
+      /* ----------------------------------------------------------------------
+         ICE CONNECTION STATE
+         ---------------------------------------------------------------------- */
+
       pc.oniceconnectionstatechange =
         () => {
+          if (
+            pc !== pcRef.current
+          ) {
+            return;
+          }
+
           console.log(
             "ICE state:",
             pc.iceConnectionState
@@ -876,14 +1146,39 @@ const VideoCall = () => {
 
           if (
             pc.iceConnectionState ===
+            "connected"
+          ) {
+            stopRingbackTone();
+          }
+
+          if (
+            pc.iceConnectionState ===
+            "completed"
+          ) {
+            stopRingbackTone();
+          }
+
+          if (
+            pc.iceConnectionState ===
             "failed"
           ) {
-            console.warn(
-              "ICE connection failed"
+            console.error(
+              "❌ ICE connection failed"
             );
+
+            if (
+              callRoleRef.current ===
+              "caller"
+            ) {
+              restartIceConnection();
+            }
           }
         };
 
+
+      /* ----------------------------------------------------------------------
+         ICE GATHERING
+         ---------------------------------------------------------------------- */
 
       pc.onicegatheringstatechange =
         () => {
@@ -894,6 +1189,10 @@ const VideoCall = () => {
         };
 
 
+      /* ----------------------------------------------------------------------
+         SIGNALING STATE
+         ---------------------------------------------------------------------- */
+
       pc.onsignalingstatechange =
         () => {
           console.log(
@@ -902,16 +1201,123 @@ const VideoCall = () => {
           );
         };
 
-
       return pc;
+    }, [attachRemoteStream]);
+
+
+  /* ==========================================================================
+     ICE RESTART
+     ========================================================================== */
+
+  const restartIceConnection =
+    useCallback(async () => {
+      const pc =
+        pcRef.current;
+
+      const socket =
+        socketRef.current;
+
+      const target =
+        peerUserIdRef.current;
+
+      const roomId =
+        roomIdRef.current;
+
+      if (
+        !pc ||
+        !socket ||
+        !socket.connected ||
+        !target ||
+        !roomId
+      ) {
+        return;
+      }
+
+      /*
+       * Only the caller initiates ICE restart.
+       */
+
+      if (
+        callRoleRef.current !==
+        "caller"
+      ) {
+        return;
+      }
+
+      if (
+        endingCallRef.current
+      ) {
+        return;
+      }
+
+      if (
+        pc.signalingState !==
+        "stable"
+      ) {
+        console.log(
+          "Cannot restart ICE in signaling state:",
+          pc.signalingState
+        );
+
+        return;
+      }
+
+      try {
+        console.log(
+          "🔄 Creating ICE restart offer..."
+        );
+
+        const offer =
+          await pc.createOffer({
+            iceRestart: true,
+          });
+
+        await pc.setLocalDescription(
+          offer
+        );
+
+        socket.emit(
+          "send_webrtc_offer",
+          {
+            roomId,
+            streamId: roomId,
+
+            callId:
+              callIdRef.current,
+
+            offer:
+              pc.localDescription,
+
+            targetViewerId:
+              target,
+
+            targetUserId:
+              target,
+
+            to: target,
+
+            fromUserId:
+              currentUserIdRef.current,
+
+            iceRestart: true,
+          }
+        );
+
+        console.log(
+          "📤 ICE restart offer sent"
+        );
+      } catch (error) {
+        console.error(
+          "ICE restart failed:",
+          error
+        );
+      }
     }, []);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Create offer
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     OFFER
+     ========================================================================== */
 
   const createAndSendOffer =
     useCallback(async () => {
@@ -938,6 +1344,12 @@ const VideoCall = () => {
       }
 
       if (
+        endingCallRef.current
+      ) {
+        return;
+      }
+
+      if (
         offerSentRef.current
       ) {
         console.log(
@@ -952,7 +1364,7 @@ const VideoCall = () => {
         "stable"
       ) {
         console.log(
-          "Peer connection not stable:",
+          "Peer connection is not stable:",
           pc.signalingState
         );
 
@@ -986,7 +1398,8 @@ const VideoCall = () => {
             callId:
               callIdRef.current,
 
-            offer,
+            offer:
+              pc.localDescription,
 
             targetViewerId:
               target,
@@ -1020,11 +1433,9 @@ const VideoCall = () => {
     }, []);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Send answer
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     ANSWER
+     ========================================================================== */
 
   const createAndSendAnswer =
     useCallback(
@@ -1044,80 +1455,111 @@ const VideoCall = () => {
         if (
           !pc ||
           !socket ||
+          !socket.connected ||
           !target ||
-          !roomId
+          !roomId ||
+          !offer
         ) {
           return;
         }
 
         if (
-          answerSentRef.current
+          endingCallRef.current
         ) {
           return;
         }
+
+        if (
+          incomingOfferProcessingRef.current
+        ) {
+          console.log(
+            "Already processing an offer."
+          );
+
+          return;
+        }
+
+        incomingOfferProcessingRef.current =
+          true;
 
         try {
           setCallStatus(
             "Answering call..."
           );
 
+          /*
+           * Initial offer.
+           */
+
           if (
-            pc.signalingState !==
+            pc.signalingState ===
             "stable"
           ) {
-            console.warn(
-              "Cannot accept offer in state:",
-              pc.signalingState
+            await pc.setRemoteDescription(
+              new RTCSessionDescription(
+                offer
+              )
+            );
+
+            remoteDescriptionSetRef.current =
+              true;
+
+            await processIceQueue();
+
+            const answer =
+              await pc.createAnswer();
+
+            await pc.setLocalDescription(
+              answer
+            );
+
+            answerSentRef.current =
+              true;
+
+            socket.emit(
+              "send_webrtc_answer",
+              {
+                roomId,
+                streamId: roomId,
+
+                callId:
+                  callIdRef.current,
+
+                answer:
+                  pc.localDescription,
+
+                to: target,
+
+                targetUserId:
+                  target,
+
+                fromUserId:
+                  currentUserIdRef.current,
+              }
+            );
+
+            console.log(
+              "📤 WebRTC answer sent"
             );
 
             return;
           }
 
-          await pc.setRemoteDescription(
-            new RTCSessionDescription(
-              offer
-            )
-          );
 
-          remoteDescriptionSetRef.current =
-            true;
+          /*
+           * ICE restart offer.
+           *
+           * When the caller sends an ICE restart,
+           * the receiver may already be connected.
+           */
 
-          await processIceQueue();
+          if (
+            pc.signalingState ===
+            "stable"
+          ) {
+            return;
+          }
 
-          const answer =
-            await pc.createAnswer();
-
-          await pc.setLocalDescription(
-            answer
-          );
-
-          answerSentRef.current =
-            true;
-
-          socket.emit(
-            "send_webrtc_answer",
-            {
-              roomId,
-              streamId: roomId,
-
-              callId:
-                callIdRef.current,
-
-              answer,
-
-              to: target,
-
-              targetUserId:
-                target,
-
-              fromUserId:
-                currentUserIdRef.current,
-            }
-          );
-
-          console.log(
-            "📤 WebRTC answer sent"
-          );
         } catch (error) {
           console.error(
             "Failed creating answer:",
@@ -1127,28 +1569,66 @@ const VideoCall = () => {
           setCallStatus(
             "Connection Error"
           );
+        } finally {
+          incomingOfferProcessingRef.current =
+            false;
         }
       },
       [processIceQueue]
     );
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Cleanup resources ONLY
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     CLEANUP RESOURCES
+     ========================================================================== */
 
   const cleanupResources =
     useCallback(() => {
       console.log(
-        "🧹 Cleaning call resources"
+        "🧹 Cleaning WebRTC resources"
       );
 
       stopRingbackTone();
 
+      if (
+        iceRestartTimerRef.current
+      ) {
+        clearTimeout(
+          iceRestartTimerRef.current
+        );
+
+        iceRestartTimerRef.current =
+          null;
+      }
+
       stopAudioVisualizer();
 
+
+      /* ----------------------------------------------------------------------
+         Recording
+         ---------------------------------------------------------------------- */
+
+      if (
+        mediaRecorderRef.current
+      ) {
+        try {
+          if (
+            mediaRecorderRef.current
+              .state !==
+            "inactive"
+          ) {
+            mediaRecorderRef.current.stop();
+          }
+        } catch {}
+
+        mediaRecorderRef.current =
+          null;
+      }
+
+
+      /* ----------------------------------------------------------------------
+         Screen sharing
+         ---------------------------------------------------------------------- */
 
       if (
         screenTrackRef.current
@@ -1162,19 +1642,41 @@ const VideoCall = () => {
       }
 
 
-      if (
-        mediaRecorderRef.current &&
-        mediaRecorderRef.current.state !==
-          "inactive"
-      ) {
+      /* ----------------------------------------------------------------------
+         Peer connection
+         ---------------------------------------------------------------------- */
+
+      if (pcRef.current) {
         try {
-          mediaRecorderRef.current.stop();
+          pcRef.current.ontrack =
+            null;
+
+          pcRef.current.onicecandidate =
+            null;
+
+          pcRef.current.onconnectionstatechange =
+            null;
+
+          pcRef.current.oniceconnectionstatechange =
+            null;
+
+          pcRef.current.onicegatheringstatechange =
+            null;
+
+          pcRef.current.onsignalingstatechange =
+            null;
+
+          pcRef.current.close();
         } catch {}
+
+        pcRef.current =
+          null;
       }
 
-      mediaRecorderRef.current =
-        null;
 
+      /* ----------------------------------------------------------------------
+         Local media
+         ---------------------------------------------------------------------- */
 
       if (
         localStreamRef.current
@@ -1191,10 +1693,24 @@ const VideoCall = () => {
           null;
       }
 
+      cameraTrackRef.current =
+        null;
+
+      microphoneTrackRef.current =
+        null;
+
+
+      /* ----------------------------------------------------------------------
+         Remote media
+         ---------------------------------------------------------------------- */
+
+      remoteStreamRef.current =
+        null;
 
       if (
         remoteVideoRef.current
       ) {
+        remoteVideoRef.current.pause?.();
         remoteVideoRef.current.srcObject =
           null;
       }
@@ -1202,29 +1718,15 @@ const VideoCall = () => {
       if (
         localVideoRef.current
       ) {
+        localVideoRef.current.pause?.();
         localVideoRef.current.srcObject =
           null;
       }
 
 
-      if (pcRef.current) {
-        try {
-          pcRef.current.ontrack =
-            null;
-
-          pcRef.current.onicecandidate =
-            null;
-
-          pcRef.current.onconnectionstatechange =
-            null;
-
-          pcRef.current.close();
-        } catch {}
-
-        pcRef.current =
-          null;
-      }
-
+      /* ----------------------------------------------------------------------
+         ICE
+         ---------------------------------------------------------------------- */
 
       iceQueueRef.current =
         [];
@@ -1241,12 +1743,21 @@ const VideoCall = () => {
       callConnectedRef.current =
         false;
 
+      incomingOfferProcessingRef.current =
+        false;
+
+
+      /* ----------------------------------------------------------------------
+         Supabase realtime
+         ---------------------------------------------------------------------- */
 
       realtimeChannelsRef.current.forEach(
         (channel) => {
-          supabase
-            .removeChannel(channel)
-            .catch(() => {});
+          try {
+            supabase
+              .removeChannel(channel)
+              .catch(() => {});
+          } catch {}
         }
       );
 
@@ -1254,7 +1765,13 @@ const VideoCall = () => {
         [];
 
 
-      if (socketRef.current) {
+      /* ----------------------------------------------------------------------
+         Socket
+         ---------------------------------------------------------------------- */
+
+      if (
+        socketRef.current
+      ) {
         try {
           socketRef.current.removeAllListeners();
           socketRef.current.disconnect();
@@ -1266,11 +1783,9 @@ const VideoCall = () => {
     }, [stopAudioVisualizer]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Real hangup
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     END CALL
+     ========================================================================== */
 
   const endCall =
     useCallback(
@@ -1327,11 +1842,13 @@ const VideoCall = () => {
 
         if (socket) {
           /*
-           * Only the caller cancels the call as caller.
+           * Caller cancellation.
            */
+
           if (
             callRoleRef.current ===
-            "caller"
+            "caller" &&
+            !callConnectedRef.current
           ) {
             socket.emit(
               "call_cancelled_by_caller",
@@ -1346,12 +1863,14 @@ const VideoCall = () => {
 
 
           /*
-           * Receiver explicitly declines.
+           * Receiver decline.
            */
+
           if (
             callRoleRef.current ===
               "receiver" &&
-            reason === "declined"
+            reason ===
+              "declined"
           ) {
             socket.emit(
               "decline_call",
@@ -1363,32 +1882,34 @@ const VideoCall = () => {
           /*
            * Normal hangup.
            */
+
           socket.emit(
             "peer_hung_up",
             payload
           );
         }
 
-
         cleanupResources();
 
         setCallStatus(
-          reason === "declined"
+          reason ===
+            "declined"
             ? "Call Declined"
             : "Call Ended"
         );
 
         navigate(-1);
       },
-      [cleanupResources, navigate]
+      [
+        cleanupResources,
+        navigate,
+      ]
     );
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Authentication + profiles
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     AUTH + PROFILES
+     ========================================================================== */
 
   useEffect(() => {
     let cancelled =
@@ -1422,8 +1943,13 @@ const VideoCall = () => {
 
 
           /*
-           * Own profile
+           * Own profile.
+           *
+           * Keep this explicit rather than select("*")
+           * so an unrelated missing column doesn't break
+           * the call page.
            */
+
           const {
             data: myProfile,
           } =
@@ -1432,7 +1958,10 @@ const VideoCall = () => {
               .select(
                 "coins, balance"
               )
-              .eq("id", user.id)
+              .eq(
+                "id",
+                user.id
+              )
               .maybeSingle();
 
           if (
@@ -1440,13 +1969,13 @@ const VideoCall = () => {
             myProfile
           ) {
             setUserCoins(
-              myProfile.coins ||
+              myProfile.coins ??
                 Math.round(
                   Number(
-                    myProfile.balance ||
+                    myProfile.balance ??
                       0
                   ) * 10
-                ) ||
+                ) ??
                 1200
             );
           }
@@ -1455,6 +1984,7 @@ const VideoCall = () => {
           /*
            * Validate peer.
            */
+
           if (
             !peerUserId ||
             peerUserId ===
@@ -1477,18 +2007,21 @@ const VideoCall = () => {
           /*
            * Peer profile.
            */
+
           const {
             data: profile,
             error,
           } =
             await supabase
               .from("profiles")
-              .select("*")
+              .select(
+                "id, username, avatar_url"
+              )
               .eq(
                 "id",
                 peerUserId
               )
-              .single();
+              .maybeSingle();
 
           if (
             !cancelled &&
@@ -1497,6 +2030,15 @@ const VideoCall = () => {
           ) {
             setPeerProfile(
               profile
+            );
+          }
+
+          if (
+            error
+          ) {
+            console.warn(
+              "Peer profile lookup failed:",
+              error
             );
           }
         } catch (error) {
@@ -1518,20 +2060,15 @@ const VideoCall = () => {
     return () => {
       cancelled = true;
     };
-  }, [peerUserId, navigate]);
+  }, [
+    peerUserId,
+    navigate,
+  ]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | MAIN CALL ENGINE
-  |--------------------------------------------------------------------------
-  |
-  | IMPORTANT:
-  | This effect does NOT depend on facingMode or noiseSuppression.
-  |
-  | Changing camera settings must NOT recreate WebRTC.
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     MAIN CALL ENGINE
+     ========================================================================== */
 
   useEffect(() => {
     if (
@@ -1540,7 +2077,7 @@ const VideoCall = () => {
       peerUserId ===
         "undefined"
     ) {
-      return;
+      return undefined;
     }
 
     mountedRef.current =
@@ -1555,14 +2092,23 @@ const VideoCall = () => {
         ? URLRole
         : currentUserId <
           peerUserId
-        ? "caller"
-        : "receiver";
+          ? "caller"
+          : "receiver";
 
     const roomId =
       [currentUserId, peerUserId]
         .sort()
         .join("-");
 
+    /*
+     * Ensure a call ID exists synchronously.
+     */
+
+    if (!callIdRef.current) {
+      callIdRef.current =
+        urlCallId ||
+        crypto.randomUUID();
+    }
 
     callRoleRef.current =
       role;
@@ -1593,11 +2139,9 @@ const VideoCall = () => {
     const initializeCall =
       async () => {
         try {
-          /*
-           * ---------------------------------------------------------------
-           * 1. Get microphone + camera
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             1. CAMERA + MICROPHONE
+             ------------------------------------------------------------------ */
 
           setCallStatus(
             "Accessing devices..."
@@ -1612,8 +2156,9 @@ const VideoCall = () => {
           ) {
             stream
               .getTracks()
-              .forEach((track) =>
-                track.stop()
+              .forEach(
+                (track) =>
+                  track.stop()
               );
 
             return;
@@ -1628,25 +2173,23 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * 2. Create PeerConnection
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             2. PEER CONNECTION
+             ------------------------------------------------------------------ */
 
           createPeerConnection();
 
 
-          /*
-           * ---------------------------------------------------------------
-           * 3. Create Socket.IO
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             3. SOCKET
+             ------------------------------------------------------------------ */
 
           const socket =
             io(
               SOCKET_SERVER_URL,
               {
+                autoConnect: false,
+
                 transports: [
                   "websocket",
                   "polling",
@@ -1659,6 +2202,9 @@ const VideoCall = () => {
 
                 reconnectionDelay: 1000,
 
+                reconnectionDelayMax:
+                  5000,
+
                 timeout: 20000,
               }
             );
@@ -1667,17 +2213,16 @@ const VideoCall = () => {
             socket;
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Socket connect
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             SOCKET CONNECT
+             ------------------------------------------------------------------ */
 
           socket.on(
             "connect",
             async () => {
               if (
-                !mountedRef.current
+                !mountedRef.current ||
+                localCancelled
               ) {
                 return;
               }
@@ -1688,9 +2233,6 @@ const VideoCall = () => {
               );
 
 
-              /*
-               * Register this user's session.
-               */
               socket.emit(
                 "register_user_session",
                 {
@@ -1700,9 +2242,6 @@ const VideoCall = () => {
               );
 
 
-              /*
-               * Join WebRTC room.
-               */
               socket.emit(
                 "join_call_room",
                 {
@@ -1722,11 +2261,9 @@ const VideoCall = () => {
               );
 
 
-              /*
-               * ---------------------------------------------------------
-               * CALLER
-               * ---------------------------------------------------------
-               */
+              /* --------------------------------------------------------------
+                 CALLER
+                 -------------------------------------------------------------- */
 
               if (
                 role === "caller"
@@ -1735,10 +2272,6 @@ const VideoCall = () => {
                   "Calling user..."
                 );
 
-
-                /*
-                 * Load caller profile.
-                 */
                 const {
                   data: myProfile,
                 } =
@@ -1752,7 +2285,6 @@ const VideoCall = () => {
                       currentUserId
                     )
                     .maybeSingle();
-
 
                 const callSignalData = {
                   callId:
@@ -1790,23 +2322,21 @@ const VideoCall = () => {
 
                   roomId,
 
-                  role: "receiver",
+                  role:
+                    "receiver",
                 };
 
 
                 /*
-                 * IMPORTANT:
+                 * ONE primary incoming-call event.
                  *
-                 * Only ONE primary event.
+                 * Your Render backend should:
                  *
-                 * Do NOT emit incoming_call,
-                 * incoming_call_signal and
-                 * initiate_call_signal three times.
+                 * ONLINE:
+                 *     Socket.IO
                  *
-                 * Render should receive this and decide:
-                 *
-                 * ONLINE  → Socket.IO
-                 * OFFLINE → FCM
+                 * OFFLINE/BACKGROUND:
+                 *     FCM/Web Push
                  */
 
                 socket.emit(
@@ -1816,31 +2346,33 @@ const VideoCall = () => {
 
 
                 /*
-                 * Supabase fallback.
+                 * Supabase realtime fallback.
                  *
-                 * This is optional and only for your
-                 * existing realtime fallback.
+                 * This is NOT a replacement for FCM.
+                 * It only works while the receiving client
+                 * is already subscribed.
                  */
 
                 try {
-                  const realtimeChannel =
+                  const channel =
                     supabase.channel(
                       `user-call-signals-${peerUserId}`
                     );
 
                   realtimeChannelsRef.current.push(
-                    realtimeChannel
+                    channel
                   );
 
-                  realtimeChannel.subscribe(
+                  channel.subscribe(
                     async (status) => {
                       if (
                         status ===
                         "SUBSCRIBED"
                       ) {
-                        await realtimeChannel.send(
+                        await channel.send(
                           {
-                            type: "broadcast",
+                            type:
+                              "broadcast",
 
                             event:
                               "incoming_call_broadcast",
@@ -1861,20 +2393,16 @@ const VideoCall = () => {
 
 
                 /*
-                 * IMPORTANT:
-                 *
-                 * Do NOT create offer yet.
+                 * DO NOT create an offer here.
                  *
                  * Wait for peer_ready.
                  */
               }
 
 
-              /*
-               * ---------------------------------------------------------
-               * RECEIVER
-               * ---------------------------------------------------------
-               */
+              /* --------------------------------------------------------------
+                 RECEIVER
+                 -------------------------------------------------------------- */
 
               if (
                 role === "receiver"
@@ -1899,18 +2427,23 @@ const VideoCall = () => {
                   }
                 );
               }
-            });
+            }
+          );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Reconnect
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             SOCKET RECONNECT
+             ------------------------------------------------------------------ */
 
           socket.on(
             "reconnect",
             () => {
+              if (
+                !mountedRef.current
+              ) {
+                return;
+              }
+
               console.log(
                 "🔄 Socket reconnected"
               );
@@ -1942,7 +2475,8 @@ const VideoCall = () => {
               );
 
               if (
-                role === "receiver"
+                role ===
+                "receiver"
               ) {
                 socket.emit(
                   "peer_ready",
@@ -1951,6 +2485,9 @@ const VideoCall = () => {
 
                     userId:
                       currentUserId,
+
+                    targetPeerId:
+                      peerUserId,
 
                     callId:
                       callIdRef.current,
@@ -1961,11 +2498,9 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Peer ready
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             PEER READY
+             ------------------------------------------------------------------ */
 
           socket.on(
             "peer_ready",
@@ -1990,18 +2525,17 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Offer
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             OFFER
+             ------------------------------------------------------------------ */
 
           socket.on(
             "webrtc_offer_received",
             async (data) => {
               if (
                 !mountedRef.current ||
-                role !== "receiver"
+                role !==
+                  "receiver"
               ) {
                 return;
               }
@@ -2023,11 +2557,9 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Answer
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             ANSWER
+             ------------------------------------------------------------------ */
 
           socket.on(
             "webrtc_answer_received",
@@ -2045,6 +2577,10 @@ const VideoCall = () => {
               if (!pc) {
                 return;
               }
+
+              /*
+               * Normal answer.
+               */
 
               if (
                 pc.signalingState !==
@@ -2083,11 +2619,9 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * ICE candidate
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             ICE CANDIDATE
+             ------------------------------------------------------------------ */
 
           socket.on(
             "incoming_ice_candidate",
@@ -2102,8 +2636,11 @@ const VideoCall = () => {
               const pc =
                 pcRef.current;
 
+              if (!pc) {
+                return;
+              }
+
               if (
-                !pc ||
                 !pc.remoteDescription
               ) {
                 iceQueueRef.current.push(
@@ -2129,25 +2666,34 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Peer hung up
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             PEER HUNG UP
+             ------------------------------------------------------------------ */
 
           socket.on(
             "peer_hung_up",
             (data) => {
+              if (
+                data?.callId &&
+                data.callId !==
+                  callIdRef.current
+              ) {
+                return;
+              }
+
               console.log(
                 "📴 Peer hung up:",
                 data
               );
 
               if (
-                !mountedRef.current
+                endingCallRef.current
               ) {
                 return;
               }
+
+              endingCallRef.current =
+                true;
 
               cleanupResources();
 
@@ -2160,11 +2706,9 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Caller cancelled
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             CALL CANCELLED
+             ------------------------------------------------------------------ */
 
           socket.on(
             "call_cancelled",
@@ -2177,9 +2721,18 @@ const VideoCall = () => {
                 return;
               }
 
+              if (
+                endingCallRef.current
+              ) {
+                return;
+              }
+
               console.log(
                 "📵 Caller cancelled call"
               );
+
+              endingCallRef.current =
+                true;
 
               cleanupResources();
 
@@ -2192,11 +2745,44 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Call declined
-           * ---------------------------------------------------------------
-           */
+          socket.on(
+            "call_cancelled_by_caller",
+            (data) => {
+              if (
+                data?.callId &&
+                data.callId !==
+                  callIdRef.current
+              ) {
+                return;
+              }
+
+              if (
+                endingCallRef.current
+              ) {
+                return;
+              }
+
+              console.log(
+                "📵 Caller cancelled call"
+              );
+
+              endingCallRef.current =
+                true;
+
+              cleanupResources();
+
+              setCallStatus(
+                "Call Cancelled"
+              );
+
+              navigate(-1);
+            }
+          );
+
+
+          /* ------------------------------------------------------------------
+             CALL DECLINED
+             ------------------------------------------------------------------ */
 
           socket.on(
             "call_declined",
@@ -2209,9 +2795,18 @@ const VideoCall = () => {
                 return;
               }
 
+              if (
+                endingCallRef.current
+              ) {
+                return;
+              }
+
               console.log(
                 "📵 Call declined"
               );
+
+              endingCallRef.current =
+                true;
 
               cleanupResources();
 
@@ -2224,11 +2819,9 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Call expired
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             CALL EXPIRED
+             ------------------------------------------------------------------ */
 
           socket.on(
             "call_expired",
@@ -2241,9 +2834,18 @@ const VideoCall = () => {
                 return;
               }
 
+              if (
+                endingCallRef.current
+              ) {
+                return;
+              }
+
               console.log(
                 "⌛ Call expired"
               );
+
+              endingCallRef.current =
+                true;
 
               cleanupResources();
 
@@ -2256,15 +2858,17 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * In-call chat
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             CHAT
+             ------------------------------------------------------------------ */
 
           socket.on(
             "in_call_text_message",
             (data) => {
+              if (!data) {
+                return;
+              }
+
               setInCallMessages(
                 (previous) => [
                   ...previous,
@@ -2275,15 +2879,17 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Reactions
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             REACTIONS
+             ------------------------------------------------------------------ */
 
           socket.on(
             "in_call_reaction_burst",
             (data) => {
+              if (!data) {
+                return;
+              }
+
               const reactionId =
                 Date.now() +
                 Math.random();
@@ -2293,14 +2899,14 @@ const VideoCall = () => {
                   ...previous,
 
                   {
-                    id: reactionId,
+                    id:
+                      reactionId,
 
                     emoji:
                       data.emoji,
 
                     senderName:
                       data.senderName ||
-                      peerProfile?.username ||
                       "Peer",
                   },
                 ]
@@ -2309,15 +2915,17 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Gifts
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             GIFTS
+             ------------------------------------------------------------------ */
 
           socket.on(
             "in_call_luxury_gift",
             (gift) => {
+              if (!gift) {
+                return;
+              }
+
               setActiveGiftAnimation(
                 gift
               );
@@ -2341,11 +2949,9 @@ const VideoCall = () => {
           );
 
 
-          /*
-           * ---------------------------------------------------------------
-           * Socket error
-           * ---------------------------------------------------------------
-           */
+          /* ------------------------------------------------------------------
+             SOCKET ERROR
+             ------------------------------------------------------------------ */
 
           socket.on(
             "connect_error",
@@ -2364,6 +2970,14 @@ const VideoCall = () => {
               }
             }
           );
+
+
+          /*
+           * Connect only after ALL listeners have been registered.
+           */
+
+          socket.connect();
+
         } catch (error) {
           console.error(
             "Call initialization failed:",
@@ -2385,15 +2999,16 @@ const VideoCall = () => {
 
 
     /*
-     * ---------------------------------------------------------------
-     * Effect cleanup
-     *
      * IMPORTANT:
      *
-     * This does NOT send call cancellation.
+     * React cleanup ONLY releases resources.
      *
-     * React cleanup ≠ user pressing Hang Up.
-     * ---------------------------------------------------------------
+     * It does NOT:
+     * - emit peer_hung_up
+     * - emit call_cancelled
+     * - navigate
+     *
+     * This prevents React rerenders from killing active calls.
      */
 
     return () => {
@@ -2408,23 +3023,21 @@ const VideoCall = () => {
     currentUserId,
     peerUserId,
     URLRole,
-    attachLocalStream,
-    createPeerConnection,
-    createAndSendAnswer,
-    createAndSendOffer,
-    cleanupResources,
     getLocalMedia,
-    navigate,
-    processIceQueue,
+    attachLocalStream,
     setupAudioVisualizer,
+    createPeerConnection,
+    createAndSendOffer,
+    createAndSendAnswer,
+    processIceQueue,
+    cleanupResources,
+    navigate,
   ]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Camera switching
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     REPLACE VIDEO TRACK
+     ========================================================================== */
 
   const replaceVideoTrack =
     useCallback(
@@ -2432,31 +3045,48 @@ const VideoCall = () => {
         const pc =
           pcRef.current;
 
-        if (!pc || !newTrack) {
-          return;
+        if (
+          !pc ||
+          !newTrack
+        ) {
+          return false;
         }
 
         const sender =
-          pc.getSenders().find(
-            (item) =>
-              item.track?.kind ===
-              "video"
+          pc
+            .getSenders()
+            .find(
+              (item) =>
+                item.track?.kind ===
+                "video"
+            );
+
+        if (!sender) {
+          console.warn(
+            "No video sender found"
           );
 
-        if (sender) {
-          await sender.replaceTrack(
-            newTrack
-          );
+          return false;
         }
+
+        await sender.replaceTrack(
+          newTrack
+        );
+
+        return true;
       },
       []
     );
 
 
+  /* ==========================================================================
+     FLIP CAMERA
+     ========================================================================== */
+
   const handleFlipCamera =
     async () => {
       const nextMode =
-        facingMode ===
+        facingModeRef.current ===
         "user"
           ? "environment"
           : "user";
@@ -2482,38 +3112,62 @@ const VideoCall = () => {
             }
           );
 
-        const newVideoTrack =
+        const newTrack =
           newStream.getVideoTracks()[0];
 
-        await replaceVideoTrack(
-          newVideoTrack
-        );
-
-        const oldVideoTrack =
-          localStreamRef.current?.getVideoTracks()[0];
-
-        if (oldVideoTrack) {
-          oldVideoTrack.stop();
-
-          localStreamRef.current.removeTrack(
-            oldVideoTrack
-          );
+        if (!newTrack) {
+          return;
         }
 
-        localStreamRef.current?.addTrack(
-          newVideoTrack
+        await replaceVideoTrack(
+          newTrack
         );
+
+        const localStream =
+          localStreamRef.current;
+
+        if (!localStream) {
+          newTrack.stop();
+          return;
+        }
+
+        const oldTrack =
+          cameraTrackRef.current;
+
+        if (oldTrack) {
+          try {
+            localStream.removeTrack(
+              oldTrack
+            );
+
+            oldTrack.stop();
+          } catch {}
+        }
+
+        localStream.addTrack(
+          newTrack
+        );
+
+        cameraTrackRef.current =
+          newTrack;
 
         if (
           localVideoRef.current
         ) {
           localVideoRef.current.srcObject =
-            localStreamRef.current;
+            localStream;
+
+          localVideoRef.current
+            .play()
+            .catch(() => {});
         }
 
         setFacingMode(
           nextMode
         );
+
+        facingModeRef.current =
+          nextMode;
       } catch (error) {
         console.warn(
           "Camera flip failed:",
@@ -2523,14 +3177,16 @@ const VideoCall = () => {
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Camera device
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     SWITCH CAMERA DEVICE
+     ========================================================================== */
 
   const handleSwitchCamera =
     async (deviceId) => {
+      if (!deviceId) {
+        return;
+      }
+
       try {
         const newStream =
           await navigator.mediaDevices.getUserMedia(
@@ -2556,30 +3212,51 @@ const VideoCall = () => {
         const newTrack =
           newStream.getVideoTracks()[0];
 
+        if (!newTrack) {
+          return;
+        }
+
         await replaceVideoTrack(
           newTrack
         );
 
-        const oldTrack =
-          localStreamRef.current?.getVideoTracks()[0];
+        const localStream =
+          localStreamRef.current;
 
-        if (oldTrack) {
-          oldTrack.stop();
-
-          localStreamRef.current.removeTrack(
-            oldTrack
-          );
+        if (!localStream) {
+          newTrack.stop();
+          return;
         }
 
-        localStreamRef.current?.addTrack(
+        const oldTrack =
+          cameraTrackRef.current;
+
+        if (oldTrack) {
+          try {
+            localStream.removeTrack(
+              oldTrack
+            );
+
+            oldTrack.stop();
+          } catch {}
+        }
+
+        localStream.addTrack(
           newTrack
         );
+
+        cameraTrackRef.current =
+          newTrack;
 
         if (
           localVideoRef.current
         ) {
           localVideoRef.current.srcObject =
-            localStreamRef.current;
+            localStream;
+
+          localVideoRef.current
+            .play()
+            .catch(() => {});
         }
 
         setActiveVideoDeviceId(
@@ -2594,14 +3271,16 @@ const VideoCall = () => {
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Microphone device
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     SWITCH MICROPHONE
+     ========================================================================== */
 
   const handleSwitchMicrophone =
     async (deviceId) => {
+      if (!deviceId) {
+        return;
+      }
+
       try {
         const newStream =
           await navigator.mediaDevices.getUserMedia(
@@ -2617,7 +3296,7 @@ const VideoCall = () => {
                   true,
 
                 noiseSuppression:
-                  noiseSuppression,
+                  noiseSuppressionRef.current,
 
                 autoGainControl:
                   true,
@@ -2625,48 +3304,67 @@ const VideoCall = () => {
             }
           );
 
-        const newAudioTrack =
+        const newTrack =
           newStream.getAudioTracks()[0];
+
+        if (!newTrack) {
+          return;
+        }
 
         const pc =
           pcRef.current;
 
         if (pc) {
           const sender =
-            pc.getSenders().find(
-              (item) =>
-                item.track?.kind ===
-                "audio"
-            );
+            pc
+              .getSenders()
+              .find(
+                (item) =>
+                  item.track?.kind ===
+                  "audio"
+              );
 
           if (sender) {
             await sender.replaceTrack(
-              newAudioTrack
+              newTrack
             );
           }
         }
 
-        const oldAudioTrack =
-          localStreamRef.current?.getAudioTracks()[0];
+        const localStream =
+          localStreamRef.current;
 
-        if (oldAudioTrack) {
-          oldAudioTrack.stop();
-
-          localStreamRef.current.removeTrack(
-            oldAudioTrack
-          );
+        if (!localStream) {
+          newTrack.stop();
+          return;
         }
 
-        localStreamRef.current?.addTrack(
-          newAudioTrack
+        const oldTrack =
+          microphoneTrackRef.current;
+
+        if (oldTrack) {
+          try {
+            localStream.removeTrack(
+              oldTrack
+            );
+
+            oldTrack.stop();
+          } catch {}
+        }
+
+        localStream.addTrack(
+          newTrack
         );
+
+        microphoneTrackRef.current =
+          newTrack;
 
         setActiveAudioDeviceId(
           deviceId
         );
 
         await setupAudioVisualizer(
-          localStreamRef.current
+          localStream
         );
       } catch (error) {
         console.warn(
@@ -2677,11 +3375,85 @@ const VideoCall = () => {
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Screen sharing
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     NOISE SUPPRESSION
+     ========================================================================== */
+
+  useEffect(() => {
+    const track =
+      microphoneTrackRef.current;
+
+    if (!track) {
+      return;
+    }
+
+    track
+      .applyConstraints({
+        noiseSuppression:
+          noiseSuppression,
+      })
+      .catch((error) => {
+        console.warn(
+          "Noise suppression constraint failed:",
+          error
+        );
+      });
+  }, [noiseSuppression]);
+
+
+  /* ==========================================================================
+     SCREEN SHARING
+     ========================================================================== */
+
+  const stopScreenSharing =
+    useCallback(async () => {
+      const cameraTrack =
+        cameraTrackRef.current;
+
+      if (cameraTrack) {
+        try {
+          await replaceVideoTrack(
+            cameraTrack
+          );
+        } catch (error) {
+          console.warn(
+            "Failed restoring camera:",
+            error
+          );
+        }
+      }
+
+      if (
+        screenTrackRef.current
+      ) {
+        try {
+          screenTrackRef.current.onended =
+            null;
+
+          screenTrackRef.current.stop();
+        } catch {}
+
+        screenTrackRef.current =
+          null;
+      }
+
+      setIsScreenSharing(
+        false
+      );
+
+      if (
+        localVideoRef.current &&
+        localStreamRef.current
+      ) {
+        localVideoRef.current.srcObject =
+          localStreamRef.current;
+
+        localVideoRef.current
+          .play()
+          .catch(() => {});
+      }
+    }, [replaceVideoTrack]);
+
 
   const toggleScreenShare =
     async () => {
@@ -2696,36 +3468,18 @@ const VideoCall = () => {
         if (
           isScreenSharing
         ) {
-          const cameraTrack =
-            localStreamRef.current?.getVideoTracks()[0];
-
-          if (cameraTrack) {
-            await replaceVideoTrack(
-              cameraTrack
-            );
-          }
-
-          if (
-            screenTrackRef.current
-          ) {
-            screenTrackRef.current.stop();
-
-            screenTrackRef.current =
-              null;
-          }
-
-          setIsScreenSharing(
-            false
-          );
-
+          await stopScreenSharing();
           return;
         }
-
 
         const screenStream =
           await navigator.mediaDevices.getDisplayMedia(
             {
-              video: true,
+              video: {
+                cursor: "always",
+              },
+
+              audio: false,
             }
           );
 
@@ -2744,41 +3498,36 @@ const VideoCall = () => {
           screenTrack;
 
         screenTrack.onended =
-          async () => {
-            const cameraTrack =
-              localStreamRef.current?.getVideoTracks()[0];
-
-            if (cameraTrack) {
-              await replaceVideoTrack(
-                cameraTrack
-              );
-            }
-
-            screenTrackRef.current =
-              null;
-
-            setIsScreenSharing(
-              false
-            );
+          () => {
+            stopScreenSharing();
           };
 
         setIsScreenSharing(
           true
         );
+
+        if (
+          localVideoRef.current
+        ) {
+          localVideoRef.current.srcObject =
+            screenStream;
+
+          localVideoRef.current
+            .play()
+            .catch(() => {});
+        }
       } catch (error) {
         console.warn(
-          "Screen sharing cancelled:",
+          "Screen sharing cancelled or failed:",
           error
         );
       }
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Snapshot
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     SNAPSHOT
+     ========================================================================== */
 
   const handleTakeSnapshot =
     () => {
@@ -2789,10 +3538,12 @@ const VideoCall = () => {
       }, 250);
 
       const video =
-        remoteVideoRef.current ||
-        localVideoRef.current;
+        remoteVideoRef.current;
 
-      if (!video) {
+      if (
+        !video ||
+        !video.videoWidth
+      ) {
         return;
       }
 
@@ -2803,12 +3554,10 @@ const VideoCall = () => {
           );
 
         canvas.width =
-          video.videoWidth ||
-          1280;
+          video.videoWidth;
 
         canvas.height =
-          video.videoHeight ||
-          720;
+          video.videoHeight;
 
         const ctx =
           canvas.getContext(
@@ -2872,11 +3621,9 @@ const VideoCall = () => {
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Recording
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     RECORDING
+     ========================================================================== */
 
   const toggleCallRecording =
     () => {
@@ -2887,7 +3634,9 @@ const VideoCall = () => {
             .state !==
             "inactive"
         ) {
-          mediaRecorderRef.current.stop();
+          try {
+            mediaRecorderRef.current.stop();
+          } catch {}
         }
 
         setIsRecording(
@@ -2901,6 +3650,17 @@ const VideoCall = () => {
         localStreamRef.current;
 
       if (!stream) {
+        return;
+      }
+
+      if (
+        typeof MediaRecorder ===
+        "undefined"
+      ) {
+        alert(
+          "Recording is not supported by this browser."
+        );
+
         return;
       }
 
@@ -2934,8 +3694,9 @@ const VideoCall = () => {
         recorder.ondataavailable =
           (event) => {
             if (
+              event.data &&
               event.data.size >
-              0
+                0
             ) {
               recordedChunksRef.current.push(
                 event.data
@@ -2943,8 +3704,24 @@ const VideoCall = () => {
             }
           };
 
+        recorder.onerror =
+          (event) => {
+            console.warn(
+              "MediaRecorder error:",
+              event
+            );
+          };
+
         recorder.onstop =
           () => {
+            if (
+              !recordedChunksRef
+                .current
+                .length
+            ) {
+              return;
+            }
+
             const blob =
               new Blob(
                 recordedChunksRef.current,
@@ -2969,7 +3746,13 @@ const VideoCall = () => {
             link.download =
               `universe-call-recording-${Date.now()}.webm`;
 
+            document.body.appendChild(
+              link
+            );
+
             link.click();
+
+            link.remove();
 
             setTimeout(() => {
               URL.revokeObjectURL(
@@ -2992,11 +3775,9 @@ const VideoCall = () => {
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Picture in picture
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     PICTURE IN PICTURE
+     ========================================================================== */
 
   const togglePictureInPicture =
     async () => {
@@ -3021,7 +3802,9 @@ const VideoCall = () => {
         }
 
         if (
-          document.pictureInPictureEnabled
+          document.pictureInPictureEnabled &&
+          typeof video.requestPictureInPicture ===
+            "function"
         ) {
           await video.requestPictureInPicture();
 
@@ -3038,17 +3821,46 @@ const VideoCall = () => {
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Gift
-  |--------------------------------------------------------------------------
-  */
+  useEffect(() => {
+    const video =
+      remoteVideoRef.current;
+
+    if (!video) {
+      return undefined;
+    }
+
+    const handleLeave =
+      () => {
+        setIsPiPActive(false);
+      };
+
+    video.addEventListener(
+      "leavepictureinpicture",
+      handleLeave
+    );
+
+    return () => {
+      video.removeEventListener(
+        "leavepictureinpicture",
+        handleLeave
+      );
+    };
+  }, [callStatus]);
+
+
+  /* ==========================================================================
+     GIFTS
+     ========================================================================== */
 
   const handleSendGift =
     (gift) => {
+      if (!gift) {
+        return;
+      }
+
       if (
         userCoins <
-        gift.price
+        Number(gift.price || 0)
       ) {
         alert(
           "Insufficient coins! Top up your balance to send this gift."
@@ -3062,7 +3874,9 @@ const VideoCall = () => {
           Math.max(
             0,
             previous -
-              gift.price
+              Number(
+                gift.price || 0
+              )
           )
       );
 
@@ -3076,34 +3890,33 @@ const VideoCall = () => {
         );
       }, 3500);
 
-      const roomId =
-        roomIdRef.current;
-
       socketRef.current?.emit(
         "in_call_luxury_gift",
         {
-          roomId,
+          roomId:
+            roomIdRef.current,
+
           callId:
             callIdRef.current,
+
           gift,
         }
       );
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Chat
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     CHAT
+     ========================================================================== */
 
   const sendInCallMessage =
     (event) => {
       event?.preventDefault();
 
-      if (
-        !chatInput.trim()
-      ) {
+      const text =
+        chatInput.trim();
+
+      if (!text) {
         return;
       }
 
@@ -3114,8 +3927,7 @@ const VideoCall = () => {
         senderId:
           currentUserId,
 
-        text:
-          chatInput.trim(),
+        text,
 
         time:
           new Date().toLocaleTimeString(
@@ -3148,28 +3960,29 @@ const VideoCall = () => {
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Reactions
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     REACTIONS
+     ========================================================================== */
 
   const sendReactionBurst =
     (emoji) => {
+      if (!emoji) {
+        return;
+      }
+
       const reactionId =
         crypto.randomUUID();
-
-      const senderName =
-        peerProfile?.username ||
-        "User";
 
       setFloatingReactions(
         (previous) => [
           ...previous,
 
           {
-            id: reactionId,
+            id:
+              reactionId,
+
             emoji,
+
             senderName:
               "You",
           },
@@ -3190,17 +4003,16 @@ const VideoCall = () => {
           senderId:
             currentUserId,
 
-          senderName,
+          senderName:
+            "User",
         }
       );
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Reaction realtime fallback
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     REACTION REALTIME FALLBACK
+     ========================================================================== */
 
   useEffect(() => {
     if (
@@ -3209,7 +4021,7 @@ const VideoCall = () => {
       peerUserId ===
         "undefined"
     ) {
-      return;
+      return undefined;
     }
 
     const roomId =
@@ -3251,7 +4063,6 @@ const VideoCall = () => {
 
               senderName:
                 payload.senderName ||
-                peerProfile?.username ||
                 "Peer",
             },
           ]
@@ -3269,47 +4080,42 @@ const VideoCall = () => {
   }, [
     currentUserId,
     peerUserId,
-    peerProfile,
   ]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Mute synchronization
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     MUTE
+     ========================================================================== */
 
   useEffect(() => {
-    localStreamRef.current
-      ?.getAudioTracks()
-      .forEach((track) => {
-        track.enabled =
-          !isMuted;
-      });
+    const track =
+      microphoneTrackRef.current;
+
+    if (track) {
+      track.enabled =
+        !isMuted;
+    }
   }, [isMuted]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Video synchronization
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     VIDEO
+     ========================================================================== */
 
   useEffect(() => {
-    localStreamRef.current
-      ?.getVideoTracks()
-      .forEach((track) => {
-        track.enabled =
-          !isVideoOff;
-      });
+    const track =
+      cameraTrackRef.current;
+
+    if (track) {
+      track.enabled =
+        !isVideoOff;
+    }
   }, [isVideoOff]);
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Format time
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     FORMAT TIME
+     ========================================================================== */
 
   const formatTime =
     (seconds) => {
@@ -3335,11 +4141,9 @@ const VideoCall = () => {
     };
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Styles
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     STYLES
+     ========================================================================== */
 
   const currentFilterStyle =
     VIDEO_FILTERS.find(
@@ -3362,18 +4166,19 @@ const VideoCall = () => {
     )?.bg || "";
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | Render
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================================
+     RENDER
+     ========================================================================== */
 
   return (
     <div
       className={`fixed inset-0 bg-zinc-950 text-white flex flex-col items-center justify-between p-3 sm:p-5 font-sans select-none overflow-hidden ${currentBackdropClass}`}
     >
 
-      {/* Flash */}
+      {/* =====================================================================
+          FLASH
+          ===================================================================== */}
+
       <AnimatePresence>
         {isFlashActive && (
           <motion.div
@@ -3395,7 +4200,10 @@ const VideoCall = () => {
       </AnimatePresence>
 
 
-      {/* Snapshot toast */}
+      {/* =====================================================================
+          SNAPSHOT TOAST
+          ===================================================================== */}
+
       <AnimatePresence>
         {snapshotToast && (
           <motion.div
@@ -3422,7 +4230,10 @@ const VideoCall = () => {
       </AnimatePresence>
 
 
-      {/* Gift animation */}
+      {/* =====================================================================
+          GIFT ANIMATION
+          ===================================================================== */}
+
       <AnimatePresence>
         {activeGiftAnimation && (
           <motion.div
@@ -3452,7 +4263,9 @@ const VideoCall = () => {
             className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-center"
           >
             <div className="text-7xl sm:text-9xl drop-shadow-[0_0_40px_rgba(236,72,153,0.9)] animate-bounce">
-              {activeGiftAnimation.icon}
+              {
+                activeGiftAnimation.icon
+              }
             </div>
 
             <div className="mt-4 bg-black/80 backdrop-blur-xl border border-pink-500/40 px-6 py-2 rounded-full text-center shadow-2xl">
@@ -3475,7 +4288,10 @@ const VideoCall = () => {
       </AnimatePresence>
 
 
-      {/* Header */}
+      {/* =====================================================================
+          HEADER
+          ===================================================================== */}
+
       <div className="w-full max-w-xl flex justify-between items-center bg-zinc-900/80 px-3.5 py-2.5 rounded-2xl border border-white/10 backdrop-blur-xl z-30 shadow-2xl">
 
         <div className="flex items-center gap-2">
@@ -3496,7 +4312,7 @@ const VideoCall = () => {
             />
 
             <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
-              HD • E2EE
+              HD • SECURE
             </span>
 
             <Activity
@@ -3603,7 +4419,10 @@ const VideoCall = () => {
       </div>
 
 
-      {/* Main stage */}
+      {/* =====================================================================
+          MAIN STAGE
+          ===================================================================== */}
+
       <div className="flex-1 flex flex-col items-center justify-center my-3 relative w-full max-w-xl rounded-3xl overflow-hidden bg-zinc-900 border border-white/10 shadow-2xl">
 
         {layoutMode ===
@@ -3669,7 +4488,6 @@ const VideoCall = () => {
             </div>
           </div>
         ) : (
-
           <div className="w-full h-full relative">
 
             <video
@@ -3740,7 +4558,10 @@ const VideoCall = () => {
         )}
 
 
-        {/* Connecting overlay */}
+        {/* ===================================================================
+            CONNECTING OVERLAY
+            =================================================================== */}
+
         {callStatus !==
           "Connected" && (
           <div className="absolute inset-0 bg-zinc-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-4 z-20">
@@ -3788,7 +4609,10 @@ const VideoCall = () => {
         )}
 
 
-        {/* Quick controls */}
+        {/* ===================================================================
+            QUICK CONTROLS
+            =================================================================== */}
+
         {callStatus ===
           "Connected" && (
           <div className="absolute top-3 right-3 z-30 flex items-center gap-1 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/15">
@@ -3799,6 +4623,7 @@ const VideoCall = () => {
                 handleTakeSnapshot
               }
               className="p-1.5 hover:bg-white/20 rounded-xl text-cyan-300"
+              title="Snapshot"
             >
               <Camera
                 size={15}
@@ -3815,6 +4640,7 @@ const VideoCall = () => {
                 )
               }
               className="p-1.5 hover:bg-white/20 rounded-xl text-pink-300"
+              title="Filters"
             >
               <Wand2
                 size={15}
@@ -3831,6 +4657,7 @@ const VideoCall = () => {
                 )
               }
               className="p-1.5 hover:bg-white/20 rounded-xl text-amber-300"
+              title="Whiteboard"
             >
               <Radio
                 size={15}
@@ -3847,6 +4674,7 @@ const VideoCall = () => {
                 )
               }
               className="p-1.5 hover:bg-white/20 rounded-xl text-rose-300"
+              title="Gifts"
             >
               <Gift
                 size={15}
@@ -3863,8 +4691,23 @@ const VideoCall = () => {
                 )
               }
               className="p-1.5 hover:bg-white/20 rounded-xl text-zinc-300"
+              title="Captions"
             >
               <Subtitles
+                size={15}
+              />
+            </button>
+
+
+            <button
+              type="button"
+              onClick={
+                togglePictureInPicture
+              }
+              className="p-1.5 hover:bg-white/20 rounded-xl text-zinc-300"
+              title="Picture in Picture"
+            >
+              <Activity
                 size={15}
               />
             </button>
@@ -3872,7 +4715,9 @@ const VideoCall = () => {
         )}
 
 
-        {/* Premium components */}
+        {/* ===================================================================
+            PREMIUM COMPONENTS
+            =================================================================== */}
 
         <VideoCallCaptions
           isEnabled={
@@ -4022,7 +4867,10 @@ const VideoCall = () => {
         />
 
 
-        {/* Floating reactions */}
+        {/* ===================================================================
+            REACTIONS
+            =================================================================== */}
+
         {callStatus ===
           "Connected" && (
           <FloatingReactionsOverlay
@@ -4043,7 +4891,10 @@ const VideoCall = () => {
         )}
 
 
-        {/* Chat */}
+        {/* ===================================================================
+            CHAT
+            =================================================================== */}
+
         <AnimatePresence>
           {showChat && (
             <motion.div
@@ -4175,10 +5026,14 @@ const VideoCall = () => {
       </div>
 
 
-      {/* Bottom controls */}
+      {/* =====================================================================
+          BOTTOM CONTROLS
+          ===================================================================== */}
+
       <div className="w-full max-w-xl flex items-center justify-around bg-zinc-900/90 border border-white/10 px-3.5 py-2.5 rounded-3xl backdrop-blur-xl shadow-2xl z-30">
 
         {/* Microphone */}
+
         <button
           type="button"
           onClick={() =>
@@ -4211,6 +5066,7 @@ const VideoCall = () => {
 
 
         {/* Camera */}
+
         <button
           type="button"
           onClick={() =>
@@ -4243,10 +5099,16 @@ const VideoCall = () => {
 
 
         {/* Screen share */}
+
         <button
           type="button"
           onClick={
             toggleScreenShare
+          }
+          title={
+            isScreenSharing
+              ? "Stop Screen Sharing"
+              : "Share Screen"
           }
           className={`p-3 rounded-2xl ${
             isScreenSharing
@@ -4261,10 +5123,16 @@ const VideoCall = () => {
 
 
         {/* Recording */}
+
         <button
           type="button"
           onClick={
             toggleCallRecording
+          }
+          title={
+            isRecording
+              ? "Stop Recording"
+              : "Record Call"
           }
           className={`p-3 rounded-2xl ${
             isRecording
@@ -4279,6 +5147,7 @@ const VideoCall = () => {
 
 
         {/* Chat */}
+
         <button
           type="button"
           onClick={() =>
@@ -4287,6 +5156,7 @@ const VideoCall = () => {
                 !previous
             )
           }
+          title="Chat"
           className={`p-3 rounded-2xl ${
             showChat
               ? "bg-cyan-500 text-black"
@@ -4300,6 +5170,7 @@ const VideoCall = () => {
 
 
         {/* Hangup */}
+
         <button
           type="button"
           onClick={() =>
