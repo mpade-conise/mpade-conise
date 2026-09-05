@@ -1,376 +1,1208 @@
-import React, { useEffect, useRef } from 'react';
-import { ArrowLeft, Radio, Video, Mic, X, Users, UserX } from 'lucide-react';
+// src/components/live/GuestManager.jsx
+
+import React, { useEffect, useState } from 'react';
+import {
+  ArrowLeft,
+  Radio,
+  Video,
+  Mic,
+  X,
+  Users,
+  UserX
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
 
-const GLOBAL_ICE_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.relay.metered.ca:80' },
-    {
-      urls: 'turn:global.relay.metered.ca:80',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn',
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:443',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn',
-    }
-  ],
-  iceCandidatePoolSize: 10,
-};
+const MAX_ACTIVE_GUESTS = 3;
 
-const GuestManager = ({ 
+const GuestManager = ({
   streamId,
-  activeGuests = [], 
-  setActiveGuests, 
-  pendingRequests = [], 
-  setPendingRequests, 
+
+  activeGuests = [],
+  setActiveGuests,
+
+  pendingRequests = [],
+  setPendingRequests,
+
   onBack,
   socket,
-  onGuestStreamReceived // Optional callback to pass stream up to parent UI grid
+
+  /*
+   * Kept for compatibility with existing parent code.
+   *
+   * WebRTC itself is intentionally NOT handled here.
+   * useStreamWebRTC is the single WebRTC owner.
+   */
+  onGuestStreamReceived
 }) => {
+  const [processingRequestIds, setProcessingRequestIds] =
+    useState(() => new Set());
 
-  const peerConnections = useRef({}); // Store active RTCPeerConnections mapped by guestId
+  const [processingGuestIds, setProcessingGuestIds] =
+    useState(() => new Set());
 
-  // 1. WebRTC Signaling Listener for incoming Guest Streams
+  /*
+   * ------------------------------------------------------------
+   * Compatibility note
+   * ------------------------------------------------------------
+   *
+   * This component previously:
+   *
+   * - created RTCPeerConnection objects
+   * - listened for WebRTC offers
+   * - listened for ICE candidates
+   * - answered guest offers
+   *
+   * That duplicated useStreamWebRTC.
+   *
+   * WebRTC ownership now belongs exclusively to:
+   *
+   *     useStreamWebRTC
+   *
+   * GuestManager only handles:
+   *
+   *     pending requests
+   *     approving guests
+   *     rejecting guests
+   *     removing guests
+   *     database state
+   *     guest-management socket events
+   */
+
+  /*
+   * ------------------------------------------------------------
+   * Helper: safely update processing request state
+   * ------------------------------------------------------------
+   */
+  const setRequestProcessing = (
+    requestId,
+    processing
+  ) => {
+    if (!requestId) {
+      return;
+    }
+
+    setProcessingRequestIds(previous => {
+      const next = new Set(previous);
+
+      if (processing) {
+        next.add(requestId);
+      } else {
+        next.delete(requestId);
+      }
+
+      return next;
+    });
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * Helper: safely update processing guest state
+   * ------------------------------------------------------------
+   */
+  const setGuestProcessing = (
+    guestId,
+    processing
+  ) => {
+    if (!guestId) {
+      return;
+    }
+
+    setProcessingGuestIds(previous => {
+      const next = new Set(previous);
+
+      if (processing) {
+        next.add(guestId);
+      } else {
+        next.delete(guestId);
+      }
+
+      return next;
+    });
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * Pending-request synchronization
+   *
+   * Parent remains the source of truth.
+   *
+   * StreamDashboard already manages the guest-request
+   * realtime subscription, so we do not create another
+   * subscription here.
+   *
+   * This prevents duplicate Supabase listeners.
+   * ------------------------------------------------------------
+   */
   useEffect(() => {
-    if (!socket || !streamId) return;
+    if (!streamId) {
+      return;
+    }
 
-    console.log("⚡ [GuestManager] Initializing WebRTC Host Listeners...");
+    /*
+     * Nothing else is required here.
+     *
+     * Keeping the effect makes streamId a deliberate dependency
+     * and makes the ownership clear.
+     */
+  }, [streamId]);
 
-    // Listener when Guest sends SDP Offer
-    const handleReceiveOffer = async (payload) => {
-      const { guestId, offer, mode } = payload;
-      console.log(`📥 [HOST WebRTC] Offer received from Guest ID: ${guestId}`, payload);
+  /*
+   * ------------------------------------------------------------
+   * Accept guest request
+   * ------------------------------------------------------------
+   */
+  const handleAcceptRequest = async (
+    request,
+    assignedMode
+  ) => {
+    if (!request?.id) {
+      console.error(
+        '❌ [GuestManager] Missing request ID:',
+        request
+      );
+
+      return;
+    }
+
+    if (!assignedMode) {
+      console.error(
+        '❌ [GuestManager] Missing guest mode.'
+      );
+
+      return;
+    }
+
+    const currentGuests =
+      Array.isArray(activeGuests)
+        ? activeGuests
+        : [];
+
+    /*
+     * Prevent duplicate processing.
+     */
+    if (
+      processingRequestIds.has(
+        request.id
+      )
+    ) {
+      return;
+    }
+
+    /*
+     * Check whether this user is already active.
+     */
+    const alreadyActive =
+      currentGuests.some(
+        guest =>
+          guest?.user_id ===
+          request.user_id
+      );
+
+    if (alreadyActive) {
+      console.warn(
+        `⚠️ [GuestManager] Guest ${request.user_id} is already active.`
+      );
+
+      return;
+    }
+
+    /*
+     * Maximum 3 guest seats.
+     */
+    if (
+      currentGuests.length >=
+      MAX_ACTIVE_GUESTS
+    ) {
+      alert(
+        'Maximum capacity of 3 guest seats reached!'
+      );
+
+      return;
+    }
+
+    setRequestProcessing(
+      request.id,
+      true
+    );
+
+    try {
+      console.log(
+        `🎙️ [GuestManager] Approving guest ${request.user_id} as ${assignedMode}.`
+      );
+
+      /*
+       * Database is updated FIRST.
+       *
+       * This prevents the UI from showing a guest as active
+       * when Supabase rejected the operation.
+       */
+      const {
+        data,
+        error
+      } = await supabase
+        .from('live_guest_requests')
+        .update({
+          status: 'approved',
+          mode: assignedMode
+        })
+        .eq('id', request.id)
+        .select();
+
+      if (
+        error ||
+        !data ||
+        data.length === 0
+      ) {
+        console.error(
+          '❌ [GuestManager] Failed to approve guest:',
+          error?.message ||
+            'No row was updated.'
+        );
+
+        alert(
+          'Failed to approve guest. Please try again.'
+        );
+
+        return;
+      }
+
+      const approvedRequest =
+        data[0];
+
+      /*
+       * Update local active guest list only after
+       * successful database confirmation.
+       */
+      if (setActiveGuests) {
+        setActiveGuests(
+          previous => {
+            const guests =
+              Array.isArray(previous)
+                ? previous
+                : [];
+
+            /*
+             * Avoid duplicates if realtime has already
+             * updated the parent.
+             */
+            const exists =
+              guests.some(
+                guest =>
+                  guest?.user_id ===
+                    request.user_id ||
+                  guest?.id ===
+                    request.id
+              );
+
+            if (exists) {
+              return guests;
+            }
+
+            return [
+              ...guests,
+              {
+                ...request,
+                ...approvedRequest,
+
+                id:
+                  approvedRequest.id ||
+                  request.id,
+
+                user_id:
+                  approvedRequest.user_id ||
+                  request.user_id,
+
+                username:
+                  approvedRequest.username ||
+                  request.username,
+
+                avatar_url:
+                  approvedRequest.avatar_url ||
+                  request.avatar_url,
+
+                mode: assignedMode,
+
+                isMuted: false,
+
+                /*
+                 * WebRTC stream is intentionally not
+                 * created here.
+                 *
+                 * useStreamWebRTC will own the media
+                 * connection.
+                 */
+              }
+            ].slice(
+              0,
+              MAX_ACTIVE_GUESTS
+            );
+          }
+        );
+      }
+
+      /*
+       * Remove from local pending queue.
+       *
+       * The Supabase realtime listener may also do this,
+       * so filtering is intentionally idempotent.
+       */
+      if (setPendingRequests) {
+        setPendingRequests(
+          previous =>
+            (
+              Array.isArray(previous)
+                ? previous
+                : []
+            ).filter(
+              item =>
+                item?.id !==
+                request.id
+            )
+        );
+      }
+
+      /*
+       * Notify backend that the guest has been approved.
+       *
+       * This is a guest-management event, not a WebRTC
+       * signaling event.
+       */
+      if (
+        socket &&
+        socket.connected
+      ) {
+        socket.emit(
+          'approve_cohost',
+          {
+            streamId,
+            guestId:
+              request.user_id,
+            mode: assignedMode
+          }
+        );
+
+        console.log(
+          `📡 [GuestManager] approve_cohost sent for ${request.user_id}.`
+        );
+      } else {
+        console.warn(
+          '⚠️ [GuestManager] Socket unavailable while approving guest.'
+        );
+      }
+
+      console.log(
+        '✅ [GuestManager] Guest approved successfully:',
+        approvedRequest
+      );
+    } catch (error) {
+      console.error(
+        '❌ [GuestManager] Unexpected approval error:',
+        error
+      );
+
+      alert(
+        'Something went wrong while approving the guest.'
+      );
+    } finally {
+      setRequestProcessing(
+        request.id,
+        false
+      );
+    }
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * Reject pending request
+   * ------------------------------------------------------------
+   */
+  const handleRejectRequest =
+    async request => {
+      if (!request?.id) {
+        return;
+      }
+
+      if (
+        processingRequestIds.has(
+          request.id
+        )
+      ) {
+        return;
+      }
+
+      setRequestProcessing(
+        request.id,
+        true
+      );
 
       try {
-        // Create PeerConnection for this specific guest
-        const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
-        peerConnections.current[guestId] = pc;
+        console.log(
+          `🚫 [GuestManager] Rejecting guest request ${request.id}.`
+        );
 
-        // Handle incoming remote media tracks from the guest
-        pc.ontrack = (event) => {
-          console.log(`🎉 [HOST WebRTC] Received guest stream track! Kind: ${event.track.kind}`);
-          if (event.streams && event.streams[0]) {
-            const guestStream = event.streams[0];
-            
-            // Attach stream object to active guest state
-            setActiveGuests(prev => 
-              (prev || []).map(g => g.user_id === guestId ? { ...g, stream: guestStream } : g)
-            );
+        const {
+          error
+        } = await supabase
+          .from('live_guest_requests')
+          .update({
+            status: 'rejected'
+          })
+          .eq(
+            'id',
+            request.id
+          );
 
-            if (onGuestStreamReceived) {
-              onGuestStreamReceived(guestId, guestStream);
-            }
-          }
-        };
+        if (error) {
+          console.error(
+            '❌ [GuestManager] Failed to reject request:',
+            error
+          );
 
-        // Emit Host ICE Candidates back to Guest
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            console.log(`📡 [HOST WebRTC] Sending ICE Candidate to Guest ${guestId}`);
-            socket.emit('webrtc_ice_candidate', {
+          alert(
+            'Failed to reject the guest request.'
+          );
+
+          return;
+        }
+
+        if (setPendingRequests) {
+          setPendingRequests(
+            previous =>
+              (
+                Array.isArray(
+                  previous
+                )
+                  ? previous
+                  : []
+              ).filter(
+                item =>
+                  item?.id !==
+                  request.id
+              )
+          );
+        }
+
+        console.log(
+          `✅ [GuestManager] Request ${request.id} rejected.`
+        );
+      } catch (error) {
+        console.error(
+          '❌ [GuestManager] Unexpected rejection error:',
+          error
+        );
+      } finally {
+        setRequestProcessing(
+          request.id,
+          false
+        );
+      }
+    };
+
+  /*
+   * ------------------------------------------------------------
+   * Remove active guest
+   * ------------------------------------------------------------
+   */
+  const handleRemoveGuest =
+    async guest => {
+      if (!guest) {
+        return;
+      }
+
+      const requestId =
+        guest.id;
+
+      const guestUserId =
+        guest.user_id ||
+        guest.guest_id;
+
+      if (!requestId) {
+        console.error(
+          '❌ [GuestManager] Active guest has no request ID:',
+          guest
+        );
+
+        return;
+      }
+
+      if (
+        processingGuestIds.has(
+          guestUserId ||
+            requestId
+        )
+      ) {
+        return;
+      }
+
+      setGuestProcessing(
+        guestUserId ||
+          requestId,
+        true
+      );
+
+      try {
+        console.log(
+          `🚫 [GuestManager] Removing active guest ${guestUserId || requestId}.`
+        );
+
+        /*
+         * Update database first.
+         */
+        const {
+          error
+        } = await supabase
+          .from('live_guest_requests')
+          .update({
+            status: 'disconnected'
+          })
+          .eq(
+            'id',
+            requestId
+          );
+
+        if (error) {
+          console.error(
+            '❌ [GuestManager] Failed to disconnect guest:',
+            error
+          );
+
+          alert(
+            'Failed to remove guest. Please try again.'
+          );
+
+          return;
+        }
+
+        /*
+         * Update parent state.
+         *
+         * We do NOT close a WebRTC PeerConnection here.
+         *
+         * useStreamWebRTC is the owner of WebRTC connections.
+         */
+        if (setActiveGuests) {
+          setActiveGuests(
+            previous =>
+              (
+                Array.isArray(
+                  previous
+                )
+                  ? previous
+                  : []
+              ).filter(
+                item => {
+                  if (
+                    requestId &&
+                    item?.id ===
+                      requestId
+                  ) {
+                    return false;
+                  }
+
+                  if (
+                    guestUserId &&
+                    item?.user_id ===
+                      guestUserId
+                  ) {
+                    return false;
+                  }
+
+                  return true;
+                }
+              )
+          );
+        }
+
+        /*
+         * Tell backend to remove the co-host.
+         */
+        if (
+          socket &&
+          socket.connected &&
+          guestUserId
+        ) {
+          socket.emit(
+            'kick_cohost',
+            {
               streamId,
-              candidate: event.candidate,
-              to: guestId,
-              senderType: 'host'
-            });
-          }
-        };
-
-        // Set Remote SDP Offer and create SDP Answer
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log(`✅ [HOST WebRTC] Remote description set for guest ${guestId}`);
-
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        console.log(`📤 [HOST WebRTC] Answer created and local description set for guest ${guestId}`);
-
-        // Emit Answer back to Guest
-        socket.emit('send_webrtc_answer', {
-          streamId,
-          guestId,
-          answer: answer
-        });
-
-      } catch (err) {
-        console.error(`❌ [HOST WebRTC] Error processing offer from guest ${guestId}:`, err);
-      }
-    };
-
-    // Listener for incoming Guest ICE Candidates
-    const handleIncomingIce = async (payload) => {
-      const { candidate, senderId, guestId } = payload;
-      const targetGuestId = guestId || senderId;
-      const pc = peerConnections.current[targetGuestId];
-
-      if (pc && candidate) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          console.log(`✅ [HOST WebRTC] ICE candidate added for guest ${targetGuestId}`);
-        } catch (err) {
-          console.warn(`⚠️ [HOST WebRTC] Failed to add ICE candidate:`, err);
-        }
-      }
-    };
-
-    socket.on('send_webrtc_offer', handleReceiveOffer);
-    socket.on('receive_webrtc_offer', handleReceiveOffer);
-    socket.on('incoming_ice_candidate', handleIncomingIce);
-    socket.on('webrtc_ice_candidate', handleIncomingIce);
-
-    return () => {
-      socket.off('send_webrtc_offer', handleReceiveOffer);
-      socket.off('receive_webrtc_offer', handleReceiveOffer);
-      socket.off('incoming_ice_candidate', handleIncomingIce);
-      socket.off('webrtc_ice_candidate', handleIncomingIce);
-
-      // Clean up PeerConnections on unmount
-      Object.values(peerConnections.current).forEach(pc => pc.close());
-      peerConnections.current = {};
-    };
-  }, [socket, streamId, setActiveGuests, onGuestStreamReceived]);
-
-  // Fetch initial requests & establish real-time database listener
-  useEffect(() => {
-    if (!streamId) return;
-
-    const fetchRequests = async () => {
-      const { data, error } = await supabase
-        .from('live_guest_requests')
-        .select('*')
-        .eq('stream_id', streamId)
-        .eq('status', 'pending');
-
-      if (!error && data) {
-        setPendingRequests(data);
-      }
-    };
-
-    fetchRequests();
-
-    const channel = supabase
-      .channel(`guest_manager_requests_${streamId}`)
-      .on(
-        'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'live_guest_requests', 
-          filter: `stream_id=eq.${streamId}` 
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            if (payload.new.status === 'pending') {
-              setPendingRequests(prev => {
-                const exists = (prev || []).some(r => r.id === payload.new.id);
-                return exists ? prev : [...(prev || []), payload.new];
-              });
+              guestId:
+                guestUserId
             }
-          } else if (payload.eventType === 'UPDATE') {
-            if (payload.new.status !== 'pending') {
-              setPendingRequests(prev => (prev || []).filter(r => r.id !== payload.new.id));
-            }
-          }
+          );
+
+          console.log(
+            `📡 [GuestManager] kick_cohost sent for ${guestUserId}.`
+          );
         }
-      )
-      .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
+        console.log(
+          `✅ [GuestManager] Guest ${guestUserId || requestId} removed.`
+        );
+      } catch (error) {
+        console.error(
+          '❌ [GuestManager] Unexpected guest removal error:',
+          error
+        );
+      } finally {
+        setGuestProcessing(
+          guestUserId ||
+            requestId,
+          false
+        );
+      }
     };
-  }, [streamId, setPendingRequests]);
 
-  // Handle Accept Request (Updates Supabase, updates local state, & triggers Socket event)
-  const handleAcceptRequest = async (request, assignedMode) => {
-    if (!request?.id) {
-      console.error("❌ Missing request ID:", request);
-      return;
-    }
-
-    if (activeGuests.length >= 3) {
-      alert("Maximum capacity of 3 guest seats reached!");
-      return;
-    }
-
-    if (setPendingRequests) {
-      setPendingRequests(prev => (prev || []).filter(item => item.id !== request.id));
-    }
-
-    if (setActiveGuests) {
-      setActiveGuests(prev => {
-        const exists = (prev || []).some(g => g.user_id === request.user_id);
-        if (exists) return prev;
-        return [
-          ...prev,
-          { 
-            id: request.id, 
-            user_id: request.user_id, 
-            username: request.username, 
-            avatar_url: request.avatar_url,
-            mode: assignedMode, 
-            isMuted: false 
-          }
-        ];
-      });
-    }
-
-    const { data, error } = await supabase
-      .from('live_guest_requests')
-      .update({ status: 'approved', mode: assignedMode })
-      .eq('id', request.id)
-      .select();
-
-    if (error || !data || data.length === 0) {
-      console.error("❌ DB Update failed:", error?.message || "Check Supabase RLS policies");
-      alert("Failed to update guest status in database.");
-      return;
-    }
-
-    console.log("✅ Guest status updated to approved in DB:", data[0]);
-
-    if (socket) {
-      socket.emit('approve_cohost', { 
-        streamId, 
-        guestId: request.user_id, 
-        mode: assignedMode 
-      });
-    }
-  };
-
-  // Handle Rejecting or Removing a Guest
-  const handleRejectRemove = async (target, isRequestQueue = true) => {
-    const targetId = typeof target === 'object' ? target.id : target;
-    const guestUserId = typeof target === 'object' ? target.user_id : null;
-
-    if (isRequestQueue) {
-      if (setPendingRequests) {
-        setPendingRequests(prev => (prev || []).filter(item => item.id !== targetId));
-      }
-
-      await supabase
-        .from('live_guest_requests')
-        .update({ status: 'rejected' })
-        .eq('id', targetId);
-    } else {
-      // Close WebRTC connection for this guest
-      if (guestUserId && peerConnections.current[guestUserId]) {
-        peerConnections.current[guestUserId].close();
-        delete peerConnections.current[guestUserId];
-      }
-
-      if (setActiveGuests) {
-        setActiveGuests(prev => (prev || []).filter(item => item.id !== targetId));
-      }
-
-      await supabase
-        .from('live_guest_requests')
-        .update({ status: 'disconnected' })
-        .eq('id', targetId);
-
-      if (socket && guestUserId) {
-        socket.emit('kick_cohost', { streamId, guestId: guestUserId });
-      }
-    }
-  };
-
+  /*
+   * ------------------------------------------------------------
+   * Render
+   * ------------------------------------------------------------
+   */
   return (
-    <div className="space-y-4 font-sans text-left p-1">
-      <button 
-        onClick={onBack} 
-        className="text-[10px] text-zinc-400 hover:text-white flex items-center gap-1 transition-colors uppercase font-bold tracking-wider"
+    <div
+      className="
+        space-y-4
+        font-sans
+        text-left
+        p-1
+      "
+    >
+      {/* Back */}
+      <button
+        onClick={onBack}
+        className="
+          text-[10px]
+          text-zinc-400
+          hover:text-white
+          flex
+          items-center
+          gap-1
+          transition-colors
+          uppercase
+          font-bold
+          tracking-wider
+        "
       >
-        <ArrowLeft size={12} /> Exit Guest Configuration
+        <ArrowLeft size={12} />
+
+        Exit Guest Configuration
       </button>
 
-      {/* ACTIVE MANAGER CONTROL LIST */}
+      {/* ======================================================
+          ACTIVE GUESTS
+          ====================================================== */}
       <div className="space-y-2">
-        <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-[2px] px-1 flex items-center justify-between">
-          <span className="flex items-center gap-1">
-            <Users size={10} className="text-cyan-400" /> Allocated Room Seats
+        <h3
+          className="
+            text-[9px]
+            font-black
+            text-zinc-500
+            uppercase
+            tracking-[2px]
+            px-1
+            flex
+            items-center
+            justify-between
+          "
+        >
+          <span
+            className="
+              flex
+              items-center
+              gap-1
+            "
+          >
+            <Users
+              size={10}
+              className="text-cyan-400"
+            />
+
+            Allocated Room Seats
           </span>
-          <span className="text-cyan-400 font-mono">({activeGuests?.length || 0}/3)</span>
+
+          <span
+            className="
+              text-cyan-400
+              font-mono
+            "
+          >
+            ({activeGuests?.length || 0}/
+            {MAX_ACTIVE_GUESTS})
+          </span>
         </h3>
-        
-        <div className="grid grid-cols-1 gap-1.5">
+
+        <div
+          className="
+            grid
+            grid-cols-1
+            gap-1.5
+          "
+        >
           {activeGuests?.length === 0 ? (
-            <p className="text-[10px] text-zinc-600 px-1 italic">No active guests connected.</p>
+            <p
+              className="
+                text-[10px]
+                text-zinc-600
+                px-1
+                italic
+              "
+            >
+              No active guests connected.
+            </p>
           ) : (
-            activeGuests?.map(guest => (
-              <div key={guest.id} className="bg-zinc-900 p-2 rounded-xl border border-white/5 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  {guest.avatar_url && (
-                    <img src={guest.avatar_url} alt="" className="w-6 h-6 rounded-full border border-cyan-500/30" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-zinc-200 truncate">{guest.username}</p>
-                    <p className="text-[8px] text-cyan-400 font-mono uppercase mt-0.5">{guest.mode} Active Link</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => handleRejectRemove(guest, false)} 
-                  className="p-1.5 bg-zinc-800 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 rounded-lg transition-all"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            ))
+            <AnimatePresence mode="popLayout">
+              {activeGuests.map(
+                guest => {
+                  const guestProcessingKey =
+                    guest?.user_id ||
+                    guest?.id;
+
+                  const isProcessing =
+                    processingGuestIds.has(
+                      guestProcessingKey
+                    );
+
+                  return (
+                    <motion.div
+                      key={
+                        guest.id ||
+                        guest.user_id
+                      }
+                      initial={{
+                        opacity: 0,
+                        y: 5
+                      }}
+                      animate={{
+                        opacity: 1,
+                        y: 0
+                      }}
+                      exit={{
+                        opacity: 0,
+                        x: -10
+                      }}
+                      className="
+                        bg-zinc-900
+                        p-2
+                        rounded-xl
+                        border
+                        border-white/5
+                        flex
+                        items-center
+                        justify-between
+                        gap-3
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-2
+                          min-w-0
+                        "
+                      >
+                        {guest.avatar_url ? (
+                          <img
+                            src={
+                              guest.avatar_url
+                            }
+                            alt=""
+                            className="
+                              w-6
+                              h-6
+                              rounded-full
+                              border
+                              border-cyan-500/30
+                              object-cover
+                            "
+                          />
+                        ) : (
+                          <div
+                            className="
+                              w-6
+                              h-6
+                              rounded-full
+                              bg-cyan-500/10
+                              border
+                              border-cyan-500/20
+                              flex
+                              items-center
+                              justify-center
+                            "
+                          >
+                            <Users
+                              size={11}
+                              className="
+                                text-cyan-400
+                              "
+                            />
+                          </div>
+                        )}
+
+                        <div
+                          className="
+                            min-w-0
+                          "
+                        >
+                          <p
+                            className="
+                              text-xs
+                              font-bold
+                              text-zinc-200
+                              truncate
+                            "
+                          >
+                            {guest.username ||
+                              'Guest'}
+                          </p>
+
+                          <p
+                            className="
+                              text-[8px]
+                              text-cyan-400
+                              font-mono
+                              uppercase
+                              mt-0.5
+                            "
+                          >
+                            {guest.mode ||
+                              'video'}{' '}
+                            Active Link
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() =>
+                          handleRemoveGuest(
+                            guest
+                          )
+                        }
+                        disabled={
+                          isProcessing
+                        }
+                        className="
+                          p-1.5
+                          bg-zinc-800
+                          hover:bg-rose-950/40
+                          text-zinc-400
+                          hover:text-rose-400
+                          rounded-lg
+                          transition-all
+                          disabled:opacity-40
+                          disabled:cursor-not-allowed
+                        "
+                        title="Remove guest"
+                      >
+                        {isProcessing ? (
+                          <span
+                            className="
+                              block
+                              w-[11px]
+                              h-[11px]
+                              border-2
+                              border-zinc-500
+                              border-t-transparent
+                              rounded-full
+                              animate-spin
+                            "
+                          />
+                        ) : (
+                          <X size={11} />
+                        )}
+                      </button>
+                    </motion.div>
+                  );
+                }
+              )}
+            </AnimatePresence>
           )}
         </div>
       </div>
 
-      {/* REQUEST QUEUE INTAKE CARD */}
+      {/* ======================================================
+          PENDING REQUESTS
+          ====================================================== */}
       <div className="space-y-2">
-        <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-[2px] px-1 flex items-center justify-between">
-          <span className="flex items-center gap-1">
-            <Radio size={10} className="text-purple-400 animate-pulse" /> Pending Requests
+        <h3
+          className="
+            text-[9px]
+            font-black
+            text-zinc-500
+            uppercase
+            tracking-[2px]
+            px-1
+            flex
+            items-center
+            justify-between
+          "
+        >
+          <span
+            className="
+              flex
+              items-center
+              gap-1
+            "
+          >
+            <Radio
+              size={10}
+              className="
+                text-purple-400
+                animate-pulse
+              "
+            />
+
+            Pending Requests
           </span>
-          <span className="text-purple-400 font-mono">({pendingRequests?.length || 0})</span>
+
+          <span
+            className="
+              text-purple-400
+              font-mono
+            "
+          >
+            ({pendingRequests?.length || 0})
+          </span>
         </h3>
 
         <div className="space-y-1.5">
           {pendingRequests?.length === 0 ? (
-            <p className="text-[10px] text-zinc-600 px-1 italic">No pending requests right now.</p>
+            <p
+              className="
+                text-[10px]
+                text-zinc-600
+                px-1
+                italic
+              "
+            >
+              No pending requests right now.
+            </p>
           ) : (
             <AnimatePresence mode="popLayout">
-              {pendingRequests?.map(req => (
-                <motion.div 
-                  key={req.id} 
-                  initial={{ opacity: 0, y: 5 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  exit={{ opacity: 0, x: -10 }} 
-                  className="bg-zinc-900 p-2.5 rounded-xl border border-white/5 flex items-center justify-between gap-2"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    {req.avatar_url && (
-                      <img src={req.avatar_url} alt="" className="w-6 h-6 rounded-full border border-purple-500/30" />
-                    )}
-                    <span className="text-xs font-bold text-zinc-200 truncate">{req.username}</span>
-                  </div>
+              {pendingRequests.map(
+                request => {
+                  const isProcessing =
+                    processingRequestIds.has(
+                      request.id
+                    );
 
-                  <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-lg border border-white/5">
-                    <button 
-                      onClick={() => handleAcceptRequest(req, 'audio')} 
-                      className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 text-[8px] font-black uppercase tracking-wider rounded-md transition-all flex items-center gap-0.5"
+                  return (
+                    <motion.div
+                      key={request.id}
+                      initial={{
+                        opacity: 0,
+                        y: 5
+                      }}
+                      animate={{
+                        opacity: 1,
+                        y: 0
+                      }}
+                      exit={{
+                        opacity: 0,
+                        x: -10
+                      }}
+                      className="
+                        bg-zinc-900
+                        p-2.5
+                        rounded-xl
+                        border
+                        border-white/5
+                        flex
+                        items-center
+                        justify-between
+                        gap-2
+                      "
                     >
-                      <Mic size={8} /> Audio
-                    </button>
-                    <button 
-                      onClick={() => handleAcceptRequest(req, 'video')} 
-                      className="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white text-[8px] font-black uppercase tracking-wider rounded-md transition-all flex items-center gap-0.5"
-                    >
-                      <Video size={8} /> +Video
-                    </button>
-                    <button 
-                      onClick={() => handleRejectRemove(req, true)} 
-                      className="p-1 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 rounded-md transition-colors"
-                    >
-                      <UserX size={10} />
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-2
+                          min-w-0
+                        "
+                      >
+                        {request.avatar_url ? (
+                          <img
+                            src={
+                              request.avatar_url
+                            }
+                            alt=""
+                            className="
+                              w-6
+                              h-6
+                              rounded-full
+                              border
+                              border-purple-500/30
+                              object-cover
+                            "
+                          />
+                        ) : (
+                          <div
+                            className="
+                              w-6
+                              h-6
+                              rounded-full
+                              bg-purple-500/10
+                              border
+                              border-purple-500/20
+                              flex
+                              items-center
+                              justify-center
+                            "
+                          >
+                            <Users
+                              size={11}
+                              className="
+                                text-purple-400
+                              "
+                            />
+                          </div>
+                        )}
+
+                        <span
+                          className="
+                            text-xs
+                            font-bold
+                            text-zinc-200
+                            truncate
+                          "
+                        >
+                          {request.username ||
+                            'Guest'}
+                        </span>
+                      </div>
+
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-1
+                          bg-zinc-950
+                          p-0.5
+                          rounded-lg
+                          border
+                          border-white/5
+                        "
+                      >
+                        {/* AUDIO */}
+                        <button
+                          onClick={() =>
+                            handleAcceptRequest(
+                              request,
+                              'audio'
+                            )
+                          }
+                          disabled={
+                            isProcessing ||
+                            activeGuests.length >=
+                              MAX_ACTIVE_GUESTS
+                          }
+                          className="
+                            px-2
+                            py-1
+                            bg-zinc-900
+                            hover:bg-zinc-800
+                            text-emerald-400
+                            text-[8px]
+                            font-black
+                            uppercase
+                            tracking-wider
+                            rounded-md
+                            transition-all
+                            flex
+                            items-center
+                            gap-0.5
+                            disabled:opacity-40
+                            disabled:cursor-not-allowed
+                          "
+                        >
+                          <Mic size={8} />
+
+                          Audio
+                        </button>
+
+                        {/* VIDEO */}
+                        <button
+                          onClick={() =>
+                            handleAcceptRequest(
+                              request,
+                              'video'
+                            )
+                          }
+                          disabled={
+                            isProcessing ||
+                            activeGuests.length >=
+                              MAX_ACTIVE_GUESTS
+                          }
+                          className="
+                            px-2
+                            py-1
+                            bg-purple-600
+                            hover:bg-purple-500
+                            text-white
+                            text-[8px]
+                            font-black
+                            uppercase
+                            tracking-wider
+                            rounded-md
+                            transition-all
+                            flex
+                            items-center
+                            gap-0.5
+                            disabled:opacity-40
+                            disabled:cursor-not-allowed
+                          "
+                        >
+                          <Video size={8} />
+
+                          +Video
+                        </button>
+
+                        {/* REJECT */}
+                        <button
+                          onClick={() =>
+                            handleRejectRequest(
+                              request
+                            )
+                          }
+                          disabled={
+                            isProcessing
+                          }
+                          className="
+                            p-1
+                            hover:bg-red-500/20
+                            text-zinc-500
+                            hover:text-red-400
+                            rounded-md
+                            transition-colors
+                            disabled:opacity-40
+                            disabled:cursor-not-allowed
+                          "
+                          title="Reject request"
+                        >
+                          {isProcessing ? (
+                            <span
+                              className="
+                                block
+                                w-[10px]
+                                h-[10px]
+                                border-2
+                                border-zinc-500
+                                border-t-transparent
+                                rounded-full
+                                animate-spin
+                              "
+                            />
+                          ) : (
+                            <UserX
+                              size={10}
+                            />
+                          )}
+                        </button>
+                      </div>
+                    </motion.div>
+                  );
+                }
+              )}
             </AnimatePresence>
           )}
         </div>
