@@ -1,4 +1,3 @@
-```jsx
 // src/pages/Live/Shared/ChatBox.jsx
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -9,14 +8,7 @@ const MAX_ITEMS = 50;
 
 const getAvatar = (userId, fallbackSeed = 'user') => {
   const seed = encodeURIComponent(userId || fallbackSeed);
-
   return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
-};
-  }
-
-  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-    fallbackSeed
-  )}`;
 };
 
 const safeNumber = value => {
@@ -121,6 +113,7 @@ const ChatBox = ({ streamId }) => {
    * LOAD INITIAL CHAT + REALTIME CHAT/GIFTS
    * -------------------------------------------------------------
    */
+
   useEffect(() => {
     if (!streamId) {
       setItems([]);
@@ -131,25 +124,20 @@ const ChatBox = ({ streamId }) => {
 
     const loadInitialActivity = async () => {
       try {
-        /*
-         * Fetch comments and gifts in parallel.
-         */
         const [commentsResult, giftsResult] =
           await Promise.all([
             supabase
               .from('live_comments')
-              .select(
-                `
-                  id,
-                  text,
-                  message,
-                  content,
-                  user_id,
-                  user_name,
-                  created_at,
-                  profiles(username, avatar_url)
-                `
-              )
+              .select(`
+                id,
+                text,
+                message,
+                content,
+                user_id,
+                user_name,
+                created_at,
+                profiles(username, avatar_url)
+              `)
               .eq('stream_id', streamId)
               .order('created_at', {
                 ascending: true
@@ -158,17 +146,15 @@ const ChatBox = ({ streamId }) => {
 
             supabase
               .from('live_gifts')
-              .select(
-                `
-                  id,
-                  sender_id,
-                  gift_name,
-                  price_total,
-                  icon,
-                  created_at,
-                  profiles:sender_id(username, avatar_url)
-                `
-              )
+              .select(`
+                id,
+                sender_id,
+                gift_name,
+                price_total,
+                icon,
+                created_at,
+                profiles:sender_id(username, avatar_url)
+              `)
               .eq('stream_id', streamId)
               .order('created_at', {
                 ascending: true
@@ -230,6 +216,7 @@ const ChatBox = ({ streamId }) => {
      * SUPABASE REALTIME CHANNEL
      * -------------------------------------------------------------
      */
+
     const chatChannel = supabase
       .channel(`live-chat-${streamId}`)
 
@@ -364,12 +351,8 @@ const ChatBox = ({ streamId }) => {
      * -------------------------------------------------------------
      * LEGACY / CLIENT-SIDE GIFT EVENT
      * -------------------------------------------------------------
-     *
-     * Kept for compatibility with the existing gift system.
-     *
-     * If the gift already has a database ID, use it so that
-     * the Supabase realtime event can be deduplicated.
      */
+
     const handleCustomGift = event => {
       if (
         cancelled ||
@@ -390,6 +373,7 @@ const ChatBox = ({ streamId }) => {
 
       const newGift = {
         type: 'gift',
+
         id: String(customId).startsWith('gift-')
           ? String(customId)
           : `custom-gift-${customId}`,
@@ -448,6 +432,7 @@ const ChatBox = ({ streamId }) => {
     /*
      * Cleanup
      */
+
     return () => {
       cancelled = true;
 
@@ -465,15 +450,12 @@ const ChatBox = ({ streamId }) => {
    * AUTO-SCROLL
    * -------------------------------------------------------------
    */
+
   useEffect(() => {
     const container = scrollRef.current;
 
     if (!container) return;
 
-    /*
-     * Use requestAnimationFrame so the browser has time
-     * to render the new message before scrolling.
-     */
     const frame = requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
     });
@@ -488,10 +470,12 @@ const ChatBox = ({ streamId }) => {
    * UI
    * -------------------------------------------------------------
    */
+
   return (
     <div className="h-full w-full bg-transparent flex flex-col overflow-hidden relative border-none shadow-none">
 
       {/* Stream Messages Container */}
+
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto space-y-2.5 p-3 hide-scrollbar"
@@ -506,6 +490,7 @@ const ChatBox = ({ streamId }) => {
              * GIFT MESSAGE
              * ---------------------------------------------------
              */
+
             if (item.type === 'gift') {
               return (
                 <motion.div
@@ -580,6 +565,7 @@ const ChatBox = ({ streamId }) => {
              * NORMAL COMMENT
              * ---------------------------------------------------
              */
+
             return (
               <motion.div
                 key={item.id}
@@ -638,4 +624,3 @@ const ChatBox = ({ streamId }) => {
 };
 
 export default ChatBox;
-```
