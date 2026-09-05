@@ -146,7 +146,7 @@ const UniverseTools = () => {
       const [profileResult, videosResult] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, coins, followers_count')
+          .select('id, coins, follower_count')
           .eq('id', user.id)
           .maybeSingle(),
 
@@ -203,7 +203,7 @@ const UniverseTools = () => {
       );
 
       const rawCoins = toSafeNumber(profile?.coins);
-      const followers = toSafeNumber(profile?.followers_count);
+      const followers = toSafeNumber(profile?.follower_count);
 
       /*
        * Existing application conversion:
