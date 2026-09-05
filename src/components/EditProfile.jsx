@@ -23,11 +23,9 @@ import {
   Shield,
   Smartphone,
   Sparkles,
-  UploadCloud,
   Loader2,
   Image as ImageIcon,
   Save,
-  Link as LinkIcon,
   LayoutGrid,
   Settings2,
   Map,
@@ -62,6 +60,7 @@ const EditProfile = () => {
 
   const avatarInputRef = useRef(null);
   const coverInputRef = useRef(null);
+  const statusTimerRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,7 +68,6 @@ const EditProfile = () => {
   const [uploadingCover, setUploadingCover] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -100,84 +98,103 @@ const EditProfile = () => {
   const [whatsapp, setWhatsapp] = useState('');
   const [instagram, setInstagram] = useState('');
 
-  useEffect(() => {
-    getProfile();
-  }, []);
-
   /* =========================================================
      PROFILE FETCH
   ========================================================= */
 
-  const getProfile = async () => {
-    setLoading(true);
-    setErrorMessage('');
+  useEffect(() => {
+    let mounted = true;
 
-    try {
-      const {
-        data: { user },
-        error: userError
-      } = await supabase.auth.getUser();
+    const loadProfile = async () => {
+      setLoading(true);
+      setErrorMessage('');
 
-      if (userError) throw userError;
+      try {
+        const {
+          data: { user },
+          error: userError
+        } = await supabase.auth.getUser();
 
-      if (!user) {
-        navigate('/login');
-        return;
+        if (userError) throw userError;
+
+        if (!user) {
+          navigate('/login');
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+
+        if (!mounted) return;
+
+        if (data) {
+          setFormData({
+            username: data.username || '',
+            full_name: data.full_name || '',
+            bio: data.bio || '',
+            avatar_url: data.avatar_url || '',
+            cover_url: data.cover_url || '',
+            profile_video_url: data.profile_video_url || '',
+            profile_music_url: data.profile_music_url || '',
+            status_message: data.status_message || '',
+            district: data.district || 'Blantyre',
+            interests: Array.isArray(data.interests)
+              ? data.interests
+              : [],
+            phone_number: data.phone_number || '',
+            gender: data.gender || '',
+            dob: data.dob || '',
+            location: data.location || '',
+            theme_preference: data.theme_preference || 'neon',
+            accent_color: data.accent_color || '#06b6d4',
+            layout_style: data.layout_style || 'grid',
+            payout_method: data.payout_method || 'Mobile Money',
+            currency_preference: data.currency_preference || 'MWK',
+            is_private: data.is_private ?? false,
+            verified_status: data.verified_status || 'none'
+          });
+
+          const links =
+            data.social_links &&
+            typeof data.social_links === 'object'
+              ? data.social_links
+              : {};
+
+          setWebsite(links.website || '');
+          setYoutube(links.youtube || '');
+          setWhatsapp(links.whatsapp || '');
+          setInstagram(links.instagram || '');
+        }
+      } catch (err) {
+        console.error('Error fetching profile:', err);
+
+        if (mounted) {
+          setErrorMessage(
+            err?.message || 'Unable to load your profile.'
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
+    };
 
-      setCurrentUser(user);
+    loadProfile();
 
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+    return () => {
+      mounted = false;
 
-      if (error) throw error;
-
-      if (data) {
-        setFormData({
-          username: data.username || '',
-          full_name: data.full_name || '',
-          bio: data.bio || '',
-          avatar_url: data.avatar_url || '',
-          cover_url: data.cover_url || '',
-          profile_video_url: data.profile_video_url || '',
-          profile_music_url: data.profile_music_url || '',
-          status_message: data.status_message || '',
-          district: data.district || 'Blantyre',
-          interests: Array.isArray(data.interests)
-            ? data.interests
-            : [],
-          phone_number: data.phone_number || '',
-          gender: data.gender || '',
-          dob: data.dob || '',
-          location: data.location || '',
-          theme_preference: data.theme_preference || 'neon',
-          accent_color: data.accent_color || '#06b6d4',
-          layout_style: data.layout_style || 'grid',
-          payout_method: data.payout_method || 'Mobile Money',
-          currency_preference: data.currency_preference || 'MWK',
-          is_private: data.is_private ?? false,
-          verified_status: data.verified_status || 'none'
-        });
-
-        const links = data.social_links || {};
-
-        setWebsite(links.website || '');
-        setYoutube(links.youtube || '');
-        setWhatsapp(links.whatsapp || '');
-        setInstagram(links.instagram || '');
+      if (statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current);
       }
-    } catch (err) {
-      console.error('Error fetching profile:', err);
-      setErrorMessage(
-        err?.message || 'Unable to load your profile.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+  }, [navigate]);
 
   /* =========================================================
      GENERIC FORM UPDATE
@@ -218,11 +235,15 @@ const EditProfile = () => {
       if (userError) throw userError;
 
       if (!user) {
-        throw new Error('You must be logged in to upload an image.');
+        throw new Error(
+          'You must be logged in to upload an image.'
+        );
       }
 
       if (!file.type.startsWith('image/')) {
-        throw new Error('Please select a valid image file.');
+        throw new Error(
+          'Please select a valid image file.'
+        );
       }
 
       const fileExt =
@@ -232,12 +253,14 @@ const EditProfile = () => {
         .toString(36)
         .slice(2, 10)}.${fileExt}`;
 
-      const bucketName = isAvatar ? 'avatars' : 'covers';
+      const bucketName = isAvatar
+        ? 'avatars'
+        : 'covers';
 
       /*
-       * IMPORTANT:
-       * The bucket is already supplied to .from(bucketName),
-       * therefore the path should NOT contain the bucket name again.
+       * The bucket is already supplied to .from(bucketName).
+       * Therefore the storage path must NOT contain the bucket
+       * name again.
        */
       const filePath = safeName;
 
@@ -258,7 +281,9 @@ const EditProfile = () => {
         .getPublicUrl(filePath);
 
       if (!publicUrl) {
-        throw new Error('Unable to generate the uploaded image URL.');
+        throw new Error(
+          'Unable to generate the uploaded image URL.'
+        );
       }
 
       updateField(
@@ -287,7 +312,13 @@ const EditProfile = () => {
   ========================================================= */
 
   const handleUpdate = async () => {
-    if (saving || uploadingAvatar || uploadingCover) return;
+    if (
+      saving ||
+      uploadingAvatar ||
+      uploadingCover
+    ) {
+      return;
+    }
 
     setSaving(true);
     setErrorMessage('');
@@ -301,7 +332,9 @@ const EditProfile = () => {
       if (userError) throw userError;
 
       if (!user) {
-        throw new Error('Your session has expired. Please log in again.');
+        throw new Error(
+          'Your session has expired. Please log in again.'
+        );
       }
 
       const profilePayload = {
@@ -310,22 +343,36 @@ const EditProfile = () => {
         bio: formData.bio.trim(),
         avatar_url: formData.avatar_url,
         cover_url: formData.cover_url,
-        profile_video_url: formData.profile_video_url.trim(),
-        profile_music_url: formData.profile_music_url.trim(),
-        status_message: formData.status_message.trim(),
+        profile_video_url:
+          formData.profile_video_url.trim(),
+        profile_music_url:
+          formData.profile_music_url.trim(),
+        status_message:
+          formData.status_message.trim(),
         district: formData.district,
         interests: formData.interests,
-        phone_number: formData.phone_number.trim(),
+        phone_number:
+          formData.phone_number.trim(),
         gender: formData.gender,
-        dob: formData.dob === '' ? null : formData.dob,
+        dob:
+          formData.dob === ''
+            ? null
+            : formData.dob,
         location: formData.location.trim(),
-        theme_preference: formData.theme_preference,
-        accent_color: formData.accent_color,
-        layout_style: formData.layout_style,
-        payout_method: formData.payout_method,
-        currency_preference: formData.currency_preference,
-        is_private: formData.is_private,
-        verified_status: formData.verified_status,
+        theme_preference:
+          formData.theme_preference,
+        accent_color:
+          formData.accent_color,
+        layout_style:
+          formData.layout_style,
+        payout_method:
+          formData.payout_method,
+        currency_preference:
+          formData.currency_preference,
+        is_private:
+          formData.is_private,
+        verified_status:
+          formData.verified_status,
         social_links: {
           website: website.trim(),
           youtube: youtube.trim(),
@@ -343,14 +390,22 @@ const EditProfile = () => {
 
       setShowStatus(true);
 
-      setTimeout(() => {
+      if (statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current);
+      }
+
+      statusTimerRef.current = setTimeout(() => {
         setShowStatus(false);
       }, 2500);
     } catch (err) {
-      console.error('Database Save Error:', err);
+      console.error(
+        'Database Save Error:',
+        err
+      );
 
       setErrorMessage(
-        err?.message || 'Unable to save profile changes.'
+        err?.message ||
+          'Unable to save profile changes.'
       );
     } finally {
       setSaving(false);
@@ -365,7 +420,9 @@ const EditProfile = () => {
     setFormData(prev => ({
       ...prev,
       interests: prev.interests.includes(interest)
-        ? prev.interests.filter(item => item !== interest)
+        ? prev.interests.filter(
+            item => item !== interest
+          )
         : [...prev.interests, interest]
     }));
   };
@@ -376,11 +433,13 @@ const EditProfile = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#03040a] text-white flex items-center justify-center">
+      <div className="h-screen w-full bg-[#03040a] text-white flex items-center justify-center">
         <div className="text-center">
           <div className="relative mx-auto w-16 h-16 mb-5">
             <div className="absolute inset-0 rounded-2xl border border-cyan-400/20" />
+
             <div className="absolute inset-0 rounded-2xl border-2 border-transparent border-t-cyan-400 animate-spin" />
+
             <div className="absolute inset-3 rounded-xl bg-cyan-400/10 flex items-center justify-center">
               <Cpu
                 size={20}
@@ -406,7 +465,20 @@ const EditProfile = () => {
   ========================================================= */
 
   return (
-    <div className="min-h-screen w-full bg-[#03040a] text-zinc-100 font-sans overflow-y-auto selection:bg-cyan-400 selection:text-black">
+    <div
+      className="
+        h-screen
+        w-full
+        overflow-y-auto
+        overflow-x-hidden
+        profile-scroll
+        bg-[#03040a]
+        text-zinc-100
+        font-sans
+        selection:bg-cyan-400
+        selection:text-black
+      "
+    >
 
       {/* =====================================================
           PAGE BACKGROUND
@@ -434,8 +506,15 @@ const EditProfile = () => {
       ===================================================== */}
 
       <style>{`
+        .profile-scroll {
+          overscroll-behavior-y: contain;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: thin;
+          scrollbar-color: #17202c #03040a;
+        }
+
         .profile-scroll::-webkit-scrollbar {
-          width: 7px;
+          width: 8px;
         }
 
         .profile-scroll::-webkit-scrollbar-track {
@@ -445,7 +524,7 @@ const EditProfile = () => {
         .profile-scroll::-webkit-scrollbar-thumb {
           background: #17202c;
           border-radius: 999px;
-          border: 1px solid rgba(6,182,212,.25);
+          border: 1px solid rgba(6, 182, 212, 0.25);
         }
 
         .profile-scroll::-webkit-scrollbar-thumb:hover {
@@ -475,6 +554,7 @@ const EditProfile = () => {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[72px] flex items-center justify-between gap-4">
 
             <button
+              type="button"
               onClick={() => navigate(-1)}
               className="
                 group
@@ -515,6 +595,7 @@ const EditProfile = () => {
             </div>
 
             <button
+              type="button"
               onClick={handleUpdate}
               disabled={
                 saving ||
@@ -551,15 +632,18 @@ const EditProfile = () => {
               ) : (
                 <>
                   <Save size={14} />
+
                   <span className="hidden sm:inline">
                     Save Changes
                   </span>
+
                   <span className="sm:hidden">
                     Save
                   </span>
                 </>
               )}
             </button>
+
           </div>
         </nav>
 
@@ -570,18 +654,28 @@ const EditProfile = () => {
         <AnimatePresence>
           {errorMessage && (
             <motion.div
-              initial={{ opacity: 0, y: -15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
+              initial={{
+                opacity: 0,
+                y: -15
+              }}
+              animate={{
+                opacity: 1,
+                y: 0
+              }}
+              exit={{
+                opacity: 0,
+                y: -15
+              }}
               className="max-w-7xl mx-auto px-4 sm:px-6 pt-5"
             >
               <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-4">
+
                 <Shield
                   size={17}
                   className="text-red-400 mt-0.5 shrink-0"
                 />
 
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-wider text-red-400">
                     Profile Operation Error
                   </p>
@@ -592,11 +686,16 @@ const EditProfile = () => {
                 </div>
 
                 <button
-                  onClick={() => setErrorMessage('')}
-                  className="text-zinc-500 hover:text-white"
+                  type="button"
+                  onClick={() =>
+                    setErrorMessage('')
+                  }
+                  className="text-zinc-500 hover:text-white shrink-0"
+                  aria-label="Close error"
                 >
                   <X size={15} />
                 </button>
+
               </div>
             </motion.div>
           )}
@@ -606,7 +705,7 @@ const EditProfile = () => {
             MAIN CONTENT
         =================================================== */}
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 pb-32 profile-scroll">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 pb-32">
 
           {/* =================================================
               PROFILE PREVIEW / MEDIA
@@ -615,6 +714,7 @@ const EditProfile = () => {
           <section className="relative rounded-[28px] overflow-hidden border border-white/[0.08] bg-[#080a12] shadow-2xl mb-8">
 
             {/* COVER */}
+
             <div className="relative h-[190px] sm:h-[260px] overflow-hidden">
 
               {formData.cover_url ? (
@@ -636,6 +736,7 @@ const EditProfile = () => {
               <div className="absolute inset-0 bg-gradient-to-t from-[#080a12] via-black/10 to-black/20" />
 
               {/* COVER BUTTON */}
+
               <button
                 type="button"
                 onClick={() =>
@@ -660,6 +761,7 @@ const EditProfile = () => {
                   hover:border-cyan-400/50
                   hover:text-cyan-300
                   transition-all
+                  disabled:opacity-50
                 "
               >
                 {uploadingCover ? (
@@ -683,18 +785,24 @@ const EditProfile = () => {
                 type="file"
                 accept="image/*"
                 onChange={e =>
-                  handleFileUpload(e, 'cover')
+                  handleFileUpload(
+                    e,
+                    'cover'
+                  )
                 }
                 className="hidden"
               />
+
             </div>
 
             {/* PROFILE IDENTITY */}
+
             <div className="relative px-5 sm:px-8 pb-7">
 
               <div className="flex flex-col sm:flex-row sm:items-end gap-5">
 
                 {/* AVATAR */}
+
                 <div className="relative -mt-16 sm:-mt-20 shrink-0">
 
                   <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-[28px] bg-[#080a12] p-1.5 border border-cyan-400/50 shadow-[0_0_35px_rgba(6,182,212,.2)]">
@@ -734,6 +842,7 @@ const EditProfile = () => {
                           justify-center
                           gap-2
                           text-cyan-300
+                          disabled:opacity-100
                         "
                       >
                         {uploadingAvatar ? (
@@ -744,12 +853,14 @@ const EditProfile = () => {
                         ) : (
                           <>
                             <Camera size={22} />
+
                             <span className="text-[8px] font-black uppercase tracking-widest">
                               Change Photo
                             </span>
                           </>
                         )}
                       </button>
+
                     </div>
                   </div>
 
@@ -758,13 +869,18 @@ const EditProfile = () => {
                     type="file"
                     accept="image/*"
                     onChange={e =>
-                      handleFileUpload(e, 'avatar')
+                      handleFileUpload(
+                        e,
+                        'avatar'
+                      )
                     }
                     className="hidden"
                   />
+
                 </div>
 
                 {/* IDENTITY */}
+
                 <div className="flex-1 min-w-0 pb-1">
 
                   <div className="flex items-center gap-2">
@@ -806,6 +922,7 @@ const EditProfile = () => {
                           size={11}
                           className="text-cyan-400"
                         />
+
                         {formData.district}
                       </span>
                     )}
@@ -816,8 +933,10 @@ const EditProfile = () => {
                         Private
                       </span>
                     )}
+
                   </div>
                 </div>
+
               </div>
             </div>
           </section>
@@ -834,9 +953,7 @@ const EditProfile = () => {
 
             <div className="xl:col-span-7 space-y-6">
 
-              {/* ===============================================
-                  IDENTITY
-              =============================================== */}
+              {/* IDENTITY */}
 
               <SectionCard
                 icon={<User size={17} />}
@@ -851,7 +968,10 @@ const EditProfile = () => {
                     label="Full Name"
                     value={formData.full_name}
                     onChange={v =>
-                      updateField('full_name', v)
+                      updateField(
+                        'full_name',
+                        v
+                      )
                     }
                     placeholder="Your full name"
                     icon={<User size={14} />}
@@ -861,11 +981,17 @@ const EditProfile = () => {
                     label="Username"
                     value={formData.username}
                     onChange={v =>
-                      updateField('username', v)
+                      updateField(
+                        'username',
+                        v
+                      )
                     }
                     placeholder="username"
-                    icon={<Fingerprint size={14} />}
+                    icon={
+                      <Fingerprint size={14} />
+                    }
                   />
+
                 </div>
 
                 <TextAreaField
@@ -887,14 +1013,14 @@ const EditProfile = () => {
                     )
                   }
                   placeholder="What's happening right now?"
-                  icon={<HelpCircle size={14} />}
+                  icon={
+                    <HelpCircle size={14} />
+                  }
                 />
 
               </SectionCard>
 
-              {/* ===============================================
-                  MEDIA
-              =============================================== */}
+              {/* MEDIA */}
 
               <SectionCard
                 icon={<Film size={17} />}
@@ -905,7 +1031,9 @@ const EditProfile = () => {
 
                 <InputField
                   label="Profile Background Video URL"
-                  value={formData.profile_video_url}
+                  value={
+                    formData.profile_video_url
+                  }
                   onChange={v =>
                     updateField(
                       'profile_video_url',
@@ -918,7 +1046,9 @@ const EditProfile = () => {
 
                 <InputField
                   label="Profile Music URL"
-                  value={formData.profile_music_url}
+                  value={
+                    formData.profile_music_url
+                  }
                   onChange={v =>
                     updateField(
                       'profile_music_url',
@@ -933,22 +1063,21 @@ const EditProfile = () => {
                   <div className="flex gap-3">
                     <Music
                       size={15}
-                      className="text-purple-400 mt-0.5"
+                      className="text-purple-400 mt-0.5 shrink-0"
                     />
 
                     <p className="text-[10px] leading-relaxed text-zinc-500">
-                      These URLs are stored directly in your
-                      profile. Make sure the media is publicly
-                      accessible if visitors need to play it.
+                      These URLs are stored directly in
+                      your profile. Make sure the media is
+                      publicly accessible if visitors need
+                      to play it.
                     </p>
                   </div>
                 </div>
 
               </SectionCard>
 
-              {/* ===============================================
-                  SOCIAL LINKS
-              =============================================== */}
+              {/* SOCIAL LINKS */}
 
               <SectionCard
                 icon={<Share2 size={17} />}
@@ -980,7 +1109,9 @@ const EditProfile = () => {
                     value={whatsapp}
                     onChange={setWhatsapp}
                     placeholder="+265XXXXXXXXX"
-                    icon={<Smartphone size={14} />}
+                    icon={
+                      <Smartphone size={14} />
+                    }
                   />
 
                   <InputField
@@ -995,9 +1126,7 @@ const EditProfile = () => {
 
               </SectionCard>
 
-              {/* ===============================================
-                  INTERESTS
-              =============================================== */}
+              {/* INTERESTS */}
 
               <SectionCard
                 icon={<Sparkles size={17} />}
@@ -1010,7 +1139,9 @@ const EditProfile = () => {
 
                   {INTEREST_OPTIONS.map(tag => {
                     const active =
-                      formData.interests.includes(tag);
+                      formData.interests.includes(
+                        tag
+                      );
 
                     return (
                       <button
@@ -1041,6 +1172,7 @@ const EditProfile = () => {
                             className="inline mr-1.5"
                           />
                         )}
+
                         {tag}
                       </button>
                     );
@@ -1058,9 +1190,7 @@ const EditProfile = () => {
 
             <div className="xl:col-span-5 space-y-6">
 
-              {/* ===============================================
-                  LOCATION
-              =============================================== */}
+              {/* LOCATION */}
 
               <SectionCard
                 icon={<Map size={17} />}
@@ -1073,7 +1203,10 @@ const EditProfile = () => {
                   label="Home District"
                   value={formData.district}
                   onChange={v =>
-                    updateField('district', v)
+                    updateField(
+                      'district',
+                      v
+                    )
                   }
                   icon={<MapPin size={14} />}
                   options={DISTRICTS}
@@ -1083,7 +1216,10 @@ const EditProfile = () => {
                   label="Specific Location"
                   value={formData.location}
                   onChange={v =>
-                    updateField('location', v)
+                    updateField(
+                      'location',
+                      v
+                    )
                   }
                   placeholder="Example: Area 49, Lilongwe"
                   icon={<MapPin size={14} />}
@@ -1091,12 +1227,12 @@ const EditProfile = () => {
 
               </SectionCard>
 
-              {/* ===============================================
-                  PERSONAL INFORMATION
-              =============================================== */}
+              {/* PERSONAL INFORMATION */}
 
               <SectionCard
-                icon={<Fingerprint size={17} />}
+                icon={
+                  <Fingerprint size={17} />
+                }
                 title="Personal Information"
                 subtitle="Additional identity information"
                 accent="pink"
@@ -1108,9 +1244,14 @@ const EditProfile = () => {
                     label="Gender"
                     value={formData.gender}
                     onChange={v =>
-                      updateField('gender', v)
+                      updateField(
+                        'gender',
+                        v
+                      )
                     }
-                    icon={<Fingerprint size={14} />}
+                    icon={
+                      <Fingerprint size={14} />
+                    }
                     options={[
                       {
                         label: 'Unspecified',
@@ -1131,7 +1272,10 @@ const EditProfile = () => {
                     label="Date of Birth"
                     value={formData.dob}
                     onChange={v =>
-                      updateField('dob', v)
+                      updateField(
+                        'dob',
+                        v
+                      )
                     }
                   />
 
@@ -1139,9 +1283,7 @@ const EditProfile = () => {
 
               </SectionCard>
 
-              {/* ===============================================
-                  APPEARANCE
-              =============================================== */}
+              {/* APPEARANCE */}
 
               <SectionCard
                 icon={<Palette size={17} />}
@@ -1192,7 +1334,9 @@ const EditProfile = () => {
                         v
                       )
                     }
-                    icon={<Palette size={14} />}
+                    icon={
+                      <Palette size={14} />
+                    }
                     options={[
                       {
                         label: 'Neon Matrix',
@@ -1209,17 +1353,22 @@ const EditProfile = () => {
 
                 <SelectField
                   label="Layout Style"
-                  value={formData.layout_style}
+                  value={
+                    formData.layout_style
+                  }
                   onChange={v =>
                     updateField(
                       'layout_style',
                       v
                     )
                   }
-                  icon={<LayoutGrid size={14} />}
+                  icon={
+                    <LayoutGrid size={14} />
+                  }
                   options={[
                     {
-                      label: 'Grid Showcase Array',
+                      label:
+                        'Grid Showcase Array',
                       value: 'grid'
                     },
                     {
@@ -1232,9 +1381,7 @@ const EditProfile = () => {
 
               </SectionCard>
 
-              {/* ===============================================
-                  PRIVACY
-              =============================================== */}
+              {/* PRIVACY */}
 
               <SectionCard
                 icon={<Shield size={17} />}
@@ -1244,22 +1391,25 @@ const EditProfile = () => {
               >
 
                 {/* PRIVATE ACCOUNT */}
+
                 <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
 
                   <div className="flex items-center justify-between gap-4">
 
                     <div className="flex items-start gap-3">
 
-                      <div className={`
-                        w-9 h-9
-                        rounded-xl
-                        flex items-center justify-center
-                        ${
-                          formData.is_private
-                            ? 'bg-pink-500/10 text-pink-400'
-                            : 'bg-emerald-500/10 text-emerald-400'
-                        }
-                      `}>
+                      <div
+                        className={`
+                          w-9 h-9
+                          rounded-xl
+                          flex items-center justify-center
+                          ${
+                            formData.is_private
+                              ? 'bg-pink-500/10 text-pink-400'
+                              : 'bg-emerald-500/10 text-emerald-400'
+                          }
+                        `}
+                      >
                         {formData.is_private ? (
                           <Lock size={16} />
                         ) : (
@@ -1300,6 +1450,7 @@ const EditProfile = () => {
                             : 'bg-white/10'
                         }
                       `}
+                      aria-label="Toggle private profile"
                     >
                       <span
                         className={`
@@ -1318,10 +1469,10 @@ const EditProfile = () => {
                     </button>
 
                   </div>
-
                 </div>
 
                 {/* VERIFICATION */}
+
                 <SelectField
                   label="Verification Status"
                   value={
@@ -1333,7 +1484,9 @@ const EditProfile = () => {
                       v
                     )
                   }
-                  icon={<BadgeCheck size={14} />}
+                  icon={
+                    <BadgeCheck size={14} />
+                  }
                   options={[
                     {
                       label: 'None',
@@ -1344,7 +1497,8 @@ const EditProfile = () => {
                       value: 'blue'
                     },
                     {
-                      label: 'Gold Organization',
+                      label:
+                        'Gold Organization',
                       value: 'gold'
                     }
                   ]}
@@ -1352,9 +1506,7 @@ const EditProfile = () => {
 
               </SectionCard>
 
-              {/* ===============================================
-                  FINANCIAL
-              =============================================== */}
+              {/* FINANCIAL */}
 
               <SectionCard
                 icon={<Wallet size={17} />}
@@ -1365,7 +1517,9 @@ const EditProfile = () => {
 
                 <InputField
                   label="Payment Phone Number"
-                  value={formData.phone_number}
+                  value={
+                    formData.phone_number
+                  }
                   onChange={v =>
                     updateField(
                       'phone_number',
@@ -1373,7 +1527,9 @@ const EditProfile = () => {
                     )
                   }
                   placeholder="+265XXXXXXXXX"
-                  icon={<Smartphone size={14} />}
+                  icon={
+                    <Smartphone size={14} />
+                  }
                 />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1394,12 +1550,16 @@ const EditProfile = () => {
                     }
                     options={[
                       {
-                        label: 'Mobile Money',
-                        value: 'Mobile Money'
+                        label:
+                          'Mobile Money',
+                        value:
+                          'Mobile Money'
                       },
                       {
-                        label: 'Bank Transfer',
-                        value: 'Bank Transfer'
+                        label:
+                          'Bank Transfer',
+                        value:
+                          'Bank Transfer'
                       }
                     ]}
                   />
@@ -1418,7 +1578,9 @@ const EditProfile = () => {
                       />
 
                       <span className="text-xs font-black text-emerald-300">
-                        {formData.currency_preference}
+                        {
+                          formData.currency_preference
+                        }
                       </span>
 
                     </div>
@@ -1441,7 +1603,7 @@ const EditProfile = () => {
 
               <div className="flex items-start gap-3">
 
-                <div className="w-10 h-10 rounded-xl bg-cyan-400/10 border border-cyan-400/20 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-cyan-400/10 border border-cyan-400/20 flex items-center justify-center shrink-0">
                   <Settings2
                     size={17}
                     className="text-cyan-400"
@@ -1465,6 +1627,7 @@ const EditProfile = () => {
               </div>
 
               <button
+                type="button"
                 onClick={handleUpdate}
                 disabled={
                   saving ||
@@ -1487,6 +1650,7 @@ const EditProfile = () => {
                   hover:shadow-[0_0_30px_rgba(34,211,238,.25)]
                   transition-all
                   disabled:opacity-40
+                  disabled:cursor-not-allowed
                 "
               >
                 {saving ? (
@@ -1568,6 +1732,7 @@ const EditProfile = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
   );
 };
@@ -1645,6 +1810,7 @@ const SectionCard = ({
             ${theme.iconBorder}
             ${theme.iconText}
             flex items-center justify-center
+            shrink-0
           `}
         >
           {icon}
@@ -1668,6 +1834,7 @@ const SectionCard = ({
       <div className="space-y-5">
         {children}
       </div>
+
     </section>
   );
 };
@@ -1689,16 +1856,18 @@ const InputField = ({
         {label}
       </label>
 
-      <div className="
-        flex items-center gap-3
-        rounded-xl
-        border border-white/[0.08]
-        bg-white/[0.025]
-        px-3.5
-        transition-all
-        focus-within:border-cyan-400/40
-        focus-within:bg-cyan-400/[0.02]
-      ">
+      <div
+        className="
+          flex items-center gap-3
+          rounded-xl
+          border border-white/[0.08]
+          bg-white/[0.025]
+          px-3.5
+          transition-all
+          focus-within:border-cyan-400/40
+          focus-within:bg-cyan-400/[0.02]
+        "
+      >
 
         {icon && (
           <span className="text-cyan-400/70 shrink-0">
@@ -1725,6 +1894,7 @@ const InputField = ({
             placeholder:text-zinc-700
           "
         />
+
       </div>
     </div>
   );
@@ -1746,17 +1916,18 @@ const TextAreaField = ({
         {label}
       </label>
 
-      <div className="
-        rounded-xl
-        border border-white/[0.08]
-        bg-white/[0.025]
-        px-3.5
-        py-3
-        transition-all
-        focus-within:border-cyan-400/40
-        focus-within:bg-cyan-400/[0.02]
-      ">
-
+      <div
+        className="
+          rounded-xl
+          border border-white/[0.08]
+          bg-white/[0.025]
+          px-3.5
+          py-3
+          transition-all
+          focus-within:border-cyan-400/40
+          focus-within:bg-cyan-400/[0.02]
+        "
+      >
         <textarea
           rows={4}
           value={value || ''}
@@ -1793,13 +1964,14 @@ const SelectField = ({
   options,
   icon
 }) => {
-  const normalizedOptions = options.map(option =>
-    typeof option === 'string'
-      ? {
-          label: option,
-          value: option
-        }
-      : option
+  const normalizedOptions = options.map(
+    option =>
+      typeof option === 'string'
+        ? {
+            label: option,
+            value: option
+          }
+        : option
   );
 
   return (
@@ -1808,15 +1980,17 @@ const SelectField = ({
         {label}
       </label>
 
-      <div className="
-        flex items-center gap-3
-        rounded-xl
-        border border-white/[0.08]
-        bg-white/[0.025]
-        px-3.5
-        h-11
-        focus-within:border-cyan-400/40
-      ">
+      <div
+        className="
+          flex items-center gap-3
+          rounded-xl
+          border border-white/[0.08]
+          bg-white/[0.025]
+          px-3.5
+          h-11
+          focus-within:border-cyan-400/40
+        "
+      >
 
         {icon && (
           <span className="text-cyan-400/70 shrink-0">
@@ -1849,6 +2023,7 @@ const SelectField = ({
             </option>
           ))}
         </select>
+
       </div>
     </div>
   );
@@ -1869,15 +2044,17 @@ const DateField = ({
         {label}
       </label>
 
-      <div className="
-        flex items-center gap-3
-        rounded-xl
-        border border-white/[0.08]
-        bg-white/[0.025]
-        px-3.5
-        h-11
-        focus-within:border-emerald-400/40
-      ">
+      <div
+        className="
+          flex items-center gap-3
+          rounded-xl
+          border border-white/[0.08]
+          bg-white/[0.025]
+          px-3.5
+          h-11
+          focus-within:border-emerald-400/40
+        "
+      >
 
         <Calendar
           size={14}
@@ -1901,6 +2078,7 @@ const DateField = ({
             cursor-pointer
           "
         />
+
       </div>
     </div>
   );
