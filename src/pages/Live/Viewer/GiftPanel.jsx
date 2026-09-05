@@ -1,5 +1,11 @@
-```jsx
-import React, { useState, useEffect, Suspense, useMemo, useRef } from 'react';
+
+import React, {
+  useState,
+  useEffect,
+  Suspense,
+  useMemo,
+  useRef
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { Zap, X, Plus } from 'lucide-react';
@@ -12,15 +18,22 @@ import {
   Bounds
 } from '@react-three/drei';
 
-// 🔥 SILENCE DEPRECATION WARNINGS
+// ============================================================
+// 🔥 SILENCE SPECIFIC THREE.JS WARNINGS
+// ============================================================
 if (typeof window !== 'undefined') {
   const originalWarn = console.warn;
 
   console.warn = (...args) => {
+    const message = args?.[0];
+
     if (
-      args[0]?.includes('THREE.Clock') ||
-      args[0]?.includes('WebGLRenderer') ||
-      args[0]?.includes('THREE.PropertyBinding')
+      typeof message === 'string' &&
+      (
+        message.includes('THREE.Clock') ||
+        message.includes('WebGLRenderer') ||
+        message.includes('THREE.PropertyBinding')
+      )
     ) {
       return;
     }
@@ -29,16 +42,23 @@ if (typeof window !== 'undefined') {
   };
 }
 
+// ============================================================
+// 🎁 3D GIFT MODEL
+// ============================================================
 const GiftModel = ({ url }) => {
   const { scene } = useGLTF(url);
 
-  const clonedScene = useMemo(
-    () => scene.clone(true),
-    [scene]
-  );
+  const clonedScene = useMemo(() => {
+    return scene.clone(true);
+  }, [scene]);
 
   return (
-    <Bounds fit clip observe margin={1.2}>
+    <Bounds
+      fit
+      clip
+      observe
+      margin={1.2}
+    >
       <Center>
         <primitive object={clonedScene} />
       </Center>
@@ -46,23 +66,37 @@ const GiftModel = ({ url }) => {
   );
 };
 
+// ============================================================
+// 🎁 SMALL MODEL VIEWER
+// ============================================================
 const ModelViewer = ({ model }) => {
   const [isVisible, setIsVisible] = useState(false);
   const containerRef = useRef(null);
 
   useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return undefined;
+    }
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         setIsVisible(entry.isIntersecting);
       },
-      { threshold: 0.1 }
+      {
+        threshold: 0.1
+      }
     );
 
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
+    const element = containerRef.current;
+
+    if (element) {
+      observer.observe(element);
     }
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, []);
 
   return (
@@ -72,8 +106,14 @@ const ModelViewer = ({ model }) => {
     >
       {isVisible ? (
         <Canvas
-          camera={{ position: [0, 0, 5], fov: 40 }}
-          gl={{ alpha: true, antialias: true }}
+          camera={{
+            position: [0, 0, 5],
+            fov: 40
+          }}
+          gl={{
+            alpha: true,
+            antialias: true
+          }}
         >
           <ambientLight intensity={1.5} />
           <pointLight position={[10, 10, 10]} />
@@ -103,6 +143,9 @@ const ModelViewer = ({ model }) => {
   );
 };
 
+// ============================================================
+// 🎁 GIFT PANEL
+// ============================================================
 const GiftPanel = ({ streamId, onClose }) => {
   const navigate = useNavigate();
 
@@ -399,37 +442,50 @@ const GiftPanel = ({ streamId, onClose }) => {
     let mounted = true;
 
     const fetchBalance = async () => {
-      const {
-        data: { user },
-        error: authError
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+          error: authError
+        } = await supabase.auth.getUser();
 
-      if (authError) {
+        if (authError) {
+          console.error(
+            'Authentication error while fetching balance:',
+            authError.message
+          );
+          return;
+        }
+
+        if (!user) {
+          console.warn('No authenticated user found.');
+          return;
+        }
+
+        const {
+          data,
+          error
+        } = await supabase
+          .from('profiles')
+          .select('coins')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.error(
+            'Error fetching balance:',
+            error.message
+          );
+          return;
+        }
+
+        if (mounted && data) {
+          setBalance(Number(data.coins) || 0);
+        }
+      } catch (error) {
         console.error(
-          'Authentication error while fetching balance:',
-          authError.message
+          'Unexpected balance error:',
+          error
         );
-        return;
-      }
-
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('coins')
-        .eq('id', user.id)
-        .single();
-
-      if (error) {
-        console.error(
-          'Error fetching balance:',
-          error.message
-        );
-        return;
-      }
-
-      if (mounted && data) {
-        setBalance(Number(data.coins) || 0);
       }
     };
 
@@ -444,15 +500,12 @@ const GiftPanel = ({ streamId, onClose }) => {
   // 🎁 SEND GIFT
   // ============================================================
   const handleInstantSend = async (gift) => {
-    if (isSending) return;
-
-    if (!gift) {
-      console.error('Gift is missing.');
+    if (isSending) {
       return;
     }
 
-    if (balance < gift.price) {
-      alert('Not enough coins to send this gift.');
+    if (!gift) {
+      console.error('Gift is missing.');
       return;
     }
 
@@ -461,30 +514,46 @@ const GiftPanel = ({ streamId, onClose }) => {
       return;
     }
 
-    // AUDIO PLAYBACK
+    if (Number(balance) < Number(gift.price)) {
+      alert('Not enough coins to send this gift.');
+      return;
+    }
+
+    // ==========================================================
+    // 🔊 PLAY GIFT SOUND
+    // ==========================================================
     try {
       const audio = new Audio(gift.sound);
+
       audio.currentTime = 0;
+
       await audio.play();
-    } catch (e) {
+    } catch (error) {
       console.warn(
         'Audio play blocked by browser:',
-        e
+        error
       );
     }
 
     setIsSending(true);
 
-    // BIG GIFT VISUAL
+    // ==========================================================
+    // 🎁 BIG GIFT VISUAL
+    // ==========================================================
+    let bigGiftTimer = null;
+
     if (gift.big) {
       setActiveBigGift(gift.model);
 
-      setTimeout(() => {
+      bigGiftTimer = setTimeout(() => {
         setActiveBigGift(null);
       }, 5000);
     }
 
     try {
+      // ========================================================
+      // 👤 GET CURRENT USER
+      // ========================================================
       const {
         data: { user },
         error: userError
@@ -496,7 +565,7 @@ const GiftPanel = ({ streamId, onClose }) => {
       }
 
       // ========================================================
-      // 1️⃣ INSERT GIFT
+      // 🎁 INSERT GIFT INTO DATABASE
       // ========================================================
       const { error: insertError } = await supabase
         .from('live_gifts')
@@ -524,14 +593,16 @@ const GiftPanel = ({ streamId, onClose }) => {
       }
 
       // ========================================================
-      // 2️⃣ DEDUCT COINS
+      // 💰 DEDUCT COINS
       // ========================================================
       const newBalance = Math.max(
         0,
         Number(balance) - Number(gift.price)
       );
 
-      const { error: updateError } = await supabase
+      const {
+        error: updateError
+      } = await supabase
         .from('profiles')
         .update({
           coins: newBalance
@@ -552,29 +623,39 @@ const GiftPanel = ({ streamId, onClose }) => {
       }
 
       // ========================================================
-      // 3️⃣ UPDATE LOCAL BALANCE
+      // 💰 UPDATE LOCAL BALANCE
       // ========================================================
-      setBalance(newBalance);
+      if (mounted) {
+        setBalance(newBalance);
+      }
 
       // ========================================================
-      // 4️⃣ CLOSE PANEL
+      // ✅ CLOSE PANEL
       // ========================================================
-      onClose?.();
+      if (typeof onClose === 'function') {
+        onClose();
+      }
 
-    } catch (err) {
+      if (bigGiftTimer) {
+        clearTimeout(bigGiftTimer);
+      }
+    } catch (error) {
       console.error(
         'Unexpected error sending gift:',
-        err
+        error
       );
 
       alert(
-        'Unexpected error sending gift. Check browser console.'
+        'Unexpected error sending gift. Check the browser console.'
       );
     } finally {
       setIsSending(false);
     }
   };
 
+  // ============================================================
+  // 🎨 UI
+  // ============================================================
   return (
     <>
       {/* ======================================================
@@ -588,13 +669,20 @@ const GiftPanel = ({ streamId, onClose }) => {
                 position: [0, 0, 5],
                 fov: 45
               }}
-              gl={{ alpha: true }}
+              gl={{
+                alpha: true
+              }}
             >
               <ambientLight intensity={2} />
-              <pointLight position={[10, 10, 10]} />
+
+              <pointLight
+                position={[10, 10, 10]}
+              />
 
               <Suspense fallback={null}>
-                <GiftModel url={activeBigGift} />
+                <GiftModel
+                  url={activeBigGift}
+                />
 
                 <ContactShadows
                   position={[0, -1, 0]}
@@ -625,7 +713,9 @@ const GiftPanel = ({ streamId, onClose }) => {
 
           {/* BALANCE */}
           <div className="flex items-center gap-1">
+
             <div className="flex items-center gap-2 bg-yellow-400/10 px-3 py-1.5 rounded-l-full border border-yellow-400/20">
+
               <Zap
                 size={14}
                 className="text-yellow-400 fill-yellow-400"
@@ -634,10 +724,12 @@ const GiftPanel = ({ streamId, onClose }) => {
               <span className="text-sm font-bold">
                 {balance}
               </span>
+
             </div>
 
             {/* RECHARGE */}
             <button
+              type="button"
               onClick={() => navigate('/live/recharge')}
               className="flex items-center gap-1 bg-yellow-400 px-3 py-1.5 rounded-r-full border border-yellow-400 active:scale-95 transition-all"
             >
@@ -650,51 +742,60 @@ const GiftPanel = ({ streamId, onClose }) => {
                 Recharge
               </span>
             </button>
+
           </div>
 
           {/* CLOSE */}
           <button
+            type="button"
             onClick={onClose}
             className="p-1 opacity-50 hover:opacity-100"
+            aria-label="Close gifts"
           >
             <X />
           </button>
+
         </div>
 
         {/* GIFT GRID */}
         <div className="grid grid-cols-4 gap-3 overflow-y-auto pb-10 scrollbar-hide">
 
-          {GIFTS.map((g) => (
+          {GIFTS.map((gift) => (
             <button
-              key={g.id}
-              onClick={() => handleInstantSend(g)}
+              key={gift.id}
+              type="button"
+              onClick={() => handleInstantSend(gift)}
               disabled={
                 isSending ||
-                balance < g.price
+                Number(balance) < Number(gift.price)
               }
               className={`flex flex-col items-center p-2 rounded-2xl bg-white/5 border border-transparent hover:border-yellow-400/50 active:scale-95 transition-all ${
-                balance < g.price
+                Number(balance) < Number(gift.price)
                   ? 'opacity-40 grayscale-[0.5]'
                   : 'opacity-100'
               }`}
             >
-              <ModelViewer model={g.model} />
+
+              <ModelViewer
+                model={gift.model}
+              />
 
               <span className="text-[10px] opacity-60 mt-1 truncate w-full">
-                {g.name}
+                {gift.name}
               </span>
 
               <span className="text-xs font-black text-yellow-400">
-                {g.price}
+                {gift.price}
               </span>
+
             </button>
           ))}
 
         </div>
+
       </div>
     </>
   );
 };
 
 export default GiftPanel;
-```
