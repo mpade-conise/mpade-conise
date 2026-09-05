@@ -78,49 +78,35 @@ const Recharge = () => {
     if (loading || !userProfile) return;
     setLoading(true);
 
-    // Format: RCG-[TIMESTAMP]-[COINS_TO_ADD]-[USER_ID]
-    // The Edge Function will split this by '-' to identify the transaction details safely
-    const transactionRef = `RCG-${Date.now()}-${pkg.coins}-${userProfile.id}`;
-
     try {
-      const response = await fetch('https://api.paychangu.com/payment', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_PAYCHANGU_SECRET_KEY}` 
-        },
-        body: JSON.stringify({
-          amount: pkg.price,
-          currency: "MWK",
-          email: userProfile.email || "user@mpade.com",
-          first_name: userProfile.username || "Universe",
-          last_name: "Member",
-          tx_ref: transactionRef,
-          callback_url: `${window.location.origin}/payment-verify`, 
-          return_url: window.location.href,
-          customization: {
-            title: "Universe Credits",
-            description: `Buying ${pkg.coins} Coins`
-          }
-        })
+      const { data, error } = await supabase.functions.invoke('process-payment', {
+        body: {
+          packageId: pkg.id,
+          mobileNumber: userProfile.phone || userProfile.phone_number,
+          mobileProvider: userProfile.mobile_provider || 'TNM'
+        }
       });
 
-      const data = await response.json();
-
-      if (data.status === 'success' && data.data.checkout_url) {
-        // Hand off to PayChangu's secure hosted page
-        window.location.href = data.data.checkout_url;
-      } else {
-        throw new Error(data.message || "Initialization failed");
+      if (error) {
+        throw error;
       }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Payment initialization failed');
+      }
+
+      alert(
+        `Payment request sent. Please approve the K${pkg.price.toLocaleString()} payment on your phone.`
+      );
+
+      setLoading(false);
+
     } catch (err) {
       console.error("Payment Error:", err);
-      alert("Could not connect to payment gateway. Please try again.");
+      alert(err?.message || "Could not start payment. Please try again.");
       setLoading(false);
     }
   };
-
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-cyan-500/30 overflow-x-hidden">
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full h-[500px] bg-gradient-to-b from-cyan-900/20 to-transparent pointer-events-none" />
