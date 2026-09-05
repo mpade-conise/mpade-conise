@@ -8,10 +8,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 const MAX_ITEMS = 50;
 
 const getAvatar = (userId, fallbackSeed = 'user') => {
-  if (userId) {
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-      userId
-    )}`;
+  const seed = encodeURIComponent(userId || fallbackSeed);
+
+  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+};
   }
 
   return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
