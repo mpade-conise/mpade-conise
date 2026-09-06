@@ -19,25 +19,6 @@ import {
 
 import FloatingGiftEmojis from './live/FloatingGiftEmojis';
 
-/**
- * DynamicStreamGrid
- *
- * Responsibilities:
- * - Display the main host stream.
- * - Display up to 3 co-hosts.
- * - Support 1, 2, 3 or 4 video panels.
- * - Display fallback avatars when media is unavailable.
- * - Display PK gift information when real data is supplied.
- *
- * It intentionally does NOT:
- * - create WebRTC connections
- * - create Socket.IO connections
- * - approve/reject co-hosts
- * - subscribe to Supabase realtime
- *
- * Those responsibilities belong to the parent/live-stream logic.
- */
-
 const MAX_CO_HOSTS = 3;
 
 const DEFAULT_HOST_INFO = {
@@ -85,10 +66,6 @@ const formatCoins = value => {
   return String(Math.round(coins));
 };
 
-/*
- * Safely attach a ref while preserving the ref that was
- * originally supplied by the parent.
- */
 const assignRef = (ref, value) => {
   if (!ref) {
     return;
@@ -102,40 +79,22 @@ const assignRef = (ref, value) => {
   try {
     ref.current = value;
   } catch {
-    /*
-     * Some React refs can be readonly.
-     * Do nothing in that unusual case.
-     */
+    // Ignore readonly refs.
   }
 };
 
 export const DynamicStreamGrid = ({
   streamId,
-
-  /*
-   * Existing host video element supplied by StreamDashboard.
-   */
   hostVideo,
-
-  /*
-   * Actual MediaStream supplied by useStreamWebRTC.
-   */
   hostStream,
-
   hostInfo = DEFAULT_HOST_INFO,
 
   coHosts: propCoHosts = null,
 
-  /*
-   * Existing single co-host API.
-   */
   coHostStream = null,
   coHostVideo = null,
   coHostInfo = null,
 
-  /*
-   * Optional multi-co-host media support.
-   */
   coHostStreams = EMPTY_ARRAY,
   coHostVideos = EMPTY_ARRAY,
 
@@ -145,19 +104,11 @@ export const DynamicStreamGrid = ({
   activeSmallGift = null,
   onClearSmallGift,
 
-  /*
-   * Real PK data.
-   */
   topGifters = null,
 
   className = ''
 }) => {
-  /*
-   * This ref always points to the ACTUAL host <video>
-   * element being displayed.
-   */
   const hostVideoElementRef = useRef(null);
-
   const coHostVideoElementRefs = useRef({});
 
   /*
@@ -167,13 +118,12 @@ export const DynamicStreamGrid = ({
    */
   const coHostList = useMemo(() => {
     if (propCoHosts !== null) {
-      return getSafeArray(propCoHosts)
-        .slice(0, MAX_CO_HOSTS);
+      return getSafeArray(propCoHosts).slice(
+        0,
+        MAX_CO_HOSTS
+      );
     }
 
-    /*
-     * Backward-compatible fallback.
-     */
     if (
       coHostInfo ||
       coHostStream ||
@@ -206,12 +156,11 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Resolve co-host video.
+   * Co-host video resolver
    * ------------------------------------------------------------
    */
   const getCoHostVideo = index => {
-    const cohost =
-      coHostList[index];
+    const cohost = coHostList[index];
 
     if (!cohost) {
       return null;
@@ -223,11 +172,6 @@ export const DynamicStreamGrid = ({
     ) {
       return coHostVideos[index];
     }
-
-    /*
-     * A stream is handled by getCoHostStream().
-     * Do not return null prematurely here.
-     */
 
     if (cohost.videoElement) {
       return cohost.videoElement;
@@ -249,12 +193,11 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Resolve co-host stream.
+   * Co-host stream resolver
    * ------------------------------------------------------------
    */
   const getCoHostStream = index => {
-    const cohost =
-      coHostList[index];
+    const cohost = coHostList[index];
 
     if (!cohost) {
       return null;
@@ -287,18 +230,11 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Host video element.
+   * Host video
    *
-   * IMPORTANT:
-   *
-   * StreamDashboard currently passes a React <video> element
-   * through hostVideo.
-   *
-   * We clone that element and attach our own ref while
-   * preserving the original parent's ref.
-   *
-   * This allows DynamicStreamGrid to bind hostStream directly
-   * to the exact video element displayed on screen.
+   * The parent may provide the actual <video> element.
+   * We clone it so this component can safely obtain the
+   * exact DOM element that is displayed.
    * ------------------------------------------------------------
    */
   const renderedHostVideo = useMemo(() => {
@@ -309,7 +245,8 @@ export const DynamicStreamGrid = ({
       return null;
     }
 
-    const originalRef = hostVideo.ref;
+    const originalRef =
+      hostVideo.ref || null;
 
     return cloneElement(
       hostVideo,
@@ -317,19 +254,12 @@ export const DynamicStreamGrid = ({
         ref: node => {
           hostVideoElementRef.current = node;
 
-          /*
-           * Preserve StreamDashboard's localVideoRef.
-           */
           assignRef(
             originalRef,
             node
           );
         },
 
-        /*
-         * These properties make sure the host preview
-         * remains suitable for a local camera.
-         */
         autoPlay: true,
         muted: true,
         playsInline: true
@@ -339,10 +269,10 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Bind host MediaStream.
+   * Bind host MediaStream
    *
-   * The MediaStream belongs to useStreamWebRTC.
-   * This component NEVER stops the stream.
+   * DynamicStreamGrid never stops the stream.
+   * useStreamWebRTC owns the MediaStream lifecycle.
    * ------------------------------------------------------------
    */
   useEffect(() => {
@@ -351,73 +281,34 @@ export const DynamicStreamGrid = ({
 
     if (
       !video ||
+      typeof HTMLVideoElement === 'undefined' ||
       !(video instanceof HTMLVideoElement)
     ) {
       return undefined;
     }
 
-    /*
-     * No stream currently available.
-     */
     if (!hostStream) {
-      if (video.srcObject) {
-        video.srcObject = null;
-      }
-
       return undefined;
     }
 
-    /*
-     * Only replace srcObject when necessary.
-     */
-    if (
-      video.srcObject !== hostStream
-    ) {
-      video.srcObject = hostStream;
-    }
-
     let cancelled = false;
+    let metadataTimer = null;
 
-    const playVideo = async () => {
+    const attemptPlay = async () => {
       if (cancelled) {
         return;
       }
 
       try {
-        /*
-         * Wait for metadata when necessary.
-         */
-        if (video.readyState < 1) {
-          await new Promise(resolve => {
-            const handleLoadedMetadata = () => {
-              video.removeEventListener(
-                'loadedmetadata',
-                handleLoadedMetadata
-              );
-
-              resolve();
-            };
-
-            video.addEventListener(
-              'loadedmetadata',
-              handleLoadedMetadata
-            );
-
-            /*
-             * Avoid waiting forever on an unusual device.
-             */
-            setTimeout(() => {
-              video.removeEventListener(
-                'loadedmetadata',
-                handleLoadedMetadata
-              );
-
-              resolve();
-            }, 1500);
-          });
+        if (
+          video.srcObject !== hostStream
+        ) {
+          video.srcObject = hostStream;
         }
 
-        if (cancelled) {
+        if (
+          video.readyState < 1
+        ) {
           return;
         }
 
@@ -442,22 +333,26 @@ export const DynamicStreamGrid = ({
       }
     };
 
-    playVideo();
-
-    /*
-     * Re-attempt playback when the browser reports
-     * that metadata has become available.
-     */
     const handleLoadedMetadata = () => {
-      if (!cancelled) {
-        playVideo();
-      }
+      attemptPlay();
     };
+
+    video.srcObject = hostStream;
 
     video.addEventListener(
       'loadedmetadata',
       handleLoadedMetadata
     );
+
+    attemptPlay();
+
+    /*
+     * A delayed retry handles cases where the stream
+     * arrives immediately before the video metadata.
+     */
+    metadataTimer = setTimeout(() => {
+      attemptPlay();
+    }, 500);
 
     return () => {
       cancelled = true;
@@ -467,22 +362,24 @@ export const DynamicStreamGrid = ({
         handleLoadedMetadata
       );
 
+      if (metadataTimer) {
+        clearTimeout(metadataTimer);
+        metadataTimer = null;
+      }
+
       /*
-       * IMPORTANT:
-       *
-       * We deliberately DO NOT:
-       * - stop the MediaStream
-       * - disable camera tracks
-       * - close WebRTC
-       *
-       * useStreamWebRTC owns the stream lifecycle.
+       * Do NOT stop tracks here.
+       * useStreamWebRTC owns the stream.
        */
     };
-  }, [hostStream, renderedHostVideo]);
+  }, [
+    hostStream,
+    renderedHostVideo
+  ]);
 
   /*
    * ------------------------------------------------------------
-   * Bind co-host MediaStreams.
+   * Bind co-host MediaStreams
    * ------------------------------------------------------------
    */
   useEffect(() => {
@@ -534,7 +431,7 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Clear stale co-host video references.
+   * Remove stale co-host refs
    * ------------------------------------------------------------
    */
   useEffect(() => {
@@ -569,7 +466,7 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Grid layout.
+   * Grid layout
    * ------------------------------------------------------------
    */
   const getGridLayoutClass = () => {
@@ -590,24 +487,23 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * PK gifters.
+   * PK gifters
    * ------------------------------------------------------------
    */
   const resolvedTopGifters =
     topGifters || {};
 
-  const getGiftersForHost =
-    key => {
-      const data =
-        resolvedTopGifters[key];
+  const getGiftersForHost = key => {
+    const data =
+      resolvedTopGifters[key];
 
-      return getSafeArray(data)
-        .slice(0, 2);
-    };
+    return getSafeArray(data)
+      .slice(0, 2);
+  };
 
   /*
    * ------------------------------------------------------------
-   * Host panel.
+   * Host panel
    * ------------------------------------------------------------
    */
   const renderHostPanel = () => {
@@ -631,7 +527,6 @@ export const DynamicStreamGrid = ({
           shadow-inner
         "
       >
-        {/* Host media */}
         <div className="absolute inset-0 z-0">
           {renderedHostVideo ? (
             <div className="w-full h-full">
@@ -639,9 +534,7 @@ export const DynamicStreamGrid = ({
             </div>
           ) : hostStream ? (
             <video
-              ref={
-                hostVideoElementRef
-              }
+              ref={hostVideoElementRef}
               autoPlay
               playsInline
               muted
@@ -682,9 +575,7 @@ export const DynamicStreamGrid = ({
               >
                 {hostInfo?.avatar_url ? (
                   <img
-                    src={
-                      hostInfo.avatar_url
-                    }
+                    src={hostInfo.avatar_url}
                     alt=""
                     className="
                       w-full
@@ -704,7 +595,6 @@ export const DynamicStreamGrid = ({
           )}
         </div>
 
-        {/* Host status */}
         <div
           className="
             relative
@@ -800,7 +690,6 @@ export const DynamicStreamGrid = ({
           </div>
         </div>
 
-        {/* Host PK gifters */}
         {isBattleMode &&
           gifters.length > 0 && (
             <div
@@ -910,340 +799,342 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Co-host panel.
+   * Co-host panel
    * ------------------------------------------------------------
    */
-  const renderCoHostPanel =
-    (cohost, index) => {
-      const videoContent =
-        getCoHostVideo(index);
+  const renderCoHostPanel = (
+    cohost,
+    index
+  ) => {
+    const videoContent =
+      getCoHostVideo(index);
 
-      const stream =
-        getCoHostStream(index);
+    const stream =
+      getCoHostStream(index);
 
-      const gifters =
-        getGiftersForHost(
-          `coHost${index + 1}`
-        );
+    const gifters =
+      getGiftersForHost(
+        `coHost${index + 1}`
+      );
 
-      const username =
-        getDisplayName(
-          cohost,
-          `Host ${index + 2}`
-        );
+    const username =
+      getDisplayName(
+        cohost,
+        `Host ${index + 2}`
+      );
 
-      const avatar =
-        getAvatar(cohost);
+    const avatar =
+      getAvatar(cohost);
 
-      return (
-        <motion.div
-          key={
-            cohost?.id ||
-            cohost?.user_id ||
-            cohost?.socketId ||
-            `cohost-${index}`
-          }
-          initial={{
-            scale: 0.96,
-            opacity: 0
-          }}
-          animate={{
-            scale: 1,
-            opacity: 1
-          }}
-          exit={{
-            scale: 0.96,
-            opacity: 0
-          }}
-          transition={{
-            duration: 0.2
-          }}
-          className="
-            relative
-            w-full
-            h-full
-            rounded-2xl
-            overflow-hidden
-            bg-zinc-950
-            border
-            border-cyan-500/40
-            flex
-            flex-col
-            justify-between
-            shadow-[0_0_20px_rgba(6,182,212,0.15)]
-          "
-        >
-          {/* Co-host media */}
-          <div className="absolute inset-0 z-0">
-            {videoContent ? (
-              <div className="w-full h-full">
-                {videoContent}
-              </div>
-            ) : stream ? (
-              <video
-                ref={node => {
-                  if (node) {
-                    coHostVideoElementRefs
-                      .current[index] =
-                      node;
-                  } else {
-                    delete coHostVideoElementRefs
-                      .current[index];
-                  }
-                }}
-                autoPlay
-                playsInline
-                className="
-                  w-full
-                  h-full
-                  object-cover
-                "
-              />
-            ) : (
+    return (
+      <motion.div
+        key={
+          cohost?.id ||
+          cohost?.user_id ||
+          cohost?.socketId ||
+          `cohost-${index}`
+        }
+        initial={{
+          scale: 0.96,
+          opacity: 0
+        }}
+        animate={{
+          scale: 1,
+          opacity: 1
+        }}
+        exit={{
+          scale: 0.96,
+          opacity: 0
+        }}
+        transition={{
+          duration: 0.2
+        }}
+        className="
+          relative
+          w-full
+          h-full
+          rounded-2xl
+          overflow-hidden
+          bg-zinc-950
+          border
+          border-cyan-500/40
+          flex
+          flex-col
+          justify-between
+          shadow-[0_0_20px_rgba(6,182,212,0.15)]
+        "
+      >
+        <div className="absolute inset-0 z-0">
+          {videoContent ? (
+            <div className="w-full h-full">
+              {videoContent}
+            </div>
+          ) : stream ? (
+            <video
+              ref={node => {
+                if (node) {
+                  coHostVideoElementRefs
+                    .current[index] =
+                    node;
+                } else {
+                  delete coHostVideoElementRefs
+                    .current[index];
+                }
+              }}
+              autoPlay
+              playsInline
+              className="
+                w-full
+                h-full
+                object-cover
+              "
+            />
+          ) : (
+            <div
+              className="
+                w-full
+                h-full
+                bg-gradient-to-b
+                from-[#090d1f]
+                to-black
+                flex
+                items-center
+                justify-center
+              "
+            >
               <div
                 className="
-                  w-full
-                  h-full
-                  bg-gradient-to-b
-                  from-[#090d1f]
-                  to-black
+                  w-14
+                  h-14
+                  rounded-full
+                  bg-cyan-500/20
+                  border-2
+                  border-cyan-400
                   flex
                   items-center
                   justify-center
+                  overflow-hidden
+                  shadow-[0_0_20px_rgba(6,182,212,0.5)]
                 "
               >
-                <div
-                  className="
-                    w-14
-                    h-14
-                    rounded-full
-                    bg-cyan-500/20
-                    border-2
-                    border-cyan-400
-                    flex
-                    items-center
-                    justify-center
-                    overflow-hidden
-                    shadow-[0_0_20px_rgba(6,182,212,0.5)]
-                  "
-                >
-                  {avatar ? (
-                    <img
-                      src={avatar}
-                      alt=""
-                      className="
-                        w-full
-                        h-full
-                        rounded-full
-                        object-cover
-                      "
-                    />
-                  ) : (
-                    <Users
-                      size={22}
-                      className="
-                        text-cyan-400
-                      "
-                    />
-                  )}
-                </div>
+                {avatar ? (
+                  <img
+                    src={avatar}
+                    alt=""
+                    className="
+                      w-full
+                      h-full
+                      rounded-full
+                      object-cover
+                    "
+                  />
+                ) : (
+                  <Users
+                    size={22}
+                    className="text-cyan-400"
+                  />
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
 
-          {/* Co-host information */}
+        <div
+          className="
+            relative
+            z-10
+            p-2
+            flex
+            items-center
+            justify-between
+            pointer-events-none
+            bg-gradient-to-b
+            from-black/70
+            to-transparent
+          "
+        >
           <div
             className="
-              relative
-              z-10
-              p-2
               flex
               items-center
-              justify-between
-              pointer-events-none
-              bg-gradient-to-b
-              from-black/70
-              to-transparent
+              gap-1.5
+              bg-black/60
+              backdrop-blur-md
+              px-2
+              py-0.5
+              rounded-full
+              border
+              border-cyan-400/40
+              shadow-md
             "
           >
-            <div
+            <span
               className="
-                flex
-                items-center
-                gap-1.5
-                bg-black/60
-                backdrop-blur-md
-                px-2
-                py-0.5
-                rounded-full
-                border
-                border-cyan-400/40
-                shadow-md
-              "
-            >
-              <span
-                className="
-                  text-[9px]
-                  font-black
-                  uppercase
-                  text-cyan-300
-                "
-              >
-                HOST {index + 2}
-              </span>
-
-              <span
-                className="
-                  text-[10px]
-                  font-bold
-                  text-white
-                  max-w-[90px]
-                  truncate
-                "
-              >
-                {username}
-              </span>
-            </div>
-
-            <div
-              className="
-                flex
-                items-center
-                gap-1
-                bg-black/50
-                backdrop-blur-md
-                px-2
-                py-0.5
-                rounded-full
-                border
-                border-white/10
                 text-[9px]
-                text-emerald-400
-                font-mono
+                font-black
+                uppercase
+                text-cyan-300
               "
             >
-              <span
-                className="
-                  w-1.5
-                  h-1.5
-                  rounded-full
-                  bg-emerald-400
-                  animate-pulse
-                "
-              />
+              HOST {index + 2}
+            </span>
 
-              LINKED
-            </div>
+            <span
+              className="
+                text-[10px]
+                font-bold
+                text-white
+                max-w-[90px]
+                truncate
+              "
+            >
+              {username}
+            </span>
           </div>
 
-          {/* Co-host PK gifters */}
-          {isBattleMode &&
-            gifters.length > 0 && (
+          <div
+            className="
+              flex
+              items-center
+              gap-1
+              bg-black/50
+              backdrop-blur-md
+              px-2
+              py-0.5
+              rounded-full
+              border
+              border-white/10
+              text-[9px]
+              text-emerald-400
+              font-mono
+            "
+          >
+            <span
+              className="
+                w-1.5
+                h-1.5
+                rounded-full
+                bg-emerald-400
+                animate-pulse
+              "
+            />
+
+            LINKED
+          </div>
+        </div>
+
+        {isBattleMode &&
+          gifters.length > 0 && (
+            <div
+              className="
+                relative
+                z-10
+                p-1.5
+                bg-black/80
+                backdrop-blur-md
+                border-t
+                border-cyan-500/30
+                flex
+                items-center
+                justify-between
+                gap-2
+              "
+            >
               <div
                 className="
-                  relative
-                  z-10
-                  p-1.5
-                  bg-black/80
-                  backdrop-blur-md
-                  border-t
-                  border-cyan-500/30
                   flex
                   items-center
-                  justify-between
-                  gap-2
+                  gap-1
+                  text-[8px]
+                  font-mono
+                  text-pink-400
+                  font-bold
+                  uppercase
+                  shrink-0
                 "
               >
-                <div
-                  className="
-                    flex
-                    items-center
-                    gap-1
-                    text-[8px]
-                    font-mono
-                    text-pink-400
-                    font-bold
-                    uppercase
-                    shrink-0
-                  "
-                >
-                  <Trophy
-                    size={10}
-                    className="text-amber-400"
-                  />
+                <Trophy
+                  size={10}
+                  className="text-amber-400"
+                />
 
-                  Top Gifters
-                </div>
+                Top Gifters
+              </div>
 
-                <div
-                  className="
-                    flex
-                    items-center
-                    gap-1.5
-                    min-w-0
-                  "
-                >
-                  {gifters.map(
-                    (gifter, gifterIndex) => (
-                      <div
-                        key={
-                          gifter.id ||
-                          `cohost-${index}-gifter-${gifterIndex}`
-                        }
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-1.5
+                  min-w-0
+                "
+              >
+                {gifters.map(
+                  (gifter, gifterIndex) => (
+                    <div
+                      key={
+                        gifter.id ||
+                        `cohost-${index}-gifter-${gifterIndex}`
+                      }
+                      className="
+                        flex
+                        items-center
+                        gap-1
+                        bg-zinc-900/90
+                        px-1.5
+                        py-0.5
+                        rounded-lg
+                        border
+                        border-white/10
+                        text-[8px]
+                        min-w-0
+                      "
+                    >
+                      {gifter.avatar ? (
+                        <span>
+                          {gifter.avatar}
+                        </span>
+                      ) : null}
+
+                      <span
                         className="
-                          flex
-                          items-center
-                          gap-1
-                          bg-zinc-900/90
-                          px-1.5
-                          py-0.5
-                          rounded-lg
-                          border
-                          border-white/10
-                          text-[8px]
-                          min-w-0
+                          text-white
+                          font-bold
+                          max-w-[55px]
+                          truncate
                         "
                       >
-                        {gifter.avatar ? (
-                          <span>
-                            {gifter.avatar}
-                          </span>
-                        ) : null}
+                        {gifter.name ||
+                          gifter.username ||
+                          'User'}
+                      </span>
 
-                        <span
-                          className="
-                            text-white
-                            font-bold
-                            max-w-[55px]
-                            truncate
-                          "
-                        >
-                          {gifter.name ||
-                            gifter.username ||
-                            'User'}
-                        </span>
-
-                        <span
-                          className="
-                            text-pink-400
-                            font-mono
-                            font-bold
-                          "
-                        >
-                          {formatCoins(
-                            gifter.coins
-                          )}
-                        </span>
-                      </div>
-                    )
-                  )}
-                </div>
+                      <span
+                        className="
+                          text-pink-400
+                          font-mono
+                          font-bold
+                        "
+                      >
+                        {formatCoins(
+                          gifter.coins
+                        )}
+                      </span>
+                    </div>
+                  )
+                )}
               </div>
-            )}
-        </motion.div>
-      );
-    };
+            </div>
+          )}
+      </motion.div>
+    );
+  };
 
+  /*
+   * ------------------------------------------------------------
+   * Main render
+   * ------------------------------------------------------------
+   */
   return (
     <div
       className={`
@@ -1265,17 +1156,11 @@ export const DynamicStreamGrid = ({
         streamId || undefined
       }
     >
-      {/* Small gifts */}
       <FloatingGiftEmojis
-        activeSmallGift={
-          activeSmallGift
-        }
-        onClear={
-          onClearSmallGift
-        }
+        activeSmallGift={activeSmallGift}
+        onClear={onClearSmallGift}
       />
 
-      {/* Main stream grid */}
       <div
         className={`
           w-full
@@ -1286,10 +1171,8 @@ export const DynamicStreamGrid = ({
           ${getGridLayoutClass()}
         `}
       >
-        {/* Main host */}
         {renderHostPanel()}
 
-        {/* Co-hosts */}
         <AnimatePresence mode="popLayout">
           {isCoHosting &&
             coHostList.map(
