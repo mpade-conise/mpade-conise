@@ -1,145 +1,474 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import VideoPlayer from './Shared/VideoPlayer';
-import { 
-  Users, Gift, Share2, X, Mic, MicOff, Video, VideoOff, Settings, Radio,
-  Camera, Gamepad2, Sparkles, RefreshCw, Monitor, Search, Shield, Play,
-  Volume2, VolumeX, Flame, Trophy, Zap, MessageCircle, Send, Heart, Smile,
-  Maximize2, Copy, Check, Award, Music, Sliders, Activity, Clock, Crown
+
+import {
+  Users,
+  Gift,
+  Share2,
+  X,
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  Settings,
+  Radio,
+  Camera,
+  Gamepad2,
+  Sparkles,
+  RefreshCw,
+  Monitor,
+  Search,
+  Play,
+  Volume2,
+  VolumeX,
+  Flame,
+  Trophy,
+  Zap,
+  MessageCircle,
+  Send,
+  Heart,
+  Smile,
+  Maximize2,
+  Copy,
+  Check,
+  Award,
+  Music,
+  Sliders,
+  Activity,
+  Clock,
+  Crown,
+  ChevronRight,
+  ChevronDown,
+  Shield,
+  Eye,
+  Globe,
+  Lock,
+  UserCheck,
+  MonitorPlay,
+  PanelRight,
+  LayoutDashboard,
+  MoreHorizontal
 } from 'lucide-react';
 
-// --- WEB AUDIO API SYNTHESIZER FOR INTERACTIVE SOUNDBOARD ---
+/* =========================================================
+   SOUND EFFECT ENGINE
+========================================================= */
+
 const playSoundEffect = (type) => {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const AudioContext =
+      window.AudioContext || window.webkitAudioContext;
+
     if (!AudioContext) return;
+
     const ctx = new AudioContext();
 
-    const createNote = (freq, startTime, duration, type = 'sine', gainVal = 0.3) => {
+    const createNote = (
+      freq,
+      startTime,
+      duration,
+      waveType = 'sine',
+      gainVal = 0.3
+    ) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
-      gain.gain.setValueAtTime(gainVal, ctx.currentTime + startTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
+
+      osc.type = waveType;
+      osc.frequency.setValueAtTime(
+        freq,
+        ctx.currentTime + startTime
+      );
+
+      gain.gain.setValueAtTime(
+        gainVal,
+        ctx.currentTime + startTime
+      );
+
+      gain.gain.exponentialRampToValueAtTime(
+        0.001,
+        ctx.currentTime + startTime + duration
+      );
+
       osc.connect(gain);
       gain.connect(ctx.destination);
+
       osc.start(ctx.currentTime + startTime);
-      osc.stop(ctx.currentTime + startTime + duration);
+      osc.stop(
+        ctx.currentTime + startTime + duration
+      );
     };
 
     if (type === 'victory') {
-      // Fanfare ascending triad
-      createNote(523.25, 0, 0.25, 'triangle', 0.4); // C5
-      createNote(659.25, 0.15, 0.25, 'triangle', 0.4); // E5
-      createNote(783.99, 0.30, 0.25, 'triangle', 0.4); // G5
-      createNote(1046.50, 0.45, 0.50, 'triangle', 0.5); // C6
-    } else if (type === 'defeat') {
-      // Descending game over tune
-      createNote(392.00, 0, 0.3, 'sawtooth', 0.3); // G4
-      createNote(349.23, 0.2, 0.3, 'sawtooth', 0.3); // F4
-      createNote(311.13, 0.4, 0.3, 'sawtooth', 0.3); // Eb4
-      createNote(261.63, 0.6, 0.6, 'sawtooth', 0.4); // C4
-    } else if (type === 'gg') {
-      // High double chime
-      createNote(1318.51, 0, 0.15, 'sine', 0.3); // E6
-      createNote(1760.00, 0.12, 0.30, 'sine', 0.4); // A6
-    } else if (type === 'airhorn') {
-      // Staccato synth pulse
+      createNote(523.25, 0, 0.25, 'triangle', 0.4);
+      createNote(659.25, 0.15, 0.25, 'triangle', 0.4);
+      createNote(783.99, 0.3, 0.25, 'triangle', 0.4);
+      createNote(1046.5, 0.45, 0.5, 'triangle', 0.5);
+    }
+
+    if (type === 'defeat') {
+      createNote(392, 0, 0.3, 'sawtooth', 0.3);
+      createNote(349.23, 0.2, 0.3, 'sawtooth', 0.3);
+      createNote(311.13, 0.4, 0.3, 'sawtooth', 0.3);
+      createNote(261.63, 0.6, 0.6, 'sawtooth', 0.4);
+    }
+
+    if (type === 'gg') {
+      createNote(1318.51, 0, 0.15, 'sine', 0.3);
+      createNote(1760, 0.12, 0.3, 'sine', 0.4);
+    }
+
+    if (type === 'airhorn') {
       createNote(370, 0, 0.1, 'sawtooth', 0.5);
       createNote(370, 0.12, 0.1, 'sawtooth', 0.5);
       createNote(370, 0.24, 0.25, 'sawtooth', 0.6);
-    } else if (type === 'hype') {
-      // Energetic chord sweep
-      [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
-        createNote(freq, idx * 0.08, 0.35, 'square', 0.2);
-      });
-    } else if (type === 'clap') {
-      // Applause noise burst
+    }
+
+    if (type === 'hype') {
+      [523.25, 659.25, 783.99, 1046.5].forEach(
+        (freq, idx) => {
+          createNote(
+            freq,
+            idx * 0.08,
+            0.35,
+            'square',
+            0.2
+          );
+        }
+      );
+    }
+
+    if (type === 'clap') {
       for (let i = 0; i < 6; i++) {
-        createNote(200 + Math.random() * 800, i * 0.06, 0.08, 'square', 0.15);
+        createNote(
+          200 + Math.random() * 800,
+          i * 0.06,
+          0.08,
+          'square',
+          0.15
+        );
       }
     }
-  } catch (e) {
-    console.error("Audio synth error:", e);
+
+    setTimeout(() => {
+      try {
+        ctx.close();
+      } catch {}
+    }, 1800);
+  } catch (error) {
+    console.error('Audio synth error:', error);
   }
 };
+
+/* =========================================================
+   SMALL UI COMPONENTS
+========================================================= */
+
+const Panel = ({
+  children,
+  className = '',
+  title,
+  subtitle,
+  icon,
+  action
+}) => (
+  <section
+    className={`
+      rounded-2xl
+      border border-white/[0.08]
+      bg-[#0b0d12]/95
+      shadow-[0_20px_60px_rgba(0,0,0,0.25)]
+      overflow-hidden
+      ${className}
+    `}
+  >
+    {(title || icon || action) && (
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 border-b border-white/[0.07]">
+        <div className="flex items-center gap-3 min-w-0">
+          {icon && (
+            <div className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/[0.07] flex items-center justify-center text-cyan-300 shrink-0">
+              {icon}
+            </div>
+          )}
+
+          <div className="min-w-0">
+            {title && (
+              <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-[0.14em] text-white truncate">
+                {title}
+              </h3>
+            )}
+
+            {subtitle && (
+              <p className="text-[10px] text-zinc-500 mt-0.5 truncate">
+                {subtitle}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {action}
+      </div>
+    )}
+
+    <div>{children}</div>
+  </section>
+);
+
+const StatCard = ({
+  icon,
+  label,
+  value,
+  accent = 'cyan'
+}) => {
+  const accentClasses = {
+    cyan: 'text-cyan-300 bg-cyan-400/10 border-cyan-400/15',
+    pink: 'text-pink-300 bg-pink-400/10 border-pink-400/15',
+    amber: 'text-amber-300 bg-amber-400/10 border-amber-400/15',
+    emerald:
+      'text-emerald-300 bg-emerald-400/10 border-emerald-400/15'
+  };
+
+  return (
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3">
+      <div className="flex items-center gap-2">
+        <div
+          className={`w-7 h-7 rounded-lg border flex items-center justify-center ${
+            accentClasses[accent]
+          }`}
+        >
+          {icon}
+        </div>
+
+        <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">
+          {label}
+        </span>
+      </div>
+
+      <p className="mt-2 text-base sm:text-lg font-black text-white">
+        {value}
+      </p>
+    </div>
+  );
+};
+
+const ToolButton = ({
+  icon,
+  label,
+  active,
+  danger,
+  onClick
+}) => (
+  <button
+    onClick={onClick}
+    className={`
+      group flex items-center gap-2.5
+      px-3.5 py-2.5
+      rounded-xl
+      border
+      transition-all duration-200
+      text-[10px] sm:text-[11px]
+      font-bold
+      whitespace-nowrap
+      ${
+        danger
+          ? 'border-red-500/20 bg-red-500/[0.07] text-red-300 hover:bg-red-500/15'
+          : active
+          ? 'border-cyan-400/30 bg-cyan-400/[0.09] text-cyan-200'
+          : 'border-white/[0.07] bg-white/[0.025] text-zinc-400 hover:text-white hover:bg-white/[0.06]'
+      }
+    `}
+  >
+    {icon}
+    <span>{label}</span>
+  </button>
+);
+
+const ModalShell = ({
+  children,
+  onClose,
+  size = 'max-w-md'
+}) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-md flex items-center justify-center p-4"
+    onMouseDown={(e) => {
+      if (e.target === e.currentTarget) onClose?.();
+    }}
+  >
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.97 }}
+      transition={{ duration: 0.2 }}
+      className={`
+        w-full ${size}
+        max-h-[90dvh]
+        overflow-y-auto
+        rounded-2xl
+        border border-white/[0.1]
+        bg-[#0b0d12]
+        shadow-[0_30px_100px_rgba(0,0,0,0.6)]
+      `}
+    >
+      {children}
+    </motion.div>
+  </motion.div>
+);
+
+const ModalHeader = ({
+  icon,
+  title,
+  subtitle,
+  onClose
+}) => (
+  <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-white/[0.07]">
+    <div className="flex items-center gap-3">
+      <div className="w-9 h-9 rounded-xl bg-cyan-400/10 border border-cyan-400/15 flex items-center justify-center text-cyan-300">
+        {icon}
+      </div>
+
+      <div>
+        <h3 className="text-xs font-black uppercase tracking-wider text-white">
+          {title}
+        </h3>
+
+        {subtitle && (
+          <p className="text-[10px] text-zinc-500 mt-0.5">
+            {subtitle}
+          </p>
+        )}
+      </div>
+    </div>
+
+    <button
+      onClick={onClose}
+      className="w-8 h-8 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] flex items-center justify-center text-zinc-400 hover:text-white transition"
+    >
+      <X size={16} />
+    </button>
+  </div>
+);
+
+/* =========================================================
+   MAIN COMPONENT
+========================================================= */
 
 const MobileGamingSetup = () => {
   const { streamId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const screenVideoRef = useRef(null);
   const camVideoRef = useRef(null);
   const chatBottomRef = useRef(null);
 
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('MOBILE GAMING');
-
-  // WEBRTC & SIGNALING REFS
   const pcRef = useRef(null);
   const signalingChannelRef = useRef(null);
 
-  // STREAM & GAME STATE
-  const [title, setTitle] = useState("");
-  const [selectedGame, setSelectedGame] = useState("PUBG Mobile");
-  const [customGameSearch, setCustomGameSearch] = useState("");
-  const [privacy, setPrivacy] = useState("public");
-  const [streamQuality, setStreamQuality] = useState("1080p 60FPS");
-  const [activeStreamData, setActiveStreamData] = useState(null);
-
-  // MEDIA CAPTURE STATE
-  const [screenStream, setScreenStream] = useState(null);
-  const [camStream, setCamStream] = useState(null);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isCamOverlayOn, setIsCamOverlayOn] = useState(true);
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [camPosition, setCamPosition] = useState("bottom-right"); // 'top-left', 'top-right', 'bottom-left', 'bottom-right'
-
-  // AUDIO LEVEL VISUALIZER
-  const [audioLevel, setAudioLevel] = useState(0);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
 
-  // IN-STREAM INTERACTIVE MODALS & OVERLAYS
-  const [showSoundboard, setShowSoundboard] = useState(false);
-  const [showSquadModal, setShowSquadModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showChatOverlay, setShowChatOverlay] = useState(true);
-  const [showEndConfirm, setShowEndConfirm] = useState(false);
-  const [streamEndSummary, setStreamEndSummary] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('MOBILE GAMING');
 
-  // SQUAD / CO-HOST SEARCH STATE
-  const [squadSearchQuery, setSquadSearchQuery] = useState("");
-  const [squadUsersList, setSquadUsersList] = useState([]);
-  const [squadInvitesSent, setSquadInvitesSent] = useState(new Set());
-  const [copiedLink, setCopiedLink] = useState(false);
+  /* STREAM */
+  const [title, setTitle] = useState('');
+  const [selectedGame, setSelectedGame] =
+    useState('PUBG Mobile');
+  const [customGameSearch, setCustomGameSearch] =
+    useState('');
+  const [privacy, setPrivacy] = useState('public');
+  const [streamQuality, setStreamQuality] =
+    useState('1080p 60FPS');
+  const [activeStreamData, setActiveStreamData] =
+    useState(null);
 
-  // LIVE STREAM HUD METRICS & CHAT
-  const [streamUptime, setStreamUptime] = useState(0);
-  const [viewerCount, setViewerCount] = useState(124);
-  const [likesCount, setLikesCount] = useState(850);
-  const [coinsEarned, setCoinsEarned] = useState(320);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatInput, setChatInput] = useState("");
-  const [recentGifts, setRecentGifts] = useState([]);
+  /* MEDIA */
+  const [screenStream, setScreenStream] =
+    useState(null);
+  const [camStream, setCamStream] =
+    useState(null);
+  const [isScreenSharing, setIsScreenSharing] =
+    useState(false);
+  const [isCamOverlayOn, setIsCamOverlayOn] =
+    useState(true);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [camPosition, setCamPosition] =
+    useState('bottom-right');
 
-  // POPULAR MOBILE & PC GAMES LIST
+  /* AUDIO */
+  const [audioLevel, setAudioLevel] = useState(0);
+
+  /* MODALS */
+  const [showSoundboard, setShowSoundboard] =
+    useState(false);
+  const [showSquadModal, setShowSquadModal] =
+    useState(false);
+  const [showSettingsModal, setShowSettingsModal] =
+    useState(false);
+  const [showChatOverlay, setShowChatOverlay] =
+    useState(true);
+  const [showEndConfirm, setShowEndConfirm] =
+    useState(false);
+  const [streamEndSummary, setStreamEndSummary] =
+    useState(null);
+
+  /* SQUAD */
+  const [squadSearchQuery, setSquadSearchQuery] =
+    useState('');
+  const [squadUsersList, setSquadUsersList] =
+    useState([]);
+  const [squadInvitesSent, setSquadInvitesSent] =
+    useState(new Set());
+  const [copiedLink, setCopiedLink] =
+    useState(false);
+
+  /* HUD */
+  const [streamUptime, setStreamUptime] =
+    useState(0);
+  const [viewerCount, setViewerCount] =
+    useState(124);
+  const [likesCount, setLikesCount] =
+    useState(850);
+  const [coinsEarned, setCoinsEarned] =
+    useState(320);
+
+  const [chatMessages, setChatMessages] =
+    useState([]);
+  const [chatInput, setChatInput] =
+    useState([]);
+
+  /* =====================================================
+     GAME DATA
+  ===================================================== */
+
   const popularGames = [
-    "PUBG Mobile", "Free Fire", "Call of Duty: Mobile", 
-    "Mobile Legends", "Genshin Impact", "Roblox", "Fortnite",
-    "Apex Legends", "Minecraft", "GTA V", "Valorant", "EA SPORTS FC",
-    "Wild Rift", "Clash Royale", "Brawl Stars"
+    'PUBG Mobile',
+    'Free Fire',
+    'Call of Duty: Mobile',
+    'Mobile Legends',
+    'Genshin Impact',
+    'Roblox',
+    'Fortnite',
+    'Apex Legends',
+    'Minecraft',
+    'GTA V',
+    'Valorant',
+    'EA SPORTS FC',
+    'Wild Rift',
+    'Clash Royale',
+    'Brawl Stars'
   ];
 
-  const filteredGames = popularGames.filter(g => 
-    g.toLowerCase().includes(customGameSearch.toLowerCase())
+  const filteredGames = popularGames.filter((game) =>
+    game
+      .toLowerCase()
+      .includes(customGameSearch.toLowerCase())
   );
 
-  // STREAM TITLE TEMPLATES
   const titleTemplates = [
     `Streaming ${selectedGame} Ranked Push! 🎮🔥`,
     `Live ${selectedGame} Squad Tournament 🏆`,
@@ -147,267 +476,555 @@ const MobileGamingSetup = () => {
     `${selectedGame} Pro Gameplay & Chill Chat ✨`
   ];
 
-  // FETCH ACTIVE STREAM DATA
+  /* =====================================================
+     FETCH STREAM
+  ===================================================== */
+
   useEffect(() => {
-    if (streamId) {
-      const fetchStream = async () => {
-        const { data, error } = await supabase
-          .from('live_streams')
-          .select('*, profiles:host_id(username, avatar_url)')
-          .eq('id', streamId)
-          .single();
-        if (data) {
-          setActiveStreamData(data);
-          if (data.category) setSelectedGame(data.category);
-          if (data.title) setTitle(data.title);
+    if (!streamId) return;
+
+    const fetchStream = async () => {
+      const { data, error } = await supabase
+        .from('live_streams')
+        .select(
+          '*, profiles:host_id(username, avatar_url)'
+        )
+        .eq('id', streamId)
+        .single();
+
+      if (error) {
+        console.error('Failed to fetch gaming stream:', error);
+        return;
+      }
+
+      if (data) {
+        setActiveStreamData(data);
+
+        if (data.category) {
+          setSelectedGame(data.category);
         }
-      };
-      fetchStream();
-    }
+
+        if (data.title) {
+          setTitle(data.title);
+        }
+      }
+    };
+
+    fetchStream();
   }, [streamId]);
 
-  // STREAM UPTIME TIMER & RANDOM ENGAGEMENT SIMULATOR
+  /* =====================================================
+     UPTIME / ENGAGEMENT
+  ===================================================== */
+
   useEffect(() => {
     if (!streamId) return;
 
     const timer = setInterval(() => {
-      setStreamUptime(prev => prev + 1);
+      setStreamUptime((prev) => prev + 1);
     }, 1000);
 
-    const engagementInterval = setInterval(() => {
-      setViewerCount(prev => Math.max(10, prev + Math.floor(Math.random() * 5) - 2));
-      setLikesCount(prev => prev + Math.floor(Math.random() * 3));
+    const engagement = setInterval(() => {
+      setViewerCount((prev) =>
+        Math.max(
+          10,
+          prev + Math.floor(Math.random() * 5) - 2
+        )
+      );
+
+      setLikesCount((prev) =>
+        prev + Math.floor(Math.random() * 3)
+      );
     }, 4000);
 
     return () => {
       clearInterval(timer);
-      clearInterval(engagementInterval);
+      clearInterval(engagement);
     };
   }, [streamId]);
 
-  // BIND MEDIA STREAMS TO VIDEO ELEMENTS
-  useEffect(() => {
-    if (screenVideoRef.current && screenStream) {
-      screenVideoRef.current.srcObject = screenStream;
-    }
-  }, [screenStream, streamId, isScreenSharing]);
+  /* =====================================================
+     SCREEN VIDEO
+  ===================================================== */
 
   useEffect(() => {
-    if (camVideoRef.current && camStream) {
-      camVideoRef.current.srcObject = camStream;
-    }
-  }, [camStream, streamId, isCamOverlayOn]);
+    if (
+      screenVideoRef.current &&
+      screenStream
+    ) {
+      screenVideoRef.current.srcObject =
+        screenStream;
 
-  // START SCREEN SHARE CAPTURE
+      screenVideoRef.current
+        .play()
+        .catch(() => {});
+    }
+  }, [screenStream]);
+
+  /* =====================================================
+     CAMERA VIDEO
+  ===================================================== */
+
+  useEffect(() => {
+    if (
+      camVideoRef.current &&
+      camStream
+    ) {
+      camVideoRef.current.srcObject =
+        camStream;
+
+      camVideoRef.current
+        .play()
+        .catch(() => {});
+    }
+  }, [camStream]);
+
+  /* =====================================================
+     SCREEN CAPTURE
+  ===================================================== */
+
   const startScreenCapture = async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      alert("Display media sharing is not supported on this browser. Please use a desktop browser or camera mode.");
+    if (
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getDisplayMedia
+    ) {
+      alert(
+        'Screen sharing is not supported by this browser. Please use a supported desktop browser.'
+      );
       return;
     }
 
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: "always", frameRate: 60 },
-        audio: true
-      });
+      const displayStream =
+        await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: 'always',
+            frameRate: 60
+          },
+          audio: true
+        });
+
       setScreenStream(displayStream);
       setIsScreenSharing(true);
 
-      displayStream.getVideoTracks()[0].onended = () => {
-        setIsScreenSharing(false);
-        setScreenStream(null);
-      };
-    } catch (err) {
-      console.error("Screen capture cancelled or failed", err);
+      const videoTrack =
+        displayStream.getVideoTracks()[0];
+
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          setIsScreenSharing(false);
+          setScreenStream(null);
+        };
+      }
+    } catch (error) {
+      console.error(
+        'Screen capture cancelled or failed:',
+        error
+      );
+
       setIsScreenSharing(false);
     }
   };
 
   const stopScreenCapture = () => {
-    if (screenStream) {
-      screenStream.getTracks().forEach(track => track.stop());
-      setScreenStream(null);
-      setIsScreenSharing(false);
-    }
+    if (!screenStream) return;
+
+    screenStream
+      .getTracks()
+      .forEach((track) => track.stop());
+
+    setScreenStream(null);
+    setIsScreenSharing(false);
   };
 
-  // WEBCAM OVERLAY PREVIEW & MIC AUDIO METER
-  useEffect(() => {
-    if (isCamOverlayOn && !camStream) startCamPreview();
-    else if (!isCamOverlayOn) stopCamPreview();
+  /* =====================================================
+     CAMERA PREVIEW
+  ===================================================== */
 
-    return () => {
-      if (!streamId) stopCamPreview();
-    };
-  }, [isCamOverlayOn]);
+  const stopCamPreview = useCallback(() => {
+    setCamStream((currentStream) => {
+      if (currentStream) {
+        currentStream
+          .getTracks()
+          .forEach((track) => track.stop());
+      }
 
-  const startCamPreview = async () => {
+      return null;
+    });
+
+    if (audioContextRef.current) {
+      audioContextRef.current
+        .close()
+        .catch(() => {});
+
+      audioContextRef.current = null;
+      analyserRef.current = null;
+    }
+
+    setAudioLevel(0);
+  }, []);
+
+  const startCamPreview = useCallback(async () => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: true, 
-        audio: true 
-      });
+      const mediaStream =
+        await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+
       setCamStream(mediaStream);
 
-      // Setup audio level analyzer for mic indicator
       try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const AudioCtx =
+          window.AudioContext ||
+          window.webkitAudioContext;
+
+        if (!AudioCtx) return;
+
         const audioCtx = new AudioCtx();
         audioContextRef.current = audioCtx;
-        const analyser = audioCtx.createAnalyser();
+
+        const analyser =
+          audioCtx.createAnalyser();
+
+        analyser.fftSize = 256;
         analyserRef.current = analyser;
-        const source = audioCtx.createMediaStreamSource(mediaStream);
+
+        const source =
+          audioCtx.createMediaStreamSource(
+            mediaStream
+          );
+
         source.connect(analyser);
 
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const dataArray =
+          new Uint8Array(
+            analyser.frequencyBinCount
+          );
+
         const checkAudio = () => {
           if (!analyserRef.current) return;
-          analyserRef.current.getByteFrequencyData(dataArray);
-          const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-          setAudioLevel(Math.min(100, Math.round(average * 2)));
-          if (camStream) requestAnimationFrame(checkAudio);
-        };
-        checkAudio();
-      } catch (audioErr) {
-        console.warn("Audio meter setup warning:", audioErr);
-      }
 
-    } catch (err) {
-      console.warn("Webcam preview access error:", err);
+          analyserRef.current.getByteFrequencyData(
+            dataArray
+          );
+
+          const average =
+            dataArray.reduce(
+              (a, b) => a + b,
+              0
+            ) / dataArray.length;
+
+          setAudioLevel(
+            Math.min(
+              100,
+              Math.round(average * 2)
+            )
+          );
+
+          requestAnimationFrame(checkAudio);
+        };
+
+        checkAudio();
+      } catch (audioError) {
+        console.warn(
+          'Audio meter warning:',
+          audioError
+        );
+      }
+    } catch (error) {
+      console.warn(
+        'Camera preview access error:',
+        error
+      );
+
       setIsCamOverlayOn(false);
     }
-  };
+  }, []);
 
-  const stopCamPreview = () => {
-    if (camStream) {
-      camStream.getTracks().forEach(track => track.stop());
-      setCamStream(null);
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-  };
-
-  // TOGGLE MIC MUTE
-  const toggleMic = () => {
-    if (camStream) {
-      const audioTrack = camStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !isMicOn;
-        setIsMicOn(!isMicOn);
+  useEffect(() => {
+    if (isCamOverlayOn) {
+      if (!camStream) {
+        startCamPreview();
       }
     } else {
-      setIsMicOn(!isMicOn);
+      stopCamPreview();
     }
+  }, [
+    isCamOverlayOn,
+    camStream,
+    startCamPreview,
+    stopCamPreview
+  ]);
+
+  useEffect(() => {
+    return () => {
+      stopScreenCapture();
+      stopCamPreview();
+
+      if (pcRef.current) {
+        try {
+          pcRef.current.close();
+        } catch {}
+      }
+
+      if (signalingChannelRef.current) {
+        try {
+          supabase.removeChannel(
+            signalingChannelRef.current
+          );
+        } catch {}
+      }
+    };
+  }, []);
+
+  /* =====================================================
+     MIC
+  ===================================================== */
+
+  const toggleMic = () => {
+    setIsMicOn((previous) => {
+      const next = !previous;
+
+      if (camStream) {
+        camStream
+          .getAudioTracks()
+          .forEach((track) => {
+            track.enabled = next;
+          });
+      }
+
+      return next;
+    });
   };
 
-  // INITIALIZE WEBRTC & REALTIME SIGNALING
-  const initWebRTCSignaling = async (targetStreamId) => {
+  /* =====================================================
+     WEBRTC
+  ===================================================== */
+
+  const initWebRTCSignaling = async (
+    targetStreamId
+  ) => {
     const iceServers = {
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        {
+          urls: 'stun:stun.l.google.com:19302'
+        },
+        {
+          urls: 'stun:stun1.l.google.com:19302'
+        }
       ]
     };
 
-    const pc = new RTCPeerConnection(iceServers);
+    const pc = new RTCPeerConnection(
+      iceServers
+    );
+
     pcRef.current = pc;
 
     if (screenStream) {
-      screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
-    }
-    if (isCamOverlayOn && camStream) {
-      camStream.getTracks().forEach(track => pc.addTrack(track, camStream));
+      screenStream
+        .getTracks()
+        .forEach((track) => {
+          pc.addTrack(track, screenStream);
+        });
     }
 
-    const channel = supabase.channel(`stream_signaling:${targetStreamId}`, {
-      config: { broadcast: { self: false } }
-    });
+    if (isCamOverlayOn && camStream) {
+      camStream
+        .getTracks()
+        .forEach((track) => {
+          pc.addTrack(track, camStream);
+        });
+    }
+
+    const channel = supabase.channel(
+      `stream_signaling:${targetStreamId}`,
+      {
+        config: {
+          broadcast: {
+            self: false
+          }
+        }
+      }
+    );
+
     signalingChannelRef.current = channel;
 
     channel
-      .on('broadcast', { event: 'viewer-answer' }, async ({ payload }) => {
-        if (payload.answer && pc.signalingState !== 'closed') {
-          console.log("📡 [WebRTC] Received Viewer SDP Answer");
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+      .on(
+        'broadcast',
+        { event: 'viewer-answer' },
+        async ({ payload }) => {
+          if (
+            payload?.answer &&
+            pc.signalingState !== 'closed'
+          ) {
+            try {
+              await pc.setRemoteDescription(
+                new RTCSessionDescription(
+                  payload.answer
+                )
+              );
+            } catch (error) {
+              console.error(
+                'Failed to apply viewer answer:',
+                error
+              );
+            }
+          }
         }
-      })
-      .on('broadcast', { event: 'viewer-ice-candidate' }, async ({ payload }) => {
-        if (payload.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+      )
+      .on(
+        'broadcast',
+        {
+          event: 'viewer-ice-candidate'
+        },
+        async ({ payload }) => {
+          if (payload?.candidate) {
+            try {
+              await pc.addIceCandidate(
+                new RTCIceCandidate(
+                  payload.candidate
+                )
+              );
+            } catch (error) {
+              console.warn(
+                'Failed to add viewer ICE:',
+                error
+              );
+            }
+          }
         }
-      })
+      )
       .subscribe((status) => {
-        console.log(`📡 [Supabase Realtime] Gaming signaling status: ${status}`);
+        console.log(
+          `Gaming signaling status: ${status}`
+        );
+
         if (status === 'SUBSCRIBED') {
           pc.onicecandidate = (event) => {
             if (event.candidate) {
               channel.send({
                 type: 'broadcast',
                 event: 'host-ice-candidate',
-                payload: { candidate: event.candidate }
+                payload: {
+                  candidate:
+                    event.candidate
+                }
               });
             }
           };
         }
       });
 
-    const offer = await pc.createOffer();
+    const offer =
+      await pc.createOffer();
+
     await pc.setLocalDescription(offer);
 
-    const { error: updateError } = await supabase
+    const { error } = await supabase
       .from('live_streams')
-      .update({ 
-        offer: offer,
-        status: 'live' 
+      .update({
+        offer,
+        status: 'live'
       })
       .eq('id', targetStreamId);
 
-    if (updateError) {
-      console.error("❌ Failed to update stream offer:", updateError);
+    if (error) {
+      console.error(
+        'Failed to update stream offer:',
+        error
+      );
     }
   };
 
-  // START GAMING STREAM
+  /* =====================================================
+     START GAMING STREAM
+  ===================================================== */
+
   const handleStartGamingStream = async () => {
+    if (loading) return;
+
     setLoading(true);
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
 
-      const finalTitle = title.trim() || `${user?.user_metadata?.username || 'Gamer'}'s ${selectedGame} Stream 🎮`;
-
-      const { data, error } = await supabase
-        .from('live_streams')
-        .insert([{ 
-          title: finalTitle,
-          host_id: user?.id,
-          category: selectedGame,
-          privacy,
-          status: 'pending'
-        }])
-        .select().single();
-
-      if (!error && data) {
-        await initWebRTCSignaling(data.id);
-        navigate(`/live/gaming/${data.id}`);
-      } else {
-        console.error("❌ Failed to create gaming stream in Supabase:", error);
-        alert("Failed to create stream session. Please check connection.");
+      if (!user) {
+        alert(
+          'Please sign in before starting a gaming stream.'
+        );
+        return;
       }
-    } catch (err) {
-      console.error("⚠️ Error starting gaming stream:", err);
+
+      const finalTitle =
+        title.trim() ||
+        `${
+          user.user_metadata?.username ||
+          'Gamer'
+        }'s ${selectedGame} Stream 🎮`;
+
+      const { data, error } =
+        await supabase
+          .from('live_streams')
+          .insert([
+            {
+              title: finalTitle,
+              host_id: user.id,
+              category: selectedGame,
+              privacy,
+              status: 'pending'
+            }
+          ])
+          .select()
+          .single();
+
+      if (error || !data) {
+        console.error(
+          'Failed to create gaming stream:',
+          error
+        );
+
+        alert(
+          'Failed to create the gaming stream. Please check your connection.'
+        );
+
+        return;
+      }
+
+      await initWebRTCSignaling(data.id);
+
+      navigate(
+        `/live/gaming/${data.id}`
+      );
+    } catch (error) {
+      console.error(
+        'Error starting gaming stream:',
+        error
+      );
+
+      alert(
+        'Something went wrong while starting your gaming stream.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // END GAMING STREAM
+  /* =====================================================
+     END STREAM
+  ===================================================== */
+
   const handleConfirmEndStream = async () => {
     if (streamId) {
       await supabase
         .from('live_streams')
-        .update({ status: 'ended' })
+        .update({
+          status: 'ended'
+        })
         .eq('id', streamId);
     }
 
@@ -415,878 +1032,2502 @@ const MobileGamingSetup = () => {
       duration: formatTime(streamUptime),
       peakViewers: viewerCount,
       totalLikes: likesCount,
-      coinsEarned: coinsEarned,
+      coinsEarned,
       game: selectedGame
     });
 
     stopScreenCapture();
     stopCamPreview();
+
     setShowEndConfirm(false);
   };
 
-  // SQUAD / CO-HOST USERS SEARCH
-  const handleSearchSquadUsers = async (query) => {
+  /* =====================================================
+     SQUAD SEARCH
+  ===================================================== */
+
+  const handleSearchSquadUsers = async (
+    query
+  ) => {
     setSquadSearchQuery(query);
+
     if (!query.trim()) {
       setSquadUsersList([]);
       return;
     }
+
     try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url')
-        .ilike('username', `%${query}%`)
-        .limit(8);
+      const { data, error } =
+        await supabase
+          .from('profiles')
+          .select(
+            'id, username, avatar_url'
+          )
+          .ilike(
+            'username',
+            `%${query}%`
+          )
+          .limit(8);
 
-      if (data) setSquadUsersList(data);
-    } catch (err) {
-      console.error("Squad search error:", err);
-    }
-  };
-
-  // SEND SQUAD DIRECT CO-HOST INVITE
-  const handleInviteSquadMember = async (user) => {
-    try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-
-      await supabase.from('live_guest_requests').upsert({
-        stream_id: streamId || 'pending_gaming',
-        user_id: user.id,
-        username: user.username || 'Gamer',
-        avatar_url: user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        status: 'invited',
-        mode: 'audio'
-      });
-
-      if (currentUser?.id) {
-        await supabase.from('activities').insert({
-          user_id: user.id,
-          actor_id: currentUser.id,
-          type: 'live_invite',
-          description: JSON.stringify({
-            stream_id: streamId || '',
-            mode: 'audio',
-            host_name: currentUser.user_metadata?.username || 'Host Gamer'
-          })
-        });
+      if (error) {
+        console.error(
+          'Squad search error:',
+          error
+        );
+        return;
       }
 
-      setSquadInvitesSent(prev => new Set([...prev, user.id]));
-    } catch (err) {
-      console.error("Squad invite error:", err);
+      setSquadUsersList(data || []);
+    } catch (error) {
+      console.error(
+        'Squad search error:',
+        error
+      );
     }
   };
 
-  // COPY STREAM SHARE LINK
-  const handleCopyStreamLink = () => {
-    const link = `${window.location.origin}/live/watch/${streamId || ''}`;
-    navigator.clipboard.writeText(link);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+  /* =====================================================
+     INVITE SQUAD MEMBER
+  ===================================================== */
+
+  const handleInviteSquadMember = async (
+    user
+  ) => {
+    try {
+      const {
+        data: { user: currentUser }
+      } = await supabase.auth.getUser();
+
+      await supabase
+        .from('live_guest_requests')
+        .upsert({
+          stream_id:
+            streamId || 'pending_gaming',
+          user_id: user.id,
+          username:
+            user.username || 'Gamer',
+          avatar_url:
+            user.avatar_url ||
+            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+          status: 'invited',
+          mode: 'audio'
+        });
+
+      if (currentUser?.id) {
+        await supabase
+          .from('activities')
+          .insert({
+            user_id: user.id,
+            actor_id: currentUser.id,
+            type: 'live_invite',
+            description: JSON.stringify({
+              stream_id:
+                streamId || '',
+              mode: 'audio',
+              host_name:
+                currentUser.user_metadata
+                  ?.username ||
+                'Host Gamer'
+            })
+          });
+      }
+
+      setSquadInvitesSent(
+        (previous) =>
+          new Set([
+            ...previous,
+            user.id
+          ])
+      );
+    } catch (error) {
+      console.error(
+        'Squad invite error:',
+        error
+      );
+    }
   };
 
-  // SEND CHAT MESSAGE
-  const handleSendChat = (e) => {
-    e?.preventDefault();
+  /* =====================================================
+     SHARE LINK
+  ===================================================== */
+
+  const handleCopyStreamLink = async () => {
+    const link =
+      `${window.location.origin}/live/watch/` +
+      `${streamId || ''}`;
+
+    try {
+      await navigator.clipboard.writeText(
+        link
+      );
+
+      setCopiedLink(true);
+
+      setTimeout(() => {
+        setCopiedLink(false);
+      }, 2000);
+    } catch (error) {
+      console.error(
+        'Copy link failed:',
+        error
+      );
+    }
+  };
+
+  /* =====================================================
+     CHAT
+  ===================================================== */
+
+  const handleSendChat = (event) => {
+    event?.preventDefault();
+
     if (!chatInput.trim()) return;
 
-    const newMsg = {
+    const newMessage = {
       id: Date.now(),
-      sender: 'You (Streamer)',
+      sender: 'You',
       text: chatInput.trim(),
       isHost: true,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      time: new Date().toLocaleTimeString(
+        [],
+        {
+          hour: '2-digit',
+          minute: '2-digit'
+        }
+      )
     };
 
-    setChatMessages(prev => [...prev, newMsg]);
-    setChatInput("");
-    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    setChatMessages((previous) => [
+      ...previous,
+      newMessage
+    ]);
+
+    setChatInput('');
+
+    setTimeout(() => {
+      chatBottomRef.current?.scrollIntoView({
+        behavior: 'smooth'
+      });
+    }, 100);
   };
 
-  // TRIGGER SOUND EFFECT & BROADCAST
+  /* =====================================================
+     SOUNDBOARD
+  ===================================================== */
+
   const handleTriggerSound = (type) => {
     playSoundEffect(type);
     setShowSoundboard(false);
   };
 
-  // BOTTOM NAVIGATION TABS
+  /* =====================================================
+     NAVIGATION
+  ===================================================== */
+
   const tabs = [
-    { name: 'POST', path: '/create/post', icon: null },
-    { name: 'CREATE', path: '/create/story', icon: null },
-    { name: 'DEVICE CAMERA', path: '/live/device-camera', mode: 'camera', icon: <Camera size={14}/> },
-    { name: 'GO WITH GUEST', path: '/live/guest', mode: 'guest', icon: <Users size={14}/> },
-    { name: 'MOBILE GAMING', mode: 'gaming', icon: <Gamepad2 size={14}/> },
+    {
+      name: 'POST',
+      path: '/create/post'
+    },
+    {
+      name: 'CREATE',
+      path: '/create/story'
+    },
+    {
+      name: 'DEVICE CAMERA',
+      path: '/live/device-camera',
+      icon: <Camera size={14} />
+    },
+    {
+      name: 'GO WITH GUEST',
+      path: '/live/guest',
+      icon: <Users size={14} />
+    },
+    {
+      name: 'MOBILE GAMING',
+      mode: 'gaming',
+      icon: <Gamepad2 size={14} />
+    }
   ];
 
   const handleTabClick = (tab) => {
     if (tab.mode === 'gaming') return;
-    if (tab.path) navigate(tab.path);
-  };
 
-  // TIME FORMATTER
-  const formatTime = (seconds) => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    if (hrs > 0) {
-      return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (tab.path) {
+      navigate(tab.path);
     }
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // CAM PIP CORNER POSITION CLASSES
+  /* =====================================================
+     TIME
+  ===================================================== */
+
+  const formatTime = (seconds) => {
+    const hrs = Math.floor(
+      seconds / 3600
+    );
+
+    const mins = Math.floor(
+      (seconds % 3600) / 60
+    );
+
+    const secs = seconds % 60;
+
+    if (hrs > 0) {
+      return [
+        hrs,
+        mins,
+        secs
+      ]
+        .map((value) =>
+          value.toString().padStart(2, '0')
+        )
+        .join(':');
+    }
+
+    return [
+      mins,
+      secs
+    ]
+      .map((value) =>
+        value.toString().padStart(2, '0')
+      )
+      .join(':');
+  };
+
+  /* =====================================================
+     CAMERA POSITION
+  ===================================================== */
+
   const getCamPositionClass = () => {
     switch (camPosition) {
-      case 'top-left': return 'top-3 left-3';
-      case 'top-right': return 'top-3 right-3';
-      case 'bottom-left': return 'bottom-3 left-3';
-      default: return 'bottom-3 right-3';
+      case 'top-left':
+        return 'top-4 left-4';
+
+      case 'top-right':
+        return 'top-4 right-4';
+
+      case 'bottom-left':
+        return 'bottom-4 left-4';
+
+      default:
+        return 'bottom-4 right-4';
     }
   };
 
-  // ----------------------------------------------------
-  // RENDER END SESSION SUMMARY MODAL
-  // ----------------------------------------------------
+  /* =====================================================
+     END SUMMARY
+  ===================================================== */
+
   if (streamEndSummary) {
     return (
-      <div className="h-[100dvh] bg-[#030308] text-white flex items-center justify-center p-4 relative font-sans overflow-hidden">
-        <div className="fixed inset-0 bg-pink-600/10 rounded-full blur-[160px] pointer-events-none" />
-        <div className="w-full max-w-md bg-zinc-900/90 border border-pink-500/40 p-6 sm:p-8 rounded-3xl shadow-[0_0_50px_rgba(244,63,94,0.3)] space-y-6 text-center backdrop-blur-2xl relative z-10">
-          <div className="w-16 h-16 bg-pink-500/20 border border-pink-400 rounded-full flex items-center justify-center mx-auto text-pink-400 shadow-lg">
-            <Trophy size={32} />
-          </div>
+      <div className="min-h-[100dvh] bg-[#06070a] text-white flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-cyan-500/[0.08] blur-[120px] rounded-full pointer-events-none" />
 
-          <div>
-            <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-white">
-              Gaming Stream Ended
-            </h2>
-            <p className="text-xs text-pink-300 font-medium mt-1">
-              Category: <span className="font-bold text-white">{streamEndSummary.game}</span>
-            </p>
-          </div>
+        <motion.div
+          initial={{
+            opacity: 0,
+            y: 20,
+            scale: 0.97
+          }}
+          animate={{
+            opacity: 1,
+            y: 0,
+            scale: 1
+          }}
+          className="relative w-full max-w-xl"
+        >
+          <div className="rounded-3xl border border-white/[0.1] bg-[#0c0e13] shadow-[0_30px_100px_rgba(0,0,0,0.6)] overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-cyan-400 via-pink-500 to-purple-500" />
 
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <div className="bg-black/50 border border-cyan-500/30 p-3 rounded-2xl">
-              <p className="text-[10px] font-black uppercase text-cyan-300">Duration</p>
-              <p className="text-lg font-black text-white mt-0.5">{streamEndSummary.duration}</p>
-            </div>
-            <div className="bg-black/50 border border-pink-500/30 p-3 rounded-2xl">
-              <p className="text-[10px] font-black uppercase text-pink-300">Peak Viewers</p>
-              <p className="text-lg font-black text-white mt-0.5">{streamEndSummary.peakViewers}</p>
-            </div>
-            <div className="bg-black/50 border border-pink-500/30 p-3 rounded-2xl">
-              <p className="text-[10px] font-black uppercase text-pink-300">Total Likes</p>
-              <p className="text-lg font-black text-white mt-0.5">{streamEndSummary.totalLikes}</p>
-            </div>
-            <div className="bg-black/50 border border-amber-500/30 p-3 rounded-2xl">
-              <p className="text-[10px] font-black uppercase text-amber-300">Coins Earned</p>
-              <p className="text-lg font-black text-amber-400 mt-0.5">{streamEndSummary.coinsEarned} 🪙</p>
+            <div className="p-6 sm:p-8">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-300">
+                  <Trophy size={30} />
+                </div>
+
+                <p className="mt-5 text-[10px] uppercase tracking-[0.2em] font-black text-zinc-500">
+                  Session Complete
+                </p>
+
+                <h1 className="mt-2 text-2xl sm:text-3xl font-black tracking-tight">
+                  Gaming Stream Ended
+                </h1>
+
+                <p className="mt-2 text-xs text-zinc-500">
+                  {streamEndSummary.game}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
+                <StatCard
+                  icon={<Clock size={14} />}
+                  label="Duration"
+                  value={
+                    streamEndSummary.duration
+                  }
+                  accent="cyan"
+                />
+
+                <StatCard
+                  icon={<Users size={14} />}
+                  label="Peak Viewers"
+                  value={
+                    streamEndSummary.peakViewers
+                  }
+                  accent="pink"
+                />
+
+                <StatCard
+                  icon={<Heart size={14} />}
+                  label="Likes"
+                  value={
+                    streamEndSummary.totalLikes
+                  }
+                  accent="pink"
+                />
+
+                <StatCard
+                  icon={<Gift size={14} />}
+                  label="Coins"
+                  value={
+                    `${streamEndSummary.coinsEarned} 🪙`
+                  }
+                  accent="amber"
+                />
+              </div>
+
+              <button
+                onClick={() =>
+                  navigate('/live')
+                }
+                className="w-full mt-6 h-12 rounded-xl bg-white text-black hover:bg-zinc-200 font-black text-[11px] uppercase tracking-[0.15em] transition"
+              >
+                Back to Live
+              </button>
             </div>
           </div>
-
-          <button
-            onClick={() => navigate('/live')}
-            className="w-full py-3.5 bg-gradient-to-r from-pink-600 to-cyan-600 hover:from-pink-500 hover:to-cyan-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg active:scale-95 transition-all"
-          >
-            Back to Explore
-          </button>
-        </div>
+        </motion.div>
       </div>
     );
   }
 
-  // ----------------------------------------------------
-  // IF STREAM IS ACTIVE (BROADCAST HUD DASHBOARD)
-  // ----------------------------------------------------
+  /* =====================================================
+     ACTIVE GAMING DASHBOARD
+  ===================================================== */
+
   if (streamId) {
     return (
-      <div className="h-[100dvh] bg-[#030308] text-white flex flex-col justify-between overflow-hidden font-sans relative">
-        {/* WEBRTC LIVE BROADCAST PIPELINE FOR VIEWERS */}
+      <div className="h-[100dvh] bg-[#06070a] text-white flex flex-col overflow-hidden font-sans">
+        {/* Hidden broadcasting pipeline */}
         <div className="hidden">
-          <VideoPlayer streamId={streamId} isHost={true} streamType="gaming" customStream={screenStream || camStream} />
+          <VideoPlayer
+            streamId={streamId}
+            isHost={true}
+            streamType="gaming"
+            customStream={
+              screenStream || camStream
+            }
+          />
         </div>
 
-        {/* NEON BACKGROUND AMBIENT GLOW */}
-        <div className="fixed top-0 left-1/4 w-[250px] sm:w-[400px] h-[250px] sm:h-[400px] bg-pink-600/20 rounded-full blur-[100px] sm:blur-[140px] pointer-events-none animate-pulse z-10" />
-        <div className="fixed bottom-0 right-1/4 w-[250px] sm:w-[400px] h-[250px] sm:h-[400px] bg-cyan-500/20 rounded-full blur-[100px] sm:blur-[140px] pointer-events-none animate-pulse delay-700 z-10" />
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
-        {/* TOP GAMING HUD BAR */}
-        <div className="w-full z-50 p-3 sm:p-5 flex justify-between items-center bg-gradient-to-b from-black/90 via-black/40 to-transparent pointer-events-auto">
-          {/* LEFT BADGES */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-black/60 backdrop-blur-xl border border-pink-500/50 px-3 py-1.5 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.3)]">
-              <span className="w-2.5 h-2.5 bg-pink-500 rounded-full animate-ping" />
-              <span className="text-[10px] sm:text-xs font-black uppercase text-pink-300 tracking-wider">LIVE</span>
-              <span className="text-zinc-500">|</span>
-              <span className="text-[10px] sm:text-xs font-bold text-zinc-200">{selectedGame}</span>
+        <header className="h-16 shrink-0 border-b border-white/[0.07] bg-[#090b0f]/95 backdrop-blur-xl px-3 sm:px-5 flex items-center justify-between z-40">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-cyan-400 flex items-center justify-center shadow-lg">
+              <Gamepad2
+                size={18}
+                className="text-white"
+              />
             </div>
 
-            <div className="hidden sm:flex items-center gap-1.5 bg-black/50 border border-cyan-500/30 px-3 py-1.5 rounded-full text-[10px] text-cyan-300 font-mono">
-              <Clock size={12} className="text-cyan-400" />
-              <span>{formatTime(streamUptime)}</span>
-            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
 
-            <div className="hidden sm:flex items-center gap-1.5 bg-black/50 border border-emerald-500/30 px-3 py-1.5 rounded-full text-[10px] text-emerald-400 font-mono font-bold">
-              <span>{streamQuality}</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-red-300">
+                  Live
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <h1 className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[260px]">
+                  {title ||
+                    `${selectedGame} Gaming Session`}
+                </h1>
+
+                <span className="hidden sm:block text-[9px] text-zinc-600">
+                  •
+                </span>
+
+                <span className="hidden sm:block text-[9px] text-zinc-500 truncate">
+                  {selectedGame}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* RIGHT METRICS & END BUTTON */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 bg-black/60 backdrop-blur-xl border border-white/10 px-3 py-1.5 rounded-full text-xs font-bold">
-              <Users size={14} className="text-cyan-400" />
-              <span className="text-cyan-200">{viewerCount}</span>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.07]">
+              <Clock
+                size={13}
+                className="text-cyan-300"
+              />
+
+              <span className="font-mono text-[10px] text-zinc-300">
+                {formatTime(streamUptime)}
+              </span>
             </div>
 
-            <div className="flex items-center gap-2 bg-black/60 backdrop-blur-xl border border-amber-500/30 px-3 py-1.5 rounded-full text-xs font-bold">
-              <Gift size={14} className="text-amber-400" />
-              <span className="text-amber-300">{coinsEarned} 🪙</span>
+            <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.07]">
+              <Users
+                size={13}
+                className="text-cyan-300"
+              />
+
+              <span className="text-[10px] font-bold text-white">
+                {viewerCount}
+              </span>
             </div>
 
-            <button 
-              onClick={() => setShowEndConfirm(true)}
-              className="px-4 py-1.5 bg-red-600/90 hover:bg-red-500 border border-red-400 rounded-full text-white text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all active:scale-95"
+            <div className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.07]">
+              <Activity
+                size={13}
+                className="text-emerald-300"
+              />
+
+              <span className="text-[10px] font-bold text-emerald-300">
+                {streamQuality}
+              </span>
+            </div>
+
+            <button
+              onClick={() =>
+                setShowEndConfirm(true)
+              }
+              className="ml-1 px-3 sm:px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-300 text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition"
             >
-              End Stream
+              End
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* MAIN GAME DISPLAY STAGE & CHAT OVERLAY */}
-        <div className="flex-1 relative bg-zinc-950 flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden">
-          
-          <div className="w-full max-w-5xl h-full rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-pink-500/40 shadow-[0_0_40px_rgba(244,63,94,0.25)] relative bg-black flex items-center justify-center">
-            
-            {/* SCREEN SHARE GAMEPLAY DISPLAY */}
-            <video 
-              ref={screenVideoRef} 
-              autoPlay 
-              muted 
-              playsInline 
-              className={`w-full h-full object-contain ${screenStream ? 'block' : 'hidden'}`} 
-            />
+        {/* =================================================
+            MAIN DASHBOARD
+        ================================================= */}
 
-            {/* FALLBACK WHEN SCREEN IS NOT CAPTURED */}
-            {!screenStream && (
-              <div className="flex flex-col items-center gap-3 p-6 text-center z-10">
-                <div className="w-16 h-16 bg-pink-500/20 border border-pink-500/40 rounded-full flex items-center justify-center text-pink-400 shadow-xl">
-                  <Gamepad2 size={36} className="animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-black text-pink-300 uppercase tracking-widest">
-                    Broadcasting {selectedGame}
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1 max-w-xs">
-                    Select your game display or window to share live gameplay with your audience.
-                  </p>
-                </div>
-                <button 
-                  onClick={startScreenCapture}
-                  className="mt-2 px-5 py-2.5 bg-gradient-to-r from-pink-600 to-cyan-600 border border-pink-400/60 rounded-xl text-white text-xs font-black uppercase tracking-wider shadow-[0_0_20px_rgba(244,63,94,0.5)] hover:scale-105 active:scale-95 transition-all"
-                >
-                  Share Game Screen
-                </button>
-              </div>
-            )}
+        <main className="flex-1 min-h-0 overflow-hidden">
+          <div className="h-full max-w-[1800px] mx-auto p-2 sm:p-3 lg:p-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-3">
+            {/* ================================
+                CENTER STAGE
+            ================================= */}
 
-            {/* PIP FACE-CAM OVERLAY */}
-            {isCamOverlayOn && (
-              <div className={`absolute ${getCamPositionClass()} w-24 h-24 sm:w-36 sm:h-36 rounded-2xl overflow-hidden border-2 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.6)] bg-zinc-900 z-30 group transition-all`}>
-                <video ref={camVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-                
-                {/* MIC INDICATOR BAR */}
-                <div className="absolute bottom-1 left-1 right-1 h-1 bg-black/60 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-emerald-400 transition-all duration-75"
-                    style={{ width: `${isMicOn ? audioLevel : 0}%` }}
-                  />
+            <div className="min-w-0 min-h-0 flex flex-col gap-3">
+              <div className="flex-1 min-h-0 rounded-2xl border border-white/[0.08] bg-[#0b0d12] overflow-hidden relative">
+                <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-black/50 to-transparent z-20 pointer-events-none" />
+
+                {/* Stage header */}
+                <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-none">
+                  <div className="flex items-center gap-2">
+                    <div className="px-2.5 py-1.5 rounded-lg bg-black/70 backdrop-blur-md border border-white/[0.1] flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      <span className="text-[9px] font-black uppercase tracking-wider">
+                        Broadcasting
+                      </span>
+                    </div>
+
+                    <div className="hidden sm:flex px-2.5 py-1.5 rounded-lg bg-black/70 backdrop-blur-md border border-white/[0.1]">
+                      <span className="text-[9px] font-bold text-zinc-300">
+                        {selectedGame}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-1.5">
+                    <button className="pointer-events-auto w-8 h-8 rounded-lg bg-black/60 backdrop-blur-md border border-white/[0.1] flex items-center justify-center text-zinc-300 hover:text-white">
+                      <Maximize2 size={14} />
+                    </button>
+                  </div>
                 </div>
 
-                {/* CORNER POSITION TOGGLE CONTROLS ON HOVER */}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                  <button 
-                    onClick={() => setCamPosition(camPosition === 'bottom-right' ? 'bottom-left' : 'bottom-right')}
-                    className="p-1 bg-white/20 hover:bg-white/40 rounded text-white text-[9px] font-bold"
-                  >
-                    Move
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* FLOATING TRANSPARENT CHAT OVERLAY */}
-            {showChatOverlay && (
-              <div className="absolute left-3 bottom-3 w-64 sm:w-80 max-h-48 sm:max-h-64 flex flex-col justify-end pointer-events-auto z-20">
-                <div className="space-y-1.5 overflow-y-auto max-h-40 no-scrollbar p-2 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10">
-                  {chatMessages.length === 0 ? (
-                    <p className="text-[10px] text-zinc-500 italic px-2">Live stream chat messages will appear here...</p>
+                {/* Game display */}
+                <div className="absolute inset-0 bg-[#050609] flex items-center justify-center">
+                  {screenStream ? (
+                    <video
+                      ref={screenVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
                   ) : (
-                    chatMessages.map(msg => (
-                      <div key={msg.id} className="text-[11px] leading-tight px-2 py-1 rounded bg-black/30">
-                        <span className={`font-bold mr-1 ${msg.isHost ? 'text-pink-400' : 'text-cyan-300'}`}>
-                          {msg.sender}:
-                        </span>
-                        <span className="text-zinc-200">{msg.text}</span>
+                    <div className="text-center px-6">
+                      <div className="mx-auto w-16 h-16 rounded-2xl bg-cyan-400/[0.06] border border-cyan-400/15 flex items-center justify-center text-cyan-300">
+                        <MonitorPlay size={30} />
                       </div>
-                    ))
-                  )}
-                  <div ref={chatBottomRef} />
-                </div>
 
-                {/* IN-STREAM CHAT INPUT */}
-                <form onSubmit={handleSendChat} className="flex gap-1.5 mt-2">
-                  <input
-                    type="text"
-                    placeholder="Send chat to viewers..."
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    className="flex-1 bg-black/60 border border-white/20 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-zinc-500 outline-none focus:border-cyan-400"
-                  />
-                  <button 
-                    type="submit"
-                    className="p-1.5 bg-pink-600 rounded-xl text-white hover:bg-pink-500"
-                  >
-                    <Send size={14} />
-                  </button>
-                </form>
-              </div>
-            )}
-          </div>
-        </div>
+                      <h2 className="mt-5 text-sm sm:text-base font-black text-white">
+                        No game display connected
+                      </h2>
 
-        {/* BOTTOM FLOATING GAMING TOOLBAR */}
-        <div className="w-full z-50 p-3 sm:p-4 bg-black/80 backdrop-blur-2xl border-t border-cyan-500/30 flex items-center justify-center gap-3 sm:gap-6 flex-wrap pointer-events-auto">
-          <button 
-            onClick={startScreenCapture}
-            className={`p-2.5 sm:p-3 rounded-2xl border flex items-center gap-2 text-xs font-bold transition-all ${
-              isScreenSharing 
-                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' 
-                : 'bg-zinc-900 border-white/10 text-zinc-400 hover:text-white'
-            }`}
-          >
-            <Monitor size={18} />
-            <span className="hidden sm:inline">{isScreenSharing ? 'Screen On' : 'Share Screen'}</span>
-          </button>
-
-          <button 
-            onClick={() => setIsCamOverlayOn(!isCamOverlayOn)}
-            className={`p-2.5 sm:p-3 rounded-2xl border flex items-center gap-2 text-xs font-bold transition-all ${
-              isCamOverlayOn 
-                ? 'bg-pink-500/20 border-pink-400 text-pink-300' 
-                : 'bg-zinc-900 border-white/10 text-zinc-400 hover:text-white'
-            }`}
-          >
-            {isCamOverlayOn ? <Video size={18} /> : <VideoOff size={18} />}
-            <span className="hidden sm:inline">{isCamOverlayOn ? 'Cam On' : 'Cam Off'}</span>
-          </button>
-
-          <button 
-            onClick={toggleMic}
-            className={`p-2.5 sm:p-3 rounded-2xl border flex items-center gap-2 text-xs font-bold transition-all ${
-              isMicOn 
-                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300' 
-                : 'bg-red-500/20 border-red-400 text-red-300'
-            }`}
-          >
-            {isMicOn ? <Mic size={18} /> : <MicOff size={18} />}
-            <span className="hidden sm:inline">{isMicOn ? 'Mic Active' : 'Mic Muted'}</span>
-          </button>
-
-          <button 
-            onClick={() => setShowSoundboard(true)}
-            className="p-2.5 sm:p-3 rounded-2xl bg-amber-500/20 border border-amber-400 text-amber-300 hover:bg-amber-500 hover:text-black transition-all flex items-center gap-2 text-xs font-bold"
-          >
-            <Music size={18} />
-            <span className="hidden sm:inline">Soundboard</span>
-          </button>
-
-          <button 
-            onClick={() => setShowSquadModal(true)}
-            className="p-2.5 sm:p-3 rounded-2xl bg-indigo-500/20 border border-indigo-400 text-indigo-300 hover:bg-indigo-500 hover:text-white transition-all flex items-center gap-2 text-xs font-bold"
-          >
-            <Users size={18} />
-            <span className="hidden sm:inline">Squad / Co-Hosts</span>
-          </button>
-
-          <button 
-            onClick={() => setShowChatOverlay(!showChatOverlay)}
-            className={`p-2.5 sm:p-3 rounded-2xl border flex items-center gap-2 text-xs font-bold transition-all ${
-              showChatOverlay 
-                ? 'bg-purple-500/20 border-purple-400 text-purple-300' 
-                : 'bg-zinc-900 border-white/10 text-zinc-400'
-            }`}
-          >
-            <MessageCircle size={18} />
-            <span className="hidden sm:inline">Chat Overlay</span>
-          </button>
-        </div>
-
-        {/* MODAL: SOUNDBOARD */}
-        <AnimatePresence>
-          {showSoundboard && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4"
-            >
-              <div className="w-full max-w-sm bg-zinc-900 border border-amber-500/40 p-6 rounded-3xl space-y-4 text-center">
-                <div className="flex justify-between items-center border-b border-white/10 pb-3">
-                  <div className="flex items-center gap-2 text-amber-400">
-                    <Music size={20} />
-                    <h3 className="font-black text-sm uppercase tracking-wider text-white">Stream Soundboard</h3>
-                  </div>
-                  <button onClick={() => setShowSoundboard(false)} className="text-zinc-400 hover:text-white">
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button 
-                    onClick={() => handleTriggerSound('victory')}
-                    className="p-4 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all"
-                  >
-                    <Trophy size={24} className="text-amber-400" />
-                    <span className="text-xs font-black uppercase text-amber-200">Victory Fanfare</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleTriggerSound('defeat')}
-                    className="p-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all"
-                  >
-                    <Flame size={24} className="text-red-400" />
-                    <span className="text-xs font-black uppercase text-red-200">Defeat Tune</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleTriggerSound('gg')}
-                    className="p-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all"
-                  >
-                    <Sparkles size={24} className="text-emerald-400" />
-                    <span className="text-xs font-black uppercase text-emerald-200">Good Game (GG)</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleTriggerSound('airhorn')}
-                    className="p-4 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all"
-                  >
-                    <Zap size={24} className="text-cyan-400" />
-                    <span className="text-xs font-black uppercase text-cyan-200">Airhorn Pulse</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleTriggerSound('hype')}
-                    className="p-4 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/30 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all"
-                  >
-                    <Crown size={24} className="text-pink-400" />
-                    <span className="text-xs font-black uppercase text-pink-200">Hype Chords</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleTriggerSound('clap')}
-                    className="p-4 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all"
-                  >
-                    <Award size={24} className="text-purple-400" />
-                    <span className="text-xs font-black uppercase text-purple-200">Applause</span>
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* MODAL: SQUAD / CO-HOST MANAGER */}
-        <AnimatePresence>
-          {showSquadModal && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4"
-            >
-              <div className="w-full max-w-md bg-zinc-900 border border-indigo-500/40 p-6 rounded-3xl space-y-4">
-                <div className="flex justify-between items-center border-b border-white/10 pb-3">
-                  <div className="flex items-center gap-2 text-indigo-400">
-                    <Users size={20} />
-                    <h3 className="font-black text-sm uppercase tracking-wider text-white">Invite Gaming Squad</h3>
-                  </div>
-                  <button onClick={() => setShowSquadModal(false)} className="text-zinc-400 hover:text-white">
-                    <X size={20} />
-                  </button>
-                </div>
-
-                {/* SEARCH INPUT */}
-                <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                  <input
-                    type="text"
-                    placeholder="Search gamers by username..."
-                    value={squadSearchQuery}
-                    onChange={(e) => handleSearchSquadUsers(e.target.value)}
-                    className="w-full bg-black/50 border border-white/20 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-zinc-500 outline-none focus:border-indigo-400"
-                  />
-                </div>
-
-                {/* SEARCH RESULTS */}
-                <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar">
-                  {squadUsersList.map(u => (
-                    <div key={u.id} className="flex items-center justify-between p-2.5 bg-black/30 border border-white/5 rounded-xl">
-                      <div className="flex items-center gap-2.5">
-                        <img 
-                          src={u.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
-                          alt="" 
-                          className="w-8 h-8 rounded-full object-cover border border-indigo-400"
-                        />
-                        <span className="text-xs font-bold text-white">@{u.username}</span>
-                      </div>
+                      <p className="mt-2 text-[11px] leading-relaxed text-zinc-500 max-w-sm mx-auto">
+                        Share your game window or
+                        display to begin broadcasting
+                        gameplay.
+                      </p>
 
                       <button
-                        onClick={() => handleInviteSquadMember(u)}
-                        disabled={squadInvitesSent.has(u.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          squadInvitesSent.has(u.id)
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
-                        }`}
+                        onClick={
+                          startScreenCapture
+                        }
+                        className="mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-black hover:bg-zinc-200 text-[10px] font-black uppercase tracking-wider transition"
                       >
-                        {squadInvitesSent.has(u.id) ? 'Invited ✓' : 'Invite'}
+                        <Monitor size={14} />
+                        Share Game
                       </button>
                     </div>
-                  ))}
+                  )}
                 </div>
 
-                {/* SHARE LINK */}
-                <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Direct Stream Link:</span>
-                  <button
-                    onClick={handleCopyStreamLink}
-                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-bold rounded-xl text-white flex items-center gap-1.5"
+                {/* Camera PIP */}
+                {isCamOverlayOn && (
+                  <div
+                    className={`absolute ${getCamPositionClass()} z-30 w-24 h-24 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-black border border-white/20 shadow-[0_12px_40px_rgba(0,0,0,0.5)]`}
                   >
-                    {copiedLink ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                    <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
+                    <video
+                      ref={camVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+
+                    <div className="absolute top-2 left-2 px-1.5 py-1 rounded-md bg-black/60 backdrop-blur-sm">
+                      <span className="text-[7px] font-black uppercase tracking-wider text-white">
+                        Camera
+                      </span>
+                    </div>
+
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
+                      <div
+                        className="h-full bg-emerald-400 transition-all"
+                        style={{
+                          width: `${
+                            isMicOn
+                              ? audioLevel
+                              : 0
+                          }%`
+                        }}
+                      />
+                    </div>
+
+                    {!isMicOn && (
+                      <div className="absolute top-2 right-2 w-5 h-5 rounded-md bg-red-500/80 flex items-center justify-center">
+                        <MicOff size={10} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Chat overlay */}
+                {showChatOverlay && (
+                  <div className="absolute bottom-3 left-3 w-[min(360px,calc(100%-24px))] z-30">
+                    <div className="rounded-xl bg-black/65 backdrop-blur-xl border border-white/[0.08] overflow-hidden">
+                      <div className="px-3 py-2 border-b border-white/[0.07] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MessageCircle
+                            size={12}
+                            className="text-cyan-300"
+                          />
+
+                          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-300">
+                            Live Chat
+                          </span>
+                        </div>
+
+                        <span className="text-[8px] text-zinc-600">
+                          {chatMessages.length}{' '}
+                          messages
+                        </span>
+                      </div>
+
+                      <div className="max-h-32 overflow-y-auto p-2 space-y-1 no-scrollbar">
+                        {chatMessages.length ===
+                        0 ? (
+                          <p className="px-2 py-3 text-[9px] text-zinc-600">
+                            Your audience chat will
+                            appear here.
+                          </p>
+                        ) : (
+                          chatMessages.map(
+                            (message) => (
+                              <div
+                                key={
+                                  message.id
+                                }
+                                className="px-2 py-1.5 rounded-lg hover:bg-white/[0.03]"
+                              >
+                                <span
+                                  className={`text-[9px] font-black mr-1 ${
+                                    message.isHost
+                                      ? 'text-pink-300'
+                                      : 'text-cyan-300'
+                                  }`}
+                                >
+                                  {message.sender}
+                                </span>
+
+                                <span className="text-[10px] text-zinc-300">
+                                  {message.text}
+                                </span>
+                              </div>
+                            )
+                          )
+                        )}
+
+                        <div
+                          ref={
+                            chatBottomRef
+                          }
+                        />
+                      </div>
+
+                      <form
+                        onSubmit={
+                          handleSendChat
+                        }
+                        className="p-2 border-t border-white/[0.07] flex gap-2"
+                      >
+                        <input
+                          value={chatInput}
+                          onChange={(e) =>
+                            setChatInput(
+                              e.target.value
+                            )
+                          }
+                          placeholder="Message your audience..."
+                          className="min-w-0 flex-1 h-8 px-2.5 rounded-lg bg-white/[0.04] border border-white/[0.07] outline-none text-[10px] text-white placeholder:text-zinc-600 focus:border-cyan-400/30"
+                        />
+
+                        <button
+                          type="submit"
+                          className="w-8 h-8 rounded-lg bg-cyan-400 text-black flex items-center justify-center hover:bg-cyan-300 transition"
+                        >
+                          <Send size={12} />
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Stage toolbar */}
+              <div className="shrink-0 flex gap-2 overflow-x-auto no-scrollbar">
+                <ToolButton
+                  icon={
+                    <Monitor size={15} />
+                  }
+                  label={
+                    isScreenSharing
+                      ? 'Screen Live'
+                      : 'Share Screen'
+                  }
+                  active={
+                    isScreenSharing
+                  }
+                  onClick={
+                    startScreenCapture
+                  }
+                />
+
+                <ToolButton
+                  icon={
+                    isCamOverlayOn ? (
+                      <Video size={15} />
+                    ) : (
+                      <VideoOff size={15} />
+                    )
+                  }
+                  label={
+                    isCamOverlayOn
+                      ? 'Camera'
+                      : 'Camera Off'
+                  }
+                  active={
+                    isCamOverlayOn
+                  }
+                  onClick={() =>
+                    setIsCamOverlayOn(
+                      (value) => !value
+                    )
+                  }
+                />
+
+                <ToolButton
+                  icon={
+                    isMicOn ? (
+                      <Mic size={15} />
+                    ) : (
+                      <MicOff size={15} />
+                    )
+                  }
+                  label={
+                    isMicOn
+                      ? 'Microphone'
+                      : 'Muted'
+                  }
+                  active={isMicOn}
+                  danger={!isMicOn}
+                  onClick={toggleMic}
+                />
+
+                <ToolButton
+                  icon={
+                    <Music size={15} />
+                  }
+                  label="Soundboard"
+                  onClick={() =>
+                    setShowSoundboard(
+                      true
+                    )
+                  }
+                />
+
+                <ToolButton
+                  icon={
+                    <Users size={15} />
+                  }
+                  label="Squad"
+                  onClick={() =>
+                    setShowSquadModal(
+                      true
+                    )
+                  }
+                />
+
+                <ToolButton
+                  icon={
+                    <MessageCircle
+                      size={15}
+                    />
+                  }
+                  label="Chat"
+                  active={
+                    showChatOverlay
+                  }
+                  onClick={() =>
+                    setShowChatOverlay(
+                      (value) => !value
+                    )
+                  }
+                />
+              </div>
+            </div>
+
+            {/* ================================
+                RIGHT CONTROL PANEL
+            ================================= */}
+
+            <aside className="min-h-0 overflow-y-auto no-scrollbar space-y-3">
+              {/* Stream overview */}
+              <Panel
+                title="Stream Overview"
+                subtitle="Your current broadcast"
+                icon={
+                  <Radio size={15} />
+                }
+              >
+                <div className="p-3 grid grid-cols-2 gap-2">
+                  <StatCard
+                    icon={
+                      <Users size={13} />
+                    }
+                    label="Viewers"
+                    value={viewerCount}
+                    accent="cyan"
+                  />
+
+                  <StatCard
+                    icon={
+                      <Heart size={13} />
+                    }
+                    label="Likes"
+                    value={likesCount}
+                    accent="pink"
+                  />
+
+                  <StatCard
+                    icon={
+                      <Gift size={13} />
+                    }
+                    label="Coins"
+                    value={`${coinsEarned} 🪙`}
+                    accent="amber"
+                  />
+
+                  <StatCard
+                    icon={
+                      <Clock size={13} />
+                    }
+                    label="Uptime"
+                    value={formatTime(
+                      streamUptime
+                    )}
+                    accent="emerald"
+                  />
+                </div>
+              </Panel>
+
+              {/* Game */}
+              <Panel
+                title="Game"
+                subtitle="Current category"
+                icon={
+                  <Gamepad2 size={15} />
+                }
+              >
+                <div className="p-3">
+                  <div className="rounded-xl border border-pink-400/15 bg-pink-400/[0.04] p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-pink-500/10 border border-pink-400/15 flex items-center justify-center text-pink-300">
+                          <Gamepad2
+                            size={17}
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-black text-white truncate">
+                            {selectedGame}
+                          </p>
+
+                          <p className="text-[9px] text-zinc-500 mt-0.5">
+                            Gaming category
+                          </p>
+                        </div>
+                      </div>
+
+                      <ChevronRight
+                        size={14}
+                        className="text-zinc-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+
+              {/* Stream controls */}
+              <Panel
+                title="Broadcast Controls"
+                subtitle="Quick stream actions"
+                icon={
+                  <Sliders size={15} />
+                }
+              >
+                <div className="p-3 space-y-2">
+                  <button
+                    onClick={
+                      startScreenCapture
+                    }
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-white/[0.025] border border-white/[0.07] hover:bg-white/[0.05] transition"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Monitor
+                        size={16}
+                        className="text-cyan-300"
+                      />
+
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-white">
+                          Game Display
+                        </p>
+
+                        <p className="text-[8px] text-zinc-600">
+                          {isScreenSharing
+                            ? 'Currently sharing'
+                            : 'Not connected'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        isScreenSharing
+                          ? 'bg-emerald-400'
+                          : 'bg-zinc-700'
+                      }`}
+                    />
+                  </button>
+
+                  <button
+                    onClick={
+                      handleCopyStreamLink
+                    }
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-white/[0.025] border border-white/[0.07] hover:bg-white/[0.05] transition"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Share2
+                        size={16}
+                        className="text-cyan-300"
+                      />
+
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-white">
+                          Share Stream
+                        </p>
+
+                        <p className="text-[8px] text-zinc-600">
+                          Send your live link
+                        </p>
+                      </div>
+                    </div>
+
+                    {copiedLink ? (
+                      <Check
+                        size={14}
+                        className="text-emerald-400"
+                      />
+                    ) : (
+                      <Copy
+                        size={14}
+                        className="text-zinc-600"
+                      />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      setShowSettingsModal(
+                        true
+                      )
+                    }
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-white/[0.025] border border-white/[0.07] hover:bg-white/[0.05] transition"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Settings
+                        size={16}
+                        className="text-zinc-400"
+                      />
+
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-white">
+                          Stream Settings
+                        </p>
+
+                        <p className="text-[8px] text-zinc-600">
+                          Quality, privacy & camera
+                        </p>
+                      </div>
+                    </div>
+
+                    <ChevronRight
+                      size={14}
+                      className="text-zinc-600"
+                    />
                   </button>
                 </div>
+              </Panel>
+
+              {/* Camera status */}
+              <Panel
+                title="Camera & Audio"
+                subtitle="Broadcast hardware"
+                icon={
+                  <Camera size={15} />
+                }
+              >
+                <div className="p-3 space-y-2">
+                  <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/[0.025] border border-white/[0.06]">
+                    <div className="flex items-center gap-2.5">
+                      {isCamOverlayOn ? (
+                        <Video
+                          size={14}
+                          className="text-pink-300"
+                        />
+                      ) : (
+                        <VideoOff
+                          size={14}
+                          className="text-zinc-600"
+                        />
+                      )}
+
+                      <span className="text-[10px] font-bold">
+                        Face Camera
+                      </span>
+                    </div>
+
+                    <span
+                      className={`text-[8px] font-black uppercase ${
+                        isCamOverlayOn
+                          ? 'text-emerald-300'
+                          : 'text-zinc-600'
+                      }`}
+                    >
+                      {isCamOverlayOn
+                        ? 'ON'
+                        : 'OFF'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/[0.025] border border-white/[0.06]">
+                    <div className="flex items-center gap-2.5">
+                      {isMicOn ? (
+                        <Mic
+                          size={14}
+                          className="text-emerald-300"
+                        />
+                      ) : (
+                        <MicOff
+                          size={14}
+                          className="text-red-300"
+                        />
+                      )}
+
+                      <span className="text-[10px] font-bold">
+                        Microphone
+                      </span>
+                    </div>
+
+                    <span
+                      className={`text-[8px] font-black uppercase ${
+                        isMicOn
+                          ? 'text-emerald-300'
+                          : 'text-red-300'
+                      }`}
+                    >
+                      {isMicOn
+                        ? 'LIVE'
+                        : 'MUTED'}
+                    </span>
+                  </div>
+                </div>
+              </Panel>
+
+              {/* End */}
+              <button
+                onClick={() =>
+                  setShowEndConfirm(
+                    true
+                  )
+                }
+                className="w-full h-11 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 text-red-300 font-black text-[10px] uppercase tracking-[0.15em] transition"
+              >
+                End Gaming Stream
+              </button>
+            </aside>
+          </div>
+        </main>
+
+        {/* =================================================
+            MODALS
+        ================================================= */}
+
+        <AnimatePresence>
+          {showSoundboard && (
+            <ModalShell
+              onClose={() =>
+                setShowSoundboard(false)
+              }
+              size="max-w-lg"
+            >
+              <ModalHeader
+                icon={
+                  <Music size={17} />
+                }
+                title="Stream Soundboard"
+                subtitle="Trigger live reactions"
+                onClose={() =>
+                  setShowSoundboard(false)
+                }
+              />
+
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {[
+                  {
+                    id: 'victory',
+                    label: 'Victory',
+                    icon: <Trophy size={20} />,
+                    style:
+                      'text-amber-300 border-amber-400/15 bg-amber-400/[0.05]'
+                  },
+                  {
+                    id: 'defeat',
+                    label: 'Defeat',
+                    icon: <Flame size={20} />,
+                    style:
+                      'text-red-300 border-red-400/15 bg-red-400/[0.05]'
+                  },
+                  {
+                    id: 'gg',
+                    label: 'Good Game',
+                    icon: <Sparkles size={20} />,
+                    style:
+                      'text-emerald-300 border-emerald-400/15 bg-emerald-400/[0.05]'
+                  },
+                  {
+                    id: 'airhorn',
+                    label: 'Airhorn',
+                    icon: <Zap size={20} />,
+                    style:
+                      'text-cyan-300 border-cyan-400/15 bg-cyan-400/[0.05]'
+                  },
+                  {
+                    id: 'hype',
+                    label: 'Hype',
+                    icon: <Crown size={20} />,
+                    style:
+                      'text-pink-300 border-pink-400/15 bg-pink-400/[0.05]'
+                  },
+                  {
+                    id: 'clap',
+                    label: 'Applause',
+                    icon: <Award size={20} />,
+                    style:
+                      'text-purple-300 border-purple-400/15 bg-purple-400/[0.05]'
+                  }
+                ].map((sound) => (
+                  <button
+                    key={sound.id}
+                    onClick={() =>
+                      handleTriggerSound(
+                        sound.id
+                      )
+                    }
+                    className={`min-h-28 rounded-xl border flex flex-col items-center justify-center gap-3 hover:bg-white/[0.05] active:scale-[0.98] transition ${sound.style}`}
+                  >
+                    {sound.icon}
+
+                    <span className="text-[9px] font-black uppercase tracking-wider">
+                      {sound.label}
+                    </span>
+                  </button>
+                ))}
               </div>
-            </motion.div>
+            </ModalShell>
           )}
         </AnimatePresence>
 
-        {/* MODAL: CONFIRM END STREAM */}
+        <AnimatePresence>
+          {showSquadModal && (
+            <ModalShell
+              onClose={() =>
+                setShowSquadModal(false)
+              }
+              size="max-w-lg"
+            >
+              <ModalHeader
+                icon={
+                  <Users size={17} />
+                }
+                title="Gaming Squad"
+                subtitle="Invite co-hosts to your session"
+                onClose={() =>
+                  setShowSquadModal(false)
+                }
+              />
+
+              <div className="p-4 space-y-4">
+                <div className="relative">
+                  <Search
+                    size={15}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600"
+                  />
+
+                  <input
+                    value={
+                      squadSearchQuery
+                    }
+                    onChange={(e) =>
+                      handleSearchSquadUsers(
+                        e.target.value
+                      )
+                    }
+                    placeholder="Search by username..."
+                    className="w-full h-11 pl-9 pr-3 rounded-xl bg-white/[0.035] border border-white/[0.08] outline-none text-[10px] text-white placeholder:text-zinc-600 focus:border-cyan-400/30"
+                  />
+                </div>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto no-scrollbar">
+                  {squadUsersList.length ===
+                  0 ? (
+                    <div className="py-10 text-center">
+                      <Users
+                        size={24}
+                        className="mx-auto text-zinc-700"
+                      />
+
+                      <p className="mt-3 text-[10px] text-zinc-600">
+                        Search for gamers to
+                        invite.
+                      </p>
+                    </div>
+                  ) : (
+                    squadUsersList.map(
+                      (user) => {
+                        const invited =
+                          squadInvitesSent.has(
+                            user.id
+                          );
+
+                        return (
+                          <div
+                            key={user.id}
+                            className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/[0.025] border border-white/[0.06]"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <img
+                                src={
+                                  user.avatar_url ||
+                                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
+                                }
+                                alt=""
+                                className="w-9 h-9 rounded-full object-cover border border-white/10"
+                              />
+
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold text-white truncate">
+                                  @
+                                  {
+                                    user.username
+                                  }
+                                </p>
+
+                                <p className="text-[8px] text-zinc-600 mt-0.5">
+                                  Gamer
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              disabled={
+                                invited
+                              }
+                              onClick={() =>
+                                handleInviteSquadMember(
+                                  user
+                                )
+                              }
+                              className={`px-3 py-2 rounded-lg text-[9px] font-black uppercase ${
+                                invited
+                                  ? 'bg-emerald-400/10 text-emerald-300 border border-emerald-400/15'
+                                  : 'bg-cyan-400 text-black hover:bg-cyan-300'
+                              }`}
+                            >
+                              {invited
+                                ? 'Invited'
+                                : 'Invite'}
+                            </button>
+                          </div>
+                        );
+                      }
+                    )
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-white/[0.07]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold text-white">
+                        Share stream link
+                      </p>
+
+                      <p className="text-[8px] text-zinc-600 mt-0.5">
+                        Invite someone directly
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={
+                        handleCopyStreamLink
+                      }
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.05] border border-white/[0.07] text-[9px] font-bold text-zinc-300 hover:text-white"
+                    >
+                      {copiedLink ? (
+                        <Check
+                          size={13}
+                          className="text-emerald-300"
+                        />
+                      ) : (
+                        <Copy size={13} />
+                      )}
+
+                      {copiedLink
+                        ? 'Copied'
+                        : 'Copy Link'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </ModalShell>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showSettingsModal && (
+            <ModalShell
+              onClose={() =>
+                setShowSettingsModal(false)
+              }
+              size="max-w-lg"
+            >
+              <ModalHeader
+                icon={
+                  <Settings size={17} />
+                }
+                title="Gaming Settings"
+                subtitle="Configure your broadcast"
+                onClose={() =>
+                  setShowSettingsModal(false)
+                }
+              />
+
+              <div className="p-4 space-y-5">
+                {/* QUALITY */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                      Stream Quality
+                    </label>
+
+                    <span className="text-[9px] text-cyan-300">
+                      {streamQuality}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      '1080p 60FPS',
+                      '720p 60FPS',
+                      '480p 30FPS'
+                    ].map((quality) => (
+                      <button
+                        key={quality}
+                        onClick={() =>
+                          setStreamQuality(
+                            quality
+                          )
+                        }
+                        className={`py-3 rounded-xl border text-[9px] font-bold transition ${
+                          streamQuality ===
+                          quality
+                            ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+                            : 'border-white/[0.07] bg-white/[0.025] text-zinc-500 hover:text-white'
+                        }`}
+                      >
+                        {quality}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* PRIVACY */}
+                <div>
+                  <label className="block mb-2 text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                    Audience Privacy
+                  </label>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      {
+                        id: 'public',
+                        label: 'Public',
+                        icon: (
+                          <Globe
+                            size={14}
+                          />
+                        )
+                      },
+                      {
+                        id: 'followers',
+                        label: 'Followers',
+                        icon: (
+                          <UserCheck
+                            size={14}
+                          />
+                        )
+                      },
+                      {
+                        id: 'private',
+                        label: 'Private',
+                        icon: (
+                          <Lock
+                            size={14}
+                          />
+                        )
+                      }
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() =>
+                          setPrivacy(
+                            item.id
+                          )
+                        }
+                        className={`py-3 rounded-xl border flex flex-col items-center gap-1.5 text-[9px] font-bold transition ${
+                          privacy ===
+                          item.id
+                            ? 'border-pink-400/30 bg-pink-400/10 text-pink-200'
+                            : 'border-white/[0.07] bg-white/[0.025] text-zinc-500 hover:text-white'
+                        }`}
+                      >
+                        {item.icon}
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* CAMERA POSITION */}
+                <div>
+                  <label className="block mb-2 text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                    Camera Position
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      {
+                        id: 'top-left',
+                        name: 'Top Left'
+                      },
+                      {
+                        id: 'top-right',
+                        name: 'Top Right'
+                      },
+                      {
+                        id: 'bottom-left',
+                        name: 'Bottom Left'
+                      },
+                      {
+                        id: 'bottom-right',
+                        name: 'Bottom Right'
+                      }
+                    ].map((position) => (
+                      <button
+                        key={
+                          position.id
+                        }
+                        onClick={() =>
+                          setCamPosition(
+                            position.id
+                          )
+                        }
+                        className={`py-2.5 rounded-xl border text-[9px] font-bold transition ${
+                          camPosition ===
+                          position.id
+                            ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+                            : 'border-white/[0.07] bg-white/[0.025] text-zinc-500'
+                        }`}
+                      >
+                        {position.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() =>
+                    setShowSettingsModal(
+                      false
+                    )
+                  }
+                  className="w-full h-11 rounded-xl bg-white text-black hover:bg-zinc-200 font-black text-[10px] uppercase tracking-[0.15em] transition"
+                >
+                  Save Settings
+                </button>
+              </div>
+            </ModalShell>
+          )}
+        </AnimatePresence>
+
         <AnimatePresence>
           {showEndConfirm && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4"
+            <ModalShell
+              onClose={() =>
+                setShowEndConfirm(false)
+              }
+              size="max-w-sm"
             >
-              <div className="w-full max-w-xs bg-zinc-900 border border-red-500/40 p-6 rounded-3xl space-y-4 text-center">
-                <div className="w-12 h-12 bg-red-500/20 border border-red-500/40 rounded-full flex items-center justify-center mx-auto text-red-400">
-                  <Radio size={24} className="animate-pulse" />
+              <div className="p-6 text-center">
+                <div className="mx-auto w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-300">
+                  <Radio size={22} />
                 </div>
 
-                <div>
-                  <h3 className="font-black text-base uppercase text-white">End Gaming Stream?</h3>
-                  <p className="text-xs text-zinc-400 mt-1">Your stream will stop broadcasting for all viewers.</p>
-                </div>
+                <h3 className="mt-5 text-sm font-black uppercase tracking-wider">
+                  End Gaming Stream?
+                </h3>
 
-                <div className="flex gap-2 pt-2">
+                <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
+                  This will end the current
+                  broadcast for all viewers.
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 mt-6">
                   <button
-                    onClick={handleConfirmEndStream}
-                    className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase rounded-xl shadow-lg active:scale-95"
+                    onClick={
+                      handleConfirmEndStream
+                    }
+                    className="h-11 rounded-xl bg-red-500 hover:bg-red-400 text-white text-[9px] font-black uppercase tracking-wider transition"
                   >
                     End Stream
                   </button>
+
                   <button
-                    onClick={() => setShowEndConfirm(false)}
-                    className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-zinc-300 font-bold text-xs uppercase rounded-xl"
+                    onClick={() =>
+                      setShowEndConfirm(
+                        false
+                      )
+                    }
+                    className="h-11 rounded-xl bg-white/[0.05] border border-white/[0.07] hover:bg-white/[0.08] text-zinc-300 text-[9px] font-black uppercase tracking-wider transition"
                   >
-                    Cancel
+                    Keep Live
                   </button>
                 </div>
               </div>
-            </motion.div>
+            </ModalShell>
           )}
         </AnimatePresence>
       </div>
     );
   }
 
-  // ----------------------------------------------------
-  // PRE-STREAM GAMING SETUP VIEW (PRE-LIVE MODE)
-  // ----------------------------------------------------
+  /* =====================================================
+     PRE-STREAM STUDIO
+  ===================================================== */
+
   return (
-    <div className="h-[100dvh] bg-[#030308] text-white flex flex-col justify-between overflow-hidden font-sans relative">
-      
-      {/* BACKGROUND NEON GLOW HALOS */}
-      <div className="fixed top-0 left-1/4 w-[250px] sm:w-[400px] h-[250px] sm:h-[400px] bg-pink-600/20 rounded-full blur-[100px] sm:blur-[140px] pointer-events-none animate-pulse z-10" />
-      <div className="fixed bottom-0 right-1/4 w-[250px] sm:w-[400px] h-[250px] sm:h-[400px] bg-cyan-500/20 rounded-full blur-[100px] sm:blur-[140px] pointer-events-none animate-pulse delay-700 z-10" />
-
-      {/* TOP HEADER CONTROLS */}
-      <div className="w-full z-50 p-4 sm:p-6 flex justify-between items-start pointer-events-none">
-        <button onClick={() => navigate(-1)} className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-xl rounded-full border border-pink-500/30 text-pink-300 shadow-[0_0_15px_rgba(244,63,94,0.3)] hover:border-pink-500/80 pointer-events-auto transition-all">
-          <X size={20} className="sm:w-6 sm:h-6 drop-shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
-        </button>
-
-        <div className="flex flex-col gap-2 sm:gap-3 pointer-events-auto items-end">
-          <ControlIconButton 
-            icon={<Settings size={18} className="sm:w-5 sm:h-5"/>} 
-            label="Settings" 
-            onClick={() => setShowSettingsModal(!showSettingsModal)}
-          />
-          <ControlIconButton 
-            icon={isCamOverlayOn ? <Video size={18} className="sm:w-5 sm:h-5"/> : <VideoOff size={18} className="sm:w-5 sm:h-5"/>} 
-            label={isCamOverlayOn ? "Cam On" : "Cam Off"} 
-            onClick={() => setIsCamOverlayOn(!isCamOverlayOn)}
-          />
-          <ControlIconButton 
-            icon={isMicOn ? <Mic size={18} className="sm:w-5 sm:h-5"/> : <MicOff size={18} className="sm:w-5 sm:h-5"/>} 
-            label={isMicOn ? "Mic Active" : "Mic Muted"} 
-            onClick={toggleMic}
-          />
-        </div>
+    <div className="min-h-[100dvh] bg-[#06070a] text-white font-sans overflow-hidden relative">
+      {/* Ambient background */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute -top-40 left-1/4 w-[500px] h-[500px] rounded-full bg-cyan-500/[0.045] blur-[140px]" />
+        <div className="absolute -bottom-40 right-1/4 w-[500px] h-[500px] rounded-full bg-pink-500/[0.045] blur-[140px]" />
       </div>
 
-      {/* SCREEN CAPTURE & OVERLAY CANVAS */}
-      <div className="flex-1 relative bg-zinc-950 flex flex-col items-center justify-center p-3 sm:p-6 overflow-y-auto no-scrollbar">
-        
-        {/* MAIN DISPLAY CANVAS / PREVIEW */}
-        <div className="w-full max-w-2xl aspect-video max-h-[35vh] sm:max-h-none rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-cyan-500/40 shadow-[0_0_35px_rgba(6,182,212,0.25)] relative bg-black flex items-center justify-center">
-          {isScreenSharing ? (
-            <video ref={screenVideoRef} autoPlay muted playsInline className="w-full h-full object-contain" />
-          ) : (
-            <div className="flex flex-col items-center gap-2.5 p-2 text-center">
-              <Monitor className="w-8 h-8 sm:w-12 sm:h-12 text-cyan-400/50 animate-pulse" />
-              <button 
-                onClick={startScreenCapture}
-                className="px-4 py-2 bg-cyan-500/20 border border-cyan-400/60 rounded-xl text-cyan-300 text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:bg-cyan-500 hover:text-black transition-all"
-              >
-                Select Game Screen / Display
-              </button>
-            </div>
-          )}
+      {/* =================================================
+          TOP BAR
+      ================================================= */}
 
-          {/* PIP FACE-CAM OVERLAY PREVIEW */}
-          {isCamOverlayOn && (
-            <div className={`absolute ${getCamPositionClass()} w-20 h-20 sm:w-28 sm:h-28 rounded-xl sm:rounded-2xl overflow-hidden border-2 border-pink-500 shadow-[0_0_20px_rgba(244,63,94,0.6)] bg-zinc-900 z-30`}>
-              <video ref={camVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-            </div>
-          )}
-        </div>
-
-        {/* GAME SELECTOR & SEARCH */}
-        <div className="w-full max-w-2xl mt-3 sm:mt-4 z-30 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[9px] sm:text-[10px] font-black uppercase text-cyan-300 tracking-wider">Select Game Category</span>
-            <div className="relative w-36 sm:w-48">
-              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-cyan-400" />
-              <input
-                type="text"
-                placeholder="Search games..."
-                value={customGameSearch}
-                onChange={(e) => setCustomGameSearch(e.target.value)}
-                className="w-full bg-black/60 border border-cyan-500/30 rounded-xl pl-7 pr-2 py-1 text-[10px] text-white placeholder:text-zinc-500 outline-none focus:border-cyan-400"
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            {filteredGames.map((game) => (
-              <button
-                key={game}
-                onClick={() => {
-                  setSelectedGame(game);
-                  setTitle(`Streaming ${game} Ranked Push! 🎮🔥`);
-                }}
-                className={`px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all border ${
-                  selectedGame === game
-                    ? 'bg-pink-600 border-pink-400 text-white shadow-[0_0_12px_rgba(244,63,94,0.6)] scale-105'
-                    : 'bg-black/40 border-cyan-500/30 text-cyan-200/70 hover:border-cyan-400'
-                }`}
-              >
-                {game}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* TITLE TEMPLATES */}
-        <div className="w-full max-w-2xl mt-2 z-30">
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-            {titleTemplates.map((template, idx) => (
-              <button
-                key={idx}
-                onClick={() => setTitle(template)}
-                className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-lg text-[9px] sm:text-[10px] font-medium text-zinc-300 hover:border-pink-400/50 hover:text-white whitespace-nowrap"
-              >
-                + {template}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* CONTROLS AND STREAM INPUT SECTION */}
-      <div className="w-full flex flex-col items-center px-4 sm:px-8 gap-2.5 z-40 my-2">
-        {/* STREAM TITLE INPUT */}
-        <div className="w-full max-w-md bg-black/50 backdrop-blur-2xl p-2.5 sm:p-3 rounded-2xl border border-cyan-500/40 shadow-[0_0_25px_rgba(6,182,212,0.2)]">
-          <input 
-            type="text"
-            placeholder={`Title for ${selectedGame} broadcast...`}
-            className="bg-transparent w-full border-none outline-none font-bold text-xs sm:text-sm text-cyan-50 placeholder:text-cyan-200/40 px-2"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-
-        {/* START GAMING STREAM BUTTON */}
-        <button 
-          onClick={handleStartGamingStream}
-          disabled={loading}
-          className="w-full max-w-md bg-pink-600 hover:bg-pink-500 text-white py-3 sm:py-3.5 rounded-2xl font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] text-xs sm:text-sm shadow-[0_0_30px_rgba(244,63,94,0.8)] border border-pink-400/60 active:scale-95 transition-all flex items-center justify-center relative overflow-hidden"
-        >
-          {loading ? <RefreshCw className="animate-spin w-5 h-5" /> : <span>Start Gaming Stream</span>}
-        </button>
-      </div>
-
-      {/* SETTINGS DRAWER MODAL */}
-      <AnimatePresence>
-        {showSettingsModal && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4"
+      <header className="h-16 border-b border-white/[0.07] bg-[#090b0f]/95 backdrop-blur-xl px-4 sm:px-6 flex items-center justify-between relative z-30">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() =>
+              navigate(-1)
+            }
+            className="w-9 h-9 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] flex items-center justify-center text-zinc-400 hover:text-white transition"
           >
-            <div className="w-full max-w-sm bg-zinc-900 border border-cyan-500/40 p-6 rounded-3xl space-y-4">
-              <div className="flex justify-between items-center border-b border-white/10 pb-3">
-                <h3 className="font-black text-sm uppercase tracking-wider text-cyan-300">Gaming Stream Settings</h3>
-                <button onClick={() => setShowSettingsModal(false)} className="text-zinc-400 hover:text-white">
-                  <X size={20} />
+            <X size={17} />
+          </button>
+
+          <div className="hidden sm:block">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">
+              Create
+            </p>
+
+            <h1 className="text-xs font-black uppercase tracking-wider">
+              Gaming Studio
+            </h1>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() =>
+              setShowSettingsModal(
+                true
+              )
+            }
+            className="h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] flex items-center gap-2 text-zinc-400 hover:text-white transition"
+          >
+            <Settings size={15} />
+
+            <span className="hidden sm:block text-[9px] font-bold uppercase tracking-wider">
+              Settings
+            </span>
+          </button>
+
+          <button
+            onClick={() =>
+              setIsCamOverlayOn(
+                (value) => !value
+              )
+            }
+            className={`h-9 px-3 rounded-xl border flex items-center gap-2 transition ${
+              isCamOverlayOn
+                ? 'border-pink-400/20 bg-pink-400/[0.06] text-pink-300'
+                : 'border-white/[0.08] bg-white/[0.03] text-zinc-500'
+            }`}
+          >
+            {isCamOverlayOn ? (
+              <Video size={15} />
+            ) : (
+              <VideoOff size={15} />
+            )}
+
+            <span className="hidden sm:block text-[9px] font-bold uppercase tracking-wider">
+              Camera
+            </span>
+          </button>
+
+          <button
+            onClick={toggleMic}
+            className={`h-9 px-3 rounded-xl border flex items-center gap-2 transition ${
+              isMicOn
+                ? 'border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-300'
+                : 'border-red-400/20 bg-red-400/[0.06] text-red-300'
+            }`}
+          >
+            {isMicOn ? (
+              <Mic size={15} />
+            ) : (
+              <MicOff size={15} />
+            )}
+
+            <span className="hidden sm:block text-[9px] font-bold uppercase tracking-wider">
+              {isMicOn
+                ? 'Mic'
+                : 'Muted'}
+            </span>
+          </button>
+        </div>
+      </header>
+
+      {/* =================================================
+          STUDIO CONTENT
+      ================================================= */}
+
+      <main className="relative z-10 h-[calc(100dvh-64px)] overflow-y-auto no-scrollbar">
+        <div className="max-w-[1450px] mx-auto p-3 sm:p-5 lg:p-6">
+          {/* Page heading */}
+          <div className="mb-5">
+            <div className="flex items-center gap-2 text-cyan-300">
+              <Gamepad2 size={15} />
+
+              <span className="text-[9px] font-black uppercase tracking-[0.2em]">
+                Gaming Broadcast
+              </span>
+            </div>
+
+            <div className="mt-1 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+              <div>
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight">
+                  Set up your gaming stream
+                </h2>
+
+                <p className="mt-1 text-[10px] sm:text-xs text-zinc-500">
+                  Configure your gameplay,
+                  camera and broadcast details
+                  before going live.
+                </p>
+              </div>
+
+              <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.025]">
+                <Shield
+                  size={13}
+                  className="text-emerald-300"
+                />
+
+                <span className="text-[9px] font-bold text-zinc-400">
+                  Broadcast ready
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Main layout */}
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4">
+            {/* LEFT */}
+            <div className="space-y-4">
+              {/* Preview */}
+              <Panel
+                title="Broadcast Preview"
+                subtitle="What your audience will see"
+                icon={
+                  <MonitorPlay
+                    size={15}
+                  />
+                }
+                action={
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+
+                    <span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">
+                      Ready
+                    </span>
+                  </div>
+                }
+              >
+                <div className="p-3 sm:p-4">
+                  <div className="aspect-video rounded-xl overflow-hidden bg-[#050609] border border-white/[0.08] relative">
+                    {isScreenSharing ? (
+                      <video
+                        ref={
+                          screenVideoRef
+                        }
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-5">
+                        <div className="w-14 h-14 rounded-2xl bg-cyan-400/[0.06] border border-cyan-400/15 flex items-center justify-center text-cyan-300">
+                          <Monitor
+                            size={26}
+                          />
+                        </div>
+
+                        <h3 className="mt-4 text-xs sm:text-sm font-black">
+                          Select your game display
+                        </h3>
+
+                        <p className="mt-1.5 max-w-sm text-[9px] sm:text-[10px] text-zinc-600 leading-relaxed">
+                          Choose the game window or
+                          monitor you want to broadcast.
+                        </p>
+
+                        <button
+                          onClick={
+                            startScreenCapture
+                          }
+                          className="mt-4 h-10 px-4 rounded-xl bg-white text-black hover:bg-zinc-200 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider transition"
+                        >
+                          <Monitor size={14} />
+                          Select Display
+                        </button>
+                      </div>
+                    )}
+
+                    {/* camera */}
+                    {isCamOverlayOn && (
+                      <div
+                        className={`absolute ${getCamPositionClass()} w-20 h-20 sm:w-28 sm:h-28 rounded-xl overflow-hidden bg-black border border-pink-400/30 shadow-xl`}
+                      >
+                        <video
+                          ref={
+                            camVideoRef
+                          }
+                          autoPlay
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+
+                        <div className="absolute top-1.5 left-1.5 px-1.5 py-1 rounded-md bg-black/60">
+                          <span className="text-[7px] font-black uppercase">
+                            Cam
+                          </span>
+                        </div>
+
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/60">
+                          <div
+                            className="h-full bg-emerald-400"
+                            style={{
+                              width: `${
+                                isMicOn
+                                  ? audioLevel
+                                  : 0
+                              }%`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Preview badge */}
+                    <div className="absolute top-3 left-3">
+                      <div className="px-2 py-1 rounded-lg bg-black/65 backdrop-blur-md border border-white/[0.08] flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+
+                        <span className="text-[7px] font-black uppercase tracking-wider text-zinc-300">
+                          Preview
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Preview actions */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                    <ToolButton
+                      icon={
+                        <Monitor size={14} />
+                      }
+                      label={
+                        isScreenSharing
+                          ? 'Display Active'
+                          : 'Share Display'
+                      }
+                      active={
+                        isScreenSharing
+                      }
+                      onClick={
+                        startScreenCapture
+                      }
+                    />
+
+                    <ToolButton
+                      icon={
+                        isCamOverlayOn ? (
+                          <Video size={14} />
+                        ) : (
+                          <VideoOff size={14} />
+                        )
+                      }
+                      label={
+                        isCamOverlayOn
+                          ? 'Camera On'
+                          : 'Camera Off'
+                      }
+                      active={
+                        isCamOverlayOn
+                      }
+                      onClick={() =>
+                        setIsCamOverlayOn(
+                          (value) =>
+                            !value
+                        )
+                      }
+                    />
+
+                    <ToolButton
+                      icon={
+                        isMicOn ? (
+                          <Mic size={14} />
+                        ) : (
+                          <MicOff size={14} />
+                        )
+                      }
+                      label={
+                        isMicOn
+                          ? 'Mic On'
+                          : 'Mic Off'
+                      }
+                      active={isMicOn}
+                      danger={!isMicOn}
+                      onClick={toggleMic}
+                    />
+
+                    <ToolButton
+                      icon={
+                        <Settings
+                          size={14}
+                        />
+                      }
+                      label="Camera Settings"
+                      onClick={() =>
+                        setShowSettingsModal(
+                          true
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </Panel>
+
+              {/* Game selection */}
+              <Panel
+                title="Choose Game"
+                subtitle="Select the category for your broadcast"
+                icon={
+                  <Gamepad2 size={15} />
+                }
+              >
+                <div className="p-4">
+                  <div className="relative mb-3">
+                    <Search
+                      size={14}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600"
+                    />
+
+                    <input
+                      value={
+                        customGameSearch
+                      }
+                      onChange={(e) =>
+                        setCustomGameSearch(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Search games..."
+                      className="w-full h-10 pl-9 pr-3 rounded-xl bg-white/[0.025] border border-white/[0.07] outline-none text-[10px] text-white placeholder:text-zinc-600 focus:border-cyan-400/30"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {filteredGames.map(
+                      (game) => {
+                        const active =
+                          selectedGame ===
+                          game;
+
+                        return (
+                          <button
+                            key={game}
+                            onClick={() => {
+                              setSelectedGame(
+                                game
+                              );
+
+                              setTitle(
+                                `Streaming ${game} Ranked Push! 🎮🔥`
+                              );
+                            }}
+                            className={`px-3 py-2 rounded-lg border text-[9px] sm:text-[10px] font-bold transition ${
+                              active
+                                ? 'bg-pink-500/10 border-pink-400/25 text-pink-200'
+                                : 'bg-white/[0.02] border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.05]'
+                            }`}
+                          >
+                            {game}
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
+              </Panel>
+
+              {/* Title */}
+              <Panel
+                title="Stream Information"
+                subtitle="Give your audience a reason to join"
+                icon={
+                  <Radio size={15} />
+                }
+              >
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className="block mb-2 text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                      Stream Title
+                    </label>
+
+                    <input
+                      value={title}
+                      onChange={(e) =>
+                        setTitle(
+                          e.target.value
+                        )
+                      }
+                      placeholder={`Title for your ${selectedGame} stream...`}
+                      className="w-full h-11 px-3 rounded-xl bg-white/[0.025] border border-white/[0.07] outline-none text-[11px] text-white placeholder:text-zinc-600 focus:border-cyan-400/30"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                        Quick Titles
+                      </label>
+
+                      <span className="text-[8px] text-zinc-700">
+                        Tap to use
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {titleTemplates.map(
+                        (
+                          template,
+                          index
+                        ) => (
+                          <button
+                            key={index}
+                            onClick={() =>
+                              setTitle(
+                                template
+                              )
+                            }
+                            className="px-2.5 py-1.5 rounded-lg bg-white/[0.025] border border-white/[0.06] text-[8px] sm:text-[9px] text-zinc-500 hover:text-white hover:border-white/[0.12] transition"
+                          >
+                            {template}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+            </div>
+
+            {/* RIGHT */}
+            <div className="space-y-4">
+              {/* Configuration */}
+              <Panel
+                title="Broadcast Configuration"
+                subtitle="Configure before going live"
+                icon={
+                  <Sliders size={15} />
+                }
+              >
+                <div className="p-4 space-y-4">
+                  {/* Quality */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                        Quality
+                      </span>
+
+                      <span className="text-[9px] font-bold text-cyan-300">
+                        {streamQuality}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        '1080p 60FPS',
+                        '720p 60FPS',
+                        '480p 30FPS'
+                      ].map((quality) => (
+                        <button
+                          key={quality}
+                          onClick={() =>
+                            setStreamQuality(
+                              quality
+                            )
+                          }
+                          className={`py-2.5 rounded-lg border text-[8px] font-bold ${
+                            streamQuality ===
+                            quality
+                              ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-200'
+                              : 'border-white/[0.06] bg-white/[0.02] text-zinc-600 hover:text-white'
+                          }`}
+                        >
+                          {quality}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Privacy */}
+                  <div>
+                    <span className="block mb-2 text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                      Audience
+                    </span>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        {
+                          id: 'public',
+                          label: 'Public',
+                          icon: (
+                            <Globe
+                              size={13}
+                            />
+                          )
+                        },
+                        {
+                          id: 'followers',
+                          label: 'Followers',
+                          icon: (
+                            <Users
+                              size={13}
+                            />
+                          )
+                        },
+                        {
+                          id: 'private',
+                          label: 'Private',
+                          icon: (
+                            <Lock
+                              size={13}
+                            />
+                          )
+                        }
+                      ].map(
+                        (option) => (
+                          <button
+                            key={
+                              option.id
+                            }
+                            onClick={() =>
+                              setPrivacy(
+                                option.id
+                              )
+                            }
+                            className={`py-2.5 rounded-lg border flex flex-col items-center gap-1 text-[8px] font-bold ${
+                              privacy ===
+                              option.id
+                                ? 'border-pink-400/25 bg-pink-400/10 text-pink-200'
+                                : 'border-white/[0.06] bg-white/[0.02] text-zinc-600'
+                            }`}
+                          >
+                            {
+                              option.icon
+                            }
+                            {
+                              option.label
+                            }
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Camera position */}
+                  <div>
+                    <span className="block mb-2 text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                      Camera Position
+                    </span>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        [
+                          'top-left',
+                          'Top Left'
+                        ],
+                        [
+                          'top-right',
+                          'Top Right'
+                        ],
+                        [
+                          'bottom-left',
+                          'Bottom Left'
+                        ],
+                        [
+                          'bottom-right',
+                          'Bottom Right'
+                        ]
+                      ].map(
+                        ([id, label]) => (
+                          <button
+                            key={id}
+                            onClick={() =>
+                              setCamPosition(
+                                id
+                              )
+                            }
+                            className={`py-2.5 rounded-lg border text-[8px] font-bold ${
+                              camPosition ===
+                              id
+                                ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-200'
+                                : 'border-white/[0.06] bg-white/[0.02] text-zinc-600'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+
+              {/* Stream checklist */}
+              <Panel
+                title="Stream Checklist"
+                subtitle="Make sure everything is ready"
+                icon={
+                  <Shield size={15} />
+                }
+              >
+                <div className="p-4 space-y-2">
+                  {[
+                    {
+                      label: 'Game selected',
+                      ok: !!selectedGame
+                    },
+                    {
+                      label: 'Stream title',
+                      ok: !!title.trim()
+                    },
+                    {
+                      label: 'Camera ready',
+                      ok: !!camStream
+                    },
+                    {
+                      label: 'Microphone ready',
+                      ok: !!camStream
+                    }
+                  ].map(
+                    (item) => (
+                      <div
+                        key={
+                          item.label
+                        }
+                        className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-white/[0.025] border border-white/[0.05]"
+                      >
+                        <span className="text-[9px] font-bold text-zinc-400">
+                          {item.label}
+                        </span>
+
+                        <div
+                          className={`w-5 h-5 rounded-md flex items-center justify-center ${
+                            item.ok
+                              ? 'bg-emerald-400/10 text-emerald-300'
+                              : 'bg-zinc-800 text-zinc-700'
+                          }`}
+                        >
+                          {item.ok ? (
+                            <Check
+                              size={11}
+                            />
+                          ) : (
+                            <X
+                              size={11}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+              </Panel>
+
+              {/* Start */}
+              <div className="rounded-2xl border border-white/[0.08] bg-[#0b0d12] p-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-9 h-9 rounded-xl bg-pink-500/10 border border-pink-400/15 flex items-center justify-center text-pink-300">
+                    <Play
+                      size={16}
+                      fill="currentColor"
+                    />
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider">
+                      Ready to broadcast?
+                    </p>
+
+                    <p className="text-[8px] text-zinc-600 mt-0.5">
+                      Your audience is waiting.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={
+                    handleStartGamingStream
+                  }
+                  disabled={loading}
+                  className="w-full h-12 rounded-xl bg-gradient-to-r from-pink-500 to-cyan-400 text-white shadow-[0_12px_35px_rgba(236,72,153,0.18)] hover:brightness-110 active:scale-[0.99] transition flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw
+                        size={16}
+                        className="animate-spin"
+                      />
+
+                      <span className="text-[10px] font-black uppercase tracking-[0.16em]">
+                        Starting...
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Radio size={16} />
+
+                      <span className="text-[10px] font-black uppercase tracking-[0.16em]">
+                        Start Gaming Stream
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      </main>
 
-              {/* STREAM QUALITY */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-300">Stream Quality</label>
+      {/* =================================================
+          SETTINGS MODAL
+      ================================================= */}
+
+      <AnimatePresence>
+        {showSettingsModal && (
+          <ModalShell
+            onClose={() =>
+              setShowSettingsModal(false)
+            }
+            size="max-w-lg"
+          >
+            <ModalHeader
+              icon={
+                <Settings size={17} />
+              }
+              title="Gaming Settings"
+              subtitle="Configure your broadcast"
+              onClose={() =>
+                setShowSettingsModal(
+                  false
+                )
+              }
+            />
+
+            <div className="p-4 space-y-5">
+              <div>
+                <label className="block mb-2 text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                  Stream Quality
+                </label>
+
                 <div className="grid grid-cols-3 gap-2">
-                  {['1080p 60FPS', '720p 60FPS', '480p 30FPS'].map(q => (
+                  {[
+                    '1080p 60FPS',
+                    '720p 60FPS',
+                    '480p 30FPS'
+                  ].map((quality) => (
                     <button
-                      key={q}
-                      onClick={() => setStreamQuality(q)}
-                      className={`py-2 text-[10px] font-bold rounded-xl border transition-all ${
-                        streamQuality === q 
-                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' 
-                          : 'bg-black/30 border-white/10 text-zinc-400'
+                      key={quality}
+                      onClick={() =>
+                        setStreamQuality(
+                          quality
+                        )
+                      }
+                      className={`py-3 rounded-xl border text-[9px] font-bold ${
+                        streamQuality ===
+                        quality
+                          ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-200'
+                          : 'border-white/[0.06] bg-white/[0.02] text-zinc-600'
                       }`}
                     >
-                      {q}
+                      {quality}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* PRIVACY */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-300">Audience Privacy</label>
+              <div>
+                <label className="block mb-2 text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                  Audience Privacy
+                </label>
+
                 <div className="grid grid-cols-3 gap-2">
-                  {['public', 'followers', 'private'].map(p => (
+                  {[
+                    'public',
+                    'followers',
+                    'private'
+                  ].map((value) => (
                     <button
-                      key={p}
-                      onClick={() => setPrivacy(p)}
-                      className={`py-2 text-[10px] font-bold uppercase rounded-xl border transition-all ${
-                        privacy === p 
-                          ? 'bg-pink-500/20 border-pink-400 text-pink-300' 
-                          : 'bg-black/30 border-white/10 text-zinc-400'
+                      key={value}
+                      onClick={() =>
+                        setPrivacy(value)
+                      }
+                      className={`py-3 rounded-xl border text-[9px] font-bold uppercase ${
+                        privacy === value
+                          ? 'border-pink-400/25 bg-pink-400/10 text-pink-200'
+                          : 'border-white/[0.06] bg-white/[0.02] text-zinc-600'
                       }`}
                     >
-                      {p}
+                      {value}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* CAM PIP POSITION */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-300">Face-Cam Overlay Position</label>
+              <div>
+                <label className="block mb-2 text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                  Camera Position
+                </label>
+
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { id: 'top-left', name: 'Top Left' },
-                    { id: 'top-right', name: 'Top Right' },
-                    { id: 'bottom-left', name: 'Bottom Left' },
-                    { id: 'bottom-right', name: 'Bottom Right' }
-                  ].map(pos => (
+                    [
+                      'top-left',
+                      'Top Left'
+                    ],
+                    [
+                      'top-right',
+                      'Top Right'
+                    ],
+                    [
+                      'bottom-left',
+                      'Bottom Left'
+                    ],
+                    [
+                      'bottom-right',
+                      'Bottom Right'
+                    ]
+                  ].map(([id, label]) => (
                     <button
-                      key={pos.id}
-                      onClick={() => setCamPosition(pos.id)}
-                      className={`py-2 text-[10px] font-bold rounded-xl border transition-all ${
-                        camPosition === pos.id 
-                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' 
-                          : 'bg-black/30 border-white/10 text-zinc-400'
+                      key={id}
+                      onClick={() =>
+                        setCamPosition(
+                          id
+                        )
+                      }
+                      className={`py-3 rounded-xl border text-[9px] font-bold ${
+                        camPosition === id
+                          ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-200'
+                          : 'border-white/[0.06] bg-white/[0.02] text-zinc-600'
                       }`}
                     >
-                      {pos.name}
+                      {label}
                     </button>
                   ))}
                 </div>
               </div>
 
               <button
-                onClick={() => setShowSettingsModal(false)}
-                className="w-full py-2.5 bg-cyan-600 text-black font-black text-xs uppercase rounded-xl"
+                onClick={() =>
+                  setShowSettingsModal(
+                    false
+                  )
+                }
+                className="w-full h-11 rounded-xl bg-white text-black font-black text-[10px] uppercase tracking-wider"
               >
                 Save Settings
               </button>
             </div>
-          </motion.div>
+          </ModalShell>
         )}
       </AnimatePresence>
 
-      {/* BOTTOM NAVIGATION TABS */}
-      <div className="bg-black/80 backdrop-blur-3xl border-t border-cyan-500/30 pt-3 pb-6 sm:pb-8 px-4 overflow-x-auto no-scrollbar relative z-50 shadow-[0_-10px_30px_rgba(6,182,212,0.15)]">
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
-        
-        <div className="flex items-center justify-start sm:justify-center gap-6 sm:gap-8 min-w-max relative z-10 px-2">
+      {/* =================================================
+          BOTTOM NAV
+      ================================================= */}
+
+      <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-[#080a0e]/95 backdrop-blur-xl border-t border-white/[0.07]">
+        <div className="h-full max-w-3xl mx-auto px-2 flex items-center justify-around">
           {tabs.map((tab) => {
-            const isActive = activeTab === tab.name;
+            const isActive =
+              activeTab ===
+              tab.name;
+
             return (
               <button
                 key={tab.name}
-                onClick={() => handleTabClick(tab)}
+                onClick={() =>
+                  handleTabClick(tab)
+                }
                 disabled={loading}
-                className={`flex flex-col items-center gap-1 transition-all ${
-                  isActive ? 'opacity-100' : 'opacity-40 hover:opacity-75'
+                className={`relative h-full min-w-[64px] sm:min-w-[90px] flex flex-col items-center justify-center gap-1 transition ${
+                  isActive
+                    ? 'text-pink-300'
+                    : 'text-zinc-600 hover:text-zinc-300'
                 }`}
               >
                 {tab.icon && (
-                  <span className={isActive ? 'text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-cyan-300'}>
+                  <span
+                    className={
+                      isActive
+                        ? 'text-pink-300'
+                        : ''
+                    }
+                  >
                     {tab.icon}
                   </span>
                 )}
-                <span className={`text-[10px] sm:text-[11px] font-black tracking-widest whitespace-nowrap ${
-                  isActive ? 'text-pink-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]' : 'text-cyan-100 drop-shadow-[0_0_4px_rgba(6,182,212,0.4)]'
-                }`}>
+
+                <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.12em] whitespace-nowrap">
                   {tab.name}
                 </span>
+
                 {isActive && (
-                  <motion.div layoutId="tab-underline" className="w-1.5 h-1.5 bg-pink-400 rounded-full shadow-[0_0_10px_rgba(244,63,94,1)]" />
+                  <motion.div
+                    layoutId="gaming-nav"
+                    className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-pink-400"
+                  />
                 )}
               </button>
             );
           })}
         </div>
-      </div>
+      </nav>
+
+      {/* Bottom-nav spacing */}
+      <div className="h-16" />
     </div>
   );
 };
-
-const ControlIconButton = ({ icon, label, onClick }) => (
-  <button onClick={onClick} className="flex flex-col items-center gap-1 group">
-    <div className="p-2 sm:p-3 bg-black/40 backdrop-blur-xl rounded-xl sm:rounded-2xl border border-cyan-500/30 text-cyan-300 group-hover:bg-pink-600 group-hover:border-pink-400 group-hover:text-white transition-all shadow-[0_0_12px_rgba(6,182,212,0.2)]">
-      {icon}
-    </div>
-    <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-tighter text-cyan-200/80 group-hover:text-pink-300 transition-colors">{label}</span>
-  </button>
-);
 
 export default MobileGamingSetup;
