@@ -16,8 +16,8 @@ import {
   Bug
 } from 'lucide-react';
 
-import { useStreamSocket } from './useStreamSocket';
-import { useStreamWebRTC } from './useStreamWebRTC';
+import { useStreamSocket } from "../Host/useStreamSocket";
+import { useStreamWebRTC } from "../Host/useStreamWebRTC";
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 
 const CoHostStage = ({ socket: parentSocket }) => {
