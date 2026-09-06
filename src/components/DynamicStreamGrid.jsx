@@ -1,4 +1,3 @@
-
 // src/components/DynamicStreamGrid.jsx
 
 import React, {
@@ -48,7 +47,6 @@ const getAvatar = person => {
   );
 };
 
-
 const formatCoins = value => {
   const coins = Number(value);
 
@@ -66,7 +64,6 @@ const formatCoins = value => {
 
   return String(Math.round(coins));
 };
-
 
 const assignRef = (ref, value) => {
   if (!ref) {
@@ -113,6 +110,17 @@ export const DynamicStreamGrid = ({
   const hostVideoElementRef = useRef(null);
   const coHostVideoElementRefs = useRef({});
 
+  const coHostStreamsRef = useRef(coHostStreams);
+  const coHostVideosRef = useRef(coHostVideos);
+
+  useEffect(() => {
+    coHostStreamsRef.current = coHostStreams;
+  }, [coHostStreams]);
+
+  useEffect(() => {
+    coHostVideosRef.current = coHostVideos;
+  }, [coHostVideos]);
+
   /*
    * ------------------------------------------------------------
    * Co-host list
@@ -158,7 +166,54 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Co-host video resolver
+   * Co-host stream resolver
+   * ------------------------------------------------------------
+   */
+  const getCoHostStream = index => {
+    const cohost = coHostList[index];
+
+    if (!cohost) {
+      return null;
+    }
+
+    const streams = coHostStreamsRef.current;
+
+    if (
+      Array.isArray(streams) &&
+      streams[index]
+    ) {
+      return streams[index];
+    }
+
+    if (cohost.stream) {
+      return cohost.stream;
+    }
+
+    if (cohost.mediaStream) {
+      return cohost.mediaStream;
+    }
+
+    if (cohost.remoteStream) {
+      return cohost.remoteStream;
+    }
+
+    if (cohost.videoStream) {
+      return cohost.videoStream;
+    }
+
+    if (
+      index === 0 &&
+      coHostStream
+    ) {
+      return coHostStream;
+    }
+
+    return null;
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * Co-host supplied video resolver
    * ------------------------------------------------------------
    */
   const getCoHostVideo = index => {
@@ -168,11 +223,13 @@ export const DynamicStreamGrid = ({
       return null;
     }
 
+    const videos = coHostVideosRef.current;
+
     if (
-      coHostVideos &&
-      coHostVideos[index]
+      Array.isArray(videos) &&
+      videos[index]
     ) {
-      return coHostVideos[index];
+      return videos[index];
     }
 
     if (cohost.videoElement) {
@@ -195,48 +252,7 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Co-host stream resolver
-   * ------------------------------------------------------------
-   */
-  const getCoHostStream = index => {
-    const cohost = coHostList[index];
-
-    if (!cohost) {
-      return null;
-    }
-
-    if (
-      coHostStreams &&
-      coHostStreams[index]
-    ) {
-      return coHostStreams[index];
-    }
-
-    if (cohost.stream) {
-      return cohost.stream;
-    }
-
-    if (cohost.mediaStream) {
-      return cohost.mediaStream;
-    }
-
-    if (
-      index === 0 &&
-      coHostStream
-    ) {
-      return coHostStream;
-    }
-
-    return null;
-  };
-
-  /*
-   * ------------------------------------------------------------
    * Host video
-   *
-   * The parent may provide the actual <video> element.
-   * We clone it so this component can safely obtain the
-   * exact DOM element that is displayed.
    * ------------------------------------------------------------
    */
   const renderedHostVideo = useMemo(() => {
@@ -271,30 +287,19 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Bind host MediaStream
-   *
-   * DynamicStreamGrid never stops the stream.
-   * useStreamWebRTC owns the MediaStream lifecycle.
+   * Host stream binding
    * ------------------------------------------------------------
    */
   useEffect(() => {
     const video =
       hostVideoElementRef.current;
 
-    if (
-      !video ||
-      typeof HTMLVideoElement === 'undefined' ||
-      !(video instanceof HTMLVideoElement)
-    ) {
-      return undefined;
-    }
-
-    if (!hostStream) {
+    if (!video || !hostStream) {
       return undefined;
     }
 
     let cancelled = false;
-    let metadataTimer = null;
+    let retryTimer = null;
 
     const attemptPlay = async () => {
       if (cancelled) {
@@ -302,44 +307,29 @@ export const DynamicStreamGrid = ({
       }
 
       try {
-        if (
-          video.srcObject !== hostStream
-        ) {
+        if (video.srcObject !== hostStream) {
           video.srcObject = hostStream;
         }
 
         if (
-          video.readyState < 1
+          video.readyState >= 1 &&
+          video.paused
         ) {
-          return;
-        }
-
-        await video.play();
-
-        if (!cancelled) {
-          console.log(
-            '▶️ [DynamicStreamGrid] Host video is playing.'
-          );
+          await video.play();
         }
       } catch (error) {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          console.warn(
+            '⚠️ [DynamicStreamGrid] Host video playback failed:',
+            error?.message || error
+          );
         }
-
-        console.warn(
-          '⚠️ [DynamicStreamGrid] Host video playback failed:',
-          error?.name ||
-            error?.message ||
-            error
-        );
       }
     };
 
     const handleLoadedMetadata = () => {
       attemptPlay();
     };
-
-    video.srcObject = hostStream;
 
     video.addEventListener(
       'loadedmetadata',
@@ -348,11 +338,7 @@ export const DynamicStreamGrid = ({
 
     attemptPlay();
 
-    /*
-     * A delayed retry handles cases where the stream
-     * arrives immediately before the video metadata.
-     */
-    metadataTimer = setTimeout(() => {
+    retryTimer = setTimeout(() => {
       attemptPlay();
     }, 500);
 
@@ -364,15 +350,9 @@ export const DynamicStreamGrid = ({
         handleLoadedMetadata
       );
 
-      if (metadataTimer) {
-        clearTimeout(metadataTimer);
-        metadataTimer = null;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
       }
-
-      /*
-       * Do NOT stop tracks here.
-       * useStreamWebRTC owns the stream.
-       */
     };
   }, [
     hostStream,
@@ -381,54 +361,186 @@ export const DynamicStreamGrid = ({
 
   /*
    * ------------------------------------------------------------
-   * Bind co-host MediaStreams
+   * Bind a co-host stream to a video element
+   *
+   * IMPORTANT:
+   * This does not stop or destroy the MediaStream.
+   * WebRTC owns the stream lifecycle.
+   * ------------------------------------------------------------
+   */
+  const bindCoHostVideo = (
+    index,
+    video
+  ) => {
+    if (!video) {
+      return;
+    }
+
+    const stream =
+      getCoHostStream(index);
+
+    if (!stream) {
+      return;
+    }
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+
+    const attemptPlay = async () => {
+      try {
+        if (
+          video.srcObject !== stream
+        ) {
+          video.srcObject = stream;
+        }
+
+        if (
+          video.readyState >= 1 &&
+          video.paused
+        ) {
+          await video.play();
+
+          console.log(
+            '▶️ [DynamicStreamGrid] Co-host ' +
+              (index + 1) +
+              ' video is playing.'
+          );
+        }
+      } catch (error) {
+        console.warn(
+          '⚠️ [DynamicStreamGrid] Co-host ' +
+            (index + 1) +
+            ' playback waiting:',
+          error?.message || error
+        );
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      attemptPlay();
+    };
+
+    video.addEventListener(
+      'loadedmetadata',
+      handleLoadedMetadata
+    );
+
+    /*
+     * Try now.
+     */
+    attemptPlay();
+
+    /*
+     * Try once more after the browser has
+     * had time to attach the MediaStream.
+     */
+    const retryTimer = setTimeout(() => {
+      attemptPlay();
+    }, 300);
+
+    /*
+     * Store cleanup on the element.
+     * This prevents duplicate metadata listeners
+     * when React reuses the element.
+     */
+    video.__mpadeCoHostCleanup = () => {
+      video.removeEventListener(
+        'loadedmetadata',
+        handleLoadedMetadata
+      );
+
+      clearTimeout(retryTimer);
+    };
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * Co-host video callback refs
+   *
+   * This is the important part of the repair.
+   *
+   * When React creates the actual <video> element,
+   * we immediately bind the current MediaStream.
+   * ------------------------------------------------------------
+   */
+  const setCoHostVideoRef = (
+    index,
+    node
+  ) => {
+    const previous =
+      coHostVideoElementRefs.current[index];
+
+    if (
+      previous &&
+      previous !== node
+    ) {
+      if (
+        previous.__mpadeCoHostCleanup
+      ) {
+        previous.__mpadeCoHostCleanup();
+        previous.__mpadeCoHostCleanup = null;
+      }
+
+      previous.srcObject = null;
+    }
+
+    if (!node) {
+      delete coHostVideoElementRefs.current[index];
+      return;
+    }
+
+    coHostVideoElementRefs.current[index] =
+      node;
+
+    bindCoHostVideo(
+      index,
+      node
+    );
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * Co-host stream synchronization
+   *
+   * Handles the case where WebRTC delivers the
+   * MediaStream after the video element already exists.
    * ------------------------------------------------------------
    */
   useEffect(() => {
     coHostList.forEach((_, index) => {
-      const stream =
-        getCoHostStream(index);
-
       const video =
-        coHostVideoElementRefs
-          .current[index];
+        coHostVideoElementRefs.current[index];
 
-      if (
-        !video ||
-        !stream
-      ) {
+      if (!video) {
         return;
       }
 
-      if (
-        video.srcObject !== stream
-      ) {
-        video.srcObject = stream;
+      const stream =
+        getCoHostStream(index);
+
+      if (!stream) {
+        return;
       }
 
-      const playPromise =
-        video.play();
+      if (video.srcObject !== stream) {
+        if (
+          video.__mpadeCoHostCleanup
+        ) {
+          video.__mpadeCoHostCleanup();
+          video.__mpadeCoHostCleanup = null;
+        }
 
-      if (
-        playPromise &&
-        typeof playPromise.catch === 'function'
-      ) {
-        playPromise.catch(error => {
-          console.warn(
-            `⚠️ [DynamicStreamGrid] Co-host ${
-              index + 1
-            } autoplay prevented:`,
-            error?.message || error
-          );
-        });
+        bindCoHostVideo(
+          index,
+          video
+        );
       }
     });
   }, [
     coHostList,
     coHostStreams,
-    coHostVideos,
-    coHostStream,
-    coHostVideo
+    coHostStream
   ]);
 
   /*
@@ -447,16 +559,27 @@ export const DynamicStreamGrid = ({
     Object.keys(
       coHostVideoElementRefs.current
     ).forEach(index => {
+      const numericIndex =
+        Number(index);
+
       if (
         !activeIndexes.has(
-          Number(index)
+          numericIndex
         )
       ) {
         const video =
-          coHostVideoElementRefs
-            .current[index];
+          coHostVideoElementRefs.current[
+            index
+          ];
 
         if (video) {
+          if (
+            video.__mpadeCoHostCleanup
+          ) {
+            video.__mpadeCoHostCleanup();
+            video.__mpadeCoHostCleanup = null;
+          }
+
           video.srcObject = null;
         }
 
@@ -743,7 +866,8 @@ export const DynamicStreamGrid = ({
                     <div
                       key={
                         gifter.id ||
-                        `host-gifter-${index}`
+                        'host-gifter-' +
+                          index
                       }
                       className="
                         flex
@@ -808,7 +932,7 @@ export const DynamicStreamGrid = ({
     cohost,
     index
   ) => {
-    const videoContent =
+    const suppliedVideo =
       getCoHostVideo(index);
 
     const stream =
@@ -816,17 +940,74 @@ export const DynamicStreamGrid = ({
 
     const gifters =
       getGiftersForHost(
-        `coHost${index + 1}`
+        'coHost' +
+          (index + 1)
       );
 
     const username =
       getDisplayName(
         cohost,
-        `Host ${index + 2}`
+        'Host ' +
+          (index + 2)
       );
 
     const avatar =
       getAvatar(cohost);
+
+    /*
+     * If the parent supplied an actual React
+     * video element, preserve it.
+     *
+     * Otherwise create our own video element.
+     */
+    let videoContent = null;
+
+    if (
+      suppliedVideo &&
+      isValidElement(suppliedVideo)
+    ) {
+      const originalRef =
+        suppliedVideo.ref || null;
+
+      videoContent = cloneElement(
+        suppliedVideo,
+        {
+          ref: node => {
+            setCoHostVideoRef(
+              index,
+              node
+            );
+
+            assignRef(
+              originalRef,
+              node
+            );
+          },
+
+          autoPlay: true,
+          playsInline: true
+        }
+      );
+    } else if (stream) {
+      videoContent = (
+        <video
+          ref={node => {
+            setCoHostVideoRef(
+              index,
+              node
+            );
+          }}
+          autoPlay
+          playsInline
+          muted={false}
+          className="
+            w-full
+            h-full
+            object-cover
+          "
+        />
+      );
+    }
 
     return (
       <motion.div
@@ -834,7 +1015,8 @@ export const DynamicStreamGrid = ({
           cohost?.id ||
           cohost?.user_id ||
           cohost?.socketId ||
-          `cohost-${index}`
+          'cohost-' +
+            index
         }
         initial={{
           scale: 0.96,
@@ -871,26 +1053,6 @@ export const DynamicStreamGrid = ({
             <div className="w-full h-full">
               {videoContent}
             </div>
-          ) : stream ? (
-            <video
-              ref={node => {
-                if (node) {
-                  coHostVideoElementRefs
-                    .current[index] =
-                    node;
-                } else {
-                  delete coHostVideoElementRefs
-                    .current[index];
-                }
-              }}
-              autoPlay
-              playsInline
-              className="
-                w-full
-                h-full
-                object-cover
-              "
-            />
           ) : (
             <div
               className="
@@ -1072,11 +1234,17 @@ export const DynamicStreamGrid = ({
                 "
               >
                 {gifters.map(
-                  (gifter, gifterIndex) => (
+                  (
+                    gifter,
+                    gifterIndex
+                  ) => (
                     <div
                       key={
                         gifter.id ||
-                        `cohost-${index}-gifter-${gifterIndex}`
+                        'cohost-' +
+                          index +
+                          '-gifter-' +
+                          gifterIndex
                       }
                       className="
                         flex
@@ -1191,4 +1359,3 @@ export const DynamicStreamGrid = ({
 };
 
 export default DynamicStreamGrid;
-
