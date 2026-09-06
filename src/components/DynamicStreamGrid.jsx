@@ -1,4 +1,4 @@
-```jsx
+
 // src/components/DynamicStreamGrid.jsx
 
 import React, {
@@ -48,6 +48,7 @@ const getAvatar = person => {
   );
 };
 
+
 const formatCoins = value => {
   const coins = Number(value);
 
@@ -56,15 +57,16 @@ const formatCoins = value => {
   }
 
   if (coins >= 1000000) {
-    return `${(coins / 1000000).toFixed(1)}M`;
+    return (coins / 1000000).toFixed(1) + 'M';
   }
 
   if (coins >= 1000) {
-    return `${(coins / 1000).toFixed(1)}k`;
+    return (coins / 1000).toFixed(1) + 'k';
   }
 
   return String(Math.round(coins));
 };
+
 
 const assignRef = (ref, value) => {
   if (!ref) {
