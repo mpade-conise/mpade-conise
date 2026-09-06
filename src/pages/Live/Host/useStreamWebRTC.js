@@ -1,3 +1,4 @@
+
 // hooks/useStreamWebRTC.js
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -26,7 +27,7 @@ const GLOBAL_ICE_CONFIG = {
     {
       urls: 'turns:global.relay.metered.ca:443?transport=tcp',
       username: '28087eceaa61e6de7d551200',
-      credential: 'KW6VsmVsm7ZTUwjjDWn'
+      credential: 'KW6Vsm7ZTUwjjDWn'
     }
   ],
   iceCandidatePoolSize: 10
@@ -46,15 +47,29 @@ export const useStreamWebRTC = (
   const iceCandidatesQueueRef = useRef({});
   const remoteStreamsRef = useRef({});
 
+  /*
+   * Each media initialization gets its own generation.
+   *
+   * This prevents an old getUserMedia() call from stopping
+   * a newer camera stream after React remounts the component.
+   */
+  const mediaGenerationRef = useRef(0);
+
+  /*
+   * Prevent multiple simultaneous initializations for the
+   * same mounted hook instance.
+   */
+  const mediaPromiseRef = useRef(null);
+
   const mountedRef = useRef(false);
-  const mediaInitRef = useRef(false);
 
   const [hardwareReady, setHardwareReady] = useState(false);
-  const [primaryRemoteStream, setPrimaryRemoteStream] = useState(null);
+  const [primaryRemoteStream, setPrimaryRemoteStream] =
+    useState(null);
 
   /*
    * ------------------------------------------------------------
-   * Attach local stream to host video element
+   * Local video binding
    * ------------------------------------------------------------
    */
   const bindLocalStreamToDOM = useCallback(() => {
@@ -65,6 +80,13 @@ export const useStreamWebRTC = (
       return;
     }
 
+    /*
+     * Important video properties for getUserMedia().
+     */
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+
     if (video.srcObject !== stream) {
       video.srcObject = stream;
     }
@@ -74,7 +96,7 @@ export const useStreamWebRTC = (
     if (playPromise?.catch) {
       playPromise.catch(error => {
         console.warn(
-          '⚠️ [WebRTC] Local video autoplay prevented:',
+          '⚠️ [WebRTC] Local video play prevented:',
           error?.message || error
         );
       });
@@ -83,7 +105,7 @@ export const useStreamWebRTC = (
 
   /*
    * ------------------------------------------------------------
-   * Attach remote stream to co-host/challenger video
+   * Remote video binding
    * ------------------------------------------------------------
    */
   const bindRemoteStreamToDOM = useCallback(
@@ -92,9 +114,9 @@ export const useStreamWebRTC = (
         return;
       }
 
-      const streamIdValue = stream.id || 'primary';
+      const remoteId = stream.id || 'primary';
 
-      remoteStreamsRef.current[streamIdValue] = stream;
+      remoteStreamsRef.current[remoteId] = stream;
 
       setPrimaryRemoteStream(previous => {
         if (previous?.id === stream.id) {
@@ -110,6 +132,9 @@ export const useStreamWebRTC = (
         return;
       }
 
+      video.autoplay = true;
+      video.playsInline = true;
+
       if (video.srcObject !== stream) {
         video.srcObject = stream;
 
@@ -118,14 +143,14 @@ export const useStreamWebRTC = (
         if (playPromise?.catch) {
           playPromise.catch(error => {
             console.warn(
-              '⚠️ [WebRTC] Remote video autoplay prevented:',
+              '⚠️ [WebRTC] Remote video play prevented:',
               error?.message || error
             );
           });
         }
 
         console.log(
-          '🎥 [WebRTC] Remote media stream attached to challenger video element.'
+          '🎥 [WebRTC] Remote media stream attached.'
         );
       }
     },
@@ -134,7 +159,7 @@ export const useStreamWebRTC = (
 
   /*
    * ------------------------------------------------------------
-   * Hardware initialization
+   * HOST CAMERA + MICROPHONE INITIALIZATION
    * ------------------------------------------------------------
    */
   useEffect(() => {
@@ -147,119 +172,232 @@ export const useStreamWebRTC = (
     }
 
     let cancelled = false;
-    let mediaStream = null;
+
+    const generation = mediaGenerationRef.current + 1;
+    mediaGenerationRef.current = generation;
 
     const initMedia = async () => {
-      if (mediaInitRef.current) {
+      /*
+       * If another initialization is already active,
+       * don't start another camera request.
+       */
+      if (mediaPromiseRef.current) {
+        try {
+          await mediaPromiseRef.current;
+        } catch {
+          // The active initialization handles its own error.
+        }
+
         return;
       }
 
-      mediaInitRef.current = true;
+      const request = (async () => {
+        let mediaStream = null;
 
-      try {
-        if (
-          !navigator.mediaDevices ||
-          !navigator.mediaDevices.getUserMedia
-        ) {
-          throw new Error(
-            'Browser mediaDevices API is unavailable.'
-          );
-        }
-
-        console.log(
-          '🎥 [WebRTC] Accessing camera and microphone...'
-        );
-
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: {
-              ideal: 1280
-            },
-            height: {
-              ideal: 720
-            },
-            frameRate: {
-              ideal: 30,
-              max: 30
-            }
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
-
-        if (
-          cancelled ||
-          !mountedRef.current
-        ) {
-          mediaStream
-            .getTracks()
-            .forEach(track => track.stop());
-
-          return;
-        }
-
-        localStreamRef.current = mediaStream;
-
-        /*
-         * Voice engine is optional.
-         *
-         * We initialize it here but do not replace the original
-         * microphone track automatically because the engine's
-         * processing API may differ from the WebRTC track pipeline.
-         */
         try {
-          liveVoiceEngine.init(mediaStream);
+          if (
+            !navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia
+          ) {
+            throw new Error(
+              'Browser mediaDevices.getUserMedia() is unavailable.'
+            );
+          }
 
-          const processedAudioTrack =
-            liveVoiceEngine.getProcessedAudioTrack?.();
+          console.log(
+            '🎥 [WebRTC] Accessing camera and microphone...'
+          );
 
-          if (processedAudioTrack) {
+          /*
+           * Keep the constraints reasonable.
+           *
+           * 1280x720 is requested as an ideal resolution,
+           * not a mandatory resolution.
+           */
+          mediaStream =
+            await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: {
+                  ideal: 1280
+                },
+                height: {
+                  ideal: 720
+                },
+                frameRate: {
+                  ideal: 30,
+                  max: 30
+                }
+              },
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+              }
+            });
+
+          /*
+           * The stream belongs to this initialization only.
+           *
+           * Never allow an old effect instance to take ownership
+           * of a newer camera stream.
+           */
+          const stillCurrent =
+            !cancelled &&
+            mountedRef.current &&
+            mediaGenerationRef.current === generation;
+
+          if (!stillCurrent) {
+            console.warn(
+              '⚠️ [WebRTC] Ignoring stale camera initialization.'
+            );
+
+            mediaStream
+              .getTracks()
+              .forEach(track => track.stop());
+
+            return;
+          }
+
+          /*
+           * If a previous stream exists, stop only that old stream.
+           */
+          if (
+            localStreamRef.current &&
+            localStreamRef.current !== mediaStream
+          ) {
+            localStreamRef.current
+              .getTracks()
+              .forEach(track => {
+                if (track.readyState !== 'ended') {
+                  track.stop();
+                }
+              });
+          }
+
+          localStreamRef.current = mediaStream;
+
+          /*
+           * Make sure the camera tracks are enabled initially.
+           */
+          mediaStream
+            .getVideoTracks()
+            .forEach(track => {
+              track.enabled = !isCameraOff;
+            });
+
+          mediaStream
+            .getAudioTracks()
+            .forEach(track => {
+              track.enabled = !isMuted;
+            });
+
+          /*
+           * Optional voice processing.
+           *
+           * We deliberately do NOT replace the microphone track
+           * with an unknown processed track.
+           */
+          try {
+            if (liveVoiceEngine?.init) {
+              liveVoiceEngine.init(mediaStream);
+            }
+
+            const processedAudioTrack =
+              liveVoiceEngine?.getProcessedAudioTrack?.();
+
+            if (processedAudioTrack) {
+              console.log(
+                '🎙️ [WebRTC] LiveVoiceEngine processed audio track available.'
+              );
+            }
+          } catch (error) {
+            console.warn(
+              '⚠️ [WebRTC] LiveVoiceEngine unavailable; using original microphone:',
+              error?.message || error
+            );
+          }
+
+          /*
+           * Attach camera to the host video element.
+           */
+          bindLocalStreamToDOM();
+
+          if (
+            mountedRef.current &&
+            mediaGenerationRef.current === generation
+          ) {
+            setHardwareReady(true);
+
             console.log(
-              '🎙️ [WebRTC] LiveVoiceEngine processed audio track available.'
+              '✅ [WebRTC] Camera and microphone ready.'
+            );
+
+            /*
+             * Useful diagnostic information.
+             */
+            const videoTracks =
+              mediaStream.getVideoTracks();
+
+            const audioTracks =
+              mediaStream.getAudioTracks();
+
+            console.log(
+              '📷 [WebRTC] Video tracks:',
+              videoTracks.map(track => ({
+                id: track.id,
+                label: track.label,
+                enabled: track.enabled,
+                readyState: track.readyState
+              }))
+            );
+
+            console.log(
+              '🎤 [WebRTC] Audio tracks:',
+              audioTracks.map(track => ({
+                id: track.id,
+                label: track.label,
+                enabled: track.enabled,
+                readyState: track.readyState
+              }))
             );
           }
         } catch (error) {
-          console.warn(
-            '⚠️ [WebRTC] LiveVoiceEngine fallback:',
-            error?.message || error
+          console.error(
+            '❌ [WebRTC] Broadcasting hardware failure:',
+            error
           );
-        }
 
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = mediaStream;
+          if (mediaStream) {
+            mediaStream
+              .getTracks()
+              .forEach(track => {
+                if (track.readyState !== 'ended') {
+                  track.stop();
+                }
+              });
+          }
 
-          const playPromise =
-            localVideoRef.current.play();
-
-          if (playPromise?.catch) {
-            playPromise.catch(error => {
-              console.warn(
-                '⚠️ [WebRTC] Local video play prevented:',
-                error?.message || error
-              );
-            });
+          if (
+            mountedRef.current &&
+            mediaGenerationRef.current === generation
+          ) {
+            setHardwareReady(false);
           }
         }
+      })();
 
-        setHardwareReady(true);
+      mediaPromiseRef.current = request;
 
-        console.log(
-          '✅ [WebRTC] Camera and microphone ready.'
-        );
-      } catch (error) {
-        console.error(
-          '❌ [WebRTC] Broadcasting hardware failure:',
-          error
-        );
-
-        if (mountedRef.current) {
-          setHardwareReady(false);
+      try {
+        await request;
+      } finally {
+        /*
+         * Only clear the promise if this is still the active
+         * initialization.
+         */
+        if (mediaPromiseRef.current === request) {
+          mediaPromiseRef.current = null;
         }
-
-        mediaInitRef.current = false;
       }
     };
 
@@ -267,54 +405,65 @@ export const useStreamWebRTC = (
 
     return () => {
       cancelled = true;
-      mountedRef.current = false;
-      mediaInitRef.current = false;
 
       /*
-       * Close all peer connections.
+       * Invalidate this initialization generation.
        */
-      Object.entries(
-        peerConnectionsRef.current
-      ).forEach(([peerId, pc]) => {
-        try {
-          pc.ontrack = null;
-          pc.onicecandidate = null;
-          pc.onconnectionstatechange = null;
-          pc.oniceconnectionstatechange = null;
-          pc.close();
-        } catch (error) {
-          console.warn(
-            `⚠️ [WebRTC] Error closing peer ${peerId}:`,
-            error
-          );
+      if (mediaGenerationRef.current === generation) {
+        mediaGenerationRef.current += 1;
+      }
+
+      mountedRef.current = false;
+
+      /*
+       * Close peer connections.
+       */
+      Object.entries(peerConnectionsRef.current).forEach(
+        ([peerId, pc]) => {
+          try {
+            pc.ontrack = null;
+            pc.onicecandidate = null;
+            pc.onconnectionstatechange = null;
+            pc.oniceconnectionstatechange = null;
+            pc.close();
+          } catch (error) {
+            console.warn(
+              `⚠️ [WebRTC] Error closing peer ${peerId}:`,
+              error?.message || error
+            );
+          }
         }
-      });
+      );
 
       peerConnectionsRef.current = {};
       iceCandidatesQueueRef.current = {};
       remoteStreamsRef.current = {};
 
       /*
-       * Stop camera and microphone.
+       * IMPORTANT:
+       *
+       * Only stop the stream currently owned by this hook.
+       *
+       * We don't stop some arbitrary stream returned by an older
+       * getUserMedia() request.
        */
-      if (mediaStream) {
-        mediaStream
-          .getTracks()
-          .forEach(track => track.stop());
-      }
+      const ownedStream = localStreamRef.current;
 
-      if (localStreamRef.current) {
-        localStreamRef.current
+      if (ownedStream) {
+        ownedStream
           .getTracks()
           .forEach(track => {
             if (track.readyState !== 'ended') {
               track.stop();
             }
           });
+
+        localStreamRef.current = null;
       }
 
-      localStreamRef.current = null;
-
+      /*
+       * Clear video elements.
+       */
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
       }
@@ -326,11 +475,17 @@ export const useStreamWebRTC = (
       setHardwareReady(false);
       setPrimaryRemoteStream(null);
     };
-  }, [streamId, challengerVideoRef]);
+  }, [
+    streamId,
+    bindLocalStreamToDOM,
+    isCameraOff,
+    isMuted,
+    challengerVideoRef
+  ]);
 
   /*
    * ------------------------------------------------------------
-   * Re-bind local stream after the video element mounts
+   * Re-bind local stream when the video element is available.
    * ------------------------------------------------------------
    */
   useEffect(() => {
@@ -346,11 +501,10 @@ export const useStreamWebRTC = (
 
   /*
    * ------------------------------------------------------------
-   * Camera / microphone controls
+   * Camera + microphone controls
    *
-   * IMPORTANT:
-   * We do not recreate the peer connection.
-   * We simply enable/disable the existing tracks.
+   * We only enable/disable tracks.
+   * We do NOT recreate the camera.
    * ------------------------------------------------------------
    */
   useEffect(() => {
@@ -360,31 +514,33 @@ export const useStreamWebRTC = (
       return;
     }
 
-    const audioTracks =
-      stream.getAudioTracks();
+    stream
+      .getVideoTracks()
+      .forEach(track => {
+        track.enabled = !isCameraOff;
+      });
 
-    const videoTracks =
-      stream.getVideoTracks();
-
-    audioTracks.forEach(track => {
-      track.enabled = !isMuted;
-    });
-
-    videoTracks.forEach(track => {
-      track.enabled = !isCameraOff;
-    });
+    stream
+      .getAudioTracks()
+      .forEach(track => {
+        track.enabled = !isMuted;
+      });
 
     console.log(
-      `🎛️ [WebRTC] Camera=${!isCameraOff ? 'ON' : 'OFF'} | Mic=${!isMuted ? 'ON' : 'OFF'}`
+      `🎛️ [WebRTC] Camera=${
+        !isCameraOff ? 'ON' : 'OFF'
+      } | Mic=${
+        !isMuted ? 'ON' : 'OFF'
+      }`
     );
   }, [
-    isMuted,
-    isCameraOff
+    isCameraOff,
+    isMuted
   ]);
 
   /*
    * ------------------------------------------------------------
-   * Add queued ICE candidates after remote description exists
+   * ICE candidate queue
    * ------------------------------------------------------------
    */
   const flushIceCandidates = useCallback(
@@ -392,11 +548,7 @@ export const useStreamWebRTC = (
       const pc =
         peerConnectionsRef.current[peerId];
 
-      if (!pc) {
-        return;
-      }
-
-      if (!pc.remoteDescription) {
+      if (!pc || !pc.remoteDescription) {
         return;
       }
 
@@ -415,10 +567,6 @@ export const useStreamWebRTC = (
 
       for (const candidate of queue) {
         try {
-          if (!candidate) {
-            continue;
-          }
-
           await pc.addIceCandidate(
             new RTCIceCandidate(candidate)
           );
@@ -444,12 +592,12 @@ export const useStreamWebRTC = (
 
   /*
    * ------------------------------------------------------------
-   * Create one RTCPeerConnection per remote peer
+   * Create peer connection
    * ------------------------------------------------------------
    */
   const createPeerConnection = useCallback(
     targetSocketId => {
-      if (!targetSocketId) {
+      if (!targetSocketId || !socket) {
         return null;
       }
 
@@ -460,14 +608,6 @@ export const useStreamWebRTC = (
 
       if (existing) {
         return existing;
-      }
-
-      if (!socket) {
-        console.warn(
-          '⚠️ [WebRTC] Cannot create peer without socket.'
-        );
-
-        return null;
       }
 
       console.log(
@@ -491,7 +631,7 @@ export const useStreamWebRTC = (
         ] || [];
 
       /*
-       * Add local camera + microphone tracks.
+       * Add host camera + microphone.
        */
       const localStream =
         localStreamRef.current;
@@ -508,7 +648,7 @@ export const useStreamWebRTC = (
             } catch (error) {
               console.warn(
                 `⚠️ [WebRTC] Could not add ${track.kind} track:`,
-                error
+                error?.message || error
               );
             }
           });
@@ -539,7 +679,7 @@ export const useStreamWebRTC = (
       };
 
       /*
-       * ICE candidate generation.
+       * ICE candidates.
        */
       pc.onicecandidate = event => {
         if (!event.candidate) {
@@ -548,7 +688,7 @@ export const useStreamWebRTC = (
 
         if (!socket.connected) {
           console.warn(
-            `⚠️ [WebRTC] Socket unavailable while sending ICE candidate to ${targetSocketId}`
+            `⚠️ [WebRTC] Socket unavailable while sending ICE to ${targetSocketId}`
           );
 
           return;
@@ -566,10 +706,7 @@ export const useStreamWebRTC = (
       };
 
       /*
-       * Connection state.
-       *
-       * Do NOT immediately destroy a peer when it becomes
-       * "disconnected". Mobile networks can temporarily do this.
+       * Peer connection state.
        */
       pc.onconnectionstatechange = () => {
         const state =
@@ -581,13 +718,13 @@ export const useStreamWebRTC = (
 
         if (state === 'failed') {
           console.warn(
-            `❌ [WebRTC] Peer ${targetSocketId} failed. Closing connection.`
+            `❌ [WebRTC] Peer ${targetSocketId} failed.`
           );
 
           try {
             pc.close();
           } catch {
-            // Ignore close errors.
+            // Ignore.
           }
 
           if (
@@ -622,8 +759,6 @@ export const useStreamWebRTC = (
               return previous;
             }
           );
-
-          return;
         }
 
         if (state === 'closed') {
@@ -640,36 +775,27 @@ export const useStreamWebRTC = (
       };
 
       /*
-       * ICE connection state.
+       * ICE state.
        */
-      pc.oniceconnectionstatechange =
-        () => {
-          console.log(
-            `🧊 [WebRTC] ICE state ${targetSocketId}: ${pc.iceConnectionState}`
-          );
+      pc.oniceconnectionstatechange = () => {
+        console.log(
+          `🧊 [WebRTC] ICE state ${targetSocketId}: ${pc.iceConnectionState}`
+        );
 
-          if (
-            pc.iceConnectionState ===
-              'failed'
-          ) {
+        if (
+          pc.iceConnectionState ===
+          'failed'
+        ) {
+          try {
+            pc.restartIce?.();
+          } catch (error) {
             console.warn(
-              `⚠️ [WebRTC] ICE failed for ${targetSocketId}.`
+              '⚠️ [WebRTC] ICE restart unavailable:',
+              error?.message || error
             );
-
-            /*
-             * restartIce is preferable to immediately
-             * destroying the whole stream.
-             */
-            try {
-              pc.restartIce?.();
-            } catch (error) {
-              console.warn(
-                '⚠️ [WebRTC] ICE restart unavailable:',
-                error
-              );
-            }
           }
-        };
+        }
+      };
 
       return pc;
     },
@@ -698,292 +824,266 @@ export const useStreamWebRTC = (
     let cancelled = false;
 
     /*
-     * Host receives request from viewer and creates offer.
+     * Viewer requests host stream.
      */
-    const handleViewerRequest =
-      async payload => {
-        if (cancelled) {
-          return;
-        }
+    const handleViewerRequest = async payload => {
+      if (cancelled) {
+        return;
+      }
 
-        const viewerId =
-          payload?.viewerSocketId ||
-          payload?.socketId ||
-          payload?.viewerId;
+      const viewerId =
+        payload?.viewerSocketId ||
+        payload?.socketId ||
+        payload?.viewerId;
 
-        if (!viewerId) {
-          console.warn(
-            '⚠️ [WebRTC] Viewer request has no socket ID:',
-            payload
-          );
-
-          return;
-        }
-
-        const localStream =
-          localStreamRef.current;
-
-        if (!localStream) {
-          console.warn(
-            `⚠️ [WebRTC] No local media available for viewer ${viewerId}`
-          );
-
-          return;
-        }
-
-        console.log(
-          `📥 [WebRTC] Stream request from ${viewerId}`
+      if (!viewerId) {
+        console.warn(
+          '⚠️ [WebRTC] Viewer request has no socket ID:',
+          payload
         );
 
-        try {
-          const pc =
-            createPeerConnection(
-              viewerId
-            );
+        return;
+      }
 
-          if (!pc) {
-            return;
-          }
+      const localStream =
+        localStreamRef.current;
 
-          /*
-           * If this peer already has a stable negotiation,
-           * don't create another offer unnecessarily.
-           */
-          if (
-            pc.signalingState !==
-            'stable'
-          ) {
-            console.log(
-              `⏳ [WebRTC] Peer ${viewerId} is already negotiating (${pc.signalingState}).`
-            );
+      if (!localStream) {
+        console.warn(
+          `⚠️ [WebRTC] No local media for viewer ${viewerId}`
+        );
 
-            return;
-          }
+        return;
+      }
 
-          const offer =
-            await pc.createOffer();
+      console.log(
+        `📥 [WebRTC] Stream request from ${viewerId}`
+      );
 
-          if (cancelled) {
-            return;
-          }
-
-          await pc.setLocalDescription(
-            offer
+      try {
+        const pc =
+          createPeerConnection(
+            viewerId
           );
 
-          socket.emit(
-            'send_webrtc_offer',
-            {
-              streamId,
-              offer: pc.localDescription,
-              targetViewerId: viewerId
-            }
-          );
-
-          console.log(
-            `📤 [WebRTC] Offer sent to ${viewerId}`
-          );
-        } catch (error) {
-          console.error(
-            `❌ [WebRTC] Offer creation failed for ${viewerId}:`,
-            error
-          );
-        }
-      };
-
-    /*
-     * Some versions of the backend may emit
-     * receive_webrtc_offer while others use
-     * webrtc_offer_received.
-     *
-     * We support the existing event names without creating
-     * any new backend events.
-     */
-    const handleIncomingOffer =
-      async payload => {
-        if (cancelled) {
+        if (!pc) {
           return;
         }
 
-        const senderId =
-          payload?.senderSocketId ||
-          payload?.guestSocketId ||
-          payload?.socketId ||
-          payload?.senderId;
+        if (
+          pc.signalingState !==
+          'stable'
+        ) {
+          console.log(
+            `⏳ [WebRTC] Peer ${viewerId} already negotiating: ${pc.signalingState}`
+          );
+
+          return;
+        }
 
         const offer =
-          payload?.offer;
+          await pc.createOffer();
 
-        if (!senderId || !offer) {
-          console.warn(
-            '⚠️ [WebRTC] Invalid incoming offer:',
-            payload
-          );
-
+        if (cancelled) {
           return;
         }
 
-        console.log(
-          `📥 [WebRTC] Incoming offer from ${senderId}`
+        await pc.setLocalDescription(
+          offer
         );
 
-        try {
-          const pc =
-            createPeerConnection(
-              senderId
-            );
+        if (cancelled) {
+          return;
+        }
 
-          if (!pc) {
-            return;
+        socket.emit(
+          'send_webrtc_offer',
+          {
+            streamId,
+            offer: pc.localDescription,
+            targetViewerId: viewerId
           }
+        );
 
-          /*
-           * Prevent replacing an already established
-           * remote description unnecessarily.
-           */
-          if (
-            pc.signalingState ===
-              'stable' &&
-            pc.currentRemoteDescription
-          ) {
-            console.log(
-              `ℹ️ [WebRTC] Peer ${senderId} already has a remote description.`
-            );
-          } else {
-            await pc.setRemoteDescription(
-              new RTCSessionDescription(
-                offer
-              )
-            );
-          }
+        console.log(
+          `📤 [WebRTC] Offer sent to ${viewerId}`
+        );
+      } catch (error) {
+        console.error(
+          `❌ [WebRTC] Offer creation failed for ${viewerId}:`,
+          error?.message || error
+        );
+      }
+    };
 
-          await flushIceCandidates(
+    /*
+     * Incoming offer.
+     */
+    const handleIncomingOffer = async payload => {
+      if (cancelled) {
+        return;
+      }
+
+      const senderId =
+        payload?.senderSocketId ||
+        payload?.guestSocketId ||
+        payload?.socketId ||
+        payload?.senderId;
+
+      const offer =
+        payload?.offer;
+
+      if (!senderId || !offer) {
+        console.warn(
+          '⚠️ [WebRTC] Invalid incoming offer:',
+          payload
+        );
+
+        return;
+      }
+
+      try {
+        const pc =
+          createPeerConnection(
             senderId
           );
 
-          if (
-            pc.signalingState !==
-            'have-remote-offer'
-          ) {
-            console.warn(
-              `⚠️ [WebRTC] Cannot create answer for ${senderId}; state=${pc.signalingState}`
-            );
+        if (!pc) {
+          return;
+        }
 
-            return;
-          }
-
-          const answer =
-            await pc.createAnswer();
-
-          await pc.setLocalDescription(
-            answer
-          );
-
-          socket.emit(
-            'send_webrtc_answer',
-            {
-              streamId,
-              answer: pc.localDescription,
-              targetSocketId: senderId
-            }
-          );
-
-          console.log(
-            `📤 [WebRTC] Answer sent to ${senderId}`
-          );
-        } catch (error) {
-          console.error(
-            `❌ [WebRTC] Error responding to offer from ${senderId}:`,
-            error
+        if (
+          !pc.currentRemoteDescription
+        ) {
+          await pc.setRemoteDescription(
+            new RTCSessionDescription(
+              offer
+            )
           );
         }
-      };
 
-    /*
-     * Host receives viewer's answer.
-     */
-    const handleAnswerReceived =
-      async payload => {
+        await flushIceCandidates(
+          senderId
+        );
+
+        if (
+          pc.signalingState !==
+          'have-remote-offer'
+        ) {
+          return;
+        }
+
+        const answer =
+          await pc.createAnswer();
+
+        await pc.setLocalDescription(
+          answer
+        );
+
         if (cancelled) {
           return;
         }
 
-        const viewerId =
-          payload?.viewerSocketId ||
-          payload?.senderSocketId ||
-          payload?.targetSocketId ||
-          payload?.viewerId;
-
-        const answer =
-          payload?.answer;
-
-        if (!viewerId || !answer) {
-          console.warn(
-            '⚠️ [WebRTC] Invalid answer payload:',
-            payload
-          );
-
-          return;
-        }
-
-        const pc =
-          peerConnectionsRef.current[
-            viewerId
-          ];
-
-        if (!pc) {
-          console.warn(
-            `⚠️ [WebRTC] No peer connection for answer from ${viewerId}`
-          );
-
-          return;
-        }
-
-        try {
-          if (
-            pc.currentRemoteDescription
-          ) {
-            console.log(
-              `ℹ️ [WebRTC] Remote answer already applied for ${viewerId}.`
-            );
-
-            return;
+        socket.emit(
+          'send_webrtc_answer',
+          {
+            streamId,
+            answer: pc.localDescription,
+            targetSocketId: senderId
           }
+        );
 
-          if (
-            pc.signalingState !==
-            'have-local-offer'
-          ) {
-            console.warn(
-              `⚠️ [WebRTC] Unexpected signaling state for ${viewerId}: ${pc.signalingState}`
-            );
-
-            return;
-          }
-
-          await pc.setRemoteDescription(
-            new RTCSessionDescription(
-              answer
-            )
-          );
-
-          await flushIceCandidates(
-            viewerId
-          );
-
-          console.log(
-            `⚡ [WebRTC] Remote answer applied for ${viewerId}`
-          );
-        } catch (error) {
-          console.error(
-            `❌ [WebRTC] Failed to apply answer from ${viewerId}:`,
-            error
-          );
-        }
-      };
+        console.log(
+          `📤 [WebRTC] Answer sent to ${senderId}`
+        );
+      } catch (error) {
+        console.error(
+          `❌ [WebRTC] Error responding to offer from ${senderId}:`,
+          error?.message || error
+        );
+      }
+    };
 
     /*
-     * Incoming ICE candidate.
+     * Viewer answer.
+     */
+    const handleAnswerReceived = async payload => {
+      if (cancelled) {
+        return;
+      }
+
+      const viewerId =
+        payload?.viewerSocketId ||
+        payload?.senderSocketId ||
+        payload?.targetSocketId ||
+        payload?.viewerId;
+
+      const answer =
+        payload?.answer;
+
+      if (!viewerId || !answer) {
+        console.warn(
+          '⚠️ [WebRTC] Invalid answer payload:',
+          payload
+        );
+
+        return;
+      }
+
+      const pc =
+        peerConnectionsRef.current[
+          viewerId
+        ];
+
+      if (!pc) {
+        console.warn(
+          `⚠️ [WebRTC] No peer connection for answer from ${viewerId}`
+        );
+
+        return;
+      }
+
+      try {
+        if (
+          pc.currentRemoteDescription
+        ) {
+          return;
+        }
+
+        if (
+          pc.signalingState !==
+          'have-local-offer'
+        ) {
+          console.warn(
+            `⚠️ [WebRTC] Unexpected signaling state for ${viewerId}: ${pc.signalingState}`
+          );
+
+          return;
+        }
+
+        await pc.setRemoteDescription(
+          new RTCSessionDescription(
+            answer
+          )
+        );
+
+        await flushIceCandidates(
+          viewerId
+        );
+
+        console.log(
+          `⚡ [WebRTC] Remote answer applied for ${viewerId}`
+        );
+      } catch (error) {
+        console.error(
+          `❌ [WebRTC] Failed to apply answer from ${viewerId}:`,
+          error?.message || error
+        );
+      }
+    };
+
+    /*
+     * Incoming ICE.
      */
     const handleIncomingIceCandidate =
       async payload => {
@@ -1001,7 +1101,7 @@ export const useStreamWebRTC = (
 
         if (!senderId || !candidate) {
           console.warn(
-            '⚠️ [WebRTC] Invalid ICE candidate payload:',
+            '⚠️ [WebRTC] Invalid ICE candidate:',
             payload
           );
 
@@ -1013,11 +1113,7 @@ export const useStreamWebRTC = (
             senderId
           ];
 
-        /*
-         * If the peer does not exist yet, queue the
-         * candidate instead of throwing it away.
-         */
-        if (!pc) {
+        if (!pc || !pc.remoteDescription) {
           iceCandidatesQueueRef.current[
             senderId
           ] =
@@ -1028,32 +1124,6 @@ export const useStreamWebRTC = (
           iceCandidatesQueueRef.current[
             senderId
           ].push(candidate);
-
-          console.log(
-            `🧊 [WebRTC] Queued ICE candidate for ${senderId}; peer not ready yet.`
-          );
-
-          return;
-        }
-
-        /*
-         * Remote description has not arrived yet.
-         */
-        if (!pc.remoteDescription) {
-          iceCandidatesQueueRef.current[
-            senderId
-          ] =
-            iceCandidatesQueueRef.current[
-              senderId
-            ] || [];
-
-          iceCandidatesQueueRef.current[
-            senderId
-          ].push(candidate);
-
-          console.log(
-            `🧊 [WebRTC] Queued ICE candidate for ${senderId}; waiting for remote description.`
-          );
 
           return;
         }
@@ -1072,9 +1142,6 @@ export const useStreamWebRTC = (
         }
       };
 
-    /*
-     * Existing signaling events.
-     */
     socket.on(
       'viewer_requesting_stream',
       handleViewerRequest
@@ -1085,10 +1152,6 @@ export const useStreamWebRTC = (
       handleIncomingOffer
     );
 
-    /*
-     * Compatibility with the event name used by
-     * the other stream implementation.
-     */
     socket.on(
       'webrtc_offer_received',
       handleIncomingOffer
@@ -1142,9 +1205,7 @@ export const useStreamWebRTC = (
 
   /*
    * ------------------------------------------------------------
-   * Keep remote video element synchronized.
-   *
-   * This replaces the old 300ms interval.
+   * Remote video synchronization
    * ------------------------------------------------------------
    */
   useEffect(() => {
@@ -1157,6 +1218,9 @@ export const useStreamWebRTC = (
     if (!video || !stream) {
       return;
     }
+
+    video.autoplay = true;
+    video.playsInline = true;
 
     if (video.srcObject !== stream) {
       video.srcObject = stream;
@@ -1180,7 +1244,7 @@ export const useStreamWebRTC = (
 
   /*
    * ------------------------------------------------------------
-   * Return public API
+   * Public API
    * ------------------------------------------------------------
    */
   return {
@@ -1189,3 +1253,4 @@ export const useStreamWebRTC = (
     primaryRemoteStream
   };
 };
+
