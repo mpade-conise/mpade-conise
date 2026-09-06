@@ -1,109 +1,350 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
-// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, Share2, X, MessageCircle, Gift as GiftIcon, Users, Send, VideoOff, Loader2 } from 'lucide-react';
+import {
+  Heart,
+  Share2,
+  X,
+  Gift as GiftIcon,
+  Users,
+  VideoOff,
+  Loader2
+} from 'lucide-react';
 
 // Components
 import LiveChat from './LiveChat';
 import GiftPanel from './GiftPanel';
 import VideoPlayer from '../Shared/VideoPlayer';
 import FloatingHearts from './FloatingHearts';
-import StreamHeader from '../Shared/StreamHeader'; 
+import StreamHeader from '../Shared/StreamHeader';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
-import { MultiHostPKBattleBar } from "../../../components/live/MultiHostPKBattleBar";
-
+import { MultiHostPKBattleBar } from '../../../components/live/MultiHostPKBattleBar';
 
 const LivePlayer = () => {
   const { streamId } = useParams();
   const navigate = useNavigate();
-  
+
   const [streamData, setStreamData] = useState(null);
   const [showGifts, setShowGifts] = useState(false);
   const [heartCount, setHeartCount] = useState(0);
-  // eslint-disable-next-line no-unused-vars
   const [viewerCount, setViewerCount] = useState(0);
   const [latestGift, setLatestGift] = useState(null);
   const [eventNotification, setEventNotification] = useState(null);
-  const [lastCommentAt, setLastCommentAt] = useState(null);
-  
-  // NEW STATE: Camera Status
+
+  // Host camera status received from live_streams
   const [isCameraOff, setIsCameraOff] = useState(false);
 
   const [showShareList, setShowShareList] = useState(false);
   const [followers, setFollowers] = useState([]);
   const [sentInvites, setSentInvites] = useState([]);
-  
-  const channelRef = useRef(null);
-  const heartCountRef = useRef(0);
 
-  const GIFTS_LIST = useMemo(() => [
-    { id: 'rose', name: 'Rose', price: 1, model: '/models/Rose.glb' },
-    { id: 'fire', name: 'Campfire', price: 5, model: '/models/Campfire.glb' },
-    { id: 'weights', name: 'Flex', price: 3, model: '/models/Dumbell.glb' },
-    { id: 'clap', name: 'Clap', price: 2, model: '/models/Claptrap.glb' },
-    { id: 'star', name: 'Star', price: 3, model: '/models/Star.glb' },
-    { id: 'heart', name: 'Heart', price: 10, model: '/models/Heart.glb' },
-    { id: 'pizza', name: 'Pizza', price: 30, model: '/models/Pizza%3A0.glb' },
-    { id: 'burger', name: 'Burger', price: 20, model: '/models/Double Cheeseburger.glb' },
-    { id: 'diamond', name: 'Diamond', price: 50, model: '/models/diamond.glb' },
-    { id: 'balloon', name: 'Balloon', price: 15, model: '/models/Balloons.glb' },
-    { id: 'crown', name: 'Crown', price: 100, model: '/models/Crown.glb' },
-    { id: 'guitar', name: 'Guitar', price: 150, model: '/models/Guitar.glb' },
-    { id: 'car', name: 'Car', price: 300, model: '/models/CAR Model.glb' },
-    { id: 'drone', name: 'Drone', price: 400, model: '/models/Drone.glb' },
-    { id: 'dj', name: 'DJ', price: 350, model: '/models/DJ gear.glb' },
-    { id: 'castle', name: 'Castle', price: 2500, model: '/models/Castle Fortress.glb' },
-    { id: 'lion', name: 'Lion', price: 5000, model: '/models/Lion.glb' },
-    { id: 'money', name: 'Money Rain', price: 250, model: '/models/Money.glb' },
-    { id: 'helicopter', name: 'Helicopter', price: 4000, model: '/models/Helicopter.glb' },
-    { id: 'ship', name: 'Cruise Ship', price: 3000, model: '/models/Cruise liner.glb' },
-    { id: 'dragon', name: 'Dragon', price: 10000, model: '/models/Red Dragon.glb' },
-    { id: 'universe', name: 'Universe', price: 15000, model: '/models/Solar System.glb' },
-    { id: 'space', name: 'Space', price: 12000, model: '/models/Space Shuttle.glb' },
-    { id: 'world', name: 'World', price: 8000, model: '/models/Simple Worlds.glb' },
-    { id: 'xwing', name: 'X-Wing', price: 5500, model: '/models/T-65 X-Wing Starfighter.glb' },
-    { id: 'cow', name: 'Cow', price: 120, model: '/models/Cow.glb' },
-    { id: 'whale', name: 'Whale', price: 900, model: '/models/Whale.glb' },
-    { id: 'horse', name: 'Horse', price: 350, model: '/models/Horse.glb' },
-    { id: 'spider', name: 'Spider', price: 40, model: '/models/Spider.glb' },
-    { id: 'wolf', name: 'Wolf', price: 600, model: '/models/Wolf.glb' },
-    { id: 'shark', name: 'Shark', price: 1200, model: '/models/Shark.glb' },
-    { id: 'bunny', name: 'Bunny', price: 50, model: '/models/Bunny ears.glb' },
-    { id: 'stag', name: 'Stag', price: 400, model: '/models/Stag.glb' }
-  ], []);
+  // Co-host state
+  const [isBattleMode, setIsBattleMode] = useState(false);
+  const [activeSmallGift, setActiveSmallGift] = useState(null);
+  const [activeCohostsList, setActiveCohostsList] = useState([]);
+  const [hasActiveCohosts, setHasActiveCohosts] = useState(false);
+
+  const heartCountRef = useRef(0);
+  const streamChannelRef = useRef(null);
+  const viewerChannelRef = useRef(null);
+
+  const eventNotificationTimerRef = useRef(null);
+  const latestGiftTimerRef = useRef(null);
+  const smallGiftTimerRef = useRef(null);
+
+  const GIFTS_LIST = useMemo(
+    () => [
+      {
+        id: 'rose',
+        name: 'Rose',
+        price: 1,
+        model: '/models/Rose.glb'
+      },
+      {
+        id: 'fire',
+        name: 'Campfire',
+        price: 5,
+        model: '/models/Campfire.glb'
+      },
+      {
+        id: 'weights',
+        name: 'Flex',
+        price: 3,
+        model: '/models/Dumbell.glb'
+      },
+      {
+        id: 'clap',
+        name: 'Clap',
+        price: 2,
+        model: '/models/Claptrap.glb'
+      },
+      {
+        id: 'star',
+        name: 'Star',
+        price: 3,
+        model: '/models/Star.glb'
+      },
+      {
+        id: 'heart',
+        name: 'Heart',
+        price: 10,
+        model: '/models/Heart.glb'
+      },
+      {
+        id: 'pizza',
+        name: 'Pizza',
+        price: 30,
+        model: '/models/Pizza%3A0.glb'
+      },
+      {
+        id: 'burger',
+        name: 'Burger',
+        price: 20,
+        model: '/models/Double Cheeseburger.glb'
+      },
+      {
+        id: 'diamond',
+        name: 'Diamond',
+        price: 50,
+        model: '/models/diamond.glb'
+      },
+      {
+        id: 'balloon',
+        name: 'Balloon',
+        price: 15,
+        model: '/models/Balloons.glb'
+      },
+      {
+        id: 'crown',
+        name: 'Crown',
+        price: 100,
+        model: '/models/Crown.glb'
+      },
+      {
+        id: 'guitar',
+        name: 'Guitar',
+        price: 150,
+        model: '/models/Guitar.glb'
+      },
+      {
+        id: 'car',
+        name: 'Car',
+        price: 300,
+        model: '/models/CAR Model.glb'
+      },
+      {
+        id: 'drone',
+        name: 'Drone',
+        price: 400,
+        model: '/models/Drone.glb'
+      },
+      {
+        id: 'dj',
+        name: 'DJ',
+        price: 350,
+        model: '/models/DJ gear.glb'
+      },
+      {
+        id: 'castle',
+        name: 'Castle',
+        price: 2500,
+        model: '/models/Castle Fortress.glb'
+      },
+      {
+        id: 'lion',
+        name: 'Lion',
+        price: 5000,
+        model: '/models/Lion.glb'
+      },
+      {
+        id: 'money',
+        name: 'Money Rain',
+        price: 250,
+        model: '/models/Money.glb'
+      },
+      {
+        id: 'helicopter',
+        name: 'Helicopter',
+        price: 4000,
+        model: '/models/Helicopter.glb'
+      },
+      {
+        id: 'ship',
+        name: 'Cruise Ship',
+        price: 3000,
+        model: '/models/Cruise liner.glb'
+      },
+      {
+        id: 'dragon',
+        name: 'Dragon',
+        price: 10000,
+        model: '/models/Red Dragon.glb'
+      },
+      {
+        id: 'universe',
+        name: 'Universe',
+        price: 15000,
+        model: '/models/Solar System.glb'
+      },
+      {
+        id: 'space',
+        name: 'Space',
+        price: 12000,
+        model: '/models/Space Shuttle.glb'
+      },
+      {
+        id: 'world',
+        name: 'World',
+        price: 8000,
+        model: '/models/Simple Worlds.glb'
+      },
+      {
+        id: 'xwing',
+        name: 'X-Wing',
+        price: 5500,
+        model: '/models/T-65 X-Wing Starfighter.glb'
+      },
+      {
+        id: 'cow',
+        name: 'Cow',
+        price: 120,
+        model: '/models/Cow.glb'
+      },
+      {
+        id: 'whale',
+        name: 'Whale',
+        price: 900,
+        model: '/models/Whale.glb'
+      },
+      {
+        id: 'horse',
+        name: 'Horse',
+        price: 350,
+        model: '/models/Horse.glb'
+      },
+      {
+        id: 'spider',
+        name: 'Spider',
+        price: 40,
+        model: '/models/Spider.glb'
+      },
+      {
+        id: 'wolf',
+        name: 'Wolf',
+        price: 600,
+        model: '/models/Wolf.glb'
+      },
+      {
+        id: 'shark',
+        name: 'Shark',
+        price: 1200,
+        model: '/models/Shark.glb'
+      },
+      {
+        id: 'bunny',
+        name: 'Bunny',
+        price: 50,
+        model: '/models/Bunny ears.glb'
+      },
+      {
+        id: 'stag',
+        name: 'Stag',
+        price: 400,
+        model: '/models/Stag.glb'
+      }
+    ],
+    []
+  );
+
+  /*
+   * ---------------------------------------------------------
+   * FRIEND / SHARE LIST
+   * ---------------------------------------------------------
+   */
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchFollowers = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+
+      if (!user || cancelled) return;
+
       const { data, error } = await supabase
-        .from('follows') 
-        .select('follower_id, profiles!follower_id(id, username, avatar_url)')
+        .from('follows')
+        .select(
+          'follower_id, profiles!follower_id(id, username, avatar_url)'
+        )
         .eq('following_id', user.id);
-      if (!error && data) setFollowers(data.map(f => f.profiles));
+
+      if (!cancelled && !error && data) {
+        setFollowers(
+          data
+            .map(item => item.profiles)
+            .filter(Boolean)
+        );
+      }
     };
-    if (showShareList) fetchFollowers();
+
+    if (showShareList) {
+      fetchFollowers();
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [showShareList]);
 
-  const handleSendInvite = async (recipientId) => {
-    const { data: { user } } = await supabase.auth.getUser();
+  const handleSendInvite = async recipientId => {
+    if (!streamId || !recipientId) return;
+
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      console.warn('Cannot send invite: viewer is not authenticated.');
+      return;
+    }
+
     const { error } = await supabase
       .from('live_comments')
-      .insert([{
-        stream_id: streamId,
-        user_id: user.id,
-        content: `I'm watching this live! Join me.`,
-        type: 'invite'
-      }]);
-    if (!error) setSentInvites(prev => [...prev, recipientId]);
+      .insert([
+        {
+          stream_id: streamId,
+          user_id: user.id,
+          content: "I'm watching this live! Join me.",
+          type: 'invite'
+        }
+      ]);
+
+    if (!error) {
+      setSentInvites(prev => {
+        if (prev.includes(recipientId)) {
+          return prev;
+        }
+
+        return [...prev, recipientId];
+      });
+    } else {
+      console.error('Failed to send live invite:', error);
+    }
   };
 
+  /*
+   * ---------------------------------------------------------
+   * STREAM DATA + STREAM REALTIME
+   * ---------------------------------------------------------
+   */
+
   useEffect(() => {
-    if (!streamId) return;
+    if (!streamId) return undefined;
+
     let isMounted = true;
 
     const fetchStream = async () => {
@@ -112,115 +353,377 @@ const LivePlayer = () => {
         .select('*, host:host_id(username, avatar_url)')
         .eq('id', streamId)
         .single();
+
       if (!isMounted) return;
-      if (error || data?.is_live === false) {
+
+      if (error || !data || data.is_live === false) {
         navigate('/live/ended');
-      } else {
-        setStreamData(data);
-        setIsCameraOff(data.is_camera_on === false); // Set initial camera state
-        const initialLikes = data.likes || 0;
-        setHeartCount(initialLikes);
-        heartCountRef.current = initialLikes;
+        return;
+      }
+
+      setStreamData(data);
+
+      // This is only the HOST camera status.
+      // The viewer does not access their own camera.
+      setIsCameraOff(data.is_camera_on === false);
+
+      const initialLikes = data.likes || 0;
+
+      setHeartCount(initialLikes);
+      heartCountRef.current = initialLikes;
+
+      if (typeof data.viewer_count === 'number') {
+        setViewerCount(data.viewer_count);
       }
     };
 
     fetchStream();
 
-    const channel = supabase.channel(`room-${streamId}`, {
-      config: { realtime: { params: { eventsPerSecond: 20 } } },
+    const channelName = 'room-' + streamId;
+
+    const channel = supabase.channel(channelName, {
+      config: {
+        realtime: {
+          params: {
+            eventsPerSecond: 20
+          }
+        }
+      }
     });
-    channelRef.current = channel;
+
+    streamChannelRef.current = channel;
 
     channel
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'live_streams', filter: `id=eq.${streamId}` }, (payload) => {
-        if (!isMounted) return;
-        if (payload.new.is_live === false) navigate('/live/ended');
-        
-        // Update Camera Status in Real-time
-        setIsCameraOff(payload.new.is_camera_on === false);
-        
-        setStreamData(prev => ({ ...prev, ...payload.new }));
-        if (payload.new.likes > heartCountRef.current) {
-          setEventNotification({ type: 'like', message: 'liked the live video', name: 'A viewer', avatar: null });
-          setTimeout(() => { if (isMounted) setEventNotification(null); }, 3000);
-          setHeartCount(payload.new.likes);
-          heartCountRef.current = payload.new.likes;
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'live_streams',
+          filter: 'id=eq.' + streamId
+        },
+        payload => {
+          if (!isMounted || !payload?.new) return;
+
+          const updatedStream = payload.new;
+
+          if (updatedStream.is_live === false) {
+            navigate('/live/ended');
+            return;
+          }
+
+          // Keep viewer informed when host turns camera on/off.
+          setIsCameraOff(updatedStream.is_camera_on === false);
+
+          setStreamData(prev => {
+            if (!prev) {
+              return updatedStream;
+            }
+
+            return {
+              ...prev,
+              ...updatedStream
+            };
+          });
+
+          if (typeof updatedStream.viewer_count === 'number') {
+            setViewerCount(updatedStream.viewer_count);
+          }
+
+          if (
+            typeof updatedStream.likes === 'number' &&
+            updatedStream.likes > heartCountRef.current
+          ) {
+            setEventNotification({
+              type: 'like',
+              message: 'liked the live video',
+              name: 'A viewer',
+              avatar: null
+            });
+
+            if (eventNotificationTimerRef.current) {
+              clearTimeout(eventNotificationTimerRef.current);
+            }
+
+            eventNotificationTimerRef.current = setTimeout(() => {
+              if (!isMounted) return;
+
+              setEventNotification(null);
+              eventNotificationTimerRef.current = null;
+            }, 3000);
+
+            setHeartCount(updatedStream.likes);
+            heartCountRef.current = updatedStream.likes;
+          }
         }
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_gifts', filter: `stream_id=eq.${streamId}` }, async (payload) => {
-        if (!isMounted) return;
-        const { data: userData } = await supabase.from('profiles').select('username, avatar_url').eq('id', payload.new.sender_id).single();
-        const matchedGift = GIFTS_LIST.find(g => g.id === payload.new.gift_id);
-        const formattedGift = {
-          id: payload.new.id,
-          username: userData?.username || 'Supporter',
-          giftName: matchedGift ? matchedGift.name : 'Gift',
-          price: payload.new.price_total || 0, // 🔥 Added price for split-screen logic
-          avatar: userData?.avatar_url || null,
-          giftModel: matchedGift ? matchedGift.model : '/models/Rose.glb' // 🔥 Consistent naming for overlay
-        };
-        setLatestGift(null); 
-        setTimeout(() => {
-          if (!isMounted) return;
-          setLatestGift(formattedGift);
-          setEventNotification({ type: 'gift', giftName: formattedGift.giftName, name: formattedGift.username, avatar: formattedGift.avatar });
-        }, 100);
-        setTimeout(() => { if (isMounted) { setLatestGift(null); setEventNotification(null); } }, 6500); // Extended time for animations
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_comments', filter: `stream_id=eq.${streamId}` }, () => {
-        if (!isMounted) return;
-        setLastCommentAt(Date.now());
-      })
+      )
       .subscribe();
 
     return () => {
       isMounted = false;
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
+
+      if (eventNotificationTimerRef.current) {
+        clearTimeout(eventNotificationTimerRef.current);
+        eventNotificationTimerRef.current = null;
+      }
+
+      if (streamChannelRef.current === channel) {
+        streamChannelRef.current = null;
+      }
+
+      supabase.removeChannel(channel);
     };
-  }, [streamId, GIFTS_LIST, navigate]);
+  }, [streamId, navigate]);
 
-  const handleLike = async () => {
-    if (!streamId) return;
-    const newCount = heartCount + 1;
-    setHeartCount(newCount);
-    heartCountRef.current = newCount;
-    await supabase.rpc('increment_likes', { stream_id_input: streamId });
-  };
+  /*
+   * ---------------------------------------------------------
+   * GIFTS + COMMENTS REALTIME
+   *
+   * One channel only.
+   * This prevents duplicate gift/comment events.
+   * ---------------------------------------------------------
+   */
 
-  const [isBattleMode, setIsBattleMode] = useState(false);
-  const [activeSmallGift, setActiveSmallGift] = useState(null);
-  const [activeCohostsList, setActiveCohostsList] = useState([]);
-
-  // Realtime check for active approved co-host requests
   useEffect(() => {
-    if (!streamId) return;
+    if (!streamId) return undefined;
+
+    let isMounted = true;
+
+    const channelName = 'viewer-stream-' + streamId;
+
+    const channel = supabase.channel(channelName);
+
+    viewerChannelRef.current = channel;
+
+    const handleGift = async payload => {
+      if (!isMounted || !payload?.new) return;
+
+      const giftRow = payload.new;
+
+      let username = 'Supporter';
+      let avatarUrl = null;
+
+      if (giftRow.sender_id) {
+        const { data: userData } = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', giftRow.sender_id)
+          .single();
+
+        if (userData) {
+          username = userData.username || 'Supporter';
+          avatarUrl = userData.avatar_url || null;
+        }
+      }
+
+      const matchedGift = GIFTS_LIST.find(
+        gift => gift.id === giftRow.gift_id
+      );
+
+      const price =
+        typeof giftRow.price_total === 'number'
+          ? giftRow.price_total
+          : Number(giftRow.price_total) || 0;
+
+      const formattedGift = {
+        id: giftRow.id,
+        username,
+        giftName:
+          matchedGift?.name ||
+          giftRow.gift_name ||
+          'Gift',
+        price,
+        avatar: avatarUrl,
+        giftModel:
+          matchedGift?.model ||
+          '/models/Rose.glb'
+      };
+
+      /*
+       * Small gifts
+       * < 50 coins = small floating gift
+       */
+      if (price < 50) {
+        setActiveSmallGift(formattedGift);
+
+        if (smallGiftTimerRef.current) {
+          clearTimeout(smallGiftTimerRef.current);
+        }
+
+        smallGiftTimerRef.current = setTimeout(() => {
+          if (!isMounted) return;
+
+          setActiveSmallGift(null);
+          smallGiftTimerRef.current = null;
+        }, 3000);
+
+        return;
+      }
+
+      /*
+       * Larger gifts
+       * >= 50 coins = futuristic gift overlay
+       */
+
+      if (latestGiftTimerRef.current) {
+        clearTimeout(latestGiftTimerRef.current);
+      }
+
+      setLatestGift(null);
+
+      latestGiftTimerRef.current = setTimeout(() => {
+        if (!isMounted) return;
+
+        setLatestGift(formattedGift);
+
+        setEventNotification({
+          type: 'gift',
+          giftName: formattedGift.giftName,
+          name: formattedGift.username,
+          avatar: formattedGift.avatar
+        });
+
+        latestGiftTimerRef.current = null;
+      }, 100);
+    };
+
+    const handleComment = () => {
+      if (!isMounted) return;
+
+      /*
+       * IMPORTANT:
+       * We intentionally do not remount LiveChat here.
+       * LiveChat should manage its own realtime messages.
+       */
+    };
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'live_gifts',
+          filter: 'stream_id=eq.' + streamId
+        },
+        handleGift
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'live_comments',
+          filter: 'stream_id=eq.' + streamId
+        },
+        handleComment
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+
+      if (smallGiftTimerRef.current) {
+        clearTimeout(smallGiftTimerRef.current);
+        smallGiftTimerRef.current = null;
+      }
+
+      if (latestGiftTimerRef.current) {
+        clearTimeout(latestGiftTimerRef.current);
+        latestGiftTimerRef.current = null;
+      }
+
+      if (viewerChannelRef.current === channel) {
+        viewerChannelRef.current = null;
+      }
+
+      supabase.removeChannel(channel);
+    };
+  }, [streamId, GIFTS_LIST]);
+
+  /*
+   * ---------------------------------------------------------
+   * BIG GIFT CLEANUP
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!latestGift) return undefined;
+
+    const timer = setTimeout(() => {
+      setLatestGift(null);
+      setEventNotification(null);
+    }, 6500);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [latestGift]);
+
+  /*
+   * ---------------------------------------------------------
+   * CO-HOST REALTIME
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!streamId) return undefined;
+
     let isMounted = true;
 
     const checkCohosts = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('live_guest_requests')
         .select(`
-          id, user_id, status, role,
-          profiles:user_id ( id, username, avatar_url )
+          id,
+          user_id,
+          status,
+          role,
+          profiles:user_id (
+            id,
+            username,
+            avatar_url
+          )
         `)
         .eq('stream_id', streamId)
         .eq('status', 'approved');
-      if (isMounted && data) {
-        setHasActiveCohosts(data.length > 0);
-        setActiveCohostsList(data.map(d => ({
-          id: d.profiles?.id || d.user_id,
-          username: d.profiles?.username || 'Co-Host',
-          avatar_url: d.profiles?.avatar_url
-        })));
+
+      if (!isMounted) return;
+
+      if (error) {
+        console.error('Failed to load active co-hosts:', error);
+        return;
       }
+
+      const cohosts = (data || []).map(item => ({
+        id: item.profiles?.id || item.user_id,
+        username: item.profiles?.username || 'Co-Host',
+        avatar_url: item.profiles?.avatar_url || null
+      }));
+
+      setHasActiveCohosts(cohosts.length > 0);
+      setActiveCohostsList(cohosts);
     };
 
     checkCohosts();
 
-    const cohostChannel = supabase.channel(`cohosts_${streamId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_guest_requests', filter: `stream_id=eq.${streamId}` }, () => {
-        checkCohosts();
-      })
+    const channelName = 'cohosts-' + streamId;
+
+    const cohostChannel = supabase.channel(channelName);
+
+    cohostChannel
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'live_guest_requests',
+          filter: 'stream_id=eq.' + streamId
+        },
+        () => {
+          checkCohosts();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -229,119 +732,187 @@ const LivePlayer = () => {
     };
   }, [streamId]);
 
-  // Listener for gifts & comments
-  useEffect(() => {
+  /*
+   * ---------------------------------------------------------
+   * LIKE
+   * ---------------------------------------------------------
+   */
+
+  const handleLike = async () => {
     if (!streamId) return;
-    let isMounted = true;
 
-    channelRef.current = supabase.channel(`viewer_stream_${streamId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_gifts', filter: `stream_id=eq.${streamId}` }, async (payload) => {
-        if (!isMounted) return;
-        const { data: userData } = await supabase.from('profiles').select('username, avatar_url').eq('id', payload.new.sender_id).single();
-        const matchedGift = GIFTS_LIST.find(g => g.id === payload.new.gift_id);
-        const price = payload.new.price_total || 50;
-        const formattedGift = {
-          id: payload.new.id,
-          username: userData?.username || 'Supporter',
-          giftName: matchedGift ? matchedGift.name : (payload.new.gift_name || 'Gift'),
-          price: price,
-          avatar: userData?.avatar_url || null,
-          giftModel: matchedGift ? matchedGift.model : '/models/Rose.glb'
-        };
+    const newCount = heartCountRef.current + 1;
 
-        // If < 50 coins, show as floating emoji on video element
-        if (price < 50) {
-          setActiveSmallGift(formattedGift);
-        } else {
-          // If >= 50 coins, show as full futuristic 3D/AR overlay
-          setLatestGift(null); 
-          setTimeout(() => {
-            if (!isMounted) return;
-            setLatestGift(formattedGift);
-            setEventNotification({ type: 'gift', giftName: formattedGift.giftName, name: formattedGift.username, avatar: formattedGift.avatar });
-          }, 100);
-          setTimeout(() => { if (isMounted) { setLatestGift(null); setEventNotification(null); } }, 6500);
-        }
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_comments', filter: `stream_id=eq.${streamId}` }, () => {
-        if (!isMounted) return;
-        setLastCommentAt(Date.now());
-      })
-      .subscribe();
+    heartCountRef.current = newCount;
+    setHeartCount(newCount);
 
-    return () => {
-      isMounted = false;
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
-    };
-  }, [streamId, GIFTS_LIST, navigate]);
+    const { error } = await supabase.rpc('increment_likes', {
+      stream_id_input: streamId
+    });
 
-  // 🔥 Update this function inside LivePlayer.jsx
-  const handleJoinGuest = () => {
-    // We must include /watch/ to match the definition in LiveRouter
-    navigate(`/live/watch/${streamId}/join-guest`);
+    if (error) {
+      console.error('Failed to increment likes:', error);
+    }
   };
 
-  // 🔥 Split Screen Calculation: Active Co-Hosts or Big Gift (100+ coins)
-  const isSplitScreen = hasActiveCohosts || (latestGift && latestGift.price >= 100);
+  /*
+   * ---------------------------------------------------------
+   * JOIN AS GUEST
+   * ---------------------------------------------------------
+   */
 
-  if (!streamData) return <div className="h-screen bg-black" />;
+  const handleJoinGuest = () => {
+    if (!streamId) return;
+
+    navigate('/live/watch/' + streamId + '/join-guest');
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * SPLIT SCREEN STATE
+   *
+   * Kept here because it describes the viewer layout state.
+   * DynamicStreamGrid receives the co-host list and controls
+   * the actual visual layout.
+   * ---------------------------------------------------------
+   */
+
+  const isSplitScreen =
+    hasActiveCohosts ||
+    Boolean(latestGift && latestGift.price >= 100);
+
+  /*
+   * Prevent unused-variable build/lint issues while keeping
+   * the state available for future grid behaviour.
+   */
+  void isSplitScreen;
+
+  /*
+   * ---------------------------------------------------------
+   * LOADING
+   * ---------------------------------------------------------
+   */
+
+  if (!streamData) {
+    return (
+      <div className="h-screen w-screen bg-black flex items-center justify-center">
+        <Loader2
+          size={28}
+          className="text-white/50 animate-spin"
+        />
+      </div>
+    );
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * VIEWER UI
+   * ---------------------------------------------------------
+   */
 
   return (
     <div className="h-screen w-screen bg-black relative overflow-hidden flex flex-col">
-      <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
-      
-      {/* Dynamic Stream Container: Automatically splits 50/50 when co-host joins and reverts to full screen when disconnected */}
+      <style>
+        {`
+          .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+          }
+
+          .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+          }
+        `}
+      </style>
+
+      {/* Dynamic Stream Container */}
       <div className="relative w-full h-full z-0 overflow-hidden">
-        <DynamicStreamGrid 
+        <DynamicStreamGrid
           streamId={streamId}
-          hostVideo={<VideoPlayer streamId={streamId} isHost={false} />}
+          hostVideo={
+            <VideoPlayer
+              streamId={streamId}
+              isHost={false}
+            />
+          }
           hostInfo={{
-            username: streamData?.host?.username || 'Host',
-            avatar_url: streamData?.host?.avatar_url
+            username:
+              streamData?.host?.username || 'Host',
+            avatar_url:
+              streamData?.host?.avatar_url || null
           }}
           coHosts={activeCohostsList}
           isHostView={false}
           isBattleMode={isBattleMode}
           activeSmallGift={activeSmallGift}
         />
-        
-        {/* CAMERA OFF ALERT OVERLAY */}
+
+        {/* HOST CAMERA OFF */}
         <AnimatePresence>
           {isCameraOff && (
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 z-[45] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 text-center"
             >
               <div className="flex flex-col items-center gap-4">
-                 <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center border border-white/10 shadow-[0_0_30px_rgba(255,255,255,0.1)]">
-                    <VideoOff size={40} className="text-white/40" />
-                 </div>
-                 <div className="flex flex-col gap-1">
-                   <h2 className="text-white font-black text-xl uppercase tracking-widest">Host is busy</h2>
-                   <p className="text-white/50 text-[10px] font-bold uppercase tracking-tighter">The camera is currently disabled. Stay tuned!</p>
-                 </div>
-                 <div className="flex items-center gap-2 bg-white/5 px-4 py-1.5 rounded-full border border-white/5">
-                    <Loader2 size={12} className="text-[#fe2c55] animate-spin" />
-                    <span className="text-[9px] text-white/80 font-black uppercase">Waiting for host...</span>
-                 </div>
+                <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center border border-white/10 shadow-[0_0_30px_rgba(255,255,255,0.1)]">
+                  <VideoOff
+                    size={40}
+                    className="text-white/40"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-white font-black text-xl uppercase tracking-widest">
+                    Host is busy
+                  </h2>
+
+                  <p className="text-white/50 text-[10px] font-bold uppercase tracking-tighter">
+                    The camera is currently disabled. Stay tuned!
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 bg-white/5 px-4 py-1.5 rounded-full border border-white/5">
+                  <Loader2
+                    size={12}
+                    className="text-[#fe2c55] animate-spin"
+                  />
+
+                  <span className="text-[9px] text-white/80 font-black uppercase">
+                    Waiting for host...
+                  </span>
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Gift Overlay Section: Futuristic 3D Overlay for gifts >= 50 coins */}
+      {/* GIFT / HEART OVERLAYS */}
       <div className="absolute inset-0 pointer-events-none z-40">
-        <FloatingHearts count={heartCount} streamId={streamId} />
+        <FloatingHearts
+          count={heartCount}
+          streamId={streamId}
+        />
+
         <AnimatePresence mode="wait">
           {latestGift && (
-            <motion.div 
-              key={latestGift.id} 
-              initial={{ opacity: 0, y: 50 }} 
-              animate={{ opacity: 1, y: 0 }} 
-              exit={{ opacity: 0, scale: 1.2 }} 
+            <motion.div
+              key={latestGift.id}
+              initial={{
+                opacity: 0,
+                y: 50
+              }}
+              animate={{
+                opacity: 1,
+                y: 0
+              }}
+              exit={{
+                opacity: 0,
+                scale: 1.2
+              }}
               className="w-full h-full flex items-center justify-center"
             >
               <GiftAlertOverlay gift={latestGift} />
@@ -350,52 +921,104 @@ const LivePlayer = () => {
         </AnimatePresence>
       </div>
 
-      {/* UI Elements (Header, Goal Bar, PK Battle Bar, Buttons) */}
+      {/* TOP UI */}
       <div className="fixed top-0 left-0 right-0 z-50 p-4 pt-8 bg-gradient-to-b from-black/90 via-black/30 to-transparent pointer-events-none flex flex-col gap-2.5">
         <div className="pointer-events-auto">
-           <StreamHeader data={streamData} isHost={false} viewerCount={viewerCount} onLeave={() => navigate('/live')} />
+          <StreamHeader
+            data={streamData}
+            isHost={false}
+            viewerCount={viewerCount}
+            onLeave={() => navigate('/live')}
+          />
         </div>
 
-        {/* Dynamic Cycling Goal Tracker */}
+        {/* GOAL BAR */}
         <div className="flex justify-start pl-1 pointer-events-auto">
-          <LiveStreamGoalBar streamId={streamId} isHost={false} />
+          <LiveStreamGoalBar
+            streamId={streamId}
+            isHost={false}
+          />
         </div>
 
-        {/* Segmented Multi-Host PK Battle Bar */}
+        {/* PK BATTLE BAR */}
         {isBattleMode && (
           <div className="w-full max-w-lg mx-auto pt-1 pointer-events-auto">
-            <MultiHostPKBattleBar 
+            <MultiHostPKBattleBar
               hosts={[
-                { 
-                  id: 'host', 
-                  username: streamData?.host?.username || 'Host', 
-                  avatar: streamData?.host?.avatar_url, 
+                {
+                  id: 'host',
+                  username:
+                    streamData?.host?.username || 'Host',
+                  avatar:
+                    streamData?.host?.avatar_url,
                   score: 1450,
                   topGifters: [
-                    { id: 'g1', username: 'Alex', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alex', amount: 500 },
-                    { id: 'g2', username: 'Zara', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=zara', amount: 350 }
+                    {
+                      id: 'g1',
+                      username: 'Alex',
+                      avatar:
+                        'https://api.dicebear.com/7.x/avataaars/svg?seed=alex',
+                      amount: 500
+                    },
+                    {
+                      id: 'g2',
+                      username: 'Zara',
+                      avatar:
+                        'https://api.dicebear.com/7.x/avataaars/svg?seed=zara',
+                      amount: 350
+                    }
                   ]
                 },
-                ...(activeCohostsList.length > 0 ? activeCohostsList.map((c, i) => ({
-                  id: c.id || `cohost-${i}`,
-                  username: c.username || `Host ${i+2}`,
-                  avatar: c.avatar_url,
-                  score: Math.max(200, 980 - (i * 120)),
-                  topGifters: [
-                    { id: `cg1-${i}`, username: 'Leo', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=leo', amount: 420 },
-                    { id: `cg2-${i}`, username: 'Mia', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mia', amount: 210 }
-                  ]
-                })) : [
-                  {
-                    id: 'challenger',
-                    username: 'Challenger',
-                    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=rival',
-                    score: 980,
-                    topGifters: [
-                      { id: 'cg1', username: 'Max', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=max', amount: 400 }
-                    ]
-                  }
-                ])
+
+                ...(activeCohostsList.length > 0
+                  ? activeCohostsList.map((cohost, index) => ({
+                      id:
+                        cohost.id ||
+                        'cohost-' + index,
+                      username:
+                        cohost.username ||
+                        'Host ' + (index + 2),
+                      avatar:
+                        cohost.avatar_url,
+                      score: Math.max(
+                        200,
+                        980 - index * 120
+                      ),
+                      topGifters: [
+                        {
+                          id: 'cg1-' + index,
+                          username: 'Leo',
+                          avatar:
+                            'https://api.dicebear.com/7.x/avataaars/svg?seed=leo',
+                          amount: 420
+                        },
+                        {
+                          id: 'cg2-' + index,
+                          username: 'Mia',
+                          avatar:
+                            'https://api.dicebear.com/7.x/avataaars/svg?seed=mia',
+                          amount: 210
+                        }
+                      ]
+                    }))
+                  : [
+                      {
+                        id: 'challenger',
+                        username: 'Challenger',
+                        avatar:
+                          'https://api.dicebear.com/7.x/avataaars/svg?seed=rival',
+                        score: 980,
+                        topGifters: [
+                          {
+                            id: 'cg1',
+                            username: 'Max',
+                            avatar:
+                              'https://api.dicebear.com/7.x/avataaars/svg?seed=max',
+                            amount: 400
+                          }
+                        ]
+                      }
+                    ])
               ]}
               duration={180}
             />
@@ -403,68 +1026,219 @@ const LivePlayer = () => {
         )}
       </div>
 
+      {/* EVENT NOTIFICATION */}
       <div className="absolute bottom-28 left-4 z-50 flex flex-col gap-2 pointer-events-none">
         <AnimatePresence>
           {eventNotification && (
-            <motion.div initial={{ x: -50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-full pl-1 pr-4 py-1 flex items-center gap-3 shadow-2xl">
+            <motion.div
+              initial={{
+                x: -50,
+                opacity: 0
+              }}
+              animate={{
+                x: 0,
+                opacity: 1
+              }}
+              exit={{
+                x: -20,
+                opacity: 0
+              }}
+              className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-full pl-1 pr-4 py-1 flex items-center gap-3 shadow-2xl"
+            >
               <div className="w-8 h-8 rounded-full bg-zinc-800 overflow-hidden border border-white/20">
-                {eventNotification.avatar ? <img src={eventNotification.avatar} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-xs text-white">👤</div>}
+                {eventNotification.avatar ? (
+                  <img
+                    src={eventNotification.avatar}
+                    className="w-full h-full object-cover"
+                    alt=""
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-white">
+                    👤
+                  </div>
+                )}
               </div>
+
               <div className="flex flex-col">
-                <span className="text-white text-[10px] font-black">{eventNotification.name}</span>
-                <span className="text-white/70 text-[9px] font-medium">{eventNotification.type === 'gift' ? `sent ${eventNotification.giftName}` : eventNotification.message}</span>
+                <span className="text-white text-[10px] font-black">
+                  {eventNotification.name}
+                </span>
+
+                <span className="text-white/70 text-[9px] font-medium">
+                  {eventNotification.type === 'gift'
+                    ? 'sent ' + eventNotification.giftName
+                    : eventNotification.message}
+                </span>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
+      {/* BOTTOM UI */}
       <div className="absolute bottom-0 left-0 right-0 p-4 z-50 flex items-end justify-between pointer-events-none">
+        {/* CHAT */}
         <div className="flex-1 max-w-[340px] h-[340px] pointer-events-auto overflow-hidden hide-scrollbar">
-          <LiveChat streamId={streamId} key={`chat-${streamId}-${lastCommentAt}`} hideMessages={false} />
+          <LiveChat
+            streamId={streamId}
+            hideMessages={false}
+          />
         </div>
 
+        {/* ACTION BUTTONS */}
         <div className="flex items-center gap-3 pointer-events-auto pl-4 pb-2">
-          <button onClick={handleJoinGuest} className="flex flex-col items-center gap-1 group active:scale-95 transition-transform">
-             <div className="w-11 h-11 bg-black/40 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white group-hover:bg-white/10 transition-colors"><Users size={20} /></div>
-             <span className="text-[8px] text-white/60 font-bold uppercase tracking-tighter">Guest</span>
+          {/* GUEST */}
+          <button
+            onClick={handleJoinGuest}
+            className="flex flex-col items-center gap-1 group active:scale-95 transition-transform"
+          >
+            <div className="w-11 h-11 bg-black/40 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white group-hover:bg-white/10 transition-colors">
+              <Users size={20} />
+            </div>
+
+            <span className="text-[8px] text-white/60 font-bold uppercase tracking-tighter">
+              Guest
+            </span>
           </button>
 
-          <button onClick={handleLike} className="flex flex-col items-center gap-1 group">
-             <div className="w-11 h-11 bg-black/40 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-[#fe2c55]"><Heart size={22} fill="currentColor" /></div>
-             <span className="text-[8px] text-white/60 font-bold uppercase tracking-tighter">Like</span>
+          {/* LIKE */}
+          <button
+            onClick={handleLike}
+            className="flex flex-col items-center gap-1 group"
+          >
+            <div className="w-11 h-11 bg-black/40 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-[#fe2c55]">
+              <Heart
+                size={22}
+                fill="currentColor"
+              />
+            </div>
+
+            <span className="text-[8px] text-white/60 font-bold uppercase tracking-tighter">
+              Like
+            </span>
           </button>
 
-          <button onClick={() => setShowGifts(true)} className="flex flex-col items-center gap-1 group">
-             <div className="w-12 h-12 bg-gradient-to-tr from-yellow-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center text-white"><GiftIcon size={24} /></div>
-             <span className="text-[8px] text-white/60 font-bold uppercase tracking-tighter">Gift</span>
+          {/* GIFT */}
+          <button
+            onClick={() => setShowGifts(true)}
+            className="flex flex-col items-center gap-1 group"
+          >
+            <div className="w-12 h-12 bg-gradient-to-tr from-yellow-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center text-white">
+              <GiftIcon size={24} />
+            </div>
+
+            <span className="text-[8px] text-white/60 font-bold uppercase tracking-tighter">
+              Gift
+            </span>
           </button>
 
+          {/* SHARE */}
           <div className="flex flex-col items-center gap-1 group relative">
-            <button onClick={() => setShowShareList(!showShareList)} className="w-11 h-11 bg-black/40 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-all">
+            <button
+              onClick={() =>
+                setShowShareList(prev => !prev)
+              }
+              className="w-11 h-11 bg-black/40 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition-all"
+            >
               <Share2 size={20} />
             </button>
-            <span className="text-[8px] text-white/60 font-bold uppercase tracking-tighter">Share</span>
-            
+
+            <span className="text-[8px] text-white/60 font-bold uppercase tracking-tighter">
+              Share
+            </span>
+
             <AnimatePresence>
               {showShareList && (
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="absolute bottom-16 right-0 w-64 bg-black/80 backdrop-blur-2xl border border-white/10 rounded-3xl p-4 shadow-2xl z-[60]">
+                <motion.div
+                  initial={{
+                    opacity: 0,
+                    y: 20
+                  }}
+                  animate={{
+                    opacity: 1,
+                    y: 0
+                  }}
+                  exit={{
+                    opacity: 0,
+                    y: 20
+                  }}
+                  className="absolute bottom-16 right-0 w-64 bg-black/80 backdrop-blur-2xl border border-white/10 rounded-3xl p-4 shadow-2xl z-[60]"
+                >
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-[10px] font-black text-white uppercase tracking-widest">Send to Friends</span>
-                    <button onClick={() => setShowShareList(false)}><X size={14} className="text-white/40" /></button>
+                    <span className="text-[10px] font-black text-white uppercase tracking-widest">
+                      Send to Friends
+                    </span>
+
+                    <button
+                      onClick={() =>
+                        setShowShareList(false)
+                      }
+                    >
+                      <X
+                        size={14}
+                        className="text-white/40"
+                      />
+                    </button>
                   </div>
+
                   <div className="max-h-60 overflow-y-auto pr-1 flex flex-col gap-2 hide-scrollbar">
-                    {followers.map((f) => (
-                      <div key={f.id} className="flex items-center justify-between bg-white/5 p-2 rounded-2xl border border-white/5">
-                        <div className="flex items-center gap-2">
-                          <img src={f.avatar_url} className="w-8 h-8 rounded-full object-cover" alt="" />
-                          <span className="text-[10px] font-bold text-white truncate w-20">{f.username}</span>
-                        </div>
-                        <button onClick={() => handleSendInvite(f.id)} disabled={sentInvites.includes(f.id)} className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${sentInvites.includes(f.id) ? 'bg-green-500/20 text-green-500' : 'bg-[#fe2c55] text-white'}`}>
-                          {sentInvites.includes(f.id) ? 'Sent' : 'Send'}
-                        </button>
+                    {followers.length === 0 ? (
+                      <div className="text-center py-4">
+                        <span className="text-white/40 text-[9px] uppercase font-bold">
+                          No followers found
+                        </span>
                       </div>
-                    ))}
+                    ) : (
+                      followers.map(follower => (
+                        <div
+                          key={follower.id}
+                          className="flex items-center justify-between bg-white/5 p-2 rounded-2xl border border-white/5"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {follower.avatar_url ? (
+                              <img
+                                src={follower.avatar_url}
+                                className="w-8 h-8 rounded-full object-cover"
+                                alt=""
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white text-[10px]">
+                                👤
+                              </div>
+                            )}
+
+                            <span className="text-[10px] font-bold text-white truncate w-20">
+                              {follower.username}
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() =>
+                              handleSendInvite(
+                                follower.id
+                              )
+                            }
+                            disabled={sentInvites.includes(
+                              follower.id
+                            )}
+                            className={
+                              'px-3 py-1 rounded-full text-[9px] font-black uppercase ' +
+                              (sentInvites.includes(
+                                follower.id
+                              )
+                                ? 'bg-green-500/20 text-green-500'
+                                : 'bg-[#fe2c55] text-white')
+                            }
+                          >
+                            {sentInvites.includes(
+                              follower.id
+                            )
+                              ? 'Sent'
+                              : 'Send'}
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -473,12 +1247,44 @@ const LivePlayer = () => {
         </div>
       </div>
 
+      {/* GIFT PANEL */}
       <AnimatePresence>
         {showGifts && (
           <div className="fixed inset-0 z-[10000] flex items-end justify-center">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowGifts(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="relative w-full max-w-lg">
-              <GiftPanel streamId={streamId} onClose={() => setShowGifts(false)} />
+            <motion.div
+              initial={{
+                opacity: 0
+              }}
+              animate={{
+                opacity: 1
+              }}
+              exit={{
+                opacity: 0
+              }}
+              onClick={() =>
+                setShowGifts(false)
+              }
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+
+            <motion.div
+              initial={{
+                y: '100%'
+              }}
+              animate={{
+                y: 0
+              }}
+              exit={{
+                y: '100%'
+              }}
+              className="relative w-full max-w-lg"
+            >
+              <GiftPanel
+                streamId={streamId}
+                onClose={() =>
+                  setShowGifts(false)
+                }
+              />
             </motion.div>
           </div>
         )}
