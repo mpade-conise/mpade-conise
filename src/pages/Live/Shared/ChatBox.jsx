@@ -1,11 +1,11 @@
 
+// src/pages/Live/Shared/ChatBox.jsx
 
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const MAX_ITEMS = 50;
-const REALTIME_RETRY_DELAY = 2500;
 
 const getAvatar = (userId, fallbackSeed = 'user') => {
   const seed = encodeURIComponent(userId || fallbackSeed);
@@ -15,7 +15,10 @@ const getAvatar = (userId, fallbackSeed = 'user') => {
 
 const safeNumber = value => {
   const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
+
+  return Number.isFinite(number)
+    ? number
+    : 0;
 };
 
 const getCommentText = comment => {
@@ -28,13 +31,18 @@ const getCommentText = comment => {
 };
 
 const normalizeComment = comment => {
-  if (!comment?.id) return null;
+  if (!comment?.id) {
+    return null;
+  }
 
-  const userId = comment.user_id || null;
+  const userId =
+    comment.user_id || null;
 
   return {
     type: 'comment',
+
     id: String(comment.id),
+
     user_id: userId,
 
     username:
@@ -58,13 +66,18 @@ const normalizeComment = comment => {
 };
 
 const normalizeGift = gift => {
-  if (!gift?.id) return null;
+  if (!gift?.id) {
+    return null;
+  }
 
-  const senderId = gift.sender_id || null;
+  const senderId =
+    gift.sender_id || null;
 
   return {
     type: 'gift',
+
     id: `gift-${String(gift.id)}`,
+
     user_id: senderId,
 
     username:
@@ -73,7 +86,10 @@ const normalizeGift = gift => {
 
     avatar_url:
       gift.profiles?.avatar_url ||
-      getAvatar(senderId, 'gift'),
+      getAvatar(
+        senderId,
+        'gift'
+      ),
 
     giftName:
       gift.gift_name ||
@@ -108,7 +124,9 @@ const mergeUniqueItems = (
   const map = new Map();
 
   [...existing, ...incoming].forEach(item => {
-    if (!item?.id) return;
+    if (!item?.id) {
+      return;
+    }
 
     map.set(
       String(item.id),
@@ -124,12 +142,24 @@ const mergeUniqueItems = (
 const ChatBox = ({ streamId }) => {
   const [items, setItems] = useState([]);
 
-  const scrollRef = useRef(null);
-  const mountedRef = useRef(false);
+  const scrollRef =
+    useRef(null);
 
-  const channelRef = useRef(null);
-  const retryTimerRef = useRef(null);
-  const cancelledRef = useRef(false);
+  const mountedRef =
+    useRef(false);
+
+  /*
+   * Only ChatBox owns this channel.
+   *
+   * It is deliberately NOT shared with:
+   * - StreamDashboard
+   * - useStreamSocket
+   * - useStreamWebRTC
+   * - GuestManager
+   */
+
+  const channelRef =
+    useRef(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -141,7 +171,7 @@ const ChatBox = ({ streamId }) => {
 
   /*
    * -------------------------------------------------------------
-   * LOAD INITIAL CHAT + GIFTS + REALTIME
+   * CHAT + GIFT DATA
    * -------------------------------------------------------------
    */
 
@@ -153,112 +183,137 @@ const ChatBox = ({ streamId }) => {
 
     let cancelled = false;
 
-    cancelledRef.current = false;
-
     /*
      * -----------------------------------------------------------
-     * INITIAL DATA LOAD
+     * INITIAL DATA
      * -----------------------------------------------------------
      */
 
-    const loadInitialActivity = async () => {
-      try {
-        const [
-          commentsResult,
-          giftsResult
-        ] = await Promise.all([
-          supabase
-            .from('live_comments')
-            .select(`
-              id,
-              text,
-              message,
-              content,
-              user_id,
-              user_name,
-              created_at,
-              profiles(username, avatar_url)
-            `)
-            .eq('stream_id', streamId)
-            .order('created_at', {
-              ascending: true
-            })
-            .limit(40),
+    const loadInitialActivity =
+      async () => {
+        try {
+          const [
+            commentsResult,
+            giftsResult
+          ] = await Promise.all([
+            supabase
+              .from('live_comments')
+              .select(`
+                id,
+                text,
+                message,
+                content,
+                user_id,
+                user_name,
+                created_at,
+                profiles(username, avatar_url)
+              `)
+              .eq(
+                'stream_id',
+                streamId
+              )
+              .order(
+                'created_at',
+                {
+                  ascending: true
+                }
+              )
+              .limit(40),
 
-          supabase
-            .from('live_gifts')
-            .select(`
-              id,
-              sender_id,
-              gift_name,
-              price_total,
-              icon,
-              created_at,
-              profiles:sender_id(username, avatar_url)
-            `)
-            .eq('stream_id', streamId)
-            .order('created_at', {
-              ascending: true
-            })
-            .limit(20)
-        ]);
+            supabase
+              .from('live_gifts')
+              .select(`
+                id,
+                sender_id,
+                gift_name,
+                price_total,
+                icon,
+                created_at,
+                profiles:sender_id(username, avatar_url)
+              `)
+              .eq(
+                'stream_id',
+                streamId
+              )
+              .order(
+                'created_at',
+                {
+                  ascending: true
+                }
+              )
+              .limit(20)
+          ]);
 
-        if (
-          cancelled ||
-          !mountedRef.current
-        ) {
-          return;
-        }
+          if (
+            cancelled ||
+            !mountedRef.current
+          ) {
+            return;
+          }
 
-        if (commentsResult.error) {
-          console.warn(
-            '⚠️ [ChatBox] Failed to load comments:',
-            commentsResult.error.message
+          if (
+            commentsResult.error
+          ) {
+            console.warn(
+              '⚠️ [ChatBox] Failed to load comments:',
+              commentsResult.error.message
+            );
+          }
+
+          if (
+            giftsResult.error
+          ) {
+            console.warn(
+              '⚠️ [ChatBox] Failed to load gifts:',
+              giftsResult.error.message
+            );
+          }
+
+          const comments =
+            (
+              commentsResult.data ||
+              []
+            )
+              .map(
+                normalizeComment
+              )
+              .filter(Boolean);
+
+          const gifts =
+            (
+              giftsResult.data ||
+              []
+            )
+              .map(
+                normalizeGift
+              )
+              .filter(Boolean);
+
+          const merged =
+            mergeUniqueItems(
+              [],
+              [
+                ...comments,
+                ...gifts
+              ]
+            );
+
+          setItems(merged);
+
+        } catch (error) {
+          if (
+            cancelled ||
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          console.error(
+            '❌ [ChatBox] Initial activity load failed:',
+            error
           );
         }
-
-        if (giftsResult.error) {
-          console.warn(
-            '⚠️ [ChatBox] Failed to load gifts:',
-            giftsResult.error.message
-          );
-        }
-
-        const formattedComments =
-          (commentsResult.data || [])
-            .map(normalizeComment)
-            .filter(Boolean);
-
-        const formattedGifts =
-          (giftsResult.data || [])
-            .map(normalizeGift)
-            .filter(Boolean);
-
-        const merged =
-          mergeUniqueItems(
-            [],
-            [
-              ...formattedComments,
-              ...formattedGifts
-            ]
-          );
-
-        setItems(merged);
-
-      } catch (error) {
-        if (
-          cancelled ||
-          !mountedRef.current
-        ) {
-          return;
-        }
-
-        console.error(
-          '❌ [ChatBox] Initial activity load failed:',
-          error
-        );
-      }
-    };
+      };
 
     loadInitialActivity();
 
@@ -268,437 +323,389 @@ const ChatBox = ({ streamId }) => {
      * -----------------------------------------------------------
      */
 
-    const loadProfile = async userId => {
-      if (!userId) {
-        return null;
-      }
+    const getProfile =
+      async userId => {
+        if (!userId) {
+          return null;
+        }
 
-      try {
-        const { data, error } =
-          await supabase
+        try {
+          const {
+            data,
+            error
+          } = await supabase
             .from('profiles')
             .select(
               'username, avatar_url'
             )
-            .eq('id', userId)
+            .eq(
+              'id',
+              userId
+            )
             .maybeSingle();
 
-        if (error) {
+          if (error) {
+            console.warn(
+              '⚠️ [ChatBox] Profile lookup failed:',
+              error.message
+            );
+
+            return null;
+          }
+
+          return data || null;
+
+        } catch (error) {
           console.warn(
-            '⚠️ [ChatBox] Profile lookup failed:',
-            error.message
+            '⚠️ [ChatBox] Profile lookup error:',
+            error
           );
 
           return null;
         }
-
-        return data || null;
-
-      } catch (error) {
-        console.warn(
-          '⚠️ [ChatBox] Profile lookup error:',
-          error
-        );
-
-        return null;
-      }
-    };
-
-    /*
-     * -----------------------------------------------------------
-     * REALTIME CHANNEL CREATOR
-     * -----------------------------------------------------------
-     */
-
-    const createRealtimeChannel = () => {
-      if (
-        cancelled ||
-        !mountedRef.current
-      ) {
-        return;
-      }
-
-      /*
-       * Remove an old channel before creating
-       * another one.
-       */
-
-      if (channelRef.current) {
-        supabase.removeChannel(
-          channelRef.current
-        );
-
-        channelRef.current = null;
-      }
-
-      const channelName =
-        `live-chat-${streamId}`;
-
-      console.log(
-        `📡 [ChatBox] Starting Realtime channel: ${channelName}`
-      );
-
-      const chatChannel =
-        supabase
-          .channel(channelName)
-
-          /*
-           * -----------------------------------------------------
-           * NEW COMMENT
-           * -----------------------------------------------------
-           */
-
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'live_comments',
-              filter:
-                `stream_id=eq.${streamId}`
-            },
-
-            async payload => {
-              if (
-                cancelled ||
-                !mountedRef.current ||
-                !payload?.new
-              ) {
-                return;
-              }
-
-              const row = payload.new;
-
-              const profile =
-                await loadProfile(
-                  row.user_id
-                );
-
-              if (
-                cancelled ||
-                !mountedRef.current
-              ) {
-                return;
-              }
-
-              const newComment =
-                normalizeComment({
-                  ...row,
-                  profiles: profile
-                });
-
-              if (!newComment) {
-                return;
-              }
-
-              setItems(previous =>
-                mergeUniqueItems(
-                  previous,
-                  [newComment]
-                )
-              );
-            }
-          )
-
-          /*
-           * -----------------------------------------------------
-           * NEW GIFT
-           * -----------------------------------------------------
-           */
-
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'live_gifts',
-              filter:
-                `stream_id=eq.${streamId}`
-            },
-
-            async payload => {
-              if (
-                cancelled ||
-                !mountedRef.current ||
-                !payload?.new
-              ) {
-                return;
-              }
-
-              const row = payload.new;
-
-              const profile =
-                await loadProfile(
-                  row.sender_id
-                );
-
-              if (
-                cancelled ||
-                !mountedRef.current
-              ) {
-                return;
-              }
-
-              const newGift =
-                normalizeGift({
-                  ...row,
-                  profiles: profile
-                });
-
-              if (!newGift) {
-                return;
-              }
-
-              setItems(previous =>
-                mergeUniqueItems(
-                  previous,
-                  [newGift]
-                )
-              );
-            }
-          );
-
-      channelRef.current =
-        chatChannel;
-
-      /*
-       * ---------------------------------------------------------
-       * SUBSCRIBE
-       * ---------------------------------------------------------
-       */
-
-      chatChannel.subscribe(
-        status => {
-          if (
-            cancelled ||
-            !mountedRef.current
-          ) {
-            return;
-          }
-
-          /*
-           * Successfully connected.
-           */
-
-          if (status === 'SUBSCRIBED') {
-            console.log(
-              `🟢 [ChatBox] Realtime connected for stream ${streamId}`
-            );
-
-            /*
-             * A successful connection means
-             * there is no reason to retry.
-             */
-
-            if (retryTimerRef.current) {
-              clearTimeout(
-                retryTimerRef.current
-              );
-
-              retryTimerRef.current =
-                null;
-            }
-
-            return;
-          }
-
-          /*
-           * -----------------------------------------------------
-           * TIMEOUT
-           * -----------------------------------------------------
-           *
-           * Supabase can report TIMED_OUT during the
-           * initial handshake and then successfully
-           * subscribe shortly afterward.
-           *
-           * Therefore we don't treat this as a
-           * permanent failure.
-           */
-
-          if (status === 'TIMED_OUT') {
-            console.warn(
-              `⚠️ [ChatBox] Realtime handshake timed out for stream ${streamId}. Retrying if necessary...`
-            );
-
-            if (
-              retryTimerRef.current
-            ) {
-              return;
-            }
-
-            retryTimerRef.current =
-              setTimeout(() => {
-                retryTimerRef.current =
-                  null;
-
-                if (
-                  cancelled ||
-                  !mountedRef.current
-                ) {
-                  return;
-                }
-
-                /*
-                 * If another channel is already
-                 * connected, don't replace it.
-                 */
-
-                const currentState =
-                  chatChannel.state;
-
-                if (
-                  currentState ===
-                  'joined'
-                ) {
-                  console.log(
-                    '🟢 [ChatBox] Channel recovered after timeout.'
-                  );
-
-                  return;
-                }
-
-                console.log(
-                  `🔄 [ChatBox] Retrying Realtime channel for stream ${streamId}`
-                );
-
-                createRealtimeChannel();
-
-              }, REALTIME_RETRY_DELAY);
-
-            return;
-          }
-
-          /*
-           * -----------------------------------------------------
-           * CHANNEL ERROR
-           * -----------------------------------------------------
-           */
-
-          if (
-            status === 'CHANNEL_ERROR'
-          ) {
-            console.warn(
-              `⚠️ [ChatBox] Realtime channel error for stream ${streamId}`
-            );
-
-            if (
-              retryTimerRef.current
-            ) {
-              return;
-            }
-
-            retryTimerRef.current =
-              setTimeout(() => {
-                retryTimerRef.current =
-                  null;
-
-                if (
-                  cancelled ||
-                  !mountedRef.current
-                ) {
-                  return;
-                }
-
-                console.log(
-                  `🔄 [ChatBox] Reconnecting Realtime for stream ${streamId}`
-                );
-
-                createRealtimeChannel();
-
-              }, REALTIME_RETRY_DELAY);
-          }
-        }
-      );
-    };
-
-    /*
-     * Start Realtime.
-     */
-
-    createRealtimeChannel();
-
-    /*
-     * -----------------------------------------------------------
-     * LEGACY / CLIENT-SIDE GIFT EVENT
-     * -----------------------------------------------------------
-     *
-     * Kept for compatibility with any older component that
-     * dispatches mpade_gift_received.
-     */
-
-    const handleCustomGift = event => {
-      if (
-        cancelled ||
-        !mountedRef.current ||
-        !event?.detail
-      ) {
-        return;
-      }
-
-      const detail =
-        event.detail;
-
-      const customId =
-        detail.id ||
-        detail.giftId ||
-        `local-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 8)}`;
-
-      const newGift = {
-        type: 'gift',
-
-        id:
-          String(customId)
-            .startsWith('gift-')
-            ? String(customId)
-            : `custom-gift-${customId}`,
-
-        user_id:
-          detail.user_id ||
-          detail.sender_id ||
-          null,
-
-        username:
-          detail.username ||
-          'Supporter',
-
-        avatar_url:
-          detail.avatar ||
-          detail.avatar_url ||
-          getAvatar(
-            detail.user_id ||
-            detail.sender_id,
-            'gift'
-          ),
-
-        giftName:
-          detail.giftName ||
-          detail.gift_name ||
-          'Virtual Gift',
-
-        icon:
-          detail.icon ||
-          '🎁',
-
-        price: safeNumber(
-          detail.price ??
-          detail.price_total ??
-          0
-        ),
-
-        created_at:
-          detail.created_at ||
-          new Date().toISOString()
       };
 
-      setItems(previous =>
-        mergeUniqueItems(
-          previous,
-          [newGift]
+    /*
+     * -----------------------------------------------------------
+     * REALTIME
+     * -----------------------------------------------------------
+     *
+     * IMPORTANT:
+     *
+     * ChatBox does NOT retry by destroying/recreating the channel.
+     *
+     * A Realtime timeout is allowed to recover naturally.
+     *
+     * This prevents ChatBox from interfering with the rest of
+     * StreamDashboard during host initialization.
+     */
+
+    const channelName =
+      `live-chat-${streamId}`;
+
+    console.log(
+      `📡 [ChatBox] Creating isolated Realtime channel: ${channelName}`
+    );
+
+    const chatChannel =
+      supabase
+        .channel(channelName)
+
+        /*
+         * -------------------------------------------------------
+         * NEW COMMENT
+         * -------------------------------------------------------
+         */
+
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'live_comments',
+            filter:
+              `stream_id=eq.${streamId}`
+          },
+
+          async payload => {
+            if (
+              cancelled ||
+              !mountedRef.current ||
+              channelRef.current !==
+                chatChannel ||
+              !payload?.new
+            ) {
+              return;
+            }
+
+            const row =
+              payload.new;
+
+            const profile =
+              await getProfile(
+                row.user_id
+              );
+
+            if (
+              cancelled ||
+              !mountedRef.current ||
+              channelRef.current !==
+                chatChannel
+            ) {
+              return;
+            }
+
+            const comment =
+              normalizeComment({
+                ...row,
+                profiles: profile
+              });
+
+            if (!comment) {
+              return;
+            }
+
+            setItems(previous =>
+              mergeUniqueItems(
+                previous,
+                [comment]
+              )
+            );
+          }
         )
-      );
-    };
+
+        /*
+         * -------------------------------------------------------
+         * NEW GIFT
+         * -------------------------------------------------------
+         */
+
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'live_gifts',
+            filter:
+              `stream_id=eq.${streamId}`
+          },
+
+          async payload => {
+            if (
+              cancelled ||
+              !mountedRef.current ||
+              channelRef.current !==
+                chatChannel ||
+              !payload?.new
+            ) {
+              return;
+            }
+
+            const row =
+              payload.new;
+
+            const profile =
+              await getProfile(
+                row.sender_id
+              );
+
+            if (
+              cancelled ||
+              !mountedRef.current ||
+              channelRef.current !==
+                chatChannel
+            ) {
+              return;
+            }
+
+            const gift =
+              normalizeGift({
+                ...row,
+                profiles: profile
+              });
+
+            if (!gift) {
+              return;
+            }
+
+            setItems(previous =>
+              mergeUniqueItems(
+                previous,
+                [gift]
+              )
+            );
+          }
+        );
+
+    /*
+     * Store ONLY this ChatBox channel.
+     */
+
+    channelRef.current =
+      chatChannel;
+
+    /*
+     * -----------------------------------------------------------
+     * SUBSCRIBE
+     * -----------------------------------------------------------
+     */
+
+    chatChannel.subscribe(
+      status => {
+        if (
+          cancelled ||
+          !mountedRef.current
+        ) {
+          return;
+        }
+
+        /*
+         * Ignore callbacks from an old channel.
+         */
+
+        if (
+          channelRef.current !==
+          chatChannel
+        ) {
+          console.log(
+            `ℹ️ [ChatBox] Ignoring stale Realtime status: ${status}`
+          );
+
+          return;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * CONNECTED
+         * -------------------------------------------------------
+         */
+
+        if (
+          status === 'SUBSCRIBED'
+        ) {
+          console.log(
+            `🟢 [ChatBox] Realtime connected for stream ${streamId}`
+          );
+
+          return;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * TIMEOUT
+         * -------------------------------------------------------
+         *
+         * DO NOT recreate the channel here.
+         *
+         * Supabase may recover the existing channel and emit
+         * SUBSCRIBED afterward.
+         */
+
+        if (
+          status === 'TIMED_OUT'
+        ) {
+          console.warn(
+            `⏱️ [ChatBox] Realtime handshake timed out for stream ${streamId}; waiting for recovery.`
+          );
+
+          return;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * CHANNEL ERROR
+         * -------------------------------------------------------
+         */
+
+        if (
+          status ===
+          'CHANNEL_ERROR'
+        ) {
+          console.warn(
+            `⚠️ [ChatBox] Realtime channel error for stream ${streamId}.`
+          );
+
+          return;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * CLOSED
+         * -------------------------------------------------------
+         */
+
+        if (
+          status === 'CLOSED'
+        ) {
+          console.warn(
+            `⚠️ [ChatBox] Realtime channel closed for stream ${streamId}.`
+          );
+
+          return;
+        }
+      }
+    );
+
+    /*
+     * -----------------------------------------------------------
+     * LEGACY CLIENT-SIDE GIFT EVENT
+     * -----------------------------------------------------------
+     */
+
+    const handleCustomGift =
+      event => {
+        if (
+          cancelled ||
+          !mountedRef.current ||
+          !event?.detail
+        ) {
+          return;
+        }
+
+        const detail =
+          event.detail;
+
+        const customId =
+          detail.id ||
+          detail.giftId ||
+          `local-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
+
+        const newGift = {
+          type: 'gift',
+
+          id:
+            String(customId)
+              .startsWith('gift-')
+              ? String(customId)
+              : `custom-gift-${customId}`,
+
+          user_id:
+            detail.user_id ||
+            detail.sender_id ||
+            null,
+
+          username:
+            detail.username ||
+            'Supporter',
+
+          avatar_url:
+            detail.avatar ||
+            detail.avatar_url ||
+            getAvatar(
+              detail.user_id ||
+                detail.sender_id,
+              'gift'
+            ),
+
+          giftName:
+            detail.giftName ||
+            detail.gift_name ||
+            'Virtual Gift',
+
+          icon:
+            detail.icon ||
+            '🎁',
+
+          price: safeNumber(
+            detail.price ??
+              detail.price_total ??
+              0
+          ),
+
+          created_at:
+            detail.created_at ||
+            new Date().toISOString()
+        };
+
+        setItems(previous =>
+          mergeUniqueItems(
+            previous,
+            [newGift]
+          )
+        );
+      };
 
     window.addEventListener(
       'mpade_gift_received',
@@ -713,32 +720,30 @@ const ChatBox = ({ streamId }) => {
 
     return () => {
       cancelled = true;
-      cancelledRef.current = true;
-
-      if (retryTimerRef.current) {
-        clearTimeout(
-          retryTimerRef.current
-        );
-
-        retryTimerRef.current =
-          null;
-      }
 
       window.removeEventListener(
         'mpade_gift_received',
         handleCustomGift
       );
 
-      if (channelRef.current) {
+      /*
+       * Only remove OUR channel.
+       */
+
+      if (
+        channelRef.current ===
+        chatChannel
+      ) {
         console.log(
-          `🔴 [ChatBox] Removing Realtime channel for stream ${streamId}`
+          `🔴 [ChatBox] Removing isolated Realtime channel for stream ${streamId}`
         );
+
+        channelRef.current =
+          null;
 
         supabase.removeChannel(
-          channelRef.current
+          chatChannel
         );
-
-        channelRef.current = null;
       }
     };
   }, [streamId]);
@@ -764,7 +769,9 @@ const ChatBox = ({ streamId }) => {
       });
 
     return () => {
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(
+        frame
+      );
     };
   }, [items]);
 
@@ -777,8 +784,6 @@ const ChatBox = ({ streamId }) => {
   return (
     <div className="h-full w-full bg-transparent flex flex-col overflow-hidden relative border-none shadow-none">
 
-      {/* Stream Messages Container */}
-
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto space-y-2.5 p-3 hide-scrollbar"
@@ -790,7 +795,7 @@ const ChatBox = ({ streamId }) => {
 
             /*
              * ---------------------------------------------------
-             * GIFT MESSAGE
+             * GIFT
              * ---------------------------------------------------
              */
 
@@ -875,7 +880,7 @@ const ChatBox = ({ streamId }) => {
 
             /*
              * ---------------------------------------------------
-             * NORMAL COMMENT
+             * COMMENT
              * ---------------------------------------------------
              */
 
