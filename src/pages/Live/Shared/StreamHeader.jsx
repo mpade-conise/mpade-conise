@@ -21,6 +21,10 @@ const safeNumber = (value, fallback = 0) => {
 const formatCompactNumber = value => {
   const number = safeNumber(value);
 
+  if (number >= 1000000) {
+    return `${(number / 1000000).toFixed(1)}m`;
+  }
+
   if (number >= 1000) {
     return `${(number / 1000).toFixed(1)}k`;
   }
@@ -52,15 +56,19 @@ const StreamHeader = ({
   const [liveMetrics, setLiveMetrics] = useState({
     likes: safeNumber(data?.likes),
     current_goal: safeNumber(data?.gift_goal_current),
-    total_goal: safeNumber(data?.gift_goal_total, DEFAULT_GOAL) || DEFAULT_GOAL
+    total_goal:
+      safeNumber(data?.gift_goal_total, DEFAULT_GOAL) ||
+      DEFAULT_GOAL
   });
 
   const [topGifters, setTopGifters] = useState([]);
 
   /*
-   * Keep metrics synchronized if the parent receives
-   * a new stream object.
+   * ============================================================
+   * SYNC STREAM METRICS
+   * ============================================================
    */
+
   useEffect(() => {
     if (!data) {
       return;
@@ -70,7 +78,8 @@ const StreamHeader = ({
       likes: safeNumber(data.likes),
       current_goal: safeNumber(data.gift_goal_current),
       total_goal:
-        safeNumber(data.gift_goal_total, DEFAULT_GOAL) || DEFAULT_GOAL
+        safeNumber(data.gift_goal_total, DEFAULT_GOAL) ||
+        DEFAULT_GOAL
     });
   }, [
     data?.likes,
@@ -79,8 +88,11 @@ const StreamHeader = ({
   ]);
 
   /*
-   * Stream duration timer
+   * ============================================================
+   * STREAM DURATION
+   * ============================================================
    */
+
   useEffect(() => {
     if (!data?.created_at) {
       setDuration('00:00:00');
@@ -102,29 +114,39 @@ const StreamHeader = ({
         .toString()
         .padStart(2, '0');
 
-      const minutes = Math.floor((diff % 3600000) / 60000)
+      const minutes = Math.floor(
+        (diff % 3600000) / 60000
+      )
         .toString()
         .padStart(2, '0');
 
-      const seconds = Math.floor((diff % 60000) / 1000)
+      const seconds = Math.floor(
+        (diff % 60000) / 1000
+      )
         .toString()
         .padStart(2, '0');
 
-      setDuration(`${hours}:${minutes}:${seconds}`);
+      setDuration(
+        `${hours}:${minutes}:${seconds}`
+      );
     };
 
     updateDuration();
 
-    const timer = setInterval(updateDuration, 1000);
+    const timer = setInterval(
+      updateDuration,
+      1000
+    );
 
-    return () => {
-      clearInterval(timer);
-    };
+    return () => clearInterval(timer);
   }, [data?.created_at]);
 
   /*
-   * Check whether the current viewer follows the host.
+   * ============================================================
+   * FOLLOW STATUS
+   * ============================================================
    */
+
   useEffect(() => {
     let cancelled = false;
 
@@ -133,6 +155,7 @@ const StreamHeader = ({
         if (!cancelled) {
           setIsFollowing(false);
         }
+
         return;
       }
 
@@ -142,15 +165,28 @@ const StreamHeader = ({
           error: authError
         } = await supabase.auth.getUser();
 
-        if (authError || !authData?.user || cancelled) {
+        if (
+          authError ||
+          !authData?.user ||
+          cancelled
+        ) {
           return;
         }
 
-        const { data: followData, error } = await supabase
+        const {
+          data: followData,
+          error
+        } = await supabase
           .from('follows')
           .select('id')
-          .eq('follower_id', authData.user.id)
-          .eq('following_id', data.host_id)
+          .eq(
+            'follower_id',
+            authData.user.id
+          )
+          .eq(
+            'following_id',
+            data.host_id
+          )
           .maybeSingle();
 
         if (cancelled) {
@@ -162,6 +198,7 @@ const StreamHeader = ({
             '[StreamHeader] Follow status check failed:',
             error.message
           );
+
           setIsFollowing(false);
           return;
         }
@@ -185,8 +222,11 @@ const StreamHeader = ({
   }, [data?.host_id, isHost]);
 
   /*
-   * Follow / unfollow host.
+   * ============================================================
+   * FOLLOW / UNFOLLOW
+   * ============================================================
    */
+
   const handleToggleFollow = async () => {
     if (
       isHost ||
@@ -204,7 +244,10 @@ const StreamHeader = ({
         error: authError
       } = await supabase.auth.getUser();
 
-      if (authError || !authData?.user) {
+      if (
+        authError ||
+        !authData?.user
+      ) {
         return;
       }
 
@@ -214,14 +257,21 @@ const StreamHeader = ({
         const { error } = await supabase
           .from('follows')
           .delete()
-          .eq('follower_id', userId)
-          .eq('following_id', data.host_id);
+          .eq(
+            'follower_id',
+            userId
+          )
+          .eq(
+            'following_id',
+            data.host_id
+          );
 
         if (error) {
           console.error(
             '[StreamHeader] Unfollow failed:',
             error
           );
+
           return;
         }
 
@@ -241,6 +291,7 @@ const StreamHeader = ({
             '[StreamHeader] Follow failed:',
             error
           );
+
           return;
         }
 
@@ -257,11 +308,11 @@ const StreamHeader = ({
   };
 
   /*
-   * Live stream metrics + top gifters.
-   *
-   * This component only reads live-stream data.
-   * It does NOT create Socket.IO or WebRTC connections.
+   * ============================================================
+   * LIVE METRICS + TOP GIFTERS
+   * ============================================================
    */
+
   useEffect(() => {
     if (!data?.id) {
       return undefined;
@@ -272,13 +323,18 @@ const StreamHeader = ({
     const streamId = data.id;
 
     const updateMetrics = stream => {
-      if (cancelled || !stream) {
+      if (
+        cancelled ||
+        !stream
+      ) {
         return;
       }
 
       setLiveMetrics({
         likes: safeNumber(stream.likes),
-        current_goal: safeNumber(stream.gift_goal_current),
+        current_goal: safeNumber(
+          stream.gift_goal_current
+        ),
         total_goal:
           safeNumber(
             stream.gift_goal_total,
@@ -287,230 +343,325 @@ const StreamHeader = ({
       });
     };
 
-    const fetchStreamMetrics = async () => {
-      const { data: stream, error } = await supabase
-        .from('live_streams')
-        .select(
-          'likes, gift_goal_current, gift_goal_total'
-        )
-        .eq('id', streamId)
-        .maybeSingle();
+    const fetchStreamMetrics =
+      async () => {
+        const {
+          data: stream,
+          error
+        } = await supabase
+          .from('live_streams')
+          .select(
+            'likes, gift_goal_current, gift_goal_total'
+          )
+          .eq('id', streamId)
+          .maybeSingle();
 
-      if (cancelled) {
-        return;
-      }
+        if (cancelled) {
+          return;
+        }
 
-      if (error) {
-        console.warn(
-          '[StreamHeader] Stream metrics fetch failed:',
-          error.message
-        );
-        return;
-      }
-
-      if (stream) {
-        updateMetrics(stream);
-      }
-    };
-
-    const fetchTopGifters = async () => {
-      const { data: gifts, error: giftError } = await supabase
-        .from('live_gifts')
-        .select('sender_id, price_total')
-        .eq('stream_id', streamId);
-
-      if (cancelled) {
-        return;
-      }
-
-      if (giftError) {
-        console.warn(
-          '[StreamHeader] Gift leaderboard fetch failed:',
-          giftError.message
-        );
-        return;
-      }
-
-      if (!gifts || gifts.length === 0) {
-        setTopGifters([]);
-        return;
-      }
-
-      const grouped = gifts.reduce(
-        (accumulator, gift) => {
-          if (!gift?.sender_id) {
-            return accumulator;
-          }
-
-          if (!accumulator[gift.sender_id]) {
-            accumulator[gift.sender_id] = {
-              sender_id: gift.sender_id,
-              price_total: 0
-            };
-          }
-
-          accumulator[gift.sender_id].price_total += safeNumber(
-            gift.price_total
+        if (error) {
+          console.warn(
+            '[StreamHeader] Stream metrics fetch failed:',
+            error.message
           );
 
-          return accumulator;
-        },
-        {}
-      );
+          return;
+        }
 
-      const sortedGifters = Object.values(grouped)
-        .sort(
-          (a, b) =>
-            b.price_total - a.price_total
-        )
-        .slice(0, 3);
+        if (stream) {
+          updateMetrics(stream);
+        }
+      };
 
-      if (sortedGifters.length === 0) {
-        setTopGifters([]);
-        return;
-      }
+    const fetchTopGifters =
+      async () => {
+        const {
+          data: gifts,
+          error: giftError
+        } = await supabase
+          .from('live_gifts')
+          .select(
+            'sender_id, price_total'
+          )
+          .eq(
+            'stream_id',
+            streamId
+          );
 
-      const userIds = sortedGifters.map(
-        gifter => gifter.sender_id
-      );
+        if (cancelled) {
+          return;
+        }
 
-      const {
-        data: profiles,
-        error: profileError
-      } = await supabase
-        .from('profiles')
-        .select('id, avatar_url, username')
-        .in('id', userIds);
+        if (giftError) {
+          console.warn(
+            '[StreamHeader] Gift leaderboard fetch failed:',
+            giftError.message
+          );
 
-      if (cancelled) {
-        return;
-      }
+          return;
+        }
 
-      if (profileError) {
-        console.warn(
-          '[StreamHeader] Gifter profiles fetch failed:',
-          profileError.message
-        );
+        if (
+          !gifts ||
+          gifts.length === 0
+        ) {
+          setTopGifters([]);
+          return;
+        }
+
+        const grouped =
+          gifts.reduce(
+            (
+              accumulator,
+              gift
+            ) => {
+              if (
+                !gift?.sender_id
+              ) {
+                return accumulator;
+              }
+
+              if (
+                !accumulator[
+                  gift.sender_id
+                ]
+              ) {
+                accumulator[
+                  gift.sender_id
+                ] = {
+                  sender_id:
+                    gift.sender_id,
+                  price_total: 0
+                };
+              }
+
+              accumulator[
+                gift.sender_id
+              ].price_total +=
+                safeNumber(
+                  gift.price_total
+                );
+
+              return accumulator;
+            },
+            {}
+          );
+
+        const sortedGifters =
+          Object.values(grouped)
+            .sort(
+              (a, b) =>
+                b.price_total -
+                a.price_total
+            )
+            .slice(0, 3);
+
+        if (
+          sortedGifters.length === 0
+        ) {
+          setTopGifters([]);
+          return;
+        }
+
+        const userIds =
+          sortedGifters.map(
+            gifter =>
+              gifter.sender_id
+          );
+
+        const {
+          data: profiles,
+          error: profileError
+        } = await supabase
+          .from('profiles')
+          .select(
+            'id, avatar_url, username'
+          )
+          .in(
+            'id',
+            userIds
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (profileError) {
+          console.warn(
+            '[StreamHeader] Gifter profiles fetch failed:',
+            profileError.message
+          );
+
+          setTopGifters(
+            sortedGifters.map(
+              (
+                gifter,
+                index
+              ) => ({
+                ...gifter,
+                rank:
+                  index + 1,
+                profiles:
+                  null
+              })
+            )
+          );
+
+          return;
+        }
+
+        const profileList =
+          profiles || [];
+
+        const merged =
+          sortedGifters.map(
+            (
+              gifter,
+              index
+            ) => ({
+              ...gifter,
+              rank:
+                index + 1,
+              profiles:
+                profileList.find(
+                  profile =>
+                    profile.id ===
+                    gifter.sender_id
+                ) || null
+            })
+          );
 
         setTopGifters(
-          sortedGifters.map((gifter, index) => ({
-            ...gifter,
-            rank: index + 1,
-            profiles: null
-          }))
+          merged
         );
-
-        return;
-      }
-
-      const profileList = profiles || [];
-
-      const merged = sortedGifters.map(
-        (gifter, index) => ({
-          ...gifter,
-          rank: index + 1,
-          profiles:
-            profileList.find(
-              profile =>
-                profile.id === gifter.sender_id
-            ) || null
-        })
-      );
-
-      setTopGifters(merged);
-    };
+      };
 
     fetchStreamMetrics();
     fetchTopGifters();
 
     /*
-     * One realtime channel for live stream metrics.
+     * ONE stream metrics realtime channel.
      */
-    const streamChannel = supabase
-      .channel(`stream-header-${streamId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'live_streams',
-          filter: `id=eq.${streamId}`
-        },
-        payload => {
-          if (cancelled || !payload?.new) {
-            return;
+
+    const streamChannel =
+      supabase
+        .channel(
+          `stream-header-${streamId}`
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'live_streams',
+            filter: `id=eq.${streamId}`
+          },
+          payload => {
+            if (
+              cancelled ||
+              !payload?.new
+            ) {
+              return;
+            }
+
+            updateMetrics(
+              payload.new
+            );
           }
+        )
+        .subscribe(
+          status => {
+            if (cancelled) {
+              return;
+            }
 
-          updateMetrics(payload.new);
-        }
-      )
-      .subscribe(status => {
-        if (cancelled) {
-          return;
-        }
-
-        setIsConnected(
-          status === 'SUBSCRIBED'
+            setIsConnected(
+              status ===
+                'SUBSCRIBED'
+            );
+          }
         );
-      });
 
     /*
-     * Gift changes refresh the leaderboard.
+     * Gift leaderboard channel.
      */
-    const giftChannel = supabase
-      .channel(`stream-header-gifts-${streamId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'live_gifts',
-          filter: `stream_id=eq.${streamId}`
-        },
-        () => {
-          if (cancelled) {
-            return;
-          }
 
-          fetchTopGifters();
-        }
-      )
-      .subscribe();
+    const giftChannel =
+      supabase
+        .channel(
+          `stream-header-gifts-${streamId}`
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'live_gifts',
+            filter: `stream_id=eq.${streamId}`
+          },
+          () => {
+            if (
+              cancelled
+            ) {
+              return;
+            }
+
+            fetchTopGifters();
+          }
+        )
+        .subscribe();
 
     return () => {
       cancelled = true;
 
-      supabase.removeChannel(streamChannel);
-      supabase.removeChannel(giftChannel);
+      supabase.removeChannel(
+        streamChannel
+      );
+
+      supabase.removeChannel(
+        giftChannel
+      );
     };
   }, [data?.id]);
 
   /*
-   * Gift goal percentage.
+   * ============================================================
+   * DERIVED VALUES
+   * ============================================================
    */
-  const goalPercent = useMemo(() => {
-    const currentGoal = Math.max(
-      0,
-      safeNumber(liveMetrics.current_goal)
-    );
 
-    const totalGoal =
-      safeNumber(
-        liveMetrics.total_goal,
-        DEFAULT_GOAL
-      ) || DEFAULT_GOAL;
+  const goalPercent =
+    useMemo(() => {
+      const currentGoal =
+        Math.max(
+          0,
+          safeNumber(
+            liveMetrics.current_goal
+          )
+        );
 
-    return Math.min(
-      (currentGoal / totalGoal) * 100,
-      100
-    );
-  }, [
-    liveMetrics.current_goal,
-    liveMetrics.total_goal
-  ]);
+      const totalGoal =
+        safeNumber(
+          liveMetrics.total_goal,
+          DEFAULT_GOAL
+        ) || DEFAULT_GOAL;
+
+      return Math.min(
+        (currentGoal /
+          totalGoal) *
+          100,
+        100
+      );
+    }, [
+      liveMetrics.current_goal,
+      liveMetrics.total_goal
+    ]);
 
   const isGoalExceeded =
-    safeNumber(liveMetrics.current_goal) >=
+    safeNumber(
+      liveMetrics.current_goal
+    ) >=
     (
       safeNumber(
         liveMetrics.total_goal,
@@ -518,316 +669,726 @@ const StreamHeader = ({
       ) || DEFAULT_GOAL
     );
 
-  const formattedLikes = formatCompactNumber(
-    liveMetrics.likes
-  );
+  const formattedLikes =
+    formatCompactNumber(
+      liveMetrics.likes
+    );
 
   const formattedViewerCount =
-    formatCompactNumber(viewerCount);
+    formatCompactNumber(
+      viewerCount
+    );
 
-  const hostAvatar = getAvatarUrl(
-    data?.host?.avatar_url,
-    data?.host_id
-  );
+  const hostAvatar =
+    getAvatarUrl(
+      data?.host?.avatar_url,
+      data?.host_id
+    );
+
+  /*
+   * ============================================================
+   * RENDER
+   * ============================================================
+   */
 
   return (
-    <header className="absolute top-0 left-0 right-0 p-4 flex flex-col gap-2.5 z-50 bg-gradient-to-b from-black/60 via-black/20 to-transparent pointer-events-none select-none">
+    <header
+      className="
+        absolute
+        top-0
+        left-0
+        right-0
+        z-50
+        pointer-events-none
+        select-none
+        px-3
+        pt-3
+        sm:px-4
+        sm:pt-4
+      "
+    >
+      {/* ======================================================
+          HEADER CONTAINER
+      ====================================================== */}
 
-      {/* ================= MAIN HEADER ROW ================= */}
+      <div
+        className="
+          w-full
+          max-w-screen-2xl
+          mx-auto
+          flex
+          flex-col
+          gap-2
+        "
+      >
+        {/* ====================================================
+            PRIMARY HEADER
+        ==================================================== */}
 
-      <div className="flex justify-between items-center w-full">
+        <div
+          className="
+            flex
+            items-start
+            justify-between
+            gap-2
+            min-w-0
+          "
+        >
+          {/* ==================================================
+              LEFT SIDE
+          ================================================== */}
 
-        {/* LEFT COLUMN */}
-
-        <div className="flex items-center gap-1.5 pointer-events-auto">
-
-          {/* Host Info */}
-
-          <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur-md p-1 pr-2.5 rounded-full border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.25)]">
-
-            <div className="w-8 h-8 rounded-full bg-zinc-800 border border-cyan-400/80 overflow-hidden relative shadow-[0_0_8px_rgba(6,182,212,0.5)]">
-
-              <img
-                src={hostAvatar}
-                className="w-full h-full object-cover"
-                alt="host"
-              />
-
-            </div>
-
-            <div className="flex flex-col max-w-[75px]">
-
-              <div className="flex items-center gap-0.5">
-
-                <span className="text-[10px] font-bold text-white truncate drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]">
-                  {data?.host?.username || 'Creator'}
-                </span>
-
-                <CheckCircle2
-                  size={9}
-                  className="text-cyan-400 fill-cyan-400 flex-shrink-0 drop-shadow-[0_0_6px_#06b6d4]"
-                />
-
-              </div>
-
-              <span className="text-[8px] font-medium text-cyan-200/80 leading-none drop-shadow-[0_0_4px_rgba(6,182,212,0.5)]">
-                {formattedLikes} Likes
-              </span>
-
-            </div>
-
-            {!isHost && (
-              <motion.button
-                type="button"
-                disabled={isFollowLoading}
-                whileTap={{
-                  scale: isFollowLoading ? 1 : 0.9
-                }}
-                onClick={handleToggleFollow}
-                aria-label={
-                  isFollowing
-                    ? 'Unfollow host'
-                    : 'Follow host'
-                }
-                className={`ml-1 w-5 h-5 rounded-full flex items-center justify-center transition-all ${
-                  isFollowing
-                    ? 'bg-zinc-800/80 border border-cyan-500/30 text-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.2)]'
-                    : 'bg-[#fe2c55] text-white border border-rose-400/50 shadow-[0_0_12px_rgba(254,44,85,0.6)] hover:shadow-[0_0_18px_rgba(254,44,85,0.8)]'
-                } ${
-                  isFollowLoading
-                    ? 'opacity-50 cursor-wait'
-                    : ''
-                }`}
-              >
-                {isFollowing ? (
-                  <CheckCircle2
-                    size={10}
-                    className="drop-shadow-[0_0_4px_#06b6d4]"
-                  />
-                ) : (
-                  <Plus
-                    size={11}
-                    className="stroke-[3] drop-shadow-[0_0_4px_#ffffff]"
-                  />
-                )}
-              </motion.button>
-            )}
-
-          </div>
-
-          {/* Viewer Count */}
-
-          <div className="flex items-center gap-1 bg-black/40 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.2)] h-[38px]">
-
-            <Users
-              size={11}
-              className="text-cyan-400 drop-shadow-[0_0_6px_#06b6d4]"
-            />
-
-            <span className="text-[10px] font-bold text-cyan-100 tracking-wide drop-shadow-[0_0_6px_rgba(6,182,212,0.6)]">
-              {formattedViewerCount}
-            </span>
-
-          </div>
-
-        </div>
-
-        {/* RIGHT COLUMN */}
-
-        <div className="flex items-center gap-2 pointer-events-auto">
-
-          {/* Top Gifters */}
-
-          <div className="flex items-center -space-x-1.5 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.2)] h-[38px]">
-
-            {topGifters.map((gifter, index) => {
-
-              const rankClass =
-                index === 0
-                  ? 'z-30 border-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.6)]'
-                  : index === 1
-                    ? 'z-20 border-slate-300 shadow-[0_0_8px_rgba(203,213,225,0.5)]'
-                    : 'z-10 border-amber-600 shadow-[0_0_8px_rgba(217,119,6,0.5)]';
-
-              const avatar = getAvatarUrl(
-                gifter.profiles?.avatar_url,
-                gifter.sender_id
-              );
-
-              return (
-                <div
-                  key={gifter.sender_id}
-                  className={`w-6 h-6 rounded-full border relative bg-zinc-900 overflow-hidden ${rankClass}`}
-                  title={
-                    gifter.profiles?.username ||
-                    'Top Gifter'
-                  }
-                >
-                  <img
-                    src={avatar}
-                    className="w-full h-full object-cover"
-                    alt="top-gifter"
-                  />
-                </div>
-              );
-            })}
-
-            {topGifters.length === 0 && (
-              <span className="text-[9px] text-cyan-200/50 px-1 font-medium drop-shadow-[0_0_4px_rgba(6,182,212,0.3)]">
-                No Gifters
-              </span>
-            )}
-
-          </div>
-
-          {/* Share */}
-
-          <button
-            type="button"
-            aria-label="Share stream"
-            className="w-[38px] h-[38px] flex items-center justify-center bg-black/40 hover:bg-cyan-500/20 transition-all rounded-full text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.2)] hover:border-cyan-400 hover:shadow-[0_0_18px_rgba(6,182,212,0.5)]"
+          <div
+            className="
+              flex
+              items-center
+              gap-2
+              min-w-0
+              pointer-events-auto
+            "
           >
-            <Share2
-              size={14}
-              className="drop-shadow-[0_0_6px_#06b6d4]"
-            />
-          </button>
-
-          {/* Leave */}
-
-          <button
-            type="button"
-            onClick={onLeave}
-            aria-label="Leave stream"
-            className="w-[38px] h-[38px] flex items-center justify-center bg-black/50 hover:bg-red-500/20 active:scale-95 transition-all rounded-full text-red-400 border border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.25)] hover:border-red-400 hover:shadow-[0_0_20px_rgba(239,68,68,0.6)]"
-          >
-            <X
-              size={16}
-              className="drop-shadow-[0_0_6px_#ef4444]"
-            />
-          </button>
-
-        </div>
-
-      </div>
-
-      {/* ================= SECONDARY SYSTEM METRICS ROW ================= */}
-
-      <div className="flex flex-col gap-1.5 mt-0.5">
-
-        {/* Stream Duration */}
-
-        <div className="flex items-center gap-1.5 pointer-events-auto self-start">
-
-          <div className="bg-black/40 backdrop-blur-md px-2.5 py-0.5 rounded-md border border-pink-500/30 shadow-[0_0_10px_rgba(244,63,94,0.2)] flex items-center gap-1.5">
+            {/* HOST CARD */}
 
             <div
-              className={`w-1.5 h-1.5 rounded-full ${
-                isConnected
-                  ? 'bg-[#fe2c55] shadow-[0_0_8px_#fe2c55]'
-                  : 'bg-zinc-500'
-              } animate-pulse`}
-            />
+              className="
+                flex
+                items-center
+                min-w-0
+                gap-2
+                rounded-2xl
+                border
+                border-white/10
+                bg-zinc-950/75
+                backdrop-blur-xl
+                px-1.5
+                py-1.5
+                shadow-lg
+                shadow-black/20
+              "
+            >
+              {/* Avatar */}
 
-            <span className="text-[9px] font-bold text-pink-200 font-mono tracking-wider drop-shadow-[0_0_5px_rgba(244,63,94,0.6)]">
-              {duration}
-            </span>
-
-          </div>
-
-          <AnimatePresence>
-            {!isConnected && (
-              <motion.div
-                initial={{
-                  opacity: 0,
-                  x: -5
-                }}
-                animate={{
-                  opacity: 1,
-                  x: 0
-                }}
-                exit={{
-                  opacity: 0,
-                  x: -5
-                }}
-                className="bg-amber-950/50 backdrop-blur-md px-1.5 py-0.5 rounded border border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.3)] flex items-center gap-1"
+              <div
+                className="
+                  relative
+                  h-9
+                  w-9
+                  sm:h-10
+                  sm:w-10
+                  shrink-0
+                  overflow-hidden
+                  rounded-full
+                  border
+                  border-white/20
+                  bg-zinc-800
+                "
               >
-                <WifiOff
-                  size={9}
-                  className="text-amber-400 drop-shadow-[0_0_5px_#f59e0b]"
+                <img
+                  src={hostAvatar}
+                  className="
+                    h-full
+                    w-full
+                    object-cover
+                  "
+                  alt="host"
                 />
 
-                <span className="text-[8px] font-bold text-amber-300 uppercase tracking-tight drop-shadow-[0_0_5px_rgba(245,158,11,0.5)]">
-                  Reconnecting...
+                {/* Live indicator */}
+
+                <span
+                  className="
+                    absolute
+                    bottom-0.5
+                    right-0.5
+                    h-2
+                    w-2
+                    rounded-full
+                    bg-red-500
+                    ring-2
+                    ring-zinc-950
+                  "
+                />
+              </div>
+
+              {/* Host details */}
+
+              <div
+                className="
+                  min-w-0
+                  max-w-[115px]
+                  sm:max-w-[180px]
+                  leading-none
+                "
+              >
+                <div
+                  className="
+                    flex
+                    items-center
+                    gap-1
+                    min-w-0
+                  "
+                >
+                  <span
+                    className="
+                      truncate
+                      text-[11px]
+                      sm:text-xs
+                      font-semibold
+                      text-white
+                    "
+                  >
+                    {data?.host?.username ||
+                      'Creator'}
+                  </span>
+
+                  <CheckCircle2
+                    size={11}
+                    className="
+                      shrink-0
+                      text-cyan-400
+                    "
+                  />
+                </div>
+
+                <span
+                  className="
+                    mt-1
+                    block
+                    truncate
+                    text-[9px]
+                    sm:text-[10px]
+                    text-zinc-400
+                  "
+                >
+                  {formattedLikes} likes
                 </span>
+              </div>
 
-              </motion.div>
-            )}
-          </AnimatePresence>
+              {/* Follow */}
 
-        </div>
-
-        {/* Live Gift Goal */}
-
-        <div className="w-full max-w-[180px] bg-black/40 backdrop-blur-md p-1.5 rounded-lg border border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.15)] pointer-events-auto">
-
-          <div className="flex justify-between items-center mb-1 px-0.5">
-
-            <div className="flex items-center gap-1 text-yellow-400 drop-shadow-[0_0_6px_rgba(234,179,8,0.7)]">
-
-              <Target
-                size={10}
-                className="drop-shadow-[0_0_4px_#facc15]"
-              />
-
-              <span className="text-[8px] font-bold uppercase tracking-wider">
-                {isGoalExceeded
-                  ? 'Goal Reached!'
-                  : 'Live Goal'}
-              </span>
-
+              {!isHost && (
+                <motion.button
+                  type="button"
+                  disabled={
+                    isFollowLoading
+                  }
+                  whileTap={{
+                    scale:
+                      isFollowLoading
+                        ? 1
+                        : 0.92
+                  }}
+                  onClick={
+                    handleToggleFollow
+                  }
+                  aria-label={
+                    isFollowing
+                      ? 'Unfollow host'
+                      : 'Follow host'
+                  }
+                  className={`
+                    shrink-0
+                    flex
+                    h-7
+                    w-7
+                    items-center
+                    justify-center
+                    rounded-full
+                    transition-all
+                    ${
+                      isFollowing
+                        ? `
+                          border
+                          border-cyan-400/20
+                          bg-cyan-400/10
+                          text-cyan-400
+                        `
+                        : `
+                          border
+                          border-rose-400/30
+                          bg-rose-500
+                          text-white
+                          shadow-md
+                          shadow-rose-500/20
+                        `
+                    }
+                    ${
+                      isFollowLoading
+                        ? 'opacity-50 cursor-wait'
+                        : ''
+                    }
+                  `}
+                >
+                  {isFollowing ? (
+                    <CheckCircle2
+                      size={13}
+                    />
+                  ) : (
+                    <Plus
+                      size={14}
+                      className="stroke-[3]"
+                    />
+                  )}
+                </motion.button>
+              )}
             </div>
 
-            <span className="text-[8px] font-bold text-yellow-200 font-mono drop-shadow-[0_0_5px_rgba(234,179,8,0.5)]">
-              {safeNumber(
-                liveMetrics.current_goal
+            {/* VIEWERS */}
+
+            <div
+              className="
+                flex
+                h-[42px]
+                shrink-0
+                items-center
+                gap-1.5
+                rounded-2xl
+                border
+                border-white/10
+                bg-zinc-950/75
+                px-3
+                backdrop-blur-xl
+                shadow-lg
+                shadow-black/20
+              "
+            >
+              <Users
+                size={13}
+                className="
+                  text-cyan-400
+                "
+              />
+
+              <span
+                className="
+                  text-[10px]
+                  sm:text-[11px]
+                  font-semibold
+                  text-white
+                "
+              >
+                {formattedViewerCount}
+              </span>
+            </div>
+          </div>
+
+          {/* ==================================================
+              RIGHT SIDE
+          ================================================== */}
+
+          <div
+            className="
+              flex
+              items-center
+              gap-1.5
+              shrink-0
+              pointer-events-auto
+            "
+          >
+            {/* TOP GIFTERS */}
+
+            <div
+              className="
+                hidden
+                sm:flex
+                h-[42px]
+                items-center
+                rounded-2xl
+                border
+                border-white/10
+                bg-zinc-950/75
+                px-2.5
+                backdrop-blur-xl
+                shadow-lg
+                shadow-black/20
+              "
+            >
+              {topGifters.length >
+              0 ? (
+                <div
+                  className="
+                    flex
+                    items-center
+                    -space-x-1.5
+                  "
+                >
+                  {topGifters.map(
+                    (
+                      gifter,
+                      index
+                    ) => {
+                      const avatar =
+                        getAvatarUrl(
+                          gifter
+                            .profiles
+                            ?.avatar_url,
+                          gifter.sender_id
+                        );
+
+                      const rankClass =
+                        index === 0
+                          ? 'border-yellow-400'
+                          : index === 1
+                            ? 'border-zinc-300'
+                            : 'border-amber-600';
+
+                      return (
+                        <div
+                          key={
+                            gifter.sender_id
+                          }
+                          title={
+                            gifter
+                              .profiles
+                              ?.username ||
+                            'Top Gifter'
+                          }
+                          className={`
+                            relative
+                            h-7
+                            w-7
+                            overflow-hidden
+                            rounded-full
+                            border-2
+                            bg-zinc-900
+                            ${rankClass}
+                          `}
+                        >
+                          <img
+                            src={avatar}
+                            className="
+                              h-full
+                              w-full
+                              object-cover
+                            "
+                            alt="top-gifter"
+                          />
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              ) : (
+                <span
+                  className="
+                    text-[9px]
+                    font-medium
+                    text-zinc-500
+                  "
+                >
+                  No gifters yet
+                </span>
               )}
-              /
-              {safeNumber(
-                liveMetrics.total_goal,
-                DEFAULT_GOAL
-              ) || DEFAULT_GOAL}
-            </span>
+            </div>
 
+            {/* SHARE */}
+
+            <button
+              type="button"
+              aria-label="Share stream"
+              className="
+                flex
+                h-[42px]
+                w-[42px]
+                shrink-0
+                items-center
+                justify-center
+                rounded-2xl
+                border
+                border-white/10
+                bg-zinc-950/75
+                text-zinc-200
+                backdrop-blur-xl
+                transition
+                hover:border-cyan-400/40
+                hover:bg-cyan-400/10
+                hover:text-cyan-300
+                active:scale-95
+              "
+            >
+              <Share2
+                size={15}
+              />
+            </button>
+
+            {/* LEAVE */}
+
+            <button
+              type="button"
+              onClick={onLeave}
+              aria-label="Leave stream"
+              className="
+                flex
+                h-[42px]
+                w-[42px]
+                shrink-0
+                items-center
+                justify-center
+                rounded-2xl
+                border
+                border-red-500/20
+                bg-red-500/10
+                text-red-400
+                backdrop-blur-xl
+                transition
+                hover:border-red-400/50
+                hover:bg-red-500/20
+                hover:text-red-300
+                active:scale-95
+              "
+            >
+              <X
+                size={17}
+              />
+            </button>
           </div>
-
-          <div className="h-1 w-full bg-zinc-900/80 rounded-full overflow-hidden relative border border-yellow-500/20">
-
-            <motion.div
-              initial={{
-                width: 0
-              }}
-              animate={{
-                width: `${goalPercent}%`
-              }}
-              transition={{
-                type: 'spring',
-                stiffness: 50,
-                damping: 15
-              }}
-              className={`h-full rounded-full ${
-                isGoalExceeded
-                  ? 'bg-yellow-400 shadow-[0_0_12px_#facc15]'
-                  : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300 shadow-[0_0_10px_rgba(250,204,21,0.7)]'
-              }`}
-            />
-
-          </div>
-
         </div>
 
-      </div>
+        {/* ====================================================
+            SECONDARY INFORMATION
+        ==================================================== */}
 
+        <div
+          className="
+            flex
+            items-start
+            justify-between
+            gap-2
+            min-w-0
+          "
+        >
+          {/* LEFT STATUS */}
+
+          <div
+            className="
+              flex
+              min-w-0
+              flex-wrap
+              items-center
+              gap-1.5
+              pointer-events-auto
+            "
+          >
+            {/* LIVE / DURATION */}
+
+            <div
+              className="
+                flex
+                h-7
+                items-center
+                gap-1.5
+                rounded-xl
+                border
+                border-white/10
+                bg-zinc-950/70
+                px-2.5
+                backdrop-blur-xl
+              "
+            >
+              <span
+                className={`
+                  h-1.5
+                  w-1.5
+                  shrink-0
+                  rounded-full
+                  ${
+                    isConnected
+                      ? 'bg-red-500'
+                      : 'bg-zinc-500'
+                  }
+                  ${
+                    isConnected
+                      ? 'animate-pulse'
+                      : ''
+                  }
+                `}
+              />
+
+              <span
+                className="
+                  font-mono
+                  text-[9px]
+                  font-semibold
+                  tracking-wide
+                  text-zinc-200
+                "
+              >
+                {duration}
+              </span>
+            </div>
+
+            {/* RECONNECTING */}
+
+            <AnimatePresence>
+              {!isConnected && (
+                <motion.div
+                  initial={{
+                    opacity: 0,
+                    y: -3
+                  }}
+                  animate={{
+                    opacity: 1,
+                    y: 0
+                  }}
+                  exit={{
+                    opacity: 0,
+                    y: -3
+                  }}
+                  className="
+                    flex
+                    h-7
+                    items-center
+                    gap-1
+                    rounded-xl
+                    border
+                    border-amber-500/20
+                    bg-amber-500/10
+                    px-2
+                    backdrop-blur-xl
+                  "
+                >
+                  <WifiOff
+                    size={10}
+                    className="
+                      text-amber-400
+                    "
+                  />
+
+                  <span
+                    className="
+                      text-[8px]
+                      font-semibold
+                      uppercase
+                      tracking-wide
+                      text-amber-300
+                    "
+                  >
+                    Reconnecting
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* ==================================================
+              GIFT GOAL
+          ================================================== */}
+
+          <div
+            className="
+              pointer-events-auto
+              w-[150px]
+              sm:w-[190px]
+              shrink-0
+              rounded-xl
+              border
+              border-white/10
+              bg-zinc-950/75
+              p-2
+              backdrop-blur-xl
+              shadow-lg
+              shadow-black/20
+            "
+          >
+            <div
+              className="
+                mb-1.5
+                flex
+                items-center
+                justify-between
+                gap-2
+              "
+            >
+              <div
+                className="
+                  flex
+                  min-w-0
+                  items-center
+                  gap-1.5
+                "
+              >
+                <Target
+                  size={11}
+                  className="
+                    shrink-0
+                    text-yellow-400
+                  "
+                />
+
+                <span
+                  className="
+                    truncate
+                    text-[8px]
+                    sm:text-[9px]
+                    font-semibold
+                    uppercase
+                    tracking-wider
+                    text-yellow-300
+                  "
+                >
+                  {isGoalExceeded
+                    ? 'Goal reached'
+                    : 'Live goal'}
+                </span>
+              </div>
+
+              <span
+                className="
+                  shrink-0
+                  font-mono
+                  text-[8px]
+                  sm:text-[9px]
+                  font-semibold
+                  text-zinc-300
+                "
+              >
+                {safeNumber(
+                  liveMetrics.current_goal
+                )}
+                /
+                {safeNumber(
+                  liveMetrics.total_goal,
+                  DEFAULT_GOAL
+                ) ||
+                  DEFAULT_GOAL}
+              </span>
+            </div>
+
+            <div
+              className="
+                h-1.5
+                w-full
+                overflow-hidden
+                rounded-full
+                bg-white/10
+              "
+            >
+              <motion.div
+                initial={{
+                  width: 0
+                }}
+                animate={{
+                  width: `${goalPercent}%`
+                }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 50,
+                  damping: 15
+                }}
+                className={`
+                  h-full
+                  rounded-full
+                  ${
+                    isGoalExceeded
+                      ? 'bg-yellow-400'
+                      : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300'
+                  }
+                `}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </header>
   );
 };
