@@ -1,4 +1,3 @@
-```jsx
 import {
   useCallback,
   useEffect,
@@ -54,6 +53,27 @@ export const useStreamWebRTC = (
    */
 
   const localVideoRef = useRef(null);
+
+  /*
+   * Raw camera/microphone stream.
+   *
+   * This remains separate from the processed stream so that
+   * cleanup can always stop the real hardware tracks correctly.
+   */
+  const rawLocalStreamRef = useRef(null);
+
+  /*
+   * Stream returned by LiveVoiceEngine.
+   *
+   * It contains:
+   * - original camera video tracks
+   * - processed microphone audio track
+   */
+  const processedVoiceStreamRef = useRef(null);
+
+  /*
+   * This is the stream WebRTC actually uses.
+   */
   const localStreamRef = useRef(null);
 
   const [localStream, setLocalStream] = useState(null);
@@ -68,32 +88,10 @@ export const useStreamWebRTC = (
   const iceCandidatesQueueRef = useRef({});
   const remoteStreamsRef = useRef({});
 
-  /*
-   * Prevent duplicate negotiations/offers from racing.
-   */
   const negotiatingPeersRef = useRef(new Set());
 
-  /*
-   * Prevent the same incoming offer from being processed twice.
-   *
-   * This is important because the application currently listens
-   * to both:
-   *
-   * receive_webrtc_offer
-   * webrtc_offer_received
-   *
-   * If the backend forwards the same offer through both events,
-   * two async handlers can otherwise call setRemoteDescription()
-   * at the same time.
-   */
   const incomingOfferProcessingRef = useRef(new Set());
 
-  /*
-   * Delayed peer cleanup.
-   *
-   * A temporary "disconnected" state does NOT necessarily mean
-   * the WebRTC connection is dead.
-   */
   const peerCleanupTimersRef = useRef({});
 
   /*
@@ -150,16 +148,12 @@ export const useStreamWebRTC = (
   const clearPeerCleanupTimer = useCallback(
     peerId => {
       const timer =
-        peerCleanupTimersRef.current[
-          peerId
-        ];
+        peerCleanupTimersRef.current[peerId];
 
       if (timer) {
         clearTimeout(timer);
 
-        delete peerCleanupTimersRef.current[
-          peerId
-        ];
+        delete peerCleanupTimersRef.current[peerId];
       }
     },
     []
@@ -252,12 +246,6 @@ export const useStreamWebRTC = (
     video.autoplay = true;
     video.playsInline = true;
 
-    /*
-     * Only call play when necessary.
-     *
-     * This avoids repeatedly interrupting a video that is
-     * already playing.
-     */
     if (video.paused) {
       playLocalVideo(video);
     }
@@ -390,19 +378,6 @@ export const useStreamWebRTC = (
           return;
         }
 
-        /*
-         * IMPORTANT:
-         *
-         * ontrack fires separately for audio and video.
-         *
-         * Both tracks normally belong to the SAME MediaStream.
-         * Reassigning srcObject twice can cause:
-         *
-         * "The play() request was interrupted by a new load request."
-         *
-         * Therefore only replace srcObject when the stream
-         * actually changed.
-         */
         const streamChanged =
           video.srcObject !== stream;
 
@@ -413,10 +388,6 @@ export const useStreamWebRTC = (
         video.autoplay = true;
         video.playsInline = true;
 
-        /*
-         * Do not repeatedly call play() for the exact same
-         * stream while it is already playing.
-         */
         if (
           streamChanged ||
           video.paused
@@ -462,6 +433,76 @@ export const useStreamWebRTC = (
 
   /*
    * ============================================================
+   * AI VOICE EFFECT SYNCHRONIZATION
+   * ============================================================
+   *
+   * AIVoiceEffects dispatches:
+   *
+   * mpade_voice_change
+   *
+   * The engine changes its DSP chain while keeping the same
+   * MediaStreamDestination audio track alive.
+   *
+   * This means existing WebRTC peer connections do NOT need
+   * renegotiation when the user changes voice effects.
+   */
+
+  useEffect(() => {
+    if (!streamId) {
+      return undefined;
+    }
+
+    const handleVoiceChange = event => {
+      const detail =
+        event?.detail;
+
+      if (!detail) {
+        return;
+      }
+
+      if (
+        detail.streamId &&
+        detail.streamId !== streamId
+      ) {
+        return;
+      }
+
+      if (!detail.id) {
+        return;
+      }
+
+      try {
+        liveVoiceEngine.setPreset(
+          detail.id
+        );
+
+        console.log(
+          '🎛️ [WebRTC] Live voice effect changed:',
+          detail.id
+        );
+      } catch (error) {
+        console.warn(
+          '⚠️ [WebRTC] Failed applying live voice effect:',
+          error?.message || error
+        );
+      }
+    };
+
+    window.addEventListener(
+      'mpade_voice_change',
+      handleVoiceChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        'mpade_voice_change',
+        handleVoiceChange
+      );
+    };
+  }, [streamId]);
+
+  /*
+   * ============================================================
    * HARDWARE INITIALIZATION
    * ============================================================
    */
@@ -489,6 +530,7 @@ export const useStreamWebRTC = (
 
     let cancelled = false;
     let acquiredStream = null;
+    let finalLocalStream = null;
 
     const isCurrentInitialization =
       () => {
@@ -500,6 +542,13 @@ export const useStreamWebRTC = (
         );
       };
 
+    /*
+     * Attach the FINAL stream.
+     *
+     * This will normally be the processed voice stream.
+     * If AI voice initialization fails, it will be the raw
+     * camera/microphone stream.
+     */
     const attachLocalStream =
       stream => {
         if (
@@ -508,6 +557,8 @@ export const useStreamWebRTC = (
         ) {
           return;
         }
+
+        finalLocalStream = stream;
 
         localStreamRef.current =
           stream;
@@ -549,6 +600,12 @@ export const useStreamWebRTC = (
           console.log(
             '🎥 [WebRTC] Requesting camera and microphone...'
           );
+
+          /*
+           * ----------------------------------------------------
+           * CAMERA + MICROPHONE
+           * ----------------------------------------------------
+           */
 
           try {
             acquiredStream =
@@ -617,12 +674,8 @@ export const useStreamWebRTC = (
             return;
           }
 
-          localStreamRef.current =
+          rawLocalStreamRef.current =
             acquiredStream;
-
-          setLocalStream(
-            acquiredStream
-          );
 
           const videoTracks =
             acquiredStream.getVideoTracks();
@@ -656,9 +709,199 @@ export const useStreamWebRTC = (
             }
           );
 
+          /*
+           * ----------------------------------------------------
+           * LIVE AI VOICE ENGINE
+           * ----------------------------------------------------
+           *
+           * Raw stream:
+           *
+           *     Camera video
+           *     Microphone audio
+           *
+           * becomes:
+           *
+           *     Original camera video
+           *     Processed microphone audio
+           *
+           * WebRTC will use the processed stream below.
+           */
+
+          finalLocalStream =
+            acquiredStream;
+
+          try {
+            if (
+              liveVoiceEngine &&
+              typeof liveVoiceEngine.initialize ===
+                'function'
+            ) {
+              console.log(
+                '🎙️ [WebRTC] Initializing LiveVoiceEngine...'
+              );
+
+              const processedStream =
+                await liveVoiceEngine.initialize(
+                  acquiredStream
+                );
+
+              if (
+                processedStream &&
+                typeof processedStream.getAudioTracks ===
+                  'function' &&
+                processedStream.getAudioTracks().length > 0
+              ) {
+                processedVoiceStreamRef.current =
+                  processedStream;
+
+                finalLocalStream =
+                  processedStream;
+
+                console.log(
+                  '✅ [WebRTC] AI voice processing is active.'
+                );
+
+                console.log(
+                  '🎙️ [WebRTC] Processed audio tracks:',
+                  processedStream.getAudioTracks().length
+                );
+
+                /*
+                 * Restore the voice preset selected previously
+                 * for this stream.
+                 */
+                try {
+                  const savedPreset =
+                    localStorage.getItem(
+                      `mpade_voice_fx_${streamId}`
+                    ) || 'studio';
+
+                  liveVoiceEngine.setPreset(
+                    savedPreset
+                  );
+
+                  console.log(
+                    '🎛️ [WebRTC] Restored voice preset:',
+                    savedPreset
+                  );
+                } catch (presetError) {
+                  console.warn(
+                    '⚠️ [WebRTC] Could not restore voice preset:',
+                    presetError?.message ||
+                      presetError
+                  );
+                }
+              } else {
+                console.warn(
+                  '⚠️ [WebRTC] Voice engine returned no processed audio. Using raw microphone.'
+                );
+
+                liveVoiceEngine.destroy();
+
+                processedVoiceStreamRef.current =
+                  null;
+
+                finalLocalStream =
+                  acquiredStream;
+              }
+            } else {
+              console.warn(
+                '⚠️ [WebRTC] LiveVoiceEngine.initialize() is unavailable. Using raw microphone.'
+              );
+            }
+          } catch (voiceError) {
+            /*
+             * Voice processing must NEVER prevent the camera
+             * and microphone from working.
+             */
+            console.warn(
+              '⚠️ [WebRTC] Voice engine initialization failed. Falling back to raw microphone:',
+              voiceError?.message ||
+                voiceError
+            );
+
+            try {
+              liveVoiceEngine.destroy();
+            } catch {
+              // Ignore engine cleanup errors.
+            }
+
+            processedVoiceStreamRef.current =
+              null;
+
+            finalLocalStream =
+              acquiredStream;
+          }
+
+          /*
+           * ----------------------------------------------------
+           * FINAL LOCAL STREAM
+           * ----------------------------------------------------
+           */
+
+          if (
+            !isCurrentInitialization()
+          ) {
+            console.warn(
+              '🧹 [WebRTC] Ignoring stale initialized media stream.'
+            );
+
+            try {
+              liveVoiceEngine.destroy();
+            } catch {
+              // Ignore cleanup errors.
+            }
+
+            stopStream(
+              acquiredStream
+            );
+
+            acquiredStream = null;
+
+            return;
+          }
+
           attachLocalStream(
-            acquiredStream
+            finalLocalStream
           );
+
+          /*
+           * Apply initial mute/camera state.
+           */
+          finalLocalStream
+            .getAudioTracks()
+            .forEach(track => {
+              track.enabled =
+                !isMuted;
+            });
+
+          finalLocalStream
+            .getVideoTracks()
+            .forEach(track => {
+              track.enabled =
+                !isCameraOff;
+            });
+
+          /*
+           * Keep the voice engine's output track synchronized
+           * with the initial microphone mute state.
+           */
+          try {
+            if (
+              typeof liveVoiceEngine.setMuted ===
+              'function'
+            ) {
+              liveVoiceEngine.setMuted(
+                isMuted
+              );
+            }
+          } catch (error) {
+            console.warn(
+              '⚠️ [WebRTC] Initial voice mute synchronization failed:',
+              error?.message ||
+                error
+            );
+          }
 
           setHardwareReady(true);
 
@@ -666,49 +909,20 @@ export const useStreamWebRTC = (
             '✅ [WebRTC] Camera and microphone successfully opened.'
           );
 
-          startLocalVideoRetry();
-
-          /*
-           * Voice engine must never block camera startup.
-           */
-          try {
-            if (
-              liveVoiceEngine &&
-              typeof liveVoiceEngine.init ===
-                'function'
-            ) {
-              const engineResult =
-                liveVoiceEngine.init(
-                  acquiredStream
-                );
-
-              if (
-                engineResult &&
-                typeof engineResult.catch ===
-                  'function'
-              ) {
-                engineResult.catch(
-                  error => {
-                    console.warn(
-                      '⚠️ [WebRTC] Voice engine initialization failed:',
-                      error?.message ||
-                        error
-                    );
-                  }
-                );
-              }
-
-              console.log(
-                '🎙️ [WebRTC] Voice engine initialized independently.'
-              );
+          console.log(
+            '🎙️ [WebRTC] WebRTC local stream:',
+            {
+              videoTracks:
+                finalLocalStream.getVideoTracks().length,
+              audioTracks:
+                finalLocalStream.getAudioTracks().length,
+              voiceProcessing:
+                finalLocalStream !==
+                acquiredStream
             }
-          } catch (error) {
-            console.warn(
-              '⚠️ [WebRTC] Voice engine skipped:',
-              error?.message ||
-                error
-            );
-          }
+          );
+
+          startLocalVideoRetry();
         } catch (error) {
           if (
             !isCurrentInitialization()
@@ -772,6 +986,12 @@ export const useStreamWebRTC = (
           localStreamRef.current =
             null;
 
+          rawLocalStreamRef.current =
+            null;
+
+          processedVoiceStreamRef.current =
+            null;
+
           mediaInitRef.current =
             false;
         }
@@ -797,8 +1017,11 @@ export const useStreamWebRTC = (
         false;
 
       /*
-       * Clear delayed peer cleanup timers.
+       * --------------------------------------------------------
+       * PEER CLEANUP
+       * --------------------------------------------------------
        */
+
       Object.keys(
         peerCleanupTimersRef.current
       ).forEach(peerId => {
@@ -807,9 +1030,6 @@ export const useStreamWebRTC = (
         );
       });
 
-      /*
-       * Close peer connections.
-       */
       Object.entries(
         peerConnectionsRef.current
       ).forEach(
@@ -846,21 +1066,66 @@ export const useStreamWebRTC = (
 
       incomingOfferProcessingRef.current.clear();
 
-      if (acquiredStream) {
-        stopStream(
-          acquiredStream
+      /*
+       * --------------------------------------------------------
+       * AI VOICE ENGINE CLEANUP
+       * --------------------------------------------------------
+       */
+
+      try {
+        if (
+          liveVoiceEngine &&
+          typeof liveVoiceEngine.destroy ===
+            'function'
+        ) {
+          liveVoiceEngine.destroy();
+
+          console.log(
+            '🧹 [WebRTC] LiveVoiceEngine destroyed.'
+          );
+        }
+      } catch (error) {
+        console.warn(
+          '⚠️ [WebRTC] Voice engine cleanup failed:',
+          error?.message ||
+            error
         );
       }
 
-      if (
-        localStreamRef.current ===
-        acquiredStream
-      ) {
-        localStreamRef.current =
-          null;
+      /*
+       * --------------------------------------------------------
+       * RAW CAMERA/MIC CLEANUP
+       * --------------------------------------------------------
+       *
+       * Always stop the raw hardware stream.
+       */
 
-        setLocalStream(null);
+      const rawStream =
+        rawLocalStreamRef.current ||
+        acquiredStream;
+
+      if (rawStream) {
+        stopStream(
+          rawStream
+        );
       }
+
+      rawLocalStreamRef.current =
+        null;
+
+      processedVoiceStreamRef.current =
+        null;
+
+      localStreamRef.current =
+        null;
+
+      setLocalStream(null);
+
+      /*
+       * --------------------------------------------------------
+       * LOCAL VIDEO CLEANUP
+       * --------------------------------------------------------
+       */
 
       const localVideo =
         localVideoRef.current;
@@ -871,12 +1136,22 @@ export const useStreamWebRTC = (
 
         if (
           localVideo.srcObject ===
-          acquiredStream
+            finalLocalStream ||
+          localVideo.srcObject ===
+            acquiredStream ||
+          localVideo.srcObject ===
+            localStreamRef.current
         ) {
           localVideo.srcObject =
             null;
         }
       }
+
+      /*
+       * --------------------------------------------------------
+       * REMOTE VIDEO CLEANUP
+       * --------------------------------------------------------
+       */
 
       const remoteVideo =
         challengerVideoRef?.current;
@@ -884,6 +1159,7 @@ export const useStreamWebRTC = (
       if (remoteVideo) {
         remoteVideo.onloadedmetadata =
           null;
+
         remoteVideo.srcObject = null;
       }
 
@@ -892,6 +1168,7 @@ export const useStreamWebRTC = (
         generation
       ) {
         setHardwareReady(false);
+
         setPrimaryRemoteStream(
           null
         );
@@ -904,7 +1181,9 @@ export const useStreamWebRTC = (
     bindLocalStreamToDOM,
     startLocalVideoRetry,
     stopLocalVideoRetry,
-    clearPeerCleanupTimer
+    clearPeerCleanupTimer,
+    isMuted,
+    isCameraOff
   ]);
 
   /*
@@ -950,6 +1229,12 @@ export const useStreamWebRTC = (
       return;
     }
 
+    /*
+     * Audio:
+     *
+     * If LiveVoiceEngine is active, its output audio track
+     * is the track being sent through WebRTC.
+     */
     stream
       .getAudioTracks()
       .forEach(track => {
@@ -957,6 +1242,30 @@ export const useStreamWebRTC = (
           !isMuted;
       });
 
+    /*
+     * Keep the engine's mute state synchronized too.
+     */
+    try {
+      if (
+        liveVoiceEngine &&
+        typeof liveVoiceEngine.setMuted ===
+          'function'
+      ) {
+        liveVoiceEngine.setMuted(
+          isMuted
+        );
+      }
+    } catch (error) {
+      console.warn(
+        '⚠️ [WebRTC] Voice engine mute update failed:',
+        error?.message ||
+          error
+      );
+    }
+
+    /*
+     * Camera remains the original camera track.
+     */
     stream
       .getVideoTracks()
       .forEach(track => {
@@ -1102,9 +1411,6 @@ export const useStreamWebRTC = (
           const iceState =
             pc.iceConnectionState;
 
-          /*
-           * Give WebRTC a chance to recover.
-           */
           if (
             state ===
               'connected' ||
@@ -1244,10 +1550,6 @@ export const useStreamWebRTC = (
           const state =
             existing.connectionState;
 
-          /*
-           * Reuse healthy or still-negotiating
-           * connections.
-           */
           if (
             state === 'new' ||
             state === 'connecting' ||
@@ -1260,10 +1562,6 @@ export const useStreamWebRTC = (
             return existing;
           }
 
-          /*
-           * A failed/closed peer should not be
-           * reused.
-           */
           removePeerConnection(
             targetSocketId,
             existing
@@ -1287,8 +1585,20 @@ export const useStreamWebRTC = (
           ] || [];
 
         /*
-         * Add local tracks.
+         * --------------------------------------------------------
+         * LOCAL TRACKS
+         * --------------------------------------------------------
+         *
+         * IMPORTANT:
+         *
+         * localStreamRef.current is now normally:
+         *
+         *   processed camera + processed microphone
+         *
+         * Therefore WebRTC automatically sends the AI voice
+         * effect to viewers.
          */
+
         const stream =
           localStreamRef.current;
 
@@ -1300,6 +1610,13 @@ export const useStreamWebRTC = (
                 pc.addTrack(
                   track,
                   stream
+                );
+
+                console.log(
+                  '📡 [WebRTC] Added local ' +
+                    track.kind +
+                    ' track to peer ' +
+                    targetSocketId
                 );
               } catch (error) {
                 console.warn(
@@ -1314,8 +1631,11 @@ export const useStreamWebRTC = (
         }
 
         /*
-         * Remote tracks.
+         * --------------------------------------------------------
+         * REMOTE TRACKS
+         * --------------------------------------------------------
          */
+
         pc.ontrack = event => {
           console.log(
             '🎥 [WebRTC] Remote ' +
@@ -1335,8 +1655,11 @@ export const useStreamWebRTC = (
         };
 
         /*
-         * ICE candidates.
+         * --------------------------------------------------------
+         * ICE CANDIDATES
+         * --------------------------------------------------------
          */
+
         pc.onicecandidate =
           event => {
             if (
@@ -1365,8 +1688,11 @@ export const useStreamWebRTC = (
           };
 
         /*
-         * Connection state.
+         * --------------------------------------------------------
+         * CONNECTION STATE
+         * --------------------------------------------------------
          */
+
         pc.onconnectionstatechange =
           () => {
             const state =
@@ -1418,12 +1744,6 @@ export const useStreamWebRTC = (
                   ' temporarily disconnected.'
               );
 
-              /*
-               * DO NOT immediately close it.
-               *
-               * Browser WebRTC connections can move through
-               * disconnected briefly during network changes.
-               */
               schedulePeerCleanup(
                 targetSocketId,
                 pc
@@ -1443,8 +1763,11 @@ export const useStreamWebRTC = (
           };
 
         /*
-         * ICE state.
+         * --------------------------------------------------------
+         * ICE CONNECTION STATE
+         * --------------------------------------------------------
          */
+
         pc.oniceconnectionstatechange =
           () => {
             const state =
@@ -1490,12 +1813,6 @@ export const useStreamWebRTC = (
                   targetSocketId
               );
 
-              /*
-               * Ask the browser to prepare a new ICE
-               * generation. We do not immediately destroy
-               * the peer because the connection-state handler
-               * has a recovery grace period.
-               */
               try {
                 if (
                   typeof pc.restartIce ===
@@ -1555,7 +1872,7 @@ export const useStreamWebRTC = (
 
     /*
      * ----------------------------------------------------------
-     * Viewer requesting stream
+     * VIEWER REQUESTING STREAM
      * ----------------------------------------------------------
      */
 
@@ -1574,10 +1891,6 @@ export const useStreamWebRTC = (
           return;
         }
 
-        /*
-         * Prevent duplicate viewer requests from causing
-         * multiple simultaneous createOffer() operations.
-         */
         if (
           negotiatingPeersRef.current.has(
             viewerId
@@ -1692,7 +2005,7 @@ export const useStreamWebRTC = (
 
     /*
      * ----------------------------------------------------------
-     * Incoming offer
+     * INCOMING OFFER
      * ----------------------------------------------------------
      */
 
@@ -1718,10 +2031,6 @@ export const useStreamWebRTC = (
           return;
         }
 
-        /*
-         * Prevent the same offer from being handled twice
-         * when both backend event names are received.
-         */
         if (
           incomingOfferProcessingRef.current.has(
             senderId
@@ -1745,9 +2054,6 @@ export const useStreamWebRTC = (
               senderId
             ];
 
-          /*
-           * If an old connection is unusable, remove it first.
-           */
           if (
             pc &&
             (
@@ -1776,10 +2082,6 @@ export const useStreamWebRTC = (
             return;
           }
 
-          /*
-           * Ignore duplicate offers that arrive after the
-           * current remote description has already been set.
-           */
           if (
             pc.currentRemoteDescription
           ) {
@@ -1841,11 +2143,6 @@ export const useStreamWebRTC = (
               error
           );
         } finally {
-          /*
-           * Release the lock after the asynchronous operation
-           * finishes. A future legitimate offer can then be
-           * processed.
-           */
           incomingOfferProcessingRef.current.delete(
             senderId
           );
@@ -1854,7 +2151,7 @@ export const useStreamWebRTC = (
 
     /*
      * ----------------------------------------------------------
-     * Answer
+     * ANSWER
      * ----------------------------------------------------------
      */
 
@@ -1931,7 +2228,7 @@ export const useStreamWebRTC = (
 
     /*
      * ----------------------------------------------------------
-     * Incoming ICE candidate
+     * INCOMING ICE
      * ----------------------------------------------------------
      */
 
@@ -1961,10 +2258,6 @@ export const useStreamWebRTC = (
             senderId
           ];
 
-        /*
-         * ICE can arrive before the offer.
-         * Queue it until remoteDescription exists.
-         */
         if (
           !pc ||
           !pc.remoteDescription
@@ -2000,7 +2293,7 @@ export const useStreamWebRTC = (
 
     /*
      * ----------------------------------------------------------
-     * Socket listeners
+     * SOCKET LISTENERS
      * ----------------------------------------------------------
      */
 
@@ -2029,12 +2322,6 @@ export const useStreamWebRTC = (
       handleIncomingIceCandidate
     );
 
-    /*
-     * Helpful connection logging.
-     *
-     * We intentionally do NOT destroy WebRTC peers merely
-     * because Socket.IO temporarily disconnects.
-     */
     const handleSocketConnect =
       () => {
         console.log(
@@ -2140,9 +2427,6 @@ export const useStreamWebRTC = (
     video.autoplay = true;
     video.playsInline = true;
 
-    /*
-     * Only start playback when necessary.
-     */
     if (
       streamChanged ||
       video.paused
@@ -2178,4 +2462,3 @@ export const useStreamWebRTC = (
     localStream
   };
 };
-```
