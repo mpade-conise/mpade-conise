@@ -43,24 +43,29 @@ const VideoPlayer = ({
 
   const localStreamRef = useRef(null);
 
-  // Host: one PeerConnection per viewer
+  // Host: viewerSocketId -> RTCPeerConnection
   const peerConnectionsRef = useRef({});
 
-  // Viewer: one PeerConnection to host
+  // Viewer: one RTCPeerConnection to host
   const singleViewerPcRef = useRef(null);
 
   // ICE candidates waiting for remoteDescription
   const iceCandidatesQueueRef = useRef({});
 
-  // Viewer needs the host socket ID for ICE
+  // Viewer needs host socket ID for ICE
   const hostSocketIdRef = useRef(null);
 
-  // Prevent duplicate negotiations
+  // Prevent duplicate host negotiations
   const negotiatingViewersRef = useRef(new Set());
+
+  // Viewer offer state
   const viewerOfferHandledRef = useRef(false);
 
-  // Prevent repeated initialization/cleanup races
-  const isCleaningUpRef = useRef(false);
+  // Component lifecycle
+  const mountedRef = useRef(false);
+
+  // Prevent multiple viewer peer recreations at once
+  const creatingViewerPeerRef = useRef(false);
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] =
@@ -89,7 +94,8 @@ const VideoPlayer = ({
       .split('/')
       .filter(Boolean);
 
-    const lastSegment = pathSegments[pathSegments.length - 1];
+    const lastSegment =
+      pathSegments[pathSegments.length - 1];
 
     if (lastSegment && lastSegment.length > 20) {
       return lastSegment;
@@ -103,20 +109,17 @@ const VideoPlayer = ({
   /*
    * ------------------------------------------------------------
    * HOST DETECTION
+   *
+   * IMPORTANT:
+   *
+   * The parent component explicitly tells us whether this
+   * VideoPlayer is a host or viewer.
+   *
+   * Do NOT infer this from the URL.
    * ------------------------------------------------------------
    */
 
-  const currentPath =
-    typeof window !== 'undefined'
-      ? window.location.pathname.toLowerCase()
-      : '';
-
-  const isHost =
-    initialIsHost ||
-    currentPath.includes('dashboard') ||
-    currentPath.includes('/live/gaming') ||
-    currentPath.includes('/live/guest') ||
-    currentPath.includes('/create/live');
+  const isHost = Boolean(initialIsHost);
 
   /*
    * ------------------------------------------------------------
@@ -132,11 +135,10 @@ const VideoPlayer = ({
     try {
       await video.play();
     } catch (error) {
-      /*
-       * Browser autoplay policies can reject play().
-       * This is not necessarily a WebRTC failure.
-       */
-      console.debug('Video autoplay pending:', error?.message || error);
+      console.debug(
+        'Video autoplay pending:',
+        error?.message || error
+      );
     }
   };
 
@@ -146,8 +148,9 @@ const VideoPlayer = ({
    * ------------------------------------------------------------
    */
 
-  const closeHostPeer = (viewerId) => {
-    const pc = peerConnectionsRef.current[viewerId];
+  const closeHostPeer = viewerId => {
+    const pc =
+      peerConnectionsRef.current[viewerId];
 
     if (pc) {
       try {
@@ -156,30 +159,40 @@ const VideoPlayer = ({
         pc.oniceconnectionstatechange = null;
         pc.close();
       } catch (error) {
-        console.debug('Error closing host peer:', error);
+        console.debug(
+          'Error closing host peer:',
+          error
+        );
       }
     }
 
     delete peerConnectionsRef.current[viewerId];
     delete iceCandidatesQueueRef.current[viewerId];
 
-    negotiatingViewersRef.current.delete(viewerId);
+    negotiatingViewersRef.current.delete(
+      viewerId
+    );
   };
 
   /*
    * ------------------------------------------------------------
-   * ADD QUEUED ICE CANDIDATES
+   * FLUSH QUEUED ICE
    * ------------------------------------------------------------
    */
 
-  const flushIceCandidates = async (pc, queueKey) => {
-    const queue = iceCandidatesQueueRef.current[queueKey];
+  const flushIceCandidates = async (
+    pc,
+    queueKey
+  ) => {
+    const queue =
+      iceCandidatesQueueRef.current[queueKey];
 
-    if (!pc || !queue || !queue.length) {
-      return;
-    }
-
-    if (!pc.remoteDescription) {
+    if (
+      !pc ||
+      !queue ||
+      queue.length === 0 ||
+      !pc.remoteDescription
+    ) {
       return;
     }
 
@@ -189,11 +202,82 @@ const VideoPlayer = ({
 
     for (const candidate of candidates) {
       try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        await pc.addIceCandidate(
+          new RTCIceCandidate(candidate)
+        );
       } catch (error) {
-        console.debug('Failed to add queued ICE candidate:', error);
+        console.debug(
+          'Failed to add queued ICE candidate:',
+          error
+        );
       }
     }
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * CLOSE VIEWER PEER
+   * ------------------------------------------------------------
+   */
+
+  const closeViewerPeer = () => {
+    const pc =
+      singleViewerPcRef.current;
+
+    if (pc) {
+      try {
+        pc.ontrack = null;
+        pc.onicecandidate = null;
+        pc.oniceconnectionstatechange = null;
+        pc.onconnectionstatechange = null;
+        pc.close();
+      } catch (error) {
+        console.debug(
+          'Error closing viewer peer:',
+          error
+        );
+      }
+    }
+
+    singleViewerPcRef.current = null;
+
+    delete iceCandidatesQueueRef.current.host_queue;
+
+    viewerOfferHandledRef.current = false;
+    creatingViewerPeerRef.current = false;
+    hostSocketIdRef.current = null;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * CREATE VIEWER PEER
+   * ------------------------------------------------------------
+   */
+
+  const createViewerPeer = () => {
+    if (
+      singleViewerPcRef.current &&
+      singleViewerPcRef.current.connectionState !==
+        'closed' &&
+      singleViewerPcRef.current.connectionState !==
+        'failed'
+    ) {
+      return singleViewerPcRef.current;
+    }
+
+    const pc = new RTCPeerConnection(
+      GLOBAL_ICE_CONFIG
+    );
+
+    singleViewerPcRef.current = pc;
+
+    iceCandidatesQueueRef.current.host_queue = [];
+
+    return pc;
   };
 
   /*
@@ -209,50 +293,103 @@ const VideoPlayer = ({
       typeof streamId !== 'string' ||
       streamId.length < 10
     ) {
-      setConnectionStatus('Awaiting Stream Setup...');
+      setConnectionStatus(
+        'Awaiting Stream Setup...'
+      );
+
       return undefined;
     }
 
-    let isComponentMounted = true;
+    mountedRef.current = true;
 
-    isCleaningUpRef.current = false;
+    let isComponentMounted = true;
 
     const globalIo =
       io ||
-      (typeof window !== 'undefined' ? window.io : null);
+      (typeof window !== 'undefined'
+        ? window.io
+        : null);
 
     if (!globalIo) {
-      console.error('❌ Socket.io client initialization failed.');
-      setConnectionStatus('Engine Missing');
+      console.error(
+        '❌ Socket.io client initialization failed.'
+      );
+
+      setConnectionStatus(
+        'Engine Missing'
+      );
+
       return undefined;
     }
 
     /*
      * ----------------------------------------------------------
-     * SOCKET CREATION
+     * SOCKET
      * ----------------------------------------------------------
      */
 
-    const socket = globalIo(SOCKET_SERVER_URL, {
-      transports: ['websocket', 'polling'],
+    const socket = globalIo(
+      SOCKET_SERVER_URL,
+      {
+        transports: [
+          'websocket',
+          'polling',
+        ],
 
-      query: {
-        room: streamId,
-        role: isHost ? 'host' : 'viewer',
-        streamType,
-      },
+        query: {
+          room: streamId,
+          role: isHost
+            ? 'host'
+            : 'viewer',
+          streamType,
+        },
 
-      forceNew: true,
+        forceNew: true,
 
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
 
-      timeout: 20000,
-    });
+        timeout: 20000,
+
+        autoConnect: true,
+      }
+    );
 
     socketRef.current = socket;
+
+    /*
+     * ----------------------------------------------------------
+     * REQUEST HOST STREAM
+     * ----------------------------------------------------------
+     */
+
+    const requestHostStream = () => {
+      if (
+        isHost ||
+        !isComponentMounted ||
+        !socket.connected
+      ) {
+        return;
+      }
+
+      console.log(
+        '📡 Requesting host media stream...'
+      );
+
+      setConnectionStatus(
+        'Negotiating Media Stream...'
+      );
+
+      socket.emit(
+        'request_host_stream',
+        {
+          streamId,
+          streamType,
+        }
+      );
+    };
 
     /*
      * ----------------------------------------------------------
@@ -268,27 +405,48 @@ const VideoPlayer = ({
         socket.id
       );
 
-      setConnectionStatus(
-        isHost
-          ? 'Streaming Live'
-          : 'Negotiating Media Stream...'
-      );
-
       if (isHost) {
         setIsConnected(true);
-      } else {
-        /*
-         * Ask the host for the stream after the socket
-         * is definitely connected.
-         */
-        socket.emit('request_host_stream', {
-          streamId,
-          streamType,
-        });
+        setConnectionStatus(
+          'Streaming Live'
+        );
+        return;
       }
+
+      /*
+       * A reconnect means the old signaling state
+       * may no longer be valid.
+       */
+      viewerOfferHandledRef.current = false;
+
+      hostSocketIdRef.current = null;
+
+      /*
+       * Recreate viewer peer if the previous one
+       * belonged to a dead signaling session.
+       */
+      const existingPc =
+        singleViewerPcRef.current;
+
+      if (
+        existingPc &&
+        (
+          existingPc.connectionState ===
+            'failed' ||
+          existingPc.connectionState ===
+            'closed'
+        )
+      ) {
+        closeViewerPeer();
+      }
+
+      requestHostStream();
     };
 
-    socket.on('connect', handleSocketConnect);
+    socket.on(
+      'connect',
+      handleSocketConnect
+    );
 
     /*
      * ----------------------------------------------------------
@@ -296,29 +454,46 @@ const VideoPlayer = ({
      * ----------------------------------------------------------
      */
 
-    const handleSocketDisconnect = (reason) => {
+    const handleSocketDisconnect = reason => {
       if (!isComponentMounted) return;
 
-      console.warn('🟠 Socket disconnected:', reason);
+      console.warn(
+        '🟠 Socket disconnected:',
+        reason
+      );
 
-      /*
-       * Do not immediately destroy the WebRTC UI.
-       * Socket.IO may reconnect automatically.
-       */
       if (!isHost) {
-        setConnectionStatus('Reconnecting...');
+        setIsConnected(false);
+
+        setConnectionStatus(
+          'Reconnecting...'
+        );
+
+        /*
+         * The WebRTC connection can no longer be
+         * reliably signaled through this socket.
+         *
+         * Keep the video element alive for now,
+         * but reset negotiation state.
+         */
+        viewerOfferHandledRef.current = false;
+
+        hostSocketIdRef.current = null;
       }
     };
 
-    socket.on('disconnect', handleSocketDisconnect);
+    socket.on(
+      'disconnect',
+      handleSocketDisconnect
+    );
 
     /*
      * ----------------------------------------------------------
-     * SOCKET CONNECT ERROR
+     * SOCKET ERROR
      * ----------------------------------------------------------
      */
 
-    socket.on('connect_error', (error) => {
+    const handleSocketError = error => {
       if (!isComponentMounted) return;
 
       console.error(
@@ -327,9 +502,16 @@ const VideoPlayer = ({
       );
 
       if (!isHost) {
-        setConnectionStatus('Connecting to Live Stream...');
+        setConnectionStatus(
+          'Connecting to Live Stream...'
+        );
       }
-    });
+    };
+
+    socket.on(
+      'connect_error',
+      handleSocketError
+    );
 
     /*
      * ==========================================================
@@ -340,122 +522,138 @@ const VideoPlayer = ({
     const initializeHost = async () => {
       let stream = customStream;
 
-      try {
-        /*
-         * IMPORTANT:
-         *
-         * Register the viewer listener BEFORE requesting media.
-         *
-         * This prevents a viewer request from being missed while
-         * the browser permission dialog is open.
-         */
+      /*
+       * --------------------------------------------------------
+       * VIEWER REQUEST
+       * --------------------------------------------------------
+       */
 
-        socket.on(
-          'viewer_requesting_stream',
-          async (payload = {}) => {
-            if (!isComponentMounted) return;
+      socket.on(
+        'viewer_requesting_stream',
+        async payload => {
+          if (!isComponentMounted) return;
 
-            const viewerId = payload.viewerSocketId;
+          const viewerId =
+            payload?.viewerSocketId;
 
-            if (!viewerId) {
-              console.warn(
-                '⚠️ Viewer request received without viewerSocketId.'
-              );
-              return;
-            }
-
-            /*
-             * We need an active media stream before creating
-             * the WebRTC peer.
-             */
-            if (!localStreamRef.current && !stream) {
-              console.warn(
-                '⚠️ Viewer requested stream before host media was ready.'
-              );
-
-              /*
-               * Put a small retry in place rather than losing
-               * the viewer request.
-               */
-              setTimeout(() => {
-                if (
-                  isComponentMounted &&
-                  socket.connected
-                ) {
-                  socket.emit('request_host_stream_ready', {
-                    streamId,
-                    targetViewerId: viewerId,
-                  });
-                }
-              }, 500);
-
-              return;
-            }
-
-            const activeStream =
-              localStreamRef.current || stream;
-
-            if (!activeStream) {
-              return;
-            }
-
-            console.log(
-              `📥 Viewer [${viewerId}] requested stream.`
+          if (!viewerId) {
+            console.warn(
+              '⚠️ Viewer request received without viewerSocketId.'
             );
 
-            /*
-             * If this viewer already has a working peer,
-             * don't create another one unnecessarily.
-             */
-            const existingPc =
-              peerConnectionsRef.current[viewerId];
+            return;
+          }
 
-            if (
-              existingPc &&
-              existingPc.connectionState !== 'closed' &&
-              existingPc.connectionState !== 'failed'
-            ) {
-              console.log(
-                `ℹ️ Viewer [${viewerId}] already has an active peer.`
-              );
-              return;
-            }
+          /*
+           * Wait for host media if necessary.
+           */
 
-            /*
-             * Close stale connection first.
-             */
-            if (existingPc) {
-              closeHostPeer(viewerId);
-            }
+          if (
+            !localStreamRef.current &&
+            !stream
+          ) {
+            console.warn(
+              '⚠️ Viewer requested stream before host media was ready.'
+            );
 
-            if (
-              negotiatingViewersRef.current.has(viewerId)
-            ) {
-              console.log(
-                `ℹ️ Viewer [${viewerId}] negotiation already running.`
-              );
-              return;
-            }
+            setTimeout(() => {
+              if (
+                isComponentMounted &&
+                socket.connected
+              ) {
+                socket.emit(
+                  'request_host_stream_ready',
+                  {
+                    streamId,
+                    targetViewerId:
+                      viewerId,
+                  }
+                );
+              }
+            }, 500);
 
-            negotiatingViewersRef.current.add(viewerId);
+            return;
+          }
 
-            const pc = new RTCPeerConnection(
+          const activeStream =
+            localStreamRef.current ||
+            stream;
+
+          if (!activeStream) return;
+
+          console.log(
+            '📥 Viewer requested stream:',
+            viewerId
+          );
+
+          const existingPc =
+            peerConnectionsRef.current[
+              viewerId
+            ];
+
+          if (
+            existingPc &&
+            existingPc.connectionState !==
+              'closed' &&
+            existingPc.connectionState !==
+              'failed'
+          ) {
+            console.log(
+              'ℹ️ Viewer already has an active peer:',
+              viewerId
+            );
+
+            return;
+          }
+
+          if (existingPc) {
+            closeHostPeer(viewerId);
+          }
+
+          if (
+            negotiatingViewersRef.current.has(
+              viewerId
+            )
+          ) {
+            console.log(
+              'ℹ️ Viewer negotiation already running:',
+              viewerId
+            );
+
+            return;
+          }
+
+          negotiatingViewersRef.current.add(
+            viewerId
+          );
+
+          const pc =
+            new RTCPeerConnection(
               GLOBAL_ICE_CONFIG
             );
 
-            peerConnectionsRef.current[viewerId] = pc;
+          peerConnectionsRef.current[
+            viewerId
+          ] = pc;
 
-            iceCandidatesQueueRef.current[viewerId] = [];
+          iceCandidatesQueueRef.current[
+            viewerId
+          ] = [];
 
-            /*
-             * --------------------------------------------------
-             * HOST -> VIEWER TRACKS
-             * --------------------------------------------------
-             */
+          /*
+           * ----------------------------------------------------
+           * ADD HOST TRACKS
+           * ----------------------------------------------------
+           */
 
-            activeStream.getTracks().forEach((track) => {
+          activeStream
+            .getTracks()
+            .forEach(track => {
               try {
-                pc.addTrack(track, activeStream);
+                pc.addTrack(
+                  track,
+                  activeStream
+                );
               } catch (error) {
                 console.error(
                   '❌ Failed to add host track:',
@@ -464,624 +662,165 @@ const VideoPlayer = ({
               }
             });
 
-            /*
-             * --------------------------------------------------
-             * HOST ICE
-             * --------------------------------------------------
-             */
+          /*
+           * ----------------------------------------------------
+           * HOST ICE
+           * ----------------------------------------------------
+           */
 
-            pc.onicecandidate = (event) => {
-              if (
-                !event.candidate ||
-                !socketRef.current?.connected
-              ) {
-                return;
+          pc.onicecandidate = event => {
+            if (
+              !event.candidate ||
+              !socket.connected
+            ) {
+              return;
+            }
+
+            socket.emit(
+              'webrtc_ice_candidate',
+              {
+                streamId,
+                candidate:
+                  event.candidate,
+                targetSocketId:
+                  viewerId,
+                senderType: 'host',
               }
+            );
+          };
 
-              socketRef.current.emit(
-                'webrtc_ice_candidate',
-                {
-                  streamId,
-                  candidate: event.candidate,
-                  targetSocketId: viewerId,
-                  senderType: 'host',
-                }
-              );
-            };
+          /*
+           * ----------------------------------------------------
+           * HOST CONNECTION
+           * ----------------------------------------------------
+           */
 
-            /*
-             * --------------------------------------------------
-             * HOST CONNECTION STATE
-             * --------------------------------------------------
-             */
-
-            pc.onconnectionstatechange = () => {
-              if (!isComponentMounted) return;
+          pc.onconnectionstatechange =
+            () => {
+              if (!isComponentMounted)
+                return;
 
               console.log(
-                `🔗 Host -> Viewer [${viewerId}] connection:`,
+                '🔗 Host -> Viewer [' +
+                  viewerId +
+                  '] connection:',
                 pc.connectionState
               );
 
-              if (pc.connectionState === 'connected') {
+              if (
+                pc.connectionState ===
+                'connected'
+              ) {
                 console.log(
-                  `🟢 Viewer [${viewerId}] connected.`
+                  '🟢 Viewer connected:',
+                  viewerId
                 );
               }
 
               if (
-                pc.connectionState === 'failed' ||
-                pc.connectionState === 'closed'
+                pc.connectionState ===
+                  'failed' ||
+                pc.connectionState ===
+                  'closed'
               ) {
-                closeHostPeer(viewerId);
+                closeHostPeer(
+                  viewerId
+                );
               }
             };
 
-            pc.oniceconnectionstatechange = () => {
-              if (!isComponentMounted) return;
+          pc.oniceconnectionstatechange =
+            () => {
+              if (!isComponentMounted)
+                return;
 
               console.log(
-                `🧊 Host -> Viewer [${viewerId}] ICE:`,
+                '🧊 Host -> Viewer [' +
+                  viewerId +
+                  '] ICE:',
                 pc.iceConnectionState
               );
             };
 
-            /*
-             * --------------------------------------------------
-             * CREATE OFFER
-             * --------------------------------------------------
-             */
-
-            try {
-              const offer = await pc.createOffer();
-
-              if (!isComponentMounted) {
-                closeHostPeer(viewerId);
-                return;
-              }
-
-              await pc.setLocalDescription(offer);
-
-              if (!isComponentMounted) {
-                closeHostPeer(viewerId);
-                return;
-              }
-
-              socket.emit('send_webrtc_offer', {
-                streamId,
-                offer: pc.localDescription,
-                targetViewerId: viewerId,
-              });
-
-              console.log(
-                `📤 WebRTC offer sent to viewer [${viewerId}].`
-              );
-            } catch (error) {
-              console.error(
-                `❌ Failed to create offer for viewer [${viewerId}]:`,
-                error
-              );
-
-              closeHostPeer(viewerId);
-            } finally {
-              negotiatingViewersRef.current.delete(
-                viewerId
-              );
-            }
-          }
-        );
-
-        /*
-         * ------------------------------------------------------
-         * HOST ANSWER
-         * ------------------------------------------------------
-         */
-
-        socket.on(
-          'webrtc_answer_received',
-          async (payload = {}) => {
-            if (!isComponentMounted) return;
-
-            const viewerId =
-              payload.viewerSocketId;
-
-            if (!viewerId || !payload.answer) {
-              return;
-            }
-
-            const pc =
-              peerConnectionsRef.current[viewerId];
-
-            if (!pc) {
-              console.warn(
-                `⚠️ No peer connection found for viewer [${viewerId}].`
-              );
-              return;
-            }
-
-            try {
-              /*
-               * Ignore duplicate answers.
-               */
-              if (pc.remoteDescription) {
-                return;
-              }
-
-              await pc.setRemoteDescription(
-                new RTCSessionDescription(
-                  payload.answer
-                )
-              );
-
-              await flushIceCandidates(
-                pc,
-                viewerId
-              );
-
-              console.log(
-                `✅ Remote answer applied for viewer [${viewerId}].`
-              );
-            } catch (error) {
-              console.error(
-                `❌ Error setting remote answer for viewer [${viewerId}]:`,
-                error
-              );
-            }
-          }
-        );
-
-        /*
-         * ------------------------------------------------------
-         * GET HOST MEDIA
-         * ------------------------------------------------------
-         */
-
-        if (!stream) {
-          if (
-            typeof navigator === 'undefined' ||
-            !navigator.mediaDevices
-          ) {
-            throw new Error(
-              'Browser media devices are unavailable.'
-            );
-          }
-
-          if (streamType === 'gaming') {
-            console.log(
-              '🖥️ Requesting screen/game capture...'
-            );
-
-            stream =
-              await navigator.mediaDevices.getDisplayMedia(
-                {
-                  video: true,
-                  audio: true,
-                }
-              );
-          } else {
-            console.log(
-              '📹 Requesting camera and microphone...'
-            );
-
-            stream =
-              await navigator.mediaDevices.getUserMedia(
-                {
-                  video: true,
-                  audio: true,
-                }
-              );
-          }
-        }
-
-        if (!isComponentMounted) {
           /*
-           * Stop only streams created by this component.
+           * ----------------------------------------------------
+           * OFFER
+           * ----------------------------------------------------
            */
-          if (!customStream && stream) {
-            stream
-              .getTracks()
-              .forEach((track) => track.stop());
-          }
 
-          return;
-        }
+          try {
+            const offer =
+              await pc.createOffer();
 
-        /*
-         * Save the active host stream.
-         */
-        localStreamRef.current = stream;
-
-        /*
-         * Display local host preview.
-         */
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.muted = true;
-
-          await playVideo();
-        }
-
-        if (isComponentMounted) {
-          setIsConnected(true);
-          setConnectionStatus('Streaming Live');
-        }
-
-        console.log(
-          `🎥 Host media ready. Stream type: ${streamType}`
-        );
-
-        /*
-         * ------------------------------------------------------
-         * SCREEN SHARE ENDED
-         * ------------------------------------------------------
-         */
-
-        stream.getVideoTracks().forEach((track) => {
-          track.addEventListener(
-            'ended',
-            () => {
-              if (!isComponentMounted) return;
-
-              console.log(
-                '🛑 Host video track ended.'
+            if (!isComponentMounted) {
+              closeHostPeer(
+                viewerId
               );
+              return;
+            }
 
-              /*
-               * Do not automatically destroy the entire
-               * component. The parent can decide what to do.
-               */
-              if (streamType === 'gaming') {
-                setConnectionStatus(
-                  'Screen Sharing Ended'
-                );
+            await pc.setLocalDescription(
+              offer
+            );
+
+            if (!isComponentMounted) {
+              closeHostPeer(
+                viewerId
+              );
+              return;
+            }
+
+            socket.emit(
+              'send_webrtc_offer',
+              {
+                streamId,
+                offer:
+                  pc.localDescription,
+                targetViewerId:
+                  viewerId,
               }
-            },
-            { once: true }
-          );
-        });
-      } catch (error) {
-        console.error(
-          '💥 Host media initialization failed:',
-          error
-        );
+            );
 
-        if (!isComponentMounted) return;
+            console.log(
+              '📤 WebRTC offer sent to viewer:',
+              viewerId
+            );
+          } catch (error) {
+            console.error(
+              '❌ Failed to create offer for viewer:',
+              viewerId,
+              error
+            );
 
-        if (
-          error?.name === 'NotAllowedError' ||
-          error?.name === 'PermissionDeniedError'
-        ) {
-          setConnectionStatus('Media Permission Denied');
-        } else if (
-          error?.name === 'NotFoundError'
-        ) {
-          setConnectionStatus('Camera or Microphone Not Found');
-        } else if (
-          error?.name === 'NotReadableError'
-        ) {
-          setConnectionStatus('Camera or Microphone Busy');
-        } else {
-          setConnectionStatus('Media Initialization Failed');
+            closeHostPeer(
+              viewerId
+            );
+          } finally {
+            negotiatingViewersRef.current.delete(
+              viewerId
+            );
+          }
         }
-
-        setIsConnected(false);
-      }
-    };
-
-    /*
-     * ==========================================================
-     * VIEWER PIPELINE
-     * ==========================================================
-     */
-
-    const initializeViewer = () => {
-      const pc = new RTCPeerConnection(
-        GLOBAL_ICE_CONFIG
       );
 
-      singleViewerPcRef.current = pc;
-
-      iceCandidatesQueueRef.current.host_queue = [];
-
       /*
        * --------------------------------------------------------
-       * REMOTE MEDIA TRACK
-       * --------------------------------------------------------
-       */
-
-      pc.ontrack = async (event) => {
-        if (!isComponentMounted) return;
-
-        console.log(
-          '🎬 Media track received from host.'
-        );
-
-        let remoteStream = event.streams?.[0];
-
-        /*
-         * Some browsers may deliver a track without
-         * a populated event.streams array.
-         */
-        if (!remoteStream) {
-          remoteStream =
-            videoRef.current?.srcObject ||
-            new MediaStream();
-
-          remoteStream.addTrack(event.track);
-        }
-
-        if (videoRef.current) {
-          if (
-            videoRef.current.srcObject !==
-            remoteStream
-          ) {
-            videoRef.current.srcObject =
-              remoteStream;
-          }
-
-          videoRef.current.muted = false;
-
-          await playVideo();
-        }
-
-        setIsConnected(true);
-        setConnectionStatus('Live');
-      };
-
-      /*
-       * --------------------------------------------------------
-       * VIEWER ICE
-       * --------------------------------------------------------
-       */
-
-      pc.onicecandidate = (event) => {
-        if (
-          !event.candidate ||
-          !socketRef.current?.connected ||
-          !hostSocketIdRef.current
-        ) {
-          return;
-        }
-
-        socketRef.current.emit(
-          'webrtc_ice_candidate',
-          {
-            streamId,
-            candidate: event.candidate,
-            targetSocketId:
-              hostSocketIdRef.current,
-            senderType: 'viewer',
-          }
-        );
-      };
-
-      /*
-       * --------------------------------------------------------
-       * VIEWER ICE STATE
-       * --------------------------------------------------------
-       */
-
-      pc.oniceconnectionstatechange = () => {
-        if (!isComponentMounted) return;
-
-        const state = pc.iceConnectionState;
-
-        console.log(
-          '🧊 Viewer ICE state:',
-          state
-        );
-
-        if (
-          state === 'connected' ||
-          state === 'completed'
-        ) {
-          setIsConnected(true);
-          setConnectionStatus('Live');
-        }
-
-        if (state === 'checking') {
-          setConnectionStatus(
-            'Connecting to Live Stream...'
-          );
-        }
-
-        /*
-         * Do NOT immediately destroy the peer when it
-         * becomes disconnected. Mobile networks and
-         * Wi-Fi changes can temporarily produce this state.
-         */
-        if (state === 'disconnected') {
-          setConnectionStatus(
-            'Reconnecting to Live Stream...'
-          );
-        }
-
-        if (state === 'failed') {
-          setConnectionStatus(
-            'Connection Failed'
-          );
-        }
-      };
-
-      /*
-       * --------------------------------------------------------
-       * VIEWER CONNECTION STATE
-       * --------------------------------------------------------
-       */
-
-      pc.onconnectionstatechange = () => {
-        if (!isComponentMounted) return;
-
-        console.log(
-          '🔗 Viewer connection state:',
-          pc.connectionState
-        );
-
-        if (
-          pc.connectionState === 'connected'
-        ) {
-          setIsConnected(true);
-          setConnectionStatus('Live');
-        }
-
-        if (
-          pc.connectionState === 'connecting'
-        ) {
-          setConnectionStatus(
-            'Connecting to Live Stream...'
-          );
-        }
-
-        if (
-          pc.connectionState === 'disconnected'
-        ) {
-          /*
-           * Keep the peer alive.
-           */
-          setConnectionStatus(
-            'Reconnecting to Live Stream...'
-          );
-        }
-
-        if (
-          pc.connectionState === 'failed'
-        ) {
-          setIsConnected(false);
-          setConnectionStatus(
-            'Connection Failed'
-          );
-        }
-      };
-
-      /*
-       * --------------------------------------------------------
-       * WEBRTC OFFER
+       * ANSWER FROM VIEWER
        * --------------------------------------------------------
        */
 
       socket.on(
-        'webrtc_offer_received',
-        async (payload = {}) => {
-          if (!isComponentMounted) return;
-
-          if (!payload.offer) {
-            console.warn(
-              '⚠️ Received WebRTC offer without offer data.'
-            );
+        'webrtc_answer_received',
+        async payload => {
+          if (!isComponentMounted)
             return;
-          }
 
-          /*
-           * Prevent duplicate offer processing.
-           */
-          if (viewerOfferHandledRef.current) {
-            console.log(
-              'ℹ️ Duplicate WebRTC offer ignored.'
-            );
-            return;
-          }
-
-          /*
-           * If a remote description is already installed,
-           * this offer has already been processed.
-           */
-          if (pc.remoteDescription) {
-            return;
-          }
-
-          console.log(
-            '📥 Received WebRTC Offer from host.'
-          );
-
-          try {
-            /*
-             * Store host socket ID for ICE.
-             */
-            if (payload.hostSocketId) {
-              hostSocketIdRef.current =
-                payload.hostSocketId;
-            }
-
-            await pc.setRemoteDescription(
-              new RTCSessionDescription(
-                payload.offer
-              )
-            );
-
-            if (!isComponentMounted) return;
-
-            const answer =
-              await pc.createAnswer();
-
-            if (!isComponentMounted) return;
-
-            await pc.setLocalDescription(answer);
-
-            if (!isComponentMounted) return;
-
-            socket.emit(
-              'send_webrtc_answer',
-              {
-                streamId,
-                answer: pc.localDescription,
-              }
-            );
-
-            viewerOfferHandledRef.current = true;
-
-            /*
-             * Apply any ICE candidates that arrived
-             * before the offer.
-             */
-            await flushIceCandidates(
-              pc,
-              'host_queue'
-            );
-
-            console.log(
-              '📤 WebRTC answer sent to host.'
-            );
-          } catch (error) {
-            console.error(
-              '❌ Viewer WebRTC handshake failure:',
-              error
-            );
-
-            viewerOfferHandledRef.current =
-              false;
-
-            setConnectionStatus(
-              'Connection Negotiation Failed'
-            );
-          }
-        }
-      );
-    };
-
-    /*
-     * ----------------------------------------------------------
-     * ICE CANDIDATE HANDLER
-     * ----------------------------------------------------------
-     */
-
-    const handleIncomingIceCandidate =
-      async (payload = {}) => {
-        if (!isComponentMounted) return;
-
-        if (!payload.candidate) {
-          return;
-        }
-
-        /*
-         * HOST
-         */
-        if (isHost) {
           const viewerId =
-            payload.senderSocketId;
+            payload?.viewerSocketId;
 
           if (
-            payload.senderType !== 'viewer' ||
-            !viewerId
+            !viewerId ||
+            !payload?.answer
           ) {
             return;
           }
@@ -1092,10 +831,668 @@ const VideoPlayer = ({
             ];
 
           if (!pc) {
+            console.warn(
+              '⚠️ No peer connection for viewer:',
+              viewerId
+            );
+
+            return;
+          }
+
+          try {
+            if (pc.remoteDescription) {
+              return;
+            }
+
+            await pc.setRemoteDescription(
+              new RTCSessionDescription(
+                payload.answer
+              )
+            );
+
+            await flushIceCandidates(
+              pc,
+              viewerId
+            );
+
+            console.log(
+              '✅ Remote answer applied for viewer:',
+              viewerId
+            );
+          } catch (error) {
+            console.error(
+              '❌ Error setting remote answer:',
+              error
+            );
+          }
+        }
+      );
+
+      /*
+       * --------------------------------------------------------
+       * GET HOST MEDIA
+       * --------------------------------------------------------
+       */
+
+      if (!stream) {
+        if (
+          typeof navigator ===
+            'undefined' ||
+          !navigator.mediaDevices
+        ) {
+          throw new Error(
+            'Browser media devices are unavailable.'
+          );
+        }
+
+        if (
+          streamType === 'gaming'
+        ) {
+          console.log(
+            '🖥️ Requesting screen/game capture...'
+          );
+
+          stream =
+            await navigator.mediaDevices.getDisplayMedia(
+              {
+                video: true,
+                audio: true,
+              }
+            );
+        } else {
+          console.log(
+            '📹 Requesting camera and microphone...'
+          );
+
+          stream =
+            await navigator.mediaDevices.getUserMedia(
+              {
+                video: true,
+                audio: true,
+              }
+            );
+        }
+      }
+
+      if (!isComponentMounted) {
+        if (
+          !customStream &&
+          stream
+        ) {
+          stream
+            .getTracks()
+            .forEach(track =>
+              track.stop()
+            );
+        }
+
+        return;
+      }
+
+      localStreamRef.current =
+        stream;
+
+      /*
+       * --------------------------------------------------------
+       * HOST LOCAL PREVIEW
+       * --------------------------------------------------------
+       */
+
+      if (videoRef.current) {
+        videoRef.current.srcObject =
+          stream;
+
+        videoRef.current.muted =
+          true;
+
+        await playVideo();
+      }
+
+      setIsConnected(true);
+      setConnectionStatus(
+        'Streaming Live'
+      );
+
+      console.log(
+        '🎥 Host media ready:',
+        streamType
+      );
+
+      /*
+       * --------------------------------------------------------
+       * SCREEN SHARE ENDED
+       * --------------------------------------------------------
+       */
+
+      stream
+        .getVideoTracks()
+        .forEach(track => {
+          track.addEventListener(
+            'ended',
+            () => {
+              if (
+                !isComponentMounted
+              ) {
+                return;
+              }
+
+              console.log(
+                '🛑 Host video track ended.'
+              );
+
+              if (
+                streamType ===
+                'gaming'
+              ) {
+                setConnectionStatus(
+                  'Screen Sharing Ended'
+                );
+              }
+            },
+            { once: true }
+          );
+        });
+    };
+
+    /*
+     * ==========================================================
+     * VIEWER PIPELINE
+     * ==========================================================
+     */
+
+    const initializeViewer =
+      () => {
+        const pc =
+          createViewerPeer();
+
+        /*
+         * ------------------------------------------------------
+         * REMOTE TRACK
+         * ------------------------------------------------------
+         */
+
+        pc.ontrack = async event => {
+          if (
+            !isComponentMounted
+          ) {
+            return;
+          }
+
+          console.log(
+            '🎬 Remote media track received:',
+            event.track?.kind
+          );
+
+          let remoteStream =
+            event.streams?.[0];
+
+          /*
+           * Fallback for browsers that don't
+           * populate event.streams.
+           */
+
+          if (!remoteStream) {
+            remoteStream =
+              videoRef.current
+                ?.srcObject;
+
+            if (
+              !remoteStream ||
+              !(
+                remoteStream instanceof
+                MediaStream
+              )
+            ) {
+              remoteStream =
+                new MediaStream();
+            }
+
+            const alreadyAdded =
+              remoteStream
+                .getTracks()
+                .some(
+                  track =>
+                    track.id ===
+                    event.track.id
+                );
+
+            if (!alreadyAdded) {
+              remoteStream.addTrack(
+                event.track
+              );
+            }
+          }
+
+          if (videoRef.current) {
+            videoRef.current.srcObject =
+              remoteStream;
+
+            videoRef.current.muted =
+              false;
+
+            videoRef.current.autoplay =
+              true;
+
+            videoRef.current.playsInline =
+              true;
+
+            await playVideo();
+          }
+
+          setIsConnected(true);
+          setConnectionStatus(
+            'Live'
+          );
+        };
+
+        /*
+         * ------------------------------------------------------
+         * VIEWER ICE
+         * ------------------------------------------------------
+         */
+
+        pc.onicecandidate = event => {
+          if (
+            !event.candidate ||
+            !socket.connected ||
+            !hostSocketIdRef.current
+          ) {
+            return;
+          }
+
+          socket.emit(
+            'webrtc_ice_candidate',
+            {
+              streamId,
+              candidate:
+                event.candidate,
+              targetSocketId:
+                hostSocketIdRef.current,
+              senderType: 'viewer',
+            }
+          );
+        };
+
+        /*
+         * ------------------------------------------------------
+         * VIEWER ICE STATE
+         * ------------------------------------------------------
+         */
+
+        pc.oniceconnectionstatechange =
+          () => {
+            if (
+              !isComponentMounted
+            ) {
+              return;
+            }
+
+            const state =
+              pc.iceConnectionState;
+
+            console.log(
+              '🧊 Viewer ICE state:',
+              state
+            );
+
+            if (
+              state === 'connected' ||
+              state === 'completed'
+            ) {
+              setIsConnected(true);
+              setConnectionStatus(
+                'Live'
+              );
+            }
+
+            if (
+              state === 'checking'
+            ) {
+              setConnectionStatus(
+                'Connecting to Live Stream...'
+              );
+            }
+
+            if (
+              state ===
+              'disconnected'
+            ) {
+              setConnectionStatus(
+                'Reconnecting to Live Stream...'
+              );
+            }
+
+            if (
+              state === 'failed'
+            ) {
+              setIsConnected(false);
+
+              setConnectionStatus(
+                'Connection Failed'
+              );
+
+              /*
+               * Do not immediately destroy the peer.
+               * The signaling connection may still recover.
+               */
+            }
+          };
+
+        /*
+         * ------------------------------------------------------
+         * VIEWER CONNECTION STATE
+         * ------------------------------------------------------
+         */
+
+        pc.onconnectionstatechange =
+          () => {
+            if (
+              !isComponentMounted
+            ) {
+              return;
+            }
+
+            console.log(
+              '🔗 Viewer connection state:',
+              pc.connectionState
+            );
+
+            if (
+              pc.connectionState ===
+              'connected'
+            ) {
+              setIsConnected(true);
+              setConnectionStatus(
+                'Live'
+              );
+            }
+
+            if (
+              pc.connectionState ===
+              'connecting'
+            ) {
+              setConnectionStatus(
+                'Connecting to Live Stream...'
+              );
+            }
+
+            if (
+              pc.connectionState ===
+              'disconnected'
+            ) {
+              setConnectionStatus(
+                'Reconnecting to Live Stream...'
+              );
+            }
+
+            if (
+              pc.connectionState ===
+              'failed'
+            ) {
+              setIsConnected(false);
+
+              setConnectionStatus(
+                'Connection Failed'
+              );
+            }
+          };
+
+        /*
+         * ------------------------------------------------------
+         * WEBRTC OFFER FROM HOST
+         * ------------------------------------------------------
+         */
+
+        socket.on(
+          'webrtc_offer_received',
+          async payload => {
+            if (
+              !isComponentMounted
+            ) {
+              return;
+            }
+
+            if (!payload?.offer) {
+              console.warn(
+                '⚠️ WebRTC offer received without offer data.'
+              );
+
+              return;
+            }
+
             /*
-             * Peer may not have been created yet.
-             * Queue the candidate.
+             * Save host socket ID immediately.
              */
+
+            if (
+              payload.hostSocketId
+            ) {
+              hostSocketIdRef.current =
+                payload.hostSocketId;
+            }
+
+            /*
+             * A new host socket means this is
+             * a fresh signaling session.
+             */
+
+            if (
+              payload.hostSocketId &&
+              hostSocketIdRef.current !==
+                payload.hostSocketId
+            ) {
+              viewerOfferHandledRef.current =
+                false;
+            }
+
+            /*
+             * Ignore duplicate offer only when
+             * it is for the same active peer.
+             */
+
+            if (
+              viewerOfferHandledRef.current &&
+              pc.remoteDescription
+            ) {
+              console.log(
+                'ℹ️ Duplicate WebRTC offer ignored.'
+              );
+
+              return;
+            }
+
+            if (
+              creatingViewerPeerRef.current
+            ) {
+              console.log(
+                'ℹ️ Viewer negotiation already in progress.'
+              );
+
+              return;
+            }
+
+            creatingViewerPeerRef.current =
+              true;
+
+            console.log(
+              '📥 Received WebRTC offer from host.'
+            );
+
+            try {
+              /*
+               * If the existing peer is unusable,
+               * recreate it.
+               */
+
+              if (
+                pc.connectionState ===
+                  'failed' ||
+                pc.connectionState ===
+                  'closed'
+              ) {
+                closeViewerPeer();
+
+                const newPc =
+                  createViewerPeer();
+
+                await handleViewerOffer(
+                  newPc,
+                  payload,
+                  socket
+                );
+              } else {
+                await handleViewerOffer(
+                  pc,
+                  payload,
+                  socket
+                );
+              }
+            } catch (error) {
+              console.error(
+                '❌ Viewer WebRTC handshake failure:',
+                error
+              );
+
+              viewerOfferHandledRef.current =
+                false;
+
+              setIsConnected(false);
+
+              setConnectionStatus(
+                'Connection Negotiation Failed'
+              );
+            } finally {
+              creatingViewerPeerRef.current =
+                false;
+            }
+          }
+        );
+      };
+
+    /*
+     * ----------------------------------------------------------
+     * VIEWER OFFER HANDLER
+     * ----------------------------------------------------------
+     */
+
+    const handleViewerOffer = async (
+      pc,
+      payload,
+      activeSocket
+    ) => {
+      if (
+        !pc ||
+        !payload?.offer ||
+        !isComponentMounted
+      ) {
+        return;
+      }
+
+      /*
+       * A valid remote description means
+       * the offer has already been installed.
+       */
+
+      if (pc.remoteDescription) {
+        return;
+      }
+
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(
+          payload.offer
+        )
+      );
+
+      if (!isComponentMounted) {
+        return;
+      }
+
+      /*
+       * Flush host ICE that arrived before
+       * the remote description.
+       */
+
+      await flushIceCandidates(
+        pc,
+        'host_queue'
+      );
+
+      const answer =
+        await pc.createAnswer();
+
+      if (!isComponentMounted) {
+        return;
+      }
+
+      await pc.setLocalDescription(
+        answer
+      );
+
+      if (!isComponentMounted) {
+        return;
+      }
+
+      activeSocket.emit(
+        'send_webrtc_answer',
+        {
+          streamId,
+          answer:
+            pc.localDescription,
+        }
+      );
+
+      viewerOfferHandledRef.current =
+        true;
+
+      console.log(
+        '📤 WebRTC answer sent to host.'
+      );
+    };
+
+    /*
+     * ----------------------------------------------------------
+     * ICE CANDIDATES
+     * ----------------------------------------------------------
+     */
+
+    const handleIncomingIceCandidate =
+      async payload => {
+        if (
+          !isComponentMounted ||
+          !payload?.candidate
+        ) {
+          return;
+        }
+
+        /*
+         * ======================================================
+         * HOST
+         * ======================================================
+         */
+
+        if (isHost) {
+          const viewerId =
+            payload.senderSocketId;
+
+          if (
+            payload.senderType !==
+              'viewer' ||
+            !viewerId
+          ) {
+            return;
+          }
+
+          const pc =
+            peerConnectionsRef.current[
+              viewerId
+            ];
+
+          /*
+           * Peer hasn't been created yet.
+           * Queue candidate.
+           */
+
+          if (!pc) {
             if (
               !iceCandidatesQueueRef.current[
                 viewerId
@@ -1108,12 +1505,16 @@ const VideoPlayer = ({
 
             iceCandidatesQueueRef.current[
               viewerId
-            ].push(payload.candidate);
+            ].push(
+              payload.candidate
+            );
 
             return;
           }
 
-          if (pc.remoteDescription) {
+          if (
+            pc.remoteDescription
+          ) {
             try {
               await pc.addIceCandidate(
                 new RTCIceCandidate(
@@ -1139,14 +1540,18 @@ const VideoPlayer = ({
 
             iceCandidatesQueueRef.current[
               viewerId
-            ].push(payload.candidate);
+            ].push(
+              payload.candidate
+            );
           }
 
           return;
         }
 
         /*
+         * ======================================================
          * VIEWER
+         * ======================================================
          */
 
         if (
@@ -1159,15 +1564,35 @@ const VideoPlayer = ({
           singleViewerPcRef.current;
 
         if (!pc) {
+          /*
+           * Peer may not have been created yet.
+           */
+          if (
+            !iceCandidatesQueueRef.current
+              .host_queue
+          ) {
+            iceCandidatesQueueRef.current
+              .host_queue = [];
+          }
+
+          iceCandidatesQueueRef.current
+            .host_queue.push(
+              payload.candidate
+            );
+
           return;
         }
 
-        if (payload.hostSocketId) {
+        if (
+          payload.hostSocketId
+        ) {
           hostSocketIdRef.current =
             payload.hostSocketId;
         }
 
-        if (pc.remoteDescription) {
+        if (
+          pc.remoteDescription
+        ) {
           try {
             await pc.addIceCandidate(
               new RTCIceCandidate(
@@ -1203,7 +1628,7 @@ const VideoPlayer = ({
 
     /*
      * ----------------------------------------------------------
-     * START CORRECT PIPELINE
+     * START PIPELINE
      * ----------------------------------------------------------
      */
 
@@ -1221,15 +1646,16 @@ const VideoPlayer = ({
 
     return () => {
       isComponentMounted = false;
-      isCleaningUpRef.current = true;
+      mountedRef.current = false;
 
       console.log(
         '🧹 Cleaning up VideoPlayer...'
       );
 
       /*
-       * Remove socket listeners.
+       * Socket listeners
        */
+
       socket.off(
         'connect',
         handleSocketConnect
@@ -1241,7 +1667,8 @@ const VideoPlayer = ({
       );
 
       socket.off(
-        'connect_error'
+        'connect_error',
+        handleSocketError
       );
 
       socket.off(
@@ -1262,15 +1689,17 @@ const VideoPlayer = ({
       );
 
       /*
-       * Stop host media only if this component created it.
+       * Stop host media only when this
+       * component created it.
        */
+
       if (
         localStreamRef.current &&
         !customStream
       ) {
         localStreamRef.current
           .getTracks()
-          .forEach((track) => {
+          .forEach(track => {
             try {
               track.stop();
             } catch (error) {
@@ -1282,59 +1711,49 @@ const VideoPlayer = ({
           });
       }
 
-      localStreamRef.current = null;
+      localStreamRef.current =
+        null;
 
       /*
-       * Close all host peers.
+       * Close host peers.
        */
+
       Object.keys(
         peerConnectionsRef.current
-      ).forEach((viewerId) => {
-        closeHostPeer(viewerId);
+      ).forEach(viewerId => {
+        closeHostPeer(
+          viewerId
+        );
       });
 
-      peerConnectionsRef.current = {};
+      peerConnectionsRef.current =
+        {};
 
       /*
        * Close viewer peer.
        */
-      if (
-        singleViewerPcRef.current
-      ) {
-        try {
-          singleViewerPcRef.current.close();
-        } catch (error) {
-          console.debug(
-            'Error closing viewer peer:',
-            error
-          );
-        }
 
-        singleViewerPcRef.current = null;
-      }
+      closeViewerPeer();
 
       /*
-       * Clear ICE queues.
+       * Reset ICE state.
        */
-      iceCandidatesQueueRef.current = {};
+
+      iceCandidatesQueueRef.current =
+        {};
 
       negotiatingViewersRef.current.clear();
 
       viewerOfferHandledRef.current =
         false;
 
-      hostSocketIdRef.current = null;
-
-      /*
-       * Clear video element.
-       */
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
+      hostSocketIdRef.current =
+        null;
 
       /*
        * Disconnect socket.
        */
+
       try {
         socket.removeAllListeners();
         socket.disconnect();
@@ -1372,24 +1791,21 @@ const VideoPlayer = ({
         playsInline
         muted={isHost}
         controls={false}
-        className={`
-          w-full
-          h-full
-          object-cover
-          transition-opacity
-          duration-500
-          ${
+        className={
+          'w-full h-full object-cover transition-opacity duration-500 ' +
+          (
             isConnected || isHost
               ? 'opacity-100'
               : 'opacity-40'
-          }
-          ${
+          ) +
+          (
             isHost &&
-            streamType === 'device_camera'
-              ? 'scale-x-[-1]'
+            streamType ===
+              'device_camera'
+              ? ' scale-x-[-1]'
               : ''
-          }
-        `}
+          )
+        }
       />
 
       {!isConnected && !isHost && (
