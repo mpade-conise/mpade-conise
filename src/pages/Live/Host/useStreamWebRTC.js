@@ -1,4 +1,3 @@
-
 // src/hooks/useStreamWebRTC.jsx
 
 import {
@@ -15,25 +14,21 @@ const GLOBAL_ICE_CONFIG = {
     {
       urls: 'stun:stun.relay.metered.ca:80'
     },
-
     {
       urls: 'turn:global.relay.metered.ca:80',
       username: '28087eceaa61e6de7d551200',
       credential: 'KW6Vsm7ZTUwjjDWn'
     },
-
     {
       urls: 'turn:global.relay.metered.ca:80?transport=tcp',
       username: '28087eceaa61e6de7d551200',
       credential: 'KW6Vsm7ZTUwjjDWn'
     },
-
     {
       urls: 'turn:global.relay.metered.ca:443',
       username: '28087eceaa61e6de7d551200',
       credential: 'KW6Vsm7ZTUwjjDWn'
     },
-
     {
       urls: 'turns:global.relay.metered.ca:443?transport=tcp',
       username: '28087eceaa61e6de7d551200',
@@ -58,28 +53,9 @@ export const useStreamWebRTC = (
    */
 
   const localVideoRef = useRef(null);
-
   const localStreamRef = useRef(null);
 
-  /*
-   * React state is used as well as the ref.
-   *
-   * IMPORTANT:
-   * Updating a ref alone does NOT cause StreamDashboard
-   * to rerender.
-   *
-   * This state allows:
-   *
-   * useStreamWebRTC
-   *      ↓
-   * localStream
-   *      ↓
-   * StreamDashboard
-   *      ↓
-   * DynamicStreamGrid
-   */
-  const [localStream, setLocalStream] =
-    useState(null);
+  const [localStream, setLocalStream] = useState(null);
 
   /*
    * ============================================================
@@ -87,14 +63,9 @@ export const useStreamWebRTC = (
    * ============================================================
    */
 
-  const peerConnectionsRef =
-    useRef({});
-
-  const iceCandidatesQueueRef =
-    useRef({});
-
-  const remoteStreamsRef =
-    useRef({});
+  const peerConnectionsRef = useRef({});
+  const iceCandidatesQueueRef = useRef({});
+  const remoteStreamsRef = useRef({});
 
   /*
    * ============================================================
@@ -102,32 +73,23 @@ export const useStreamWebRTC = (
    * ============================================================
    */
 
-  const mountedRef =
-    useRef(false);
+  const mountedRef = useRef(false);
+
+  const mediaInitRef = useRef(false);
+
+  const mediaGenerationRef = useRef(0);
+
+  const activeMediaGenerationRef = useRef(0);
 
   /*
-   * Prevent duplicate getUserMedia calls.
+   * Used to repeatedly check for the local video element
+   * after getUserMedia() succeeds.
    */
-  const mediaInitRef =
-    useRef(false);
+  const localVideoRetryTimerRef = useRef(null);
 
-  /*
-   * Generation number prevents an old async
-   * getUserMedia request from interfering with a
-   * newer initialization.
-   */
-  const mediaGenerationRef =
-    useRef(0);
+  const localVideoRetryCountRef = useRef(0);
 
-  /*
-   * Keep the exact stream owned by the current
-   * initialization lifecycle.
-   */
-  const activeMediaGenerationRef =
-    useRef(0);
-
-  const [hardwareReady, setHardwareReady] =
-    useState(false);
+  const [hardwareReady, setHardwareReady] = useState(false);
 
   const [
     primaryRemoteStream,
@@ -136,7 +98,7 @@ export const useStreamWebRTC = (
 
   /*
    * ============================================================
-   * STREAM CLEANUP HELPER
+   * STREAM CLEANUP
    * ============================================================
    */
 
@@ -149,65 +111,37 @@ export const useStreamWebRTC = (
       try {
         track.stop();
       } catch {
-        // Ignore track cleanup errors.
+        // Ignore cleanup errors.
       }
     });
   }, []);
 
   /*
    * ============================================================
-   * LOCAL VIDEO BINDING
+   * LOCAL VIDEO PLAY HELPER
    * ============================================================
    */
 
-  const bindLocalStreamToDOM = useCallback(() => {
-    const video =
-      localVideoRef.current;
-
-    const stream =
-      localStreamRef.current;
-
+  const playLocalVideo = useCallback(video => {
     if (
       !video ||
-      !(video instanceof HTMLVideoElement) ||
-      !stream
+      !(video instanceof HTMLVideoElement)
     ) {
       return;
-    }
-
-    /*
-     * Make sure the exact MediaStream is attached.
-     */
-    if (
-      video.srcObject !== stream
-    ) {
-      video.srcObject = stream;
     }
 
     video.muted = true;
     video.autoplay = true;
     video.playsInline = true;
 
-    let cancelled = false;
-
-    const playVideo = async () => {
-      if (cancelled) {
-        return;
-      }
-
+    const attemptPlay = async () => {
       try {
         await video.play();
 
-        if (!cancelled) {
-          console.log(
-            '▶️ [WebRTC] Local camera video is playing.'
-          );
-        }
+        console.log(
+          '▶️ [WebRTC] Local camera video is playing.'
+        );
       } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
         console.warn(
           '⚠️ [WebRTC] Local video play() failed:',
           error?.name,
@@ -216,33 +150,155 @@ export const useStreamWebRTC = (
       }
     };
 
-    /*
-     * If metadata already exists, play immediately.
-     */
     if (video.readyState >= 1) {
-      playVideo();
-    } else {
-      /*
-       * Otherwise wait for metadata.
-       */
-      video.addEventListener(
+      attemptPlay();
+      return;
+    }
+
+    const handleMetadata = () => {
+      video.removeEventListener(
         'loadedmetadata',
-        playVideo,
-        {
-          once: true
-        }
+        handleMetadata
+      );
+
+      attemptPlay();
+    };
+
+    video.addEventListener(
+      'loadedmetadata',
+      handleMetadata,
+      {
+        once: true
+      }
+    );
+  }, []);
+
+  /*
+   * ============================================================
+   * BIND LOCAL STREAM TO VIDEO
+   * ============================================================
+   *
+   * IMPORTANT:
+   *
+   * getUserMedia() can finish BEFORE React mounts the <video>.
+   *
+   * Therefore this function is deliberately safe to call
+   * repeatedly.
+   * ============================================================
+   */
+
+  const bindLocalStreamToDOM = useCallback(() => {
+    const video = localVideoRef.current;
+    const stream = localStreamRef.current;
+
+    if (
+      !video ||
+      !(video instanceof HTMLVideoElement) ||
+      !stream
+    ) {
+      return false;
+    }
+
+    /*
+     * Attach the exact MediaStream.
+     */
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+
+      console.log(
+        '📡 [WebRTC] Local MediaStream attached to video element.'
       );
     }
 
-    return () => {
-      cancelled = true;
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
 
-      video.removeEventListener(
-        'loadedmetadata',
-        playVideo
-      );
-    };
+    playLocalVideo(video);
+
+    return true;
+  }, [playLocalVideo]);
+
+  /*
+   * ============================================================
+   * LOCAL VIDEO RETRY SYSTEM
+   * ============================================================
+   *
+   * This solves the exact problem shown in the console:
+   *
+   * Camera opens
+   *      ↓
+   * local <video> not mounted yet
+   *      ↓
+   * React mounts it shortly afterward
+   *
+   * Instead of giving up, we retry the binding.
+   * ============================================================
+   */
+
+  const stopLocalVideoRetry = useCallback(() => {
+    if (localVideoRetryTimerRef.current) {
+      clearTimeout(localVideoRetryTimerRef.current);
+      localVideoRetryTimerRef.current = null;
+    }
+
+    localVideoRetryCountRef.current = 0;
   }, []);
+
+  const startLocalVideoRetry = useCallback(() => {
+    stopLocalVideoRetry();
+
+    const maximumAttempts = 50;
+    const retryDelay = 100;
+
+    const attempt = () => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      const stream = localStreamRef.current;
+
+      if (!stream) {
+        return;
+      }
+
+      const bound = bindLocalStreamToDOM();
+
+      if (bound) {
+        console.log(
+          '✅ [WebRTC] Local camera preview successfully bound.'
+        );
+
+        stopLocalVideoRetry();
+        return;
+      }
+
+      localVideoRetryCountRef.current += 1;
+
+      if (
+        localVideoRetryCountRef.current >=
+        maximumAttempts
+      ) {
+        console.warn(
+          '⚠️ [WebRTC] Local video element was not found after repeated binding attempts.'
+        );
+
+        stopLocalVideoRetry();
+        return;
+      }
+
+      localVideoRetryTimerRef.current =
+        setTimeout(
+          attempt,
+          retryDelay
+        );
+    };
+
+    attempt();
+  }, [
+    bindLocalStreamToDOM,
+    stopLocalVideoRetry
+  ]);
 
   /*
    * ============================================================
@@ -264,17 +320,15 @@ export const useStreamWebRTC = (
           streamKey
         ] = stream;
 
-        setPrimaryRemoteStream(
-          previous => {
-            if (
-              previous?.id === stream.id
-            ) {
-              return previous;
-            }
-
-            return stream;
+        setPrimaryRemoteStream(previous => {
+          if (
+            previous?.id === stream.id
+          ) {
+            return previous;
           }
-        );
+
+          return stream;
+        });
 
         const video =
           challengerVideoRef?.current;
@@ -324,12 +378,6 @@ export const useStreamWebRTC = (
   /*
    * ============================================================
    * HARDWARE INITIALIZATION
-   *
-   * This effect is intentionally independent of:
-   * - Socket.IO
-   * - Supabase
-   * - ChatBox
-   * - WebRTC signaling
    * ============================================================
    */
 
@@ -345,9 +393,6 @@ export const useStreamWebRTC = (
       };
     }
 
-    /*
-     * Every effect lifecycle receives a unique generation.
-     */
     const generation =
       mediaGenerationRef.current + 1;
 
@@ -358,14 +403,8 @@ export const useStreamWebRTC = (
       generation;
 
     let cancelled = false;
-
     let acquiredStream = null;
 
-    /*
-     * ------------------------------------------------------------
-     * Check whether this initialization is still current.
-     * ------------------------------------------------------------
-     */
     const isCurrentInitialization = () => {
       return (
         !cancelled &&
@@ -375,11 +414,6 @@ export const useStreamWebRTC = (
       );
     };
 
-    /*
-     * ------------------------------------------------------------
-     * Attach local stream.
-     * ------------------------------------------------------------
-     */
     const attachLocalStream = stream => {
       if (
         !stream ||
@@ -388,77 +422,30 @@ export const useStreamWebRTC = (
         return;
       }
 
-      localStreamRef.current =
-        stream;
+      localStreamRef.current = stream;
 
-      /*
-       * This triggers StreamDashboard to rerender.
-       */
       setLocalStream(stream);
 
-      const video =
-        localVideoRef.current;
+      /*
+       * Try immediately.
+       */
+      const attached =
+        bindLocalStreamToDOM();
 
-      if (
-        !video ||
-        !(video instanceof HTMLVideoElement)
-      ) {
-        console.warn(
-          '⚠️ [WebRTC] Camera opened, but local video element is not mounted yet.'
+      /*
+       * If React has not mounted the video yet,
+       * begin retrying.
+       */
+      if (!attached) {
+        console.log(
+          '⏳ [WebRTC] Camera opened before local video mounted. Waiting for video element...'
         );
 
-        return;
-      }
-
-      video.srcObject = stream;
-      video.muted = true;
-      video.autoplay = true;
-      video.playsInline = true;
-
-      const playVideo = async () => {
-        if (
-          !isCurrentInitialization()
-        ) {
-          return;
-        }
-
-        try {
-          await video.play();
-
-          console.log(
-            '▶️ [WebRTC] Local camera preview started.'
-          );
-        } catch (error) {
-          console.warn(
-            '⚠️ [WebRTC] Camera stream exists but video.play() failed:',
-            error?.name,
-            error?.message || error
-          );
-        }
-      };
-
-      if (video.readyState >= 1) {
-        playVideo();
-      } else {
-        video.addEventListener(
-          'loadedmetadata',
-          playVideo,
-          {
-            once: true
-          }
-        );
+        startLocalVideoRetry();
       }
     };
 
-    /*
-     * ------------------------------------------------------------
-     * Request media.
-     * ------------------------------------------------------------
-     */
     const requestMedia = async () => {
-      /*
-       * Do not create duplicate camera requests.
-       */
       if (mediaInitRef.current) {
         return;
       }
@@ -480,11 +467,6 @@ export const useStreamWebRTC = (
           '🎥 [WebRTC] Requesting camera and microphone...'
         );
 
-        /*
-         * --------------------------------------------------------
-         * Preferred camera configuration.
-         * --------------------------------------------------------
-         */
         try {
           acquiredStream =
             await navigator.mediaDevices.getUserMedia(
@@ -510,11 +492,6 @@ export const useStreamWebRTC = (
               }
             );
         } catch (firstError) {
-          /*
-           * If the browser/device doesn't support the
-           * preferred constraints, use the simplest
-           * compatible configuration.
-           */
           console.warn(
             '⚠️ [WebRTC] Preferred camera constraints failed:',
             firstError?.name,
@@ -522,10 +499,6 @@ export const useStreamWebRTC = (
               firstError
           );
 
-          /*
-           * If initialization was cancelled while
-           * waiting for the first request, stop here.
-           */
           if (
             !isCurrentInitialization()
           ) {
@@ -545,16 +518,6 @@ export const useStreamWebRTC = (
           );
         }
 
-        /*
-         * --------------------------------------------------------
-         * Async race protection.
-         *
-         * An old getUserMedia() request may finish after
-         * React has already created a newer initialization.
-         *
-         * Never allow that old stream to become active.
-         * --------------------------------------------------------
-         */
         if (
           !isCurrentInitialization()
         ) {
@@ -572,18 +535,10 @@ export const useStreamWebRTC = (
         localStreamRef.current =
           acquiredStream;
 
-        /*
-         * Make stream available to React.
-         */
         setLocalStream(
           acquiredStream
         );
 
-        /*
-         * --------------------------------------------------------
-         * Diagnostics.
-         * --------------------------------------------------------
-         */
         const videoTracks =
           acquiredStream.getVideoTracks();
 
@@ -613,18 +568,15 @@ export const useStreamWebRTC = (
         });
 
         /*
-         * --------------------------------------------------------
-         * Attach camera BEFORE voice engine.
-         * --------------------------------------------------------
+         * Attach immediately if possible.
          */
         attachLocalStream(
           acquiredStream
         );
 
         /*
-         * --------------------------------------------------------
-         * Hardware is now genuinely available.
-         * --------------------------------------------------------
+         * Hardware is ready even if the React
+         * video element is still mounting.
          */
         setHardwareReady(true);
 
@@ -633,11 +585,13 @@ export const useStreamWebRTC = (
         );
 
         /*
-         * --------------------------------------------------------
-         * OPTIONAL VOICE ENGINE
-         *
-         * It can NEVER block camera startup.
-         * --------------------------------------------------------
+         * Start another binding attempt after the
+         * state update has caused React to render.
+         */
+        startLocalVideoRetry();
+
+        /*
+         * Voice engine must never block camera startup.
          */
         try {
           if (
@@ -677,10 +631,6 @@ export const useStreamWebRTC = (
           );
         }
       } catch (error) {
-        /*
-         * Do NOT report a stale initialization as a
-         * current camera failure.
-         */
         if (
           !isCurrentInitialization()
         ) {
@@ -697,9 +647,6 @@ export const useStreamWebRTC = (
           }
         );
 
-        /*
-         * Helpful diagnostic messages.
-         */
         switch (error?.name) {
           case 'NotAllowedError':
           case 'PermissionDeniedError':
@@ -752,19 +699,13 @@ export const useStreamWebRTC = (
 
     requestMedia();
 
-    /*
-     * ------------------------------------------------------------
-     * CLEANUP
-     * ------------------------------------------------------------
-     */
     return () => {
       cancelled = true;
 
       mountedRef.current = false;
 
-      /*
-       * Invalidate this generation.
-       */
+      stopLocalVideoRetry();
+
       if (
         mediaGenerationRef.current ===
         generation
@@ -776,9 +717,7 @@ export const useStreamWebRTC = (
         false;
 
       /*
-       * ----------------------------------------------------------
        * Close peer connections.
-       * ----------------------------------------------------------
        */
       Object.entries(
         peerConnectionsRef.current
@@ -809,15 +748,7 @@ export const useStreamWebRTC = (
         {};
 
       /*
-       * ----------------------------------------------------------
-       * IMPORTANT STREAM CLEANUP
-       *
-       * Only stop the stream that belongs to THIS effect
-       * generation.
-       *
-       * This prevents an old cleanup from stopping a newer
-       * camera stream.
-       * ----------------------------------------------------------
+       * Stop only this lifecycle's stream.
        */
       if (acquiredStream) {
         stopStream(
@@ -826,8 +757,8 @@ export const useStreamWebRTC = (
       }
 
       /*
-       * Only clear the shared stream reference if it
-       * still belongs to this initialization.
+       * Clear shared reference only if it still
+       * points to this lifecycle's stream.
        */
       if (
         localStreamRef.current ===
@@ -840,9 +771,7 @@ export const useStreamWebRTC = (
       }
 
       /*
-       * ----------------------------------------------------------
-       * Clear local video element.
-       * ----------------------------------------------------------
+       * Clear local video.
        */
       const localVideo =
         localVideoRef.current;
@@ -861,9 +790,7 @@ export const useStreamWebRTC = (
       }
 
       /*
-       * ----------------------------------------------------------
        * Clear remote video.
-       * ----------------------------------------------------------
        */
       const remoteVideo =
         challengerVideoRef?.current;
@@ -876,15 +803,12 @@ export const useStreamWebRTC = (
           null;
       }
 
-      /*
-       * Only update React state if this effect
-       * is still the active generation.
-       */
       if (
         activeMediaGenerationRef.current ===
         generation
       ) {
         setHardwareReady(false);
+
         setPrimaryRemoteStream(
           null
         );
@@ -893,21 +817,15 @@ export const useStreamWebRTC = (
   }, [
     streamId,
     challengerVideoRef,
-    stopStream
+    stopStream,
+    bindLocalStreamToDOM,
+    startLocalVideoRetry,
+    stopLocalVideoRetry
   ]);
 
   /*
    * ============================================================
-   * RE-BIND LOCAL VIDEO
-   * ============================================================
-   *
-   * This catches the case where:
-   *
-   * 1. Camera opens first.
-   * 2. React video element mounts afterward.
-   *
-   * The camera stream is then attached to the newly mounted
-   * video element.
+   * RE-BIND LOCAL VIDEO AFTER REACT RENDER
    * ============================================================
    */
 
@@ -919,14 +837,26 @@ export const useStreamWebRTC = (
       return undefined;
     }
 
-    const cleanup =
-      bindLocalStreamToDOM();
+    /*
+     * Try immediately after React commits.
+     */
+    bindLocalStreamToDOM();
 
-    return cleanup;
+    /*
+     * Also retry because DynamicStreamGrid may mount
+     * the actual video element one render later.
+     */
+    startLocalVideoRetry();
+
+    return () => {
+      stopLocalVideoRetry();
+    };
   }, [
     hardwareReady,
     localStream,
-    bindLocalStreamToDOM
+    bindLocalStreamToDOM,
+    startLocalVideoRetry,
+    stopLocalVideoRetry
   ]);
 
   /*
@@ -946,32 +876,33 @@ export const useStreamWebRTC = (
     stream
       .getAudioTracks()
       .forEach(track => {
-        track.enabled =
-          !isMuted;
+        track.enabled = !isMuted;
       });
 
     stream
       .getVideoTracks()
       .forEach(track => {
-        track.enabled =
-          !isCameraOff;
+        track.enabled = !isCameraOff;
       });
 
     console.log(
-      `🎛️ [WebRTC] Camera=${
-        !isCameraOff
-          ? 'ON'
-          : 'OFF'
-      } | Mic=${
-        !isMuted
-          ? 'ON'
-          : 'OFF'
-      }`
+      '🎛️ [WebRTC] Camera=' +
+        (!isCameraOff ? 'ON' : 'OFF') +
+        ' | Mic=' +
+        (!isMuted ? 'ON' : 'OFF')
     );
+
+    /*
+     * Rebind if the camera is turned back on.
+     */
+    if (!isCameraOff) {
+      bindLocalStreamToDOM();
+    }
   }, [
     isMuted,
     isCameraOff,
-    localStream
+    localStream,
+    bindLocalStreamToDOM
   ]);
 
   /*
@@ -1008,11 +939,13 @@ export const useStreamWebRTC = (
         }
 
         console.log(
-          `🧊 [WebRTC] Flushing ${queue.length} ICE candidates for ${peerId}`
+          '🧊 [WebRTC] Flushing ' +
+            queue.length +
+            ' ICE candidates for ' +
+            peerId
         );
 
-        const remaining =
-          [];
+        const remaining = [];
 
         for (
           const candidate of queue
@@ -1025,7 +958,9 @@ export const useStreamWebRTC = (
             );
           } catch (error) {
             console.warn(
-              `⚠️ [WebRTC] ICE candidate failed for ${peerId}:`,
+              '⚠️ [WebRTC] ICE candidate failed for ' +
+                peerId +
+                ':',
               error?.message ||
                 error
             );
@@ -1036,9 +971,7 @@ export const useStreamWebRTC = (
           }
         }
 
-        if (
-          remaining.length
-        ) {
+        if (remaining.length) {
           iceCandidatesQueueRef.current[
             peerId
           ] = remaining;
@@ -1093,9 +1026,7 @@ export const useStreamWebRTC = (
           ] || [];
 
         /*
-         * --------------------------------------------------------
          * Add local tracks.
-         * --------------------------------------------------------
          */
         const stream =
           localStreamRef.current;
@@ -1111,7 +1042,9 @@ export const useStreamWebRTC = (
                 );
               } catch (error) {
                 console.warn(
-                  `⚠️ [WebRTC] Failed adding ${track.kind} track:`,
+                  '⚠️ [WebRTC] Failed adding ' +
+                    track.kind +
+                    ' track:',
                   error?.message ||
                     error
                 );
@@ -1120,13 +1053,14 @@ export const useStreamWebRTC = (
         }
 
         /*
-         * --------------------------------------------------------
          * Remote tracks.
-         * --------------------------------------------------------
          */
         pc.ontrack = event => {
           console.log(
-            `🎥 [WebRTC] Remote ${event.track?.kind} track received from ${targetSocketId}`
+            '🎥 [WebRTC] Remote ' +
+              event.track?.kind +
+              ' track received from ' +
+              targetSocketId
           );
 
           const remoteStream =
@@ -1140,9 +1074,7 @@ export const useStreamWebRTC = (
         };
 
         /*
-         * --------------------------------------------------------
          * ICE.
-         * --------------------------------------------------------
          */
         pc.onicecandidate =
           event => {
@@ -1171,14 +1103,15 @@ export const useStreamWebRTC = (
           };
 
         /*
-         * --------------------------------------------------------
          * Connection state.
-         * --------------------------------------------------------
          */
         pc.onconnectionstatechange =
           () => {
             console.log(
-              `🌐 [WebRTC] Peer ${targetSocketId}: ${pc.connectionState}`
+              '🌐 [WebRTC] Peer ' +
+                targetSocketId +
+                ': ' +
+                pc.connectionState
             );
 
             if (
@@ -1212,14 +1145,15 @@ export const useStreamWebRTC = (
           };
 
         /*
-         * --------------------------------------------------------
          * ICE state.
-         * --------------------------------------------------------
          */
         pc.oniceconnectionstatechange =
           () => {
             console.log(
-              `🧊 [WebRTC] ICE ${targetSocketId}: ${pc.iceConnectionState}`
+              '🧊 [WebRTC] ICE ' +
+                targetSocketId +
+                ': ' +
+                pc.iceConnectionState
             );
 
             if (
@@ -1262,9 +1196,7 @@ export const useStreamWebRTC = (
     let cancelled = false;
 
     /*
-     * ----------------------------------------------------------
      * Viewer requesting stream.
-     * ----------------------------------------------------------
      */
     const handleViewerRequest =
       async payload => {
@@ -1321,11 +1253,14 @@ export const useStreamWebRTC = (
           );
 
           console.log(
-            `📤 [WebRTC] Offer sent to ${viewerId}`
+            '📤 [WebRTC] Offer sent to ' +
+              viewerId
           );
         } catch (error) {
           console.error(
-            `❌ [WebRTC] Offer failed for ${viewerId}:`,
+            '❌ [WebRTC] Offer failed for ' +
+              viewerId +
+              ':',
             error?.message ||
               error
           );
@@ -1333,9 +1268,7 @@ export const useStreamWebRTC = (
       };
 
     /*
-     * ----------------------------------------------------------
      * Incoming offer.
-     * ----------------------------------------------------------
      */
     const handleIncomingOffer =
       async payload => {
@@ -1409,7 +1342,8 @@ export const useStreamWebRTC = (
           );
 
           console.log(
-            `📤 [WebRTC] Answer sent to ${senderId}`
+            '📤 [WebRTC] Answer sent to ' +
+              senderId
           );
         } catch (error) {
           console.error(
@@ -1421,9 +1355,7 @@ export const useStreamWebRTC = (
       };
 
     /*
-     * ----------------------------------------------------------
      * Answer.
-     * ----------------------------------------------------------
      */
     const handleAnswerReceived =
       async payload => {
@@ -1475,11 +1407,14 @@ export const useStreamWebRTC = (
           );
 
           console.log(
-            `⚡ [WebRTC] Answer applied for ${viewerId}`
+            '⚡ [WebRTC] Answer applied for ' +
+              viewerId
           );
         } catch (error) {
           console.error(
-            `❌ [WebRTC] Answer failed for ${viewerId}:`,
+            '❌ [WebRTC] Answer failed for ' +
+              viewerId +
+              ':',
             error?.message ||
               error
           );
@@ -1487,9 +1422,7 @@ export const useStreamWebRTC = (
       };
 
     /*
-     * ----------------------------------------------------------
      * Incoming ICE candidate.
-     * ----------------------------------------------------------
      */
     const handleIncomingIceCandidate =
       async payload => {
@@ -1517,10 +1450,6 @@ export const useStreamWebRTC = (
             senderId
           ];
 
-        /*
-         * Queue candidates that arrive before the
-         * remote description.
-         */
         if (
           !pc ||
           !pc.remoteDescription
@@ -1555,9 +1484,7 @@ export const useStreamWebRTC = (
       };
 
     /*
-     * ----------------------------------------------------------
      * Socket listeners.
-     * ----------------------------------------------------------
      */
     socket.on(
       'viewer_requesting_stream',
@@ -1584,13 +1511,6 @@ export const useStreamWebRTC = (
       handleIncomingIceCandidate
     );
 
-    /*
-     * ----------------------------------------------------------
-     * Cleanup listeners ONLY.
-     *
-     * Peer connections are owned by the main lifecycle effect.
-     * ----------------------------------------------------------
-     */
     return () => {
       cancelled = true;
 
@@ -1672,24 +1592,12 @@ export const useStreamWebRTC = (
    */
 
   return {
-    /*
-     * Existing API.
-     */
     localVideoRef,
 
     hardwareReady,
 
     primaryRemoteStream,
 
-    /*
-     * NEW:
-     * Actual local MediaStream exposed to StreamDashboard.
-     *
-     * DynamicStreamGrid can now receive:
-     *
-     * hostStream={localStream}
-     */
     localStream
   };
 };
-
