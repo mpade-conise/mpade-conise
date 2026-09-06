@@ -1,174 +1,1083 @@
 // src/components/live/LiveVoiceEngine.js
-/**
- * Real-time Web Audio API DSP Engine for Live Stream AI Voice Modulation.
- * Takes the user's raw microphone stream, passes it through audio nodes
- * (Pitch Modulator, BiquadFilter, Delay, Waveshaper Distortion, Gain),
- * and returns a broadcastable MediaStream track for WebRTC PeerConnections.
- */
+//
+// Real-time voice processing engine for MPade Live.
+//
+// Audio flow:
+// Microphone MediaStream
+//        ↓
+// MediaStreamAudioSourceNode
+//        ↓
+// Voice DSP chain
+//        ↓
+// MediaStreamAudioDestinationNode
+//        ↓
+// Processed audio track
+//        ↓
+// WebRTC RTCPeerConnection
+//        ↓
+// All viewers
+//
+// IMPORTANT:
+// This engine does NOT connect the microphone to the speakers.
+// The processed audio is routed to a MediaStreamDestination so it
+// can safely be sent through WebRTC without creating microphone feedback.
 
 class LiveVoiceEngine {
   constructor() {
-    this.audioCtx = null;
-    this.sourceNode = null;
-    this.destinationNode = null;
-    this.filterNode = null;
-    this.gainNode = null;
-    this.delayNode = null;
-    this.distortionNode = null;
-    this.pitchOsc = null;
+    this.audioContext = null;
+    this.source = null;
+    this.destination = null;
+
+    this.inputStream = null;
     this.processedStream = null;
+
     this.currentPreset = 'studio';
+
+    this.nodes = [];
+    this.activeNodes = {};
+
+    this.initialized = false;
+    this.destroyed = false;
+
+    this._boundVoiceChange = null;
   }
 
-  init(rawMediaStream) {
-    if (!rawMediaStream || rawMediaStream.getAudioTracks().length === 0) {
-      console.warn("⚠️ [LiveVoiceEngine] No audio track found in raw stream.");
-      return rawMediaStream;
+  // ------------------------------------------------------------
+  // AUDIO CONTEXT
+  // ------------------------------------------------------------
+
+  _createAudioContext() {
+    if (typeof window === 'undefined') {
+      throw new Error('LiveVoiceEngine requires a browser environment.');
     }
 
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.audioCtx = new AudioContext();
+    const AudioContextClass =
+      window.AudioContext ||
+      window.webkitAudioContext;
 
-      this.sourceNode = this.audioCtx.createMediaStreamSource(rawMediaStream);
-      this.destinationNode = this.audioCtx.createMediaStreamDestination();
+    if (!AudioContextClass) {
+      throw new Error(
+        'Web Audio API is not supported by this browser.'
+      );
+    }
 
-      // Core DSP Nodes
-      this.filterNode = this.audioCtx.createBiquadFilter();
-      this.gainNode = this.audioCtx.createGain();
-      this.delayNode = this.audioCtx.createDelay(1.0);
-      this.distortionNode = this.audioCtx.createWaveShaper();
+    if (!this.audioContext) {
+      this.audioContext = new AudioContextClass();
+    }
 
-      // Default Neutral Setup (Studio Pure)
-      this.filterNode.type = 'allpass';
-      this.filterNode.frequency.value = 1000;
-      this.gainNode.gain.value = 1.0;
-      this.delayNode.delayTime.value = 0.0;
+    return this.audioContext;
+  }
 
-      // Audio Graph Pipeline: Source -> Filter -> Waveshaper -> Delay -> Gain -> Destination
-      this.sourceNode.connect(this.filterNode);
-      this.filterNode.connect(this.distortionNode);
-      this.distortionNode.connect(this.delayNode);
-      this.delayNode.connect(this.gainNode);
-      this.gainNode.connect(this.destinationNode);
+  async _resumeContext() {
+    if (!this.audioContext) return;
 
-      this.processedStream = this.destinationNode.stream;
-      return this.processedStream;
-    } catch (err) {
-      console.error("❌ [LiveVoiceEngine] Failed to initialize Web Audio DSP:", err);
-      return rawMediaStream;
+    if (this.audioContext.state === 'suspended') {
+      try {
+        await this.audioContext.resume();
+      } catch (error) {
+        console.warn(
+          '[LiveVoiceEngine] Unable to resume AudioContext:',
+          error
+        );
+      }
     }
   }
 
-  // Generate curve for harmonic saturation / distortion
-  makeDistortionCurve(amount = 20) {
-    const k = typeof amount === 'number' ? amount : 50;
-    const n_samples = 44100;
-    const curve = new Float32Array(n_samples);
-    const deg = Math.PI / 180;
-    for (let i = 0; i < n_samples; ++i) {
-      const x = (i * 2) / n_samples - 1;
-      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+  // ------------------------------------------------------------
+  // INITIALIZATION
+  // ------------------------------------------------------------
+
+  async initialize(mediaStream) {
+    if (!mediaStream) {
+      throw new Error(
+        '[LiveVoiceEngine] A microphone MediaStream is required.'
+      );
     }
-    return curve;
+
+    if (!mediaStream.getAudioTracks().length) {
+      throw new Error(
+        '[LiveVoiceEngine] The supplied MediaStream has no audio track.'
+      );
+    }
+
+    this.destroyed = false;
+
+    const context = this._createAudioContext();
+
+    await this._resumeContext();
+
+    // If another stream is already attached, replace it cleanly.
+    if (this.initialized) {
+      this._disconnectProcessingNodes();
+    }
+
+    this.inputStream = mediaStream;
+
+    this.source = context.createMediaStreamSource(mediaStream);
+
+    this.destination = context.createMediaStreamDestination();
+
+    // Build initial processing chain.
+    this._buildPreset(this.currentPreset);
+
+    this.initialized = true;
+
+    // Processed stream contains processed microphone audio.
+    //
+    // We deliberately preserve the original video tracks so the
+    // returned stream can be used directly by WebRTC.
+    this.processedStream = new MediaStream();
+
+    const processedAudioTracks =
+      this.destination.stream.getAudioTracks();
+
+    processedAudioTracks.forEach(track => {
+      this.processedStream.addTrack(track);
+    });
+
+    mediaStream.getVideoTracks().forEach(track => {
+      this.processedStream.addTrack(track);
+    });
+
+    console.log(
+      '[LiveVoiceEngine] Initialized successfully.',
+      {
+        audioTracks: processedAudioTracks.length,
+        videoTracks: mediaStream.getVideoTracks().length,
+        preset: this.currentPreset
+      }
+    );
+
+    return this.processedStream;
   }
 
-  setPreset(presetId) {
-    if (!this.audioCtx || !this.filterNode || !this.gainNode) return;
+  // ------------------------------------------------------------
+  // PRESET CONTROL
+  // ------------------------------------------------------------
+
+  setPreset(presetId = 'studio') {
+    const validPresets = [
+      'studio',
+      'bass',
+      'robot',
+      'helium',
+      'autotune-major',
+      'stadium',
+      'radio-1930',
+      'cyberpunk-glitch',
+      'whisper-synth',
+      'chipmunk',
+      'space-captain',
+      'demon-lord',
+      'telephone',
+      'choir-ensemble',
+      'reverse-texture'
+    ];
+
+    if (!validPresets.includes(presetId)) {
+      console.warn(
+        `[LiveVoiceEngine] Unknown preset "${presetId}". Falling back to studio.`
+      );
+
+      presetId = 'studio';
+    }
+
     this.currentPreset = presetId;
 
-    if (this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+    if (!this.initialized || !this.audioContext) {
+      console.log(
+        `[LiveVoiceEngine] Preset selected before initialization: ${presetId}`
+      );
+
+      return;
     }
 
-    const now = this.audioCtx.currentTime;
+    this._disconnectProcessingNodes();
+    this._buildPreset(presetId);
 
-    // Reset neutral nodes
-    this.distortionNode.curve = null;
-    this.delayNode.delayTime.setValueAtTime(0.0, now);
-    this.gainNode.gain.setValueAtTime(1.0, now);
+    console.log(
+      `[LiveVoiceEngine] Active voice preset: ${presetId}`
+    );
+  }
 
-    switch (presetId) {
-      case 'robot': // Metallic Cyber Ring Modulator
-        this.filterNode.type = 'bandpass';
-        this.filterNode.frequency.setValueAtTime(440, now);
-        this.filterNode.Q.setValueAtTime(6.0, now);
-        this.distortionNode.curve = this.makeDistortionCurve(60);
-        this.gainNode.gain.setValueAtTime(1.4, now);
-        break;
+  getPreset() {
+    return this.currentPreset;
+  }
 
-      case 'titan':
-      case 'bass': // Sub-harmonic Deep Titan Monster
-        this.filterNode.type = 'lowpass';
-        this.filterNode.frequency.setValueAtTime(260, now);
-        this.filterNode.Q.setValueAtTime(3.5, now);
-        this.gainNode.gain.setValueAtTime(1.8, now);
-        break;
+  // ------------------------------------------------------------
+  // PROCESSING GRAPH
+  // ------------------------------------------------------------
 
-      case 'helium':
-      case 'chipmunk': // Ultra High Pitch Vocal Multiplier
-        this.filterNode.type = 'highpass';
-        this.filterNode.frequency.setValueAtTime(1800, now);
-        this.filterNode.Q.setValueAtTime(4.0, now);
-        this.distortionNode.curve = this.makeDistortionCurve(15);
-        this.gainNode.gain.setValueAtTime(1.6, now);
-        break;
-
-      case 'cyberpunk-glitch': // Cyber Overdrive Distort
-        this.filterNode.type = 'peaking';
-        this.filterNode.frequency.setValueAtTime(1500, now);
-        this.filterNode.gain.setValueAtTime(12, now);
-        this.distortionNode.curve = this.makeDistortionCurve(100);
-        this.delayNode.delayTime.setValueAtTime(0.04, now);
-        break;
-
-      case 'stadium': // Spacious Arena Hall Echo
-        this.filterNode.type = 'allpass';
-        this.delayNode.delayTime.setValueAtTime(0.28, now);
-        this.gainNode.gain.setValueAtTime(1.1, now);
-        break;
-
-      case 'radio-1930':
-      case 'telephone': // Vintage Bandpass Radio
-        this.filterNode.type = 'bandpass';
-        this.filterNode.frequency.setValueAtTime(2000, now);
-        this.filterNode.Q.setValueAtTime(3.0, now);
-        this.distortionNode.curve = this.makeDistortionCurve(25);
-        break;
-
-      case 'whisper-synth': // Ethereal Ghost Air
-        this.filterNode.type = 'highpass';
-        this.filterNode.frequency.setValueAtTime(3500, now);
-        this.filterNode.Q.setValueAtTime(2.0, now);
-        this.gainNode.gain.setValueAtTime(1.5, now);
-        break;
-
-      case 'studio':
-      default: // Pure Crystal Clear Audio
-        this.filterNode.type = 'allpass';
-        this.filterNode.frequency.setValueAtTime(1000, now);
-        this.distortionNode.curve = null;
-        this.delayNode.delayTime.setValueAtTime(0.0, now);
-        this.gainNode.gain.setValueAtTime(1.0, now);
-        break;
+  _disconnectProcessingNodes() {
+    if (this.source) {
+      try {
+        this.source.disconnect();
+      } catch (_) {}
     }
 
-    console.log(`🎙️ [LiveVoiceEngine] Applied DSP preset: ${presetId}`);
+    this.nodes.forEach(node => {
+      try {
+        node.disconnect();
+      } catch (_) {}
+    });
+
+    this.nodes = [];
+    this.activeNodes = {};
+  }
+
+  _trackNode(node, name = null) {
+    if (!node) return node;
+
+    this.nodes.push(node);
+
+    if (name) {
+      this.activeNodes[name] = node;
+    }
+
+    return node;
+  }
+
+  _connectChain(nodes) {
+    if (!this.source || !this.destination) return;
+
+    const validNodes = nodes.filter(Boolean);
+
+    if (!validNodes.length) {
+      this.source.connect(this.destination);
+      return;
+    }
+
+    let previous = this.source;
+
+    validNodes.forEach(node => {
+      previous.connect(node);
+      previous = node;
+    });
+
+    previous.connect(this.destination);
+  }
+
+  // ------------------------------------------------------------
+  // BASIC DSP HELPERS
+  // ------------------------------------------------------------
+
+  _createFilter(
+    type,
+    frequency,
+    Q = 1,
+    gain = 0
+  ) {
+    const filter = this._trackNode(
+      this.audioContext.createBiquadFilter()
+    );
+
+    filter.type = type;
+    filter.frequency.value = frequency;
+    filter.Q.value = Q;
+    filter.gain.value = gain;
+
+    return filter;
+  }
+
+  _createGain(value = 1) {
+    const gain = this._trackNode(
+      this.audioContext.createGain()
+    );
+
+    gain.gain.value = value;
+
+    return gain;
+  }
+
+  _createCompressor() {
+    const compressor = this._trackNode(
+      this.audioContext.createDynamicsCompressor()
+    );
+
+    compressor.threshold.value = -18;
+    compressor.knee.value = 20;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.25;
+
+    return compressor;
+  }
+
+  _createDelay(delayTime = 0.25, feedback = 0.25) {
+    const delay = this._trackNode(
+      this.audioContext.createDelay(2.0)
+    );
+
+    delay.delayTime.value = delayTime;
+
+    const feedbackGain = this._createGain(feedback);
+
+    delay.connect(feedbackGain);
+    feedbackGain.connect(delay);
+
+    return delay;
+  }
+
+  _createWaveShaper(amount = 20) {
+    const shaper = this._trackNode(
+      this.audioContext.createWaveShaper()
+    );
+
+    const samples = 44100;
+    const curve = new Float32Array(samples);
+
+    const k = amount;
+
+    for (let i = 0; i < samples; i++) {
+      const x = (i * 2) / samples - 1;
+
+      curve[i] =
+        ((1 + k) * x) /
+        (1 + k * Math.abs(x));
+    }
+
+    shaper.curve = curve;
+    shaper.oversample = '4x';
+
+    return shaper;
+  }
+
+  _createTremolo(rate = 5, depth = 0.5) {
+    const gain = this._createGain(1);
+
+    const oscillator =
+      this._trackNode(
+        this.audioContext.createOscillator()
+      );
+
+    const lfoGain =
+      this._trackNode(
+        this.audioContext.createGain()
+      );
+
+    oscillator.frequency.value = rate;
+    lfoGain.gain.value = depth;
+
+    oscillator.connect(lfoGain);
+    lfoGain.connect(gain.gain);
+
+    oscillator.start();
+
+    return {
+      gain,
+      oscillator,
+      lfoGain
+    };
+  }
+
+  _createRingMod(frequency = 440, depth = 0.8) {
+    const gain = this._createGain(1 - depth / 2);
+
+    const oscillator =
+      this._trackNode(
+        this.audioContext.createOscillator()
+      );
+
+    const modulationGain =
+      this._trackNode(
+        this.audioContext.createGain()
+      );
+
+    oscillator.frequency.value = frequency;
+    modulationGain.gain.value = depth;
+
+    oscillator.connect(modulationGain);
+    modulationGain.connect(gain.gain);
+
+    oscillator.start();
+
+    return {
+      gain,
+      oscillator,
+      modulationGain
+    };
+  }
+
+  // ------------------------------------------------------------
+  // PRESET BUILDER
+  // ------------------------------------------------------------
+
+  _buildPreset(preset) {
+    if (!this.source || !this.destination) return;
+
+    const compressor = this._createCompressor();
+
+    switch (preset) {
+
+      // --------------------------------------------------------
+      // STUDIO PURE
+      // --------------------------------------------------------
+
+      case 'studio': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            70,
+            0.7
+          );
+
+        const presence =
+          this._createFilter(
+            'peaking',
+            3000,
+            0.9,
+            3
+          );
+
+        const air =
+          this._createFilter(
+            'highshelf',
+            7000,
+            0.7,
+            2
+          );
+
+        this._connectChain([
+          highPass,
+          presence,
+          air,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // DEEP BASS MONSTER
+      // --------------------------------------------------------
+
+      case 'bass': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            45,
+            0.7
+          );
+
+        const bassBoost =
+          this._createFilter(
+            'lowshelf',
+            140,
+            0.8,
+            14
+          );
+
+        const warmth =
+          this._createFilter(
+            'peaking',
+            250,
+            1.1,
+            6
+          );
+
+        this._connectChain([
+          highPass,
+          bassBoost,
+          warmth,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // ROBOT NETWORK
+      // --------------------------------------------------------
+
+      case 'robot': {
+        const band =
+          this._createFilter(
+            'bandpass',
+            1200,
+            0.8
+          );
+
+        const ring =
+          this._createRingMod(
+            440,
+            0.9
+          );
+
+        const distortion =
+          this._createWaveShaper(35);
+
+        this._connectChain([
+          band,
+          ring.gain,
+          distortion,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // HELIUM ECHO
+      // --------------------------------------------------------
+
+      case 'helium': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            500,
+            0.7
+          );
+
+        const presence =
+          this._createFilter(
+            'highshelf',
+            2500,
+            0.7,
+            10
+          );
+
+        const delay =
+          this._createDelay(
+            0.12,
+            0.22
+          );
+
+        this._connectChain([
+          highPass,
+          presence,
+          delay,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // AI PITCH CORRECT
+      // --------------------------------------------------------
+      //
+      // Browser-native Web Audio cannot perform true autotune
+      // simply by setting a frequency. This preset instead gives
+      // the voice a brighter, tighter processed sound.
+      //
+
+      case 'autotune-major': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            100,
+            0.7
+          );
+
+        const clarity =
+          this._createFilter(
+            'peaking',
+            1800,
+            1.0,
+            5
+          );
+
+        const presence =
+          this._createFilter(
+            'peaking',
+            3500,
+            1.0,
+            4
+          );
+
+        this._connectChain([
+          highPass,
+          clarity,
+          presence,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // STADIUM
+      // --------------------------------------------------------
+
+      case 'stadium': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            90,
+            0.7
+          );
+
+        const delay =
+          this._createDelay(
+            0.34,
+            0.42
+          );
+
+        const presence =
+          this._createFilter(
+            'peaking',
+            350,
+            1.0,
+            3
+          );
+
+        this._connectChain([
+          highPass,
+          presence,
+          delay,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // VINTAGE AM RADIO
+      // --------------------------------------------------------
+
+      case 'radio-1930': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            350,
+            0.8
+          );
+
+        const lowPass =
+          this._createFilter(
+            'lowpass',
+            3200,
+            0.8
+          );
+
+        const distortion =
+          this._createWaveShaper(18);
+
+        this._connectChain([
+          highPass,
+          lowPass,
+          distortion,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // CYBER OVERDRIVE
+      // --------------------------------------------------------
+
+      case 'cyberpunk-glitch': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            120,
+            0.7
+          );
+
+        const distortion =
+          this._createWaveShaper(65);
+
+        const ring =
+          this._createRingMod(
+            75,
+            0.65
+          );
+
+        this._connectChain([
+          highPass,
+          distortion,
+          ring.gain,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // GHOSTLY WHISPER
+      // --------------------------------------------------------
+
+      case 'whisper-synth': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            1000,
+            0.8
+          );
+
+        const air =
+          this._createFilter(
+            'highshelf',
+            7000,
+            0.8,
+            8
+          );
+
+        const delay =
+          this._createDelay(
+            0.22,
+            0.35
+          );
+
+        this._connectChain([
+          highPass,
+          air,
+          delay,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // CHIPMUNK / SQUEAK VELOCITY
+      // --------------------------------------------------------
+      //
+      // This is a bright/high-frequency transformation rather
+      // than a true time-domain pitch shifter.
+      //
+
+      case 'chipmunk': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            900,
+            0.8
+          );
+
+        const highShelf =
+          this._createFilter(
+            'highshelf',
+            4000,
+            0.8,
+            12
+          );
+
+        const ring =
+          this._createRingMod(
+            1200,
+            0.25
+          );
+
+        this._connectChain([
+          highPass,
+          highShelf,
+          ring.gain,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // COSMIC WALKIE TALKIE
+      // --------------------------------------------------------
+
+      case 'space-captain': {
+        const band =
+          this._createFilter(
+            'bandpass',
+            2200,
+            1.2
+          );
+
+        const distortion =
+          this._createWaveShaper(12);
+
+        const delay =
+          this._createDelay(
+            0.09,
+            0.18
+          );
+
+        this._connectChain([
+          band,
+          distortion,
+          delay,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // DEMON LORD
+      // --------------------------------------------------------
+
+      case 'demon-lord': {
+        const lowPass =
+          this._createFilter(
+            'lowpass',
+            900,
+            0.7
+          );
+
+        const bass =
+          this._createFilter(
+            'lowshelf',
+            120,
+            0.8,
+            15
+          );
+
+        const distortion =
+          this._createWaveShaper(28);
+
+        this._connectChain([
+          lowPass,
+          bass,
+          distortion,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // TELEPHONE
+      // --------------------------------------------------------
+
+      case 'telephone': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            400,
+            0.8
+          );
+
+        const lowPass =
+          this._createFilter(
+            'lowpass',
+            2600,
+            0.8
+          );
+
+        const distortion =
+          this._createWaveShaper(8);
+
+        this._connectChain([
+          highPass,
+          lowPass,
+          distortion,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // SYNTH HARMONY
+      // --------------------------------------------------------
+      //
+      // Creates a subtle modulation effect around the voice.
+      //
+
+      case 'choir-ensemble': {
+        const highPass =
+          this._createFilter(
+            'highpass',
+            100,
+            0.7
+          );
+
+        const tremolo =
+          this._createTremolo(
+            2.5,
+            0.25
+          );
+
+        const delay =
+          this._createDelay(
+            0.18,
+            0.28
+          );
+
+        this._connectChain([
+          highPass,
+          tremolo.gain,
+          delay,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // DREAM MATRIX SHIFT
+      // --------------------------------------------------------
+
+      case 'reverse-texture': {
+        const band =
+          this._createFilter(
+            'bandpass',
+            1200,
+            0.9
+          );
+
+        const ring =
+          this._createRingMod(
+            300,
+            0.45
+          );
+
+        const delay =
+          this._createDelay(
+            0.27,
+            0.4
+          );
+
+        this._connectChain([
+          band,
+          ring.gain,
+          delay,
+          compressor
+        ]);
+
+        break;
+      }
+
+      // --------------------------------------------------------
+      // FALLBACK
+      // --------------------------------------------------------
+
+      default: {
+        this._connectChain([
+          compressor
+        ]);
+      }
+    }
+  }
+
+  // ------------------------------------------------------------
+  // PROCESSED STREAM ACCESS
+  // ------------------------------------------------------------
+
+  getProcessedStream() {
+    if (!this.initialized || !this.processedStream) {
+      return null;
+    }
+
+    return this.processedStream;
   }
 
   getProcessedAudioTrack() {
-    if (this.processedStream && this.processedStream.getAudioTracks().length > 0) {
-      return this.processedStream.getAudioTracks()[0];
+    if (!this.destination) {
+      return null;
     }
-    return null;
+
+    return (
+      this.destination.stream.getAudioTracks()[0] ||
+      null
+    );
   }
 
-  destroy() {
-    if (this.audioCtx && this.audioCtx.state !== 'closed') {
-      this.audioCtx.close();
+  getInputStream() {
+    return this.inputStream;
+  }
+
+  isInitialized() {
+    return this.initialized && !this.destroyed;
+  }
+
+  // ------------------------------------------------------------
+  // TRACK CONTROL
+  // ------------------------------------------------------------
+
+  setMuted(muted) {
+    const track = this.getProcessedAudioTrack();
+
+    if (!track) return;
+
+    track.enabled = !muted;
+  }
+
+  // ------------------------------------------------------------
+  // AUDIO CONTEXT CONTROL
+  // ------------------------------------------------------------
+
+  async resume() {
+    await this._resumeContext();
+  }
+
+  async suspend() {
+    if (
+      this.audioContext &&
+      this.audioContext.state === 'running'
+    ) {
+      try {
+        await this.audioContext.suspend();
+      } catch (error) {
+        console.warn(
+          '[LiveVoiceEngine] Unable to suspend AudioContext:',
+          error
+        );
+      }
     }
+  }
+
+  // ------------------------------------------------------------
+  // CLEANUP
+  // ------------------------------------------------------------
+
+  destroy() {
+    console.log(
+      '[LiveVoiceEngine] Destroying voice engine.'
+    );
+
+    this.destroyed = true;
+
+    this._disconnectProcessingNodes();
+
+    if (this.destination) {
+      this.destination.stream
+        .getTracks()
+        .forEach(track => {
+          try {
+            track.stop();
+          } catch (_) {}
+        });
+    }
+
+    this.processedStream = null;
+    this.inputStream = null;
+
+    this.source = null;
+    this.destination = null;
+
+    if (this.audioContext) {
+      try {
+        this.audioContext.close();
+      } catch (_) {}
+    }
+
+    this.audioContext = null;
+
+    this.initialized = false;
+    this.nodes = [];
+    this.activeNodes = {};
   }
 }
 
-export const liveVoiceEngine = new LiveVoiceEngine();
+// ------------------------------------------------------------
+// SINGLE SHARED ENGINE
+// ------------------------------------------------------------
+//
+// Exporting one shared instance is intentional.
+//
+// AIVoiceEffects, StreamDashboard and the WebRTC layer should all
+// talk to the SAME voice engine during a host's live session.
+//
+// This prevents:
+//
+// AIVoiceEffects → Engine A
+// WebRTC          → Engine B
+//
+// and instead gives:
+//
+// Microphone → ONE Engine → WebRTC → Viewers
+//
+
+const liveVoiceEngine = new LiveVoiceEngine();
+
 export default liveVoiceEngine;
