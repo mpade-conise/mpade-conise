@@ -1,4 +1,4 @@
-
+```jsx
 import {
   useCallback,
   useEffect,
@@ -34,8 +34,11 @@ const GLOBAL_ICE_CONFIG = {
       credential: 'KW6Vsm7ZTUwjjDWn'
     }
   ],
+
   iceCandidatePoolSize: 10
 };
+
+const PEER_DISCONNECT_GRACE_PERIOD = 10000;
 
 export const useStreamWebRTC = (
   streamId,
@@ -66,9 +69,32 @@ export const useStreamWebRTC = (
   const remoteStreamsRef = useRef({});
 
   /*
-   * Prevent duplicate negotiations for the same viewer.
+   * Prevent duplicate negotiations/offers from racing.
    */
   const negotiatingPeersRef = useRef(new Set());
+
+  /*
+   * Prevent the same incoming offer from being processed twice.
+   *
+   * This is important because the application currently listens
+   * to both:
+   *
+   * receive_webrtc_offer
+   * webrtc_offer_received
+   *
+   * If the backend forwards the same offer through both events,
+   * two async handlers can otherwise call setRemoteDescription()
+   * at the same time.
+   */
+  const incomingOfferProcessingRef = useRef(new Set());
+
+  /*
+   * Delayed peer cleanup.
+   *
+   * A temporary "disconnected" state does NOT necessarily mean
+   * the WebRTC connection is dead.
+   */
+  const peerCleanupTimersRef = useRef({});
 
   /*
    * ============================================================
@@ -77,12 +103,15 @@ export const useStreamWebRTC = (
    */
 
   const mountedRef = useRef(false);
+
   const mediaInitRef = useRef(false);
 
   const mediaGenerationRef = useRef(0);
+
   const activeMediaGenerationRef = useRef(0);
 
   const localVideoRetryTimerRef = useRef(null);
+
   const localVideoRetryCountRef = useRef(0);
 
   const [hardwareReady, setHardwareReady] = useState(false);
@@ -111,6 +140,30 @@ export const useStreamWebRTC = (
       }
     });
   }, []);
+
+  /*
+   * ============================================================
+   * PEER TIMER CLEANUP
+   * ============================================================
+   */
+
+  const clearPeerCleanupTimer = useCallback(
+    peerId => {
+      const timer =
+        peerCleanupTimersRef.current[
+          peerId
+        ];
+
+      if (timer) {
+        clearTimeout(timer);
+
+        delete peerCleanupTimersRef.current[
+          peerId
+        ];
+      }
+    },
+    []
+  );
 
   /*
    * ============================================================
@@ -171,7 +224,7 @@ export const useStreamWebRTC = (
 
   /*
    * ============================================================
-   * LOCAL VIDEO BINDING
+   * BIND LOCAL STREAM
    * ============================================================
    */
 
@@ -199,7 +252,15 @@ export const useStreamWebRTC = (
     video.autoplay = true;
     video.playsInline = true;
 
-    playLocalVideo(video);
+    /*
+     * Only call play when necessary.
+     *
+     * This avoids repeatedly interrupting a video that is
+     * already playing.
+     */
+    if (video.paused) {
+      playLocalVideo(video);
+    }
 
     return true;
   }, [playLocalVideo]);
@@ -233,7 +294,10 @@ export const useStreamWebRTC = (
         return;
       }
 
-      if (!localStreamRef.current) {
+      const stream =
+        localStreamRef.current;
+
+      if (!stream) {
         return;
       }
 
@@ -246,6 +310,7 @@ export const useStreamWebRTC = (
         );
 
         stopLocalVideoRetry();
+
         return;
       }
 
@@ -260,6 +325,7 @@ export const useStreamWebRTC = (
         );
 
         stopLocalVideoRetry();
+
         return;
       }
 
@@ -278,7 +344,7 @@ export const useStreamWebRTC = (
 
   /*
    * ============================================================
-   * REMOTE VIDEO
+   * REMOTE VIDEO BINDING
    * ============================================================
    */
 
@@ -291,6 +357,11 @@ export const useStreamWebRTC = (
 
         const streamKey =
           stream.id || 'primary';
+
+        const previousStream =
+          remoteStreamsRef.current[
+            streamKey
+          ];
 
         remoteStreamsRef.current[
           streamKey
@@ -319,121 +390,75 @@ export const useStreamWebRTC = (
           return;
         }
 
-        if (
-          video.srcObject !== stream
-        ) {
+        /*
+         * IMPORTANT:
+         *
+         * ontrack fires separately for audio and video.
+         *
+         * Both tracks normally belong to the SAME MediaStream.
+         * Reassigning srcObject twice can cause:
+         *
+         * "The play() request was interrupted by a new load request."
+         *
+         * Therefore only replace srcObject when the stream
+         * actually changed.
+         */
+        const streamChanged =
+          video.srcObject !== stream;
+
+        if (streamChanged) {
           video.srcObject = stream;
         }
 
         video.autoplay = true;
         video.playsInline = true;
 
-        const playVideo = async () => {
-          try {
-            await video.play();
-          } catch (error) {
-            console.warn(
-              '⚠️ [WebRTC] Remote video play failed:',
-              error?.name,
-              error?.message || error
+        /*
+         * Do not repeatedly call play() for the exact same
+         * stream while it is already playing.
+         */
+        if (
+          streamChanged ||
+          video.paused
+        ) {
+          const playVideo = async () => {
+            try {
+              await video.play();
+            } catch (error) {
+              console.warn(
+                '⚠️ [WebRTC] Remote video play failed:',
+                error?.name,
+                error?.message || error
+              );
+            }
+          };
+
+          if (
+            video.readyState >= 1
+          ) {
+            playVideo();
+          } else {
+            video.addEventListener(
+              'loadedmetadata',
+              playVideo,
+              {
+                once: true
+              }
             );
           }
-        };
-
-        if (video.readyState >= 1) {
-          playVideo();
-        } else {
-          video.addEventListener(
-            'loadedmetadata',
-            playVideo,
-            {
-              once: true
-            }
-          );
         }
 
-        console.log(
-          '🎥 [WebRTC] Remote media stream attached.'
-        );
+        if (
+          streamChanged ||
+          !previousStream
+        ) {
+          console.log(
+            '🎥 [WebRTC] Remote media stream attached.'
+          );
+        }
       },
       [challengerVideoRef]
     );
-
-  /*
-   * ============================================================
-   * CLOSE ONE PEER
-   * ============================================================
-   */
-
-  const closePeerConnection =
-    useCallback(targetSocketId => {
-      if (!targetSocketId) {
-        return;
-      }
-
-      const pc =
-        peerConnectionsRef.current[
-          targetSocketId
-        ];
-
-      if (pc) {
-        try {
-          pc.ontrack = null;
-          pc.onicecandidate = null;
-          pc.onconnectionstatechange = null;
-          pc.oniceconnectionstatechange = null;
-
-          pc.close();
-        } catch {
-          // Ignore cleanup errors.
-        }
-      }
-
-      delete peerConnectionsRef.current[
-        targetSocketId
-      ];
-
-      delete iceCandidatesQueueRef.current[
-        targetSocketId
-      ];
-
-      delete remoteStreamsRef.current[
-        targetSocketId
-      ];
-
-      negotiatingPeersRef.current.delete(
-        targetSocketId
-      );
-
-      console.log(
-        '🧹 [WebRTC] Peer cleaned:',
-        targetSocketId
-      );
-    }, []);
-
-  /*
-   * ============================================================
-   * CLOSE ALL PEERS
-   * ============================================================
-   */
-
-  const closeAllPeerConnections =
-    useCallback(() => {
-      Object.keys(
-        peerConnectionsRef.current
-      ).forEach(targetSocketId => {
-        closePeerConnection(
-          targetSocketId
-        );
-      });
-
-      peerConnectionsRef.current = {};
-      iceCandidatesQueueRef.current = {};
-      remoteStreamsRef.current = {};
-      negotiatingPeersRef.current.clear();
-
-      setPrimaryRemoteStream(null);
-    }, [closePeerConnection]);
 
   /*
    * ============================================================
@@ -541,6 +566,7 @@ export const useStreamWebRTC = (
                       max: 30
                     }
                   },
+
                   audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
@@ -643,8 +669,7 @@ export const useStreamWebRTC = (
           startLocalVideoRetry();
 
           /*
-           * Voice engine is intentionally isolated
-           * from camera startup.
+           * Voice engine must never block camera startup.
            */
           try {
             if (
@@ -695,14 +720,15 @@ export const useStreamWebRTC = (
             '❌ [WebRTC] CAMERA/MICROPHONE ACCESS FAILED:',
             {
               name: error?.name,
-              message:
-                error?.message,
+              message: error?.message,
               constraint:
                 error?.constraint
             }
           );
 
-          switch (error?.name) {
+          switch (
+            error?.name
+          ) {
             case 'NotAllowedError':
             case 'PermissionDeniedError':
               console.error(
@@ -764,14 +790,61 @@ export const useStreamWebRTC = (
         mediaGenerationRef.current ===
         generation
       ) {
-        mediaGenerationRef.current +=
-          1;
+        mediaGenerationRef.current += 1;
       }
 
       mediaInitRef.current =
         false;
 
-      closeAllPeerConnections();
+      /*
+       * Clear delayed peer cleanup timers.
+       */
+      Object.keys(
+        peerCleanupTimersRef.current
+      ).forEach(peerId => {
+        clearPeerCleanupTimer(
+          peerId
+        );
+      });
+
+      /*
+       * Close peer connections.
+       */
+      Object.entries(
+        peerConnectionsRef.current
+      ).forEach(
+        ([peerId, pc]) => {
+          try {
+            pc.ontrack = null;
+            pc.onicecandidate = null;
+            pc.onconnectionstatechange =
+              null;
+            pc.oniceconnectionstatechange =
+              null;
+
+            pc.close();
+          } catch {
+            // Ignore cleanup errors.
+          }
+
+          clearPeerCleanupTimer(
+            peerId
+          );
+        }
+      );
+
+      peerConnectionsRef.current =
+        {};
+
+      iceCandidatesQueueRef.current =
+        {};
+
+      remoteStreamsRef.current =
+        {};
+
+      negotiatingPeersRef.current.clear();
+
+      incomingOfferProcessingRef.current.clear();
 
       if (acquiredStream) {
         stopStream(
@@ -811,9 +884,7 @@ export const useStreamWebRTC = (
       if (remoteVideo) {
         remoteVideo.onloadedmetadata =
           null;
-
-        remoteVideo.srcObject =
-          null;
+        remoteVideo.srcObject = null;
       }
 
       if (
@@ -833,12 +904,12 @@ export const useStreamWebRTC = (
     bindLocalStreamToDOM,
     startLocalVideoRetry,
     stopLocalVideoRetry,
-    closeAllPeerConnections
+    clearPeerCleanupTimer
   ]);
 
   /*
    * ============================================================
-   * RE-BIND LOCAL VIDEO AFTER RENDER
+   * RE-BIND LOCAL VIDEO AFTER REACT RENDER
    * ============================================================
    */
 
@@ -851,6 +922,7 @@ export const useStreamWebRTC = (
     }
 
     bindLocalStreamToDOM();
+
     startLocalVideoRetry();
 
     return () => {
@@ -881,13 +953,15 @@ export const useStreamWebRTC = (
     stream
       .getAudioTracks()
       .forEach(track => {
-        track.enabled = !isMuted;
+        track.enabled =
+          !isMuted;
       });
 
     stream
       .getVideoTracks()
       .forEach(track => {
-        track.enabled = !isCameraOff;
+        track.enabled =
+          !isCameraOff;
       });
 
     console.log(
@@ -910,6 +984,161 @@ export const useStreamWebRTC = (
     localStream,
     bindLocalStreamToDOM
   ]);
+
+  /*
+   * ============================================================
+   * PEER REMOVAL
+   * ============================================================
+   */
+
+  const removePeerConnection =
+    useCallback(
+      (peerId, expectedPc = null) => {
+        if (!peerId) {
+          return;
+        }
+
+        clearPeerCleanupTimer(
+          peerId
+        );
+
+        const pc =
+          peerConnectionsRef.current[
+            peerId
+          ];
+
+        if (
+          expectedPc &&
+          pc &&
+          pc !== expectedPc
+        ) {
+          return;
+        }
+
+        if (pc) {
+          try {
+            pc.ontrack = null;
+            pc.onicecandidate = null;
+            pc.onconnectionstatechange =
+              null;
+            pc.oniceconnectionstatechange =
+              null;
+
+            pc.close();
+          } catch {
+            // Ignore cleanup errors.
+          }
+        }
+
+        if (
+          !expectedPc ||
+          peerConnectionsRef.current[
+            peerId
+          ] === expectedPc
+        ) {
+          delete peerConnectionsRef.current[
+            peerId
+          ];
+        }
+
+        delete iceCandidatesQueueRef.current[
+          peerId
+        ];
+
+        delete remoteStreamsRef.current[
+          peerId
+        ];
+
+        negotiatingPeersRef.current.delete(
+          peerId
+        );
+
+        incomingOfferProcessingRef.current.delete(
+          peerId
+        );
+
+        console.log(
+          '🧹 [WebRTC] Peer cleaned: ' +
+            peerId
+        );
+      },
+      [clearPeerCleanupTimer]
+    );
+
+  /*
+   * ============================================================
+   * DELAYED PEER CLEANUP
+   * ============================================================
+   */
+
+  const schedulePeerCleanup =
+    useCallback(
+      (peerId, pc) => {
+        if (!peerId || !pc) {
+          return;
+        }
+
+        clearPeerCleanupTimer(
+          peerId
+        );
+
+        peerCleanupTimersRef.current[
+          peerId
+        ] = setTimeout(() => {
+          const currentPc =
+            peerConnectionsRef.current[
+              peerId
+            ];
+
+          if (
+            currentPc !== pc
+          ) {
+            return;
+          }
+
+          const state =
+            pc.connectionState;
+
+          const iceState =
+            pc.iceConnectionState;
+
+          /*
+           * Give WebRTC a chance to recover.
+           */
+          if (
+            state ===
+              'connected' ||
+            state ===
+              'connecting' ||
+            iceState ===
+              'connected' ||
+            iceState ===
+              'completed'
+          ) {
+            console.log(
+              '🟢 [WebRTC] Peer recovered before cleanup: ' +
+                peerId
+            );
+
+            return;
+          }
+
+          console.warn(
+            '🧹 [WebRTC] Removing stale peer after grace period: ' +
+              peerId
+          );
+
+          removePeerConnection(
+            peerId,
+            pc
+          );
+        }, PEER_DISCONNECT_GRACE_PERIOD);
+      },
+      [
+        clearPeerCleanupTimer,
+        removePeerConnection
+      ]
+    );
 
   /*
    * ============================================================
@@ -951,16 +1180,10 @@ export const useStreamWebRTC = (
             peerId
         );
 
-        const candidates = [
-          ...queue
-        ];
-
-        iceCandidatesQueueRef.current[
-          peerId
-        ] = [];
+        const remaining = [];
 
         for (
-          const candidate of candidates
+          const candidate of queue
         ) {
           try {
             await pc.addIceCandidate(
@@ -977,10 +1200,20 @@ export const useStreamWebRTC = (
                 error
             );
 
-            iceCandidatesQueueRef.current[
-              peerId
-            ].push(candidate);
+            remaining.push(
+              candidate
+            );
           }
+        }
+
+        if (remaining.length) {
+          iceCandidatesQueueRef.current[
+            peerId
+          ] = remaining;
+        } else {
+          delete iceCandidatesQueueRef.current[
+            peerId
+          ];
         }
       },
       []
@@ -1008,17 +1241,32 @@ export const useStreamWebRTC = (
           ];
 
         if (existing) {
+          const state =
+            existing.connectionState;
+
+          /*
+           * Reuse healthy or still-negotiating
+           * connections.
+           */
           if (
-            existing.connectionState !==
-              'closed' &&
-            existing.connectionState !==
-              'failed'
+            state === 'new' ||
+            state === 'connecting' ||
+            state === 'connected'
           ) {
+            clearPeerCleanupTimer(
+              targetSocketId
+            );
+
             return existing;
           }
 
-          closePeerConnection(
-            targetSocketId
+          /*
+           * A failed/closed peer should not be
+           * reused.
+           */
+          removePeerConnection(
+            targetSocketId,
+            existing
           );
         }
 
@@ -1039,7 +1287,7 @@ export const useStreamWebRTC = (
           ] || [];
 
         /*
-         * Add local camera + microphone.
+         * Add local tracks.
          */
         const stream =
           localStreamRef.current;
@@ -1066,13 +1314,9 @@ export const useStreamWebRTC = (
         }
 
         /*
-         * Remote media.
+         * Remote tracks.
          */
         pc.ontrack = event => {
-          if (!mountedRef.current) {
-            return;
-          }
-
           console.log(
             '🎥 [WebRTC] Remote ' +
               event.track?.kind +
@@ -1091,12 +1335,17 @@ export const useStreamWebRTC = (
         };
 
         /*
-         * Local ICE candidates.
+         * ICE candidates.
          */
         pc.onicecandidate =
           event => {
             if (
-              !event.candidate ||
+              !event.candidate
+            ) {
+              return;
+            }
+
+            if (
               !socket.connected
             ) {
               return;
@@ -1109,7 +1358,8 @@ export const useStreamWebRTC = (
                 candidate:
                   event.candidate,
                 targetSocketId,
-                senderType: 'host'
+                senderType:
+                  'host'
               }
             );
           };
@@ -1119,33 +1369,48 @@ export const useStreamWebRTC = (
          */
         pc.onconnectionstatechange =
           () => {
-            if (
-              !mountedRef.current
-            ) {
-              return;
-            }
+            const state =
+              pc.connectionState;
 
             console.log(
               '🌐 [WebRTC] Peer ' +
                 targetSocketId +
                 ': ' +
-                pc.connectionState
+                state
             );
 
             if (
-              pc.connectionState ===
-              'connected'
+              state === 'connected'
             ) {
+              clearPeerCleanupTimer(
+                targetSocketId
+              );
+
               console.log(
                 '🟢 [WebRTC] Peer ' +
                   targetSocketId +
                   ' is connected.'
               );
+
+              return;
             }
 
             if (
-              pc.connectionState ===
-              'disconnected'
+              state === 'connecting' ||
+              state === 'new'
+            ) {
+              clearPeerCleanupTimer(
+                targetSocketId
+              );
+
+              return;
+            }
+
+            if (
+              state ===
+                'disconnected' ||
+              state ===
+                'failed'
             ) {
               console.warn(
                 '🟠 [WebRTC] Peer ' +
@@ -1154,69 +1419,25 @@ export const useStreamWebRTC = (
               );
 
               /*
-               * Do not immediately destroy the peer.
+               * DO NOT immediately close it.
                *
-               * Browsers can temporarily report
-               * disconnected during network changes.
+               * Browser WebRTC connections can move through
+               * disconnected briefly during network changes.
                */
-              setTimeout(() => {
-                if (
-                  !mountedRef.current
-                ) {
-                  return;
-                }
+              schedulePeerCleanup(
+                targetSocketId,
+                pc
+              );
 
-                const currentPc =
-                  peerConnectionsRef
-                    .current[
-                    targetSocketId
-                  ];
-
-                if (
-                  currentPc !== pc
-                ) {
-                  return;
-                }
-
-                if (
-                  pc.connectionState ===
-                    'disconnected' ||
-                  pc.connectionState ===
-                    'failed'
-                ) {
-                  console.warn(
-                    '🧹 [WebRTC] Removing stale peer ' +
-                      targetSocketId
-                  );
-
-                  closePeerConnection(
-                    targetSocketId
-                  );
-                }
-              }, 5000);
+              return;
             }
 
             if (
-              pc.connectionState ===
-              'failed'
+              state === 'closed'
             ) {
-              console.error(
-                '❌ [WebRTC] Peer ' +
-                  targetSocketId +
-                  ' connection FAILED.'
-              );
-
-              closePeerConnection(
-                targetSocketId
-              );
-            }
-
-            if (
-              pc.connectionState ===
-              'closed'
-            ) {
-              closePeerConnection(
-                targetSocketId
+              removePeerConnection(
+                targetSocketId,
+                pc
               );
             }
           };
@@ -1226,31 +1447,78 @@ export const useStreamWebRTC = (
          */
         pc.oniceconnectionstatechange =
           () => {
-            if (
-              !mountedRef.current
-            ) {
-              return;
-            }
+            const state =
+              pc.iceConnectionState;
 
             console.log(
               '🧊 [WebRTC] ICE ' +
                 targetSocketId +
                 ': ' +
-                pc.iceConnectionState
+                state
             );
 
             if (
-              pc.iceConnectionState ===
-              'failed'
+              state ===
+                'connected' ||
+              state ===
+                'completed'
             ) {
-              console.warn(
-                '❌ [WebRTC] ICE failed for ' +
-                  targetSocketId +
-                  '. Cleaning peer so a fresh negotiation can occur.'
+              clearPeerCleanupTimer(
+                targetSocketId
               );
 
-              closePeerConnection(
-                targetSocketId
+              return;
+            }
+
+            if (
+              state ===
+                'disconnected'
+            ) {
+              schedulePeerCleanup(
+                targetSocketId,
+                pc
+              );
+
+              return;
+            }
+
+            if (
+              state === 'failed'
+            ) {
+              console.warn(
+                '⚠️ [WebRTC] ICE failed for ' +
+                  targetSocketId
+              );
+
+              /*
+               * Ask the browser to prepare a new ICE
+               * generation. We do not immediately destroy
+               * the peer because the connection-state handler
+               * has a recovery grace period.
+               */
+              try {
+                if (
+                  typeof pc.restartIce ===
+                  'function'
+                ) {
+                  pc.restartIce();
+
+                  console.log(
+                    '🔄 [WebRTC] ICE restart requested for ' +
+                      targetSocketId
+                  );
+                }
+              } catch (error) {
+                console.warn(
+                  '⚠️ [WebRTC] ICE restart failed:',
+                  error?.message ||
+                    error
+                );
+              }
+
+              schedulePeerCleanup(
+                targetSocketId,
+                pc
               );
             }
           };
@@ -1261,100 +1529,11 @@ export const useStreamWebRTC = (
         socket,
         streamId,
         bindRemoteStreamToDOM,
-        closePeerConnection
+        clearPeerCleanupTimer,
+        removePeerConnection,
+        schedulePeerCleanup
       ]
     );
-
-  /*
-   * ============================================================
-   * SOCKET RECONNECT HANDLING
-   * ============================================================
-   */
-
-  useEffect(() => {
-    if (!socket || !streamId) {
-      return undefined;
-    }
-
-    const handleSocketConnect =
-      () => {
-        console.log(
-          '🟢 [WebRTC] Signaling socket connected:',
-          socket.id
-        );
-
-        /*
-         * Any old peer connections belong to the
-         * previous signaling session.
-         *
-         * The camera itself stays alive.
-         */
-        Object.keys(
-          peerConnectionsRef.current
-        ).forEach(targetSocketId => {
-          closePeerConnection(
-            targetSocketId
-          );
-        });
-
-        if (
-          socket.connected &&
-          localStreamRef.current
-        ) {
-          console.log(
-            '🔄 [WebRTC] Signaling restored. Waiting for viewers to renegotiate.'
-          );
-        }
-      };
-
-    const handleSocketDisconnect =
-      reason => {
-        console.warn(
-          '🟠 [WebRTC] Signaling socket disconnected:',
-          reason
-        );
-
-        /*
-         * WebRTC peers using this socket can no
-         * longer exchange ICE/signaling messages.
-         *
-         * Keep the camera alive; remove only peers.
-         */
-        Object.keys(
-          peerConnectionsRef.current
-        ).forEach(targetSocketId => {
-          closePeerConnection(
-            targetSocketId
-          );
-        });
-      };
-
-    socket.on(
-      'connect',
-      handleSocketConnect
-    );
-
-    socket.on(
-      'disconnect',
-      handleSocketDisconnect
-    );
-
-    return () => {
-      socket.off(
-        'connect',
-        handleSocketConnect
-      );
-
-      socket.off(
-        'disconnect',
-        handleSocketDisconnect
-      );
-    };
-  }, [
-    socket,
-    streamId,
-    closePeerConnection
-  ]);
 
   /*
    * ============================================================
@@ -1375,17 +1554,14 @@ export const useStreamWebRTC = (
     let cancelled = false;
 
     /*
-     * ------------------------------------------------------------
-     * VIEWER REQUEST
-     * ------------------------------------------------------------
+     * ----------------------------------------------------------
+     * Viewer requesting stream
+     * ----------------------------------------------------------
      */
 
     const handleViewerRequest =
       async payload => {
-        if (
-          cancelled ||
-          !mountedRef.current
-        ) {
+        if (cancelled) {
           return;
         }
 
@@ -1395,13 +1571,13 @@ export const useStreamWebRTC = (
           payload?.viewerId;
 
         if (!viewerId) {
-          console.warn(
-            '⚠️ [WebRTC] Viewer request without viewer ID.'
-          );
-
           return;
         }
 
+        /*
+         * Prevent duplicate viewer requests from causing
+         * multiple simultaneous createOffer() operations.
+         */
         if (
           negotiatingPeersRef.current.has(
             viewerId
@@ -1415,34 +1591,37 @@ export const useStreamWebRTC = (
           return;
         }
 
-        try {
-          negotiatingPeersRef.current.add(
+        const existing =
+          peerConnectionsRef.current[
+            viewerId
+          ];
+
+        if (
+          existing &&
+          (
+            existing.connectionState ===
+              'connected' ||
+            existing.connectionState ===
+              'connecting'
+          )
+        ) {
+          console.log(
+            'ℹ️ [WebRTC] Viewer already has an active peer: ' +
+              viewerId
+          );
+
+          clearPeerCleanupTimer(
             viewerId
           );
 
-          /*
-           * If an old failed peer exists,
-           * remove it first.
-           */
-          const existing =
-            peerConnectionsRef.current[
-              viewerId
-            ];
+          return;
+        }
 
-          if (
-            existing &&
-            (
-              existing.connectionState ===
-                'failed' ||
-              existing.connectionState ===
-                'closed'
-            )
-          ) {
-            closePeerConnection(
-              viewerId
-            );
-          }
+        negotiatingPeersRef.current.add(
+          viewerId
+        );
 
+        try {
           const pc =
             createPeerConnection(
               viewerId
@@ -1452,18 +1631,15 @@ export const useStreamWebRTC = (
             return;
           }
 
-          /*
-           * Only create an offer from a stable
-           * signaling state.
-           */
           if (
             pc.signalingState !==
             'stable'
           ) {
             console.log(
-              'ℹ️ [WebRTC] Peer ' +
+              'ℹ️ [WebRTC] Peer is not stable for offer: ' +
                 viewerId +
-                ' is not stable; skipping duplicate offer.'
+                ' | state=' +
+                pc.signalingState
             );
 
             return;
@@ -1472,10 +1648,7 @@ export const useStreamWebRTC = (
           const offer =
             await pc.createOffer();
 
-          if (
-            cancelled ||
-            !mountedRef.current
-          ) {
+          if (cancelled) {
             return;
           }
 
@@ -1483,10 +1656,7 @@ export const useStreamWebRTC = (
             offer
           );
 
-          if (
-            cancelled ||
-            !mountedRef.current
-          ) {
+          if (cancelled) {
             return;
           }
 
@@ -1513,10 +1683,6 @@ export const useStreamWebRTC = (
             error?.message ||
               error
           );
-
-          closePeerConnection(
-            viewerId
-          );
         } finally {
           negotiatingPeersRef.current.delete(
             viewerId
@@ -1525,20 +1691,14 @@ export const useStreamWebRTC = (
       };
 
     /*
-     * ------------------------------------------------------------
-     * INCOMING OFFER
-     * ------------------------------------------------------------
-     *
-     * This supports guest/co-host negotiation.
-     * ------------------------------------------------------------
+     * ----------------------------------------------------------
+     * Incoming offer
+     * ----------------------------------------------------------
      */
 
     const handleIncomingOffer =
       async payload => {
-        if (
-          cancelled ||
-          !mountedRef.current
-        ) {
+        if (cancelled) {
           return;
         }
 
@@ -1558,6 +1718,27 @@ export const useStreamWebRTC = (
           return;
         }
 
+        /*
+         * Prevent the same offer from being handled twice
+         * when both backend event names are received.
+         */
+        if (
+          incomingOfferProcessingRef.current.has(
+            senderId
+          )
+        ) {
+          console.log(
+            'ℹ️ [WebRTC] Duplicate offer ignored for ' +
+              senderId
+          );
+
+          return;
+        }
+
+        incomingOfferProcessingRef.current.add(
+          senderId
+        );
+
         try {
           let pc =
             peerConnectionsRef.current[
@@ -1565,8 +1746,7 @@ export const useStreamWebRTC = (
             ];
 
           /*
-           * If the old peer is unusable,
-           * recreate it.
+           * If an old connection is unusable, remove it first.
            */
           if (
             pc &&
@@ -1577,8 +1757,9 @@ export const useStreamWebRTC = (
                 'closed'
             )
           ) {
-            closePeerConnection(
-              senderId
+            removePeerConnection(
+              senderId,
+              pc
             );
 
             pc = null;
@@ -1596,11 +1777,11 @@ export const useStreamWebRTC = (
           }
 
           /*
-           * Ignore duplicate offer when we already
-           * have a remote description.
+           * Ignore duplicate offers that arrive after the
+           * current remote description has already been set.
            */
           if (
-            pc.remoteDescription
+            pc.currentRemoteDescription
           ) {
             console.log(
               'ℹ️ [WebRTC] Duplicate offer ignored for ' +
@@ -1634,10 +1815,7 @@ export const useStreamWebRTC = (
             answer
           );
 
-          if (
-            cancelled ||
-            !mountedRef.current
-          ) {
+          if (cancelled) {
             return;
           }
 
@@ -1662,17 +1840,22 @@ export const useStreamWebRTC = (
             error?.message ||
               error
           );
-
-          closePeerConnection(
+        } finally {
+          /*
+           * Release the lock after the asynchronous operation
+           * finishes. A future legitimate offer can then be
+           * processed.
+           */
+          incomingOfferProcessingRef.current.delete(
             senderId
           );
         }
       };
 
     /*
-     * ------------------------------------------------------------
-     * ANSWER
-     * ------------------------------------------------------------
+     * ----------------------------------------------------------
+     * Answer
+     * ----------------------------------------------------------
      */
 
     const handleAnswerReceived =
@@ -1703,11 +1886,6 @@ export const useStreamWebRTC = (
           ];
 
         if (!pc) {
-          console.warn(
-            '⚠️ [WebRTC] Answer received but peer no longer exists:',
-            viewerId
-          );
-
           return;
         }
 
@@ -1718,7 +1896,9 @@ export const useStreamWebRTC = (
           ) {
             console.log(
               'ℹ️ [WebRTC] Ignoring answer because peer state is ' +
-                pc.signalingState
+                pc.signalingState +
+                ' for ' +
+                viewerId
             );
 
             return;
@@ -1746,17 +1926,13 @@ export const useStreamWebRTC = (
             error?.message ||
               error
           );
-
-          closePeerConnection(
-            viewerId
-          );
         }
       };
 
     /*
-     * ------------------------------------------------------------
-     * INCOMING ICE
-     * ------------------------------------------------------------
+     * ----------------------------------------------------------
+     * Incoming ICE candidate
+     * ----------------------------------------------------------
      */
 
     const handleIncomingIceCandidate =
@@ -1786,10 +1962,8 @@ export const useStreamWebRTC = (
           ];
 
         /*
-         * Candidate arrived before the peer or
-         * before remoteDescription.
-         *
-         * Queue it.
+         * ICE can arrive before the offer.
+         * Queue it until remoteDescription exists.
          */
         if (
           !pc ||
@@ -1817,9 +1991,7 @@ export const useStreamWebRTC = (
           );
         } catch (error) {
           console.warn(
-            '⚠️ [WebRTC] ICE candidate failed for ' +
-              senderId +
-              ':',
+            '⚠️ [WebRTC] ICE candidate failed:',
             error?.message ||
               error
           );
@@ -1827,9 +1999,9 @@ export const useStreamWebRTC = (
       };
 
     /*
-     * ------------------------------------------------------------
-     * SOCKET LISTENERS
-     * ------------------------------------------------------------
+     * ----------------------------------------------------------
+     * Socket listeners
+     * ----------------------------------------------------------
      */
 
     socket.on(
@@ -1855,6 +2027,38 @@ export const useStreamWebRTC = (
     socket.on(
       'incoming_ice_candidate',
       handleIncomingIceCandidate
+    );
+
+    /*
+     * Helpful connection logging.
+     *
+     * We intentionally do NOT destroy WebRTC peers merely
+     * because Socket.IO temporarily disconnects.
+     */
+    const handleSocketConnect =
+      () => {
+        console.log(
+          '🟢 [WebRTC] Signaling socket connected:',
+          socket.id
+        );
+      };
+
+    const handleSocketDisconnect =
+      reason => {
+        console.warn(
+          '🟠 [WebRTC] Signaling socket disconnected:',
+          reason
+        );
+      };
+
+    socket.on(
+      'connect',
+      handleSocketConnect
+    );
+
+    socket.on(
+      'disconnect',
+      handleSocketDisconnect
     );
 
     return () => {
@@ -1884,6 +2088,16 @@ export const useStreamWebRTC = (
         'incoming_ice_candidate',
         handleIncomingIceCandidate
       );
+
+      socket.off(
+        'connect',
+        handleSocketConnect
+      );
+
+      socket.off(
+        'disconnect',
+        handleSocketDisconnect
+      );
     };
   }, [
     socket,
@@ -1892,7 +2106,8 @@ export const useStreamWebRTC = (
     localStream,
     createPeerConnection,
     flushIceCandidates,
-    closePeerConnection
+    removePeerConnection,
+    clearPeerCleanupTimer
   ]);
 
   /*
@@ -1913,10 +2128,11 @@ export const useStreamWebRTC = (
       return;
     }
 
-    if (
+    const streamChanged =
       video.srcObject !==
-      primaryRemoteStream
-    ) {
+      primaryRemoteStream;
+
+    if (streamChanged) {
       video.srcObject =
         primaryRemoteStream;
     }
@@ -1924,7 +2140,23 @@ export const useStreamWebRTC = (
     video.autoplay = true;
     video.playsInline = true;
 
-    video.play().catch(() => {});
+    /*
+     * Only start playback when necessary.
+     */
+    if (
+      streamChanged ||
+      video.paused
+    ) {
+      video
+        .play()
+        .catch(error => {
+          console.warn(
+            '⚠️ [WebRTC] Primary remote video play failed:',
+            error?.name,
+            error?.message || error
+          );
+        });
+    }
   }, [
     primaryRemoteStream,
     challengerVideoRef
@@ -1946,3 +2178,4 @@ export const useStreamWebRTC = (
     localStream
   };
 };
+```
