@@ -547,8 +547,8 @@ export const useStreamWebRTC = (
    */
 
   const replaceLocalVideoTrack =
-    useCallback(
-      async nextProcessedTrack = null => {
+  useCallback(
+    async (nextProcessedTrack = null) => {
         /*
          * Make sure we always know the original camera track.
          */
