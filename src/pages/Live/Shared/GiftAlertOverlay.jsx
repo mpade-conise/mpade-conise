@@ -1,16 +1,14 @@
 import React, { Suspense, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-// 🔥 Added Bounds to the import
 import { useGLTF, Float, ContactShadows, Center, Bounds } from '@react-three/drei';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Model = ({ url }) => {
   const { scene } = useGLTF(url);
-  // Clone to prevent cache issues when multiple gifts are sent
+
   const clonedScene = useMemo(() => scene.clone(), [scene]);
 
   return (
-    /* 🔥 Bounds fit ensures the model stays inside the camera view */
     <Bounds fit clip observe margin={1.2}>
       <Center>
         <primitive object={clonedScene} />
@@ -26,65 +24,110 @@ const GiftAlertOverlay = ({ gift }) => {
 
   return (
     <AnimatePresence>
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className={`relative w-full h-full flex flex-col items-center justify-center pointer-events-none z-[100] ${
-          isBigGift ? 'bg-gradient-to-b from-cyan-500/10 via-transparent to-black/80' : ''
-        }`}
+        className="absolute left-0 bottom-0 w-full h-1/2 pointer-events-none z-[100] overflow-hidden"
       >
-        
-        {/* Container size adjusts based on split-screen context */}
-        <motion.div 
-          initial={{ scale: 0, y: 50 }}
-          animate={{ scale: 1, y: 0 }}
-          className={`${isBigGift ? 'w-full h-[60%]' : 'w-[300px] h-[300px]'} mb-[-20px]`}
-        >
-          <Canvas 
-            camera={{ position: [0, 0, 5], fov: 45 }} 
-            gl={{ alpha: true, antialias: true }}
-            // 🔥 This makes the canvas responsive to the div size
-            className="w-full h-full"
-          >
-            <ambientLight intensity={2} />
-            <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={2} />
-            <pointLight position={[-10, -10, -10]} intensity={1} />
-            
-            <Suspense fallback={null}>
-              <Float speed={isBigGift ? 3 : 2} rotationIntensity={1.5} floatIntensity={1.5}>
-                {gift.giftModel && <Model url={gift.giftModel} />}
-              </Float>
-              
-              {/* Standardized Shadow */}
-              <ContactShadows 
-                position={[0, -1.5, 0]} 
-                opacity={0.6} 
-                scale={10} 
-                blur={2} 
-                far={4} 
-              />
-            </Suspense>
-          </Canvas>
-        </motion.div>
-
-        {/* Sender Card */}
-        <motion.div 
-          initial={{ y: 60, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className={`backdrop-blur-3xl border px-6 py-4 rounded-[30px] flex items-center gap-4 shadow-2xl ${
-            isBigGift ? 'bg-white/10 border-white/20' : 'bg-black/40 border-white/10'
+        {/* Horizontal lower-half gift area */}
+        <motion.div
+          initial={{ opacity: 0, y: 80, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 40 }}
+          transition={{ duration: 0.45, ease: 'easeOut' }}
+          className={`relative w-full h-full flex flex-row items-center justify-center gap-4 px-4 ${
+            isBigGift
+              ? 'bg-gradient-to-t from-black/80 via-black/30 to-transparent'
+              : ''
           }`}
         >
-          <div className="w-14 h-14 rounded-full border-2 border-yellow-400 p-0.5">
-             <img src={gift.avatar} alt="" className="w-full h-full rounded-full object-cover" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-white font-black text-xl leading-none">{gift.username}</span>
-            <span className="text-yellow-400 font-bold text-[10px] uppercase tracking-widest mt-1">
-              Sent {gift.giftName}
-            </span>
-          </div>
+          {/* 3D Gift */}
+          <motion.div
+            initial={{ x: -80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.05 }}
+            className={`relative flex-shrink-0 ${
+              isBigGift
+                ? 'w-[45%] h-full'
+                : 'w-[180px] h-[180px]'
+            }`}
+          >
+            <Canvas
+              camera={{ position: [0, 0, 5], fov: 45 }}
+              gl={{
+                alpha: true,
+                antialias: true,
+              }}
+              className="w-full h-full"
+            >
+              <ambientLight intensity={2} />
+
+              <spotLight
+                position={[10, 10, 10]}
+                angle={0.15}
+                penumbra={1}
+                intensity={2}
+              />
+
+              <pointLight
+                position={[-10, -10, -10]}
+                intensity={1}
+              />
+
+              <Suspense fallback={null}>
+                <Float
+                  speed={isBigGift ? 3 : 2}
+                  rotationIntensity={1.5}
+                  floatIntensity={1.5}
+                >
+                  {gift.giftModel && (
+                    <Model url={gift.giftModel} />
+                  )}
+                </Float>
+
+                <ContactShadows
+                  position={[0, -1.5, 0]}
+                  opacity={0.6}
+                  scale={10}
+                  blur={2}
+                  far={4}
+                />
+              </Suspense>
+            </Canvas>
+          </motion.div>
+
+          {/* Sender Card */}
+          <motion.div
+            initial={{ x: 80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className={`flex-shrink-0 backdrop-blur-3xl border px-5 py-4 rounded-[28px] flex items-center gap-3 shadow-2xl max-w-[50%] ${
+              isBigGift
+                ? 'bg-white/10 border-white/20'
+                : 'bg-black/50 border-white/10'
+            }`}
+          >
+            {/* Avatar */}
+            <div className="w-12 h-12 rounded-full border-2 border-yellow-400 p-0.5 flex-shrink-0">
+              <img
+                src={gift.avatar}
+                alt=""
+                className="w-full h-full rounded-full object-cover"
+              />
+            </div>
+
+            {/* Sender information */}
+            <div className="flex flex-col min-w-0">
+              <span className="text-white font-black text-lg leading-none truncate">
+                {gift.username}
+              </span>
+
+              <span className="text-yellow-400 font-bold text-[10px] uppercase tracking-widest mt-1 truncate">
+                Sent {gift.giftName}
+              </span>
+            </div>
+          </motion.div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
