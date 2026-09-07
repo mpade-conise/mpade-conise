@@ -5,8 +5,8 @@ import React, {
   useRef,
   useState
 } from "react";
-
 import {
+  ArrowLeft,
   Sparkles,
   SlidersHorizontal,
   Zap,
@@ -20,150 +20,113 @@ import {
   Wand2
 } from "lucide-react";
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
-
-function cx() {
-  return Array.prototype.slice
-    .call(arguments)
-    .filter(Boolean)
-    .join(" ");
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-/* =========================================================
-   EFFECT DEFINITIONS
-   ========================================================= */
-
 const EFFECTS = [
   {
     id: "none",
     name: "Original",
     description: "Natural camera",
-    icon: Eye,
     category: "Basic"
   },
   {
     id: "beauty",
     name: "Beauty",
-    description: "Smooth skin look",
-    icon: Sparkles,
+    description: "Soft skin glow",
     category: "Beauty"
   },
   {
     id: "face-light",
     name: "Face Light",
-    description: "Bright studio light",
-    icon: Sparkles,
+    description: "Brightens the face",
     category: "Beauty"
   },
   {
     id: "cinematic",
     name: "Cinematic",
-    description: "Movie-style color",
-    icon: Wand2,
+    description: "Teal and orange film look",
     category: "Cinematic"
   },
   {
     id: "vivid",
     name: "Vivid",
-    description: "Rich vibrant color",
-    icon: Sparkles,
+    description: "Boosted colors",
     category: "Color"
   },
   {
     id: "warm",
     name: "Warm",
-    description: "Golden warm tone",
-    icon: Sparkles,
+    description: "Warm golden tones",
     category: "Color"
   },
   {
     id: "cool",
     name: "Cool",
-    description: "Clean blue tone",
-    icon: Sparkles,
+    description: "Cool blue tones",
     category: "Color"
   },
   {
     id: "noir",
     name: "Noir",
     description: "Black and white",
-    icon: Wand2,
     category: "Cinematic"
   },
   {
     id: "vintage",
     name: "Vintage",
-    description: "Classic film tone",
-    icon: Wand2,
+    description: "Classic film colors",
     category: "Cinematic"
   },
   {
     id: "dream",
     name: "Dream",
-    description: "Soft glowing look",
-    icon: Sparkles,
-    category: "Beauty"
+    description: "Soft dreamy glow",
+    category: "Creative"
   },
   {
     id: "purple-glow",
     name: "Purple Glow",
-    description: "Purple atmosphere",
-    icon: Sparkles,
+    description: "Purple cinematic glow",
     category: "Creative"
   },
   {
     id: "neon",
     name: "Neon",
-    description: "Electric color boost",
-    icon: Zap,
+    description: "Bright neon colors",
     category: "Creative"
   },
   {
     id: "drama",
     name: "Drama",
     description: "Deep cinematic contrast",
-    icon: Wand2,
     category: "Cinematic"
   },
   {
     id: "film",
     name: "Film",
-    description: "Professional film look",
-    icon: Wand2,
+    description: "Warm film finish",
     category: "Cinematic"
   },
   {
     id: "soft-focus",
     name: "Soft Focus",
-    description: "Gentle soft image",
-    icon: Sparkles,
+    description: "Soft glowing image",
     category: "Beauty"
   },
   {
     id: "face-focus",
     name: "Face Focus",
-    description: "Cinematic vignette",
-    icon: Eye,
-    category: "Cinematic"
+    description: "Cinematic face emphasis",
+    category: "Beauty"
   },
   {
     id: "hdr",
-    name: "HDR-style",
-    description: "Enhanced dynamic look",
-    icon: Zap,
+    name: "HDR",
+    description: "High dynamic range look",
     category: "Color"
   },
   {
     id: "duo-tone",
     name: "Duo Tone",
-    description: "Two-tone color",
-    icon: Sparkles,
+    description: "Blue and purple cinematic tone",
     category: "Creative"
   }
 ];
@@ -177,22 +140,34 @@ const CATEGORIES = [
   "Creative"
 ];
 
-/* =========================================================
-   AI EFFECTS COMPONENT
-   ========================================================= */
+function cx() {
+  return Array.prototype.slice
+    .call(arguments)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function isUsableStream(source) {
+  return (
+    source &&
+    typeof source.getVideoTracks === "function" &&
+    source.getVideoTracks().length > 0
+  );
+}
 
 const AIEffects = ({
   stream = null,
   videoRef = null,
   onProcessedStream = null,
   onProcessedTrack = null,
+  onBack = null,
   className = "",
   compact = false
 }) => {
-  /* =======================================================
-     STATE
-     ======================================================= */
-
   const [enabled, setEnabled] = useState(true);
   const [effect, setEffect] = useState("none");
   const [intensity, setIntensity] = useState(55);
@@ -203,94 +178,43 @@ const AIEffects = ({
   const [previewOpen, setPreviewOpen] = useState(true);
   const [fps, setFps] = useState(0);
 
-  /* =======================================================
-     LIFECYCLE
-     ======================================================= */
-
   const mountedRef = useRef(false);
   const startingRef = useRef(false);
-
-  /* =======================================================
-     SOURCE
-     ======================================================= */
 
   const sourceStreamRef = useRef(null);
   const sourceVideoRef = useRef(null);
 
-  /* =======================================================
-     CANVAS
-     ======================================================= */
-
   const canvasRef = useRef(null);
   const canvasContextRef = useRef(null);
 
-  /* =======================================================
-     OUTPUT
-     ======================================================= */
-
   const outputStreamRef = useRef(null);
   const outputTrackRef = useRef(null);
-
-  /* =======================================================
-     PROCESSING
-     ======================================================= */
 
   const animationFrameRef = useRef(null);
   const processingRef = useRef(false);
   const processedSourceRef = useRef(null);
 
-  /* =======================================================
-     LIVE VALUES
-     ======================================================= */
-
   const effectRef = useRef(effect);
   const intensityRef = useRef(intensity);
   const enabledRef = useRef(enabled);
 
-  /* =======================================================
-     CALLBACK REFS
-     ======================================================= */
-
-  const onProcessedStreamRef = useRef(
-    onProcessedStream
-  );
-
-  const onProcessedTrackRef = useRef(
-    onProcessedTrack
-  );
-
-  /* =======================================================
-     PREVIEW
-     ======================================================= */
+  const onProcessedStreamRef = useRef(onProcessedStream);
+  const onProcessedTrackRef = useRef(onProcessedTrack);
 
   const previewVideoRef = useRef(null);
-
-  /* =======================================================
-     FPS
-     ======================================================= */
 
   const fpsCounterRef = useRef({
     frames: 0,
     time: 0
   });
 
-  /* =======================================================
-     SYNC CALLBACK REFS
-     ======================================================= */
-
   useEffect(() => {
-    onProcessedStreamRef.current =
-      onProcessedStream;
+    onProcessedStreamRef.current = onProcessedStream;
   }, [onProcessedStream]);
 
   useEffect(() => {
-    onProcessedTrackRef.current =
-      onProcessedTrack;
+    onProcessedTrackRef.current = onProcessedTrack;
   }, [onProcessedTrack]);
-
-  /* =======================================================
-     SYNC LIVE VALUES
-     ======================================================= */
 
   useEffect(() => {
     effectRef.current = effect;
@@ -304,25 +228,15 @@ const AIEffects = ({
     enabledRef.current = enabled;
   }, [enabled]);
 
-  /* =======================================================
-     GET SOURCE STREAM
-     ======================================================= */
-
   const getSourceStream = useCallback(() => {
-    if (
-      stream &&
-      typeof stream.getVideoTracks ===
-        "function"
-    ) {
+    if (isUsableStream(stream)) {
       return stream;
     }
 
     if (
       videoRef &&
       videoRef.current &&
-      videoRef.current.srcObject &&
-      typeof videoRef.current.srcObject
-        .getVideoTracks === "function"
+      isUsableStream(videoRef.current.srcObject)
     ) {
       return videoRef.current.srcObject;
     }
@@ -330,2567 +244,1479 @@ const AIEffects = ({
     return null;
   }, [stream, videoRef]);
 
-  /* =======================================================
-     CLEANUP OUTPUT
-     ======================================================= */
+  const stopAnimation = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+  }, []);
 
   const cleanupOutput = useCallback(() => {
-    const output =
-      outputStreamRef.current;
-
-    if (output) {
-      output.getVideoTracks().forEach(
-        track => {
-          try {
-            track.stop();
-          } catch {
-            /* Ignore cleanup errors. */
-          }
+    if (outputStreamRef.current) {
+      outputStreamRef.current.getVideoTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (err) {
+          // Ignore cleanup errors.
         }
-      );
+      });
     }
 
     outputStreamRef.current = null;
     outputTrackRef.current = null;
   }, []);
 
-  /* =======================================================
-     CLEANUP SOURCE VIDEO
-     ======================================================= */
+  const cleanupSourceVideo = useCallback(() => {
+    const video = sourceVideoRef.current;
 
-  const cleanupSourceVideo =
-    useCallback(() => {
-      const video =
-        sourceVideoRef.current;
-
-      if (video) {
-        try {
-          video.pause();
-        } catch {
-          /* Ignore. */
-        }
-
-        try {
-          video.srcObject = null;
-        } catch {
-          /* Ignore. */
-        }
-
-        try {
-          video.removeAttribute(
-            "src"
-          );
-        } catch {
-          /* Ignore. */
-        }
+    if (video) {
+      try {
+        video.pause();
+      } catch (err) {
+        // Ignore cleanup errors.
       }
 
-      sourceVideoRef.current = null;
-    }, []);
+      try {
+        video.srcObject = null;
+      } catch (err) {
+        // Ignore cleanup errors.
+      }
+    }
 
-  /* =======================================================
-     STOP ANIMATION
-     ======================================================= */
+    sourceVideoRef.current = null;
+  }, []);
 
-  const stopAnimation =
-    useCallback(() => {
+  const createSourceVideo = useCallback(async (source) => {
+    if (!isUsableStream(source)) {
+      throw new Error("No usable camera stream was found.");
+    }
+
+    const video = document.createElement("video");
+
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute("playsinline", "true");
+    video.srcObject = source;
+
+    await new Promise((resolve, reject) => {
+      let finished = false;
+
+      const finish = (callback) => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+        video.onloadedmetadata = null;
+        video.onerror = null;
+        callback();
+      };
+
+      const timeout = window.setTimeout(() => {
+        if (video.readyState >= 1) {
+          finish(resolve);
+        } else {
+          finish(() => {
+            reject(new Error("Camera video metadata could not be loaded."));
+          });
+        }
+      }, 5000);
+
+      video.onloadedmetadata = () => {
+        window.clearTimeout(timeout);
+        finish(resolve);
+      };
+
+      video.onerror = () => {
+        window.clearTimeout(timeout);
+        finish(() => {
+          reject(new Error("Unable to read the camera video."));
+        });
+      };
+    });
+
+    try {
+      await video.play();
+    } catch (err) {
+      // Some browsers may already have autoplay permission.
+      // The processing loop can still continue if the video is ready.
+    }
+
+    return video;
+  }, []);
+
+  const prepareCanvas = useCallback((width, height) => {
+    let canvas = canvasRef.current;
+
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvasRef.current = canvas;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d", {
+      alpha: false,
+      desynchronized: true
+    });
+
+    if (!context) {
+      throw new Error("Your browser does not support the required canvas engine.");
+    }
+
+    canvasContextRef.current = context;
+
+    return {
+      canvas,
+      context
+    };
+  }, []);
+
+  const createOutputStream = useCallback((source, canvas) => {
+    if (!canvas || typeof canvas.captureStream !== "function") {
+      throw new Error("Canvas streaming is not supported by this browser.");
+    }
+
+    const output = canvas.captureStream(30);
+
+    const videoTracks = output.getVideoTracks();
+
+    if (!videoTracks.length) {
+      throw new Error("Unable to create the processed camera track.");
+    }
+
+    const sourceAudioTracks =
+      typeof source.getAudioTracks === "function"
+        ? source.getAudioTracks()
+        : [];
+
+    sourceAudioTracks.forEach((track) => {
+      try {
+        output.addTrack(track);
+      } catch (err) {
+        // Ignore duplicate audio-track errors.
+      }
+    });
+
+    outputStreamRef.current = output;
+    outputTrackRef.current = videoTracks[0];
+
+    return output;
+  }, []);
+
+  const drawBase = useCallback((video, context, width, height, filter) => {
+    context.save();
+    context.filter = filter || "none";
+    context.globalCompositeOperation = "source-over";
+    context.globalAlpha = 1;
+    context.drawImage(video, 0, 0, width, height);
+    context.restore();
+  }, []);
+
+  const drawOverlay = useCallback(
+    (context, width, height, color, alpha, composite) => {
+      context.save();
+      context.globalCompositeOperation = composite || "screen";
+      context.globalAlpha = alpha;
+      context.fillStyle = color;
+      context.fillRect(0, 0, width, height);
+      context.restore();
+    },
+    []
+  );
+
+  const drawVignette = useCallback((context, width, height, strength) => {
+    const gradient = context.createRadialGradient(
+      width / 2,
+      height / 2,
+      Math.min(width, height) * 0.18,
+      width / 2,
+      height / 2,
+      Math.max(width, height) * 0.72
+    );
+
+    gradient.addColorStop(0, "rgba(0,0,0,0)");
+    gradient.addColorStop(
+      1,
+      "rgba(0,0,0," + clamp(strength, 0, 1) + ")"
+    );
+
+    context.save();
+    context.globalCompositeOperation = "multiply";
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, width, height);
+    context.restore();
+  }, []);
+
+  const drawFaceLight = useCallback(
+    (context, width, height, strength) => {
+      const gradient = context.createRadialGradient(
+        width * 0.5,
+        height * 0.38,
+        Math.min(width, height) * 0.05,
+        width * 0.5,
+        height * 0.4,
+        Math.min(width, height) * 0.7
+      );
+
+      gradient.addColorStop(
+        0,
+        "rgba(255,255,255," + clamp(strength, 0, 0.35) + ")"
+      );
+
+      gradient.addColorStop(
+        0.45,
+        "rgba(255,225,205," + clamp(strength * 0.35, 0, 0.2) + ")"
+      );
+
+      gradient.addColorStop(1, "rgba(255,255,255,0)");
+
+      context.save();
+      context.globalCompositeOperation = "screen";
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, width, height);
+      context.restore();
+    },
+    []
+  );
+
+  const drawDuoTone = useCallback((context, width, height, strength) => {
+    const gradient = context.createLinearGradient(0, 0, width, height);
+
+    gradient.addColorStop(
+      0,
+      "rgba(48,90,255," + clamp(strength, 0, 0.45) + ")"
+    );
+
+    gradient.addColorStop(
+      0.5,
+      "rgba(140,65,255," + clamp(strength, 0, 0.35) + ")"
+    );
+
+    gradient.addColorStop(
+      1,
+      "rgba(255,105,55," + clamp(strength, 0, 0.4) + ")"
+    );
+
+    context.save();
+    context.globalCompositeOperation = "soft-light";
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, width, height);
+    context.restore();
+  }, []);
+
+  const drawEffect = useCallback(
+    (video, context, width, height) => {
+      const selected = effectRef.current;
+      const amount = clamp(intensityRef.current / 100, 0, 1);
+
+      if (!enabledRef.current || selected === "none") {
+        drawBase(video, context, width, height, "none");
+        return;
+      }
+
+      switch (selected) {
+        case "beauty":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "blur(" +
+              (0.25 + amount * 0.9).toFixed(2) +
+              "px) brightness(" +
+              (1 + amount * 0.08).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.12).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(255,220,210,1)",
+            amount * 0.08,
+            "screen"
+          );
+          break;
+
+        case "face-light":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "brightness(" +
+              (1 + amount * 0.16).toFixed(2) +
+              ") contrast(" +
+              (1 + amount * 0.06).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.08).toFixed(2) +
+              ")"
+          );
+          drawFaceLight(context, width, height, amount);
+          break;
+
+        case "cinematic":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "contrast(" +
+              (1 + amount * 0.2).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.1).toFixed(2) +
+              ") brightness(" +
+              (1 - amount * 0.04).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(10,120,120,1)",
+            amount * 0.11,
+            "soft-light"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(255,125,50,1)",
+            amount * 0.07,
+            "screen"
+          );
+          drawVignette(context, width, height, amount * 0.32);
+          break;
+
+        case "vivid":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "saturate(" +
+              (1 + amount * 0.75).toFixed(2) +
+              ") contrast(" +
+              (1 + amount * 0.16).toFixed(2) +
+              ") brightness(" +
+              (1 + amount * 0.04).toFixed(2) +
+              ")"
+          );
+          break;
+
+        case "warm":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "sepia(" +
+              (amount * 0.3).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.3).toFixed(2) +
+              ") brightness(" +
+              (1 + amount * 0.04).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(255,150,65,1)",
+            amount * 0.1,
+            "soft-light"
+          );
+          break;
+
+        case "cool":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "hue-rotate(" +
+              (-amount * 12).toFixed(1) +
+              "deg) saturate(" +
+              (1 + amount * 0.18).toFixed(2) +
+              ") brightness(" +
+              (1 + amount * 0.03).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(50,130,255,1)",
+            amount * 0.1,
+            "soft-light"
+          );
+          break;
+
+        case "noir":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "grayscale(1) contrast(" +
+              (1 + amount * 0.45).toFixed(2) +
+              ") brightness(" +
+              (1 - amount * 0.06).toFixed(2) +
+              ")"
+          );
+          drawVignette(context, width, height, amount * 0.5);
+          break;
+
+        case "vintage":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "sepia(" +
+              (amount * 0.48).toFixed(2) +
+              ") saturate(" +
+              (1 - amount * 0.1).toFixed(2) +
+              ") contrast(" +
+              (1 + amount * 0.1).toFixed(2) +
+              ") brightness(" +
+              (1 + amount * 0.03).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(120,70,30,1)",
+            amount * 0.08,
+            "multiply"
+          );
+          drawVignette(context, width, height, amount * 0.25);
+          break;
+
+        case "dream":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "blur(" +
+              (0.25 + amount * 1.2).toFixed(2) +
+              "px) brightness(" +
+              (1 + amount * 0.08).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.1).toFixed(2) +
+              ") contrast(" +
+              (1 - amount * 0.04).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(255,180,225,1)",
+            amount * 0.08,
+            "screen"
+          );
+          break;
+
+        case "purple-glow":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "saturate(" +
+              (1 + amount * 0.2).toFixed(2) +
+              ") contrast(" +
+              (1 + amount * 0.1).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(155,65,255,1)",
+            amount * 0.15,
+            "soft-light"
+          );
+          drawVignette(context, width, height, amount * 0.28);
+          break;
+
+        case "neon":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "saturate(" +
+              (1 + amount * 0.8).toFixed(2) +
+              ") contrast(" +
+              (1 + amount * 0.2).toFixed(2) +
+              ") brightness(" +
+              (1 + amount * 0.05).toFixed(2) +
+              ") hue-rotate(" +
+              (amount * 12).toFixed(1) +
+              "deg)"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(0,255,255,1)",
+            amount * 0.08,
+            "screen"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(255,0,190,1)",
+            amount * 0.06,
+            "soft-light"
+          );
+          break;
+
+        case "drama":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "contrast(" +
+              (1 + amount * 0.5).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.12).toFixed(2) +
+              ") brightness(" +
+              (1 - amount * 0.08).toFixed(2) +
+              ")"
+          );
+          drawVignette(context, width, height, amount * 0.55);
+          break;
+
+        case "film":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "contrast(" +
+              (1 + amount * 0.16).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.04).toFixed(2) +
+              ") brightness(" +
+              (1 - amount * 0.02).toFixed(2) +
+              ") sepia(" +
+              (amount * 0.16).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(255,145,65,1)",
+            amount * 0.06,
+            "soft-light"
+          );
+          drawVignette(context, width, height, amount * 0.2);
+          break;
+
+        case "soft-focus":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "blur(" +
+              (0.2 + amount * 1.25).toFixed(2) +
+              "px) brightness(" +
+              (1 + amount * 0.07).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.08).toFixed(2) +
+              ")"
+          );
+          drawOverlay(
+            context,
+            width,
+            height,
+            "rgba(255,255,255,1)",
+            amount * 0.07,
+            "screen"
+          );
+          break;
+
+        case "face-focus":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "contrast(" +
+              (1 + amount * 0.14).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.1).toFixed(2) +
+              ")"
+          );
+          drawVignette(context, width, height, 0.18 + amount * 0.38);
+          break;
+
+        case "hdr":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "contrast(" +
+              (1 + amount * 0.38).toFixed(2) +
+              ") saturate(" +
+              (1 + amount * 0.25).toFixed(2) +
+              ") brightness(" +
+              (1 + amount * 0.03).toFixed(2) +
+              ")"
+          );
+          break;
+
+        case "duo-tone":
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "saturate(" +
+              (1 + amount * 0.18).toFixed(2) +
+              ") contrast(" +
+              (1 + amount * 0.12).toFixed(2) +
+              ")"
+          );
+          drawDuoTone(context, width, height, amount);
+          break;
+
+        default:
+          drawBase(video, context, width, height, "none");
+          break;
+      }
+    },
+    [
+      drawBase,
+      drawDuoTone,
+      drawFaceLight,
+      drawOverlay,
+      drawVignette
+    ]
+  );
+
+  const processFrame = useCallback(() => {
+    if (!processingRef.current || !mountedRef.current) {
+      animationFrameRef.current = null;
+      return;
+    }
+
+    const video = sourceVideoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvasContextRef.current;
+
+    if (!video || !canvas || !context) {
+      animationFrameRef.current = requestAnimationFrame(processFrame);
+      return;
+    }
+
+    if (video.readyState < 2) {
+      animationFrameRef.current = requestAnimationFrame(processFrame);
+      return;
+    }
+
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    drawEffect(video, context, width, height);
+
+    const now = performance.now();
+
+    if (!fpsCounterRef.current.time) {
+      fpsCounterRef.current.time = now;
+    }
+
+    fpsCounterRef.current.frames += 1;
+
+    if (now - fpsCounterRef.current.time >= 1000) {
+      setFps(fpsCounterRef.current.frames);
+
+      fpsCounterRef.current.frames = 0;
+      fpsCounterRef.current.time = now;
+    }
+
+    animationFrameRef.current = requestAnimationFrame(processFrame);
+  }, [drawEffect]);
+
+  const startProcessing = useCallback(
+    async (source) => {
+      if (!mountedRef.current || !isUsableStream(source)) {
+        return null;
+      }
+
       if (
-        animationFrameRef.current !==
-        null
+        processingRef.current &&
+        processedSourceRef.current === source &&
+        outputStreamRef.current
       ) {
-        cancelAnimationFrame(
-          animationFrameRef.current
-        );
-
-        animationFrameRef.current = null;
+        return outputStreamRef.current;
       }
-    }, []);
 
-  /* =======================================================
-     CREATE SOURCE VIDEO
-     ======================================================= */
+      if (startingRef.current) {
+        return outputStreamRef.current;
+      }
 
-  const createSourceVideo =
-    useCallback(
-      async source => {
-        if (!source) {
-          throw new Error(
-            "No camera stream is available."
-          );
-        }
+      startingRef.current = true;
+      setError("");
+      setEngineState("loading");
 
-        if (
-          typeof source.getVideoTracks !==
-          "function"
-        ) {
-          throw new Error(
-            "Invalid camera stream."
-          );
-        }
+      try {
+        stopAnimation();
 
-        const videoTracks =
-          source.getVideoTracks();
-
-        if (
-          !videoTracks ||
-          videoTracks.length === 0
-        ) {
-          throw new Error(
-            "The camera stream does not contain a video track."
-          );
-        }
-
-        if (
-          sourceVideoRef.current &&
-          sourceVideoRef.current
-            .srcObject === source
-        ) {
-          return sourceVideoRef.current;
-        }
-
+        cleanupOutput();
         cleanupSourceVideo();
 
-        const video =
-          document.createElement("video");
+        processedSourceRef.current = source;
+        sourceStreamRef.current = source;
 
-        video.autoplay = true;
-        video.muted = true;
-        video.playsInline = true;
-
-        video.setAttribute(
-          "autoplay",
-          ""
-        );
-
-        video.setAttribute(
-          "muted",
-          ""
-        );
-
-        video.setAttribute(
-          "playsinline",
-          ""
-        );
-
-        video.srcObject = source;
-
-        await new Promise(
-          (resolve, reject) => {
-            let settled = false;
-
-            const cleanup = () => {
-              video.removeEventListener(
-                "loadedmetadata",
-                handleLoaded
-              );
-
-              video.removeEventListener(
-                "canplay",
-                handleLoaded
-              );
-
-              video.removeEventListener(
-                "error",
-                handleError
-              );
-            };
-
-            const finishLoaded =
-              () => {
-                if (settled) {
-                  return;
-                }
-
-                settled = true;
-                cleanup();
-                resolve();
-              };
-
-            const handleLoaded =
-              () => {
-                finishLoaded();
-              };
-
-            const handleError = () => {
-              if (settled) {
-                return;
-              }
-
-              settled = true;
-              cleanup();
-
-              reject(
-                new Error(
-                  "Unable to load the camera video."
-                )
-              );
-            };
-
-            video.addEventListener(
-              "loadedmetadata",
-              handleLoaded
-            );
-
-            video.addEventListener(
-              "canplay",
-              handleLoaded
-            );
-
-            video.addEventListener(
-              "error",
-              handleError
-            );
-
-            if (
-              video.readyState >= 1
-            ) {
-              finishLoaded();
-            }
-          }
-        );
-
-        try {
-          await video.play();
-        } catch {
-          /* Muted video may be delayed by browser policy. */
-        }
+        const video = await createSourceVideo(source);
 
         if (!mountedRef.current) {
           try {
             video.pause();
             video.srcObject = null;
-          } catch {
-            /* Ignore. */
+          } catch (err) {
+            // Ignore cleanup errors.
           }
 
-          return video;
+          return null;
         }
 
-        sourceVideoRef.current =
-          video;
+        sourceVideoRef.current = video;
 
-        return video;
-      },
-      [cleanupSourceVideo]
-    );
+        const width = video.videoWidth || 1280;
+        const height = video.videoHeight || 720;
 
-  /* =======================================================
-     PREPARE CANVAS
-     ======================================================= */
+        const prepared = prepareCanvas(width, height);
 
-  const prepareCanvas =
-    useCallback((width, height) => {
-      if (!canvasRef.current) {
-        canvasRef.current =
-          document.createElement(
-            "canvas"
+        const output = createOutputStream(source, prepared.canvas);
+
+        if (!mountedRef.current) {
+          return null;
+        }
+
+        processingRef.current = true;
+        fpsCounterRef.current = {
+          frames: 0,
+          time: performance.now()
+        };
+
+        setEngineState("processing");
+
+        animationFrameRef.current = requestAnimationFrame(processFrame);
+
+        if (onProcessedStreamRef.current) {
+          onProcessedStreamRef.current(output);
+        }
+
+        if (onProcessedTrackRef.current && outputTrackRef.current) {
+          onProcessedTrackRef.current(outputTrackRef.current);
+        }
+
+        return output;
+      } catch (err) {
+        if (mountedRef.current) {
+          setEngineState("error");
+          setError(
+            err && err.message
+              ? err.message
+              : "Unable to start AI Effects."
           );
+        }
+
+        return null;
+      } finally {
+        startingRef.current = false;
       }
-
-      const canvas =
-        canvasRef.current;
-
-      if (
-        canvas.width !== width ||
-        canvas.height !== height
-      ) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-
-      if (!canvasContextRef.current) {
-        canvasContextRef.current =
-          canvas.getContext("2d", {
-            alpha: false,
-            desynchronized: true
-          });
-      }
-
-      if (!canvasContextRef.current) {
-        throw new Error(
-          "Unable to create the effects canvas."
-        );
-      }
-    }, []);
-
-  /* =======================================================
-     CREATE OUTPUT STREAM
-     ======================================================= */
-
-  const createOutputStream =
-    useCallback(() => {
-      const canvas =
-        canvasRef.current;
-
-      if (!canvas) {
-        throw new Error(
-          "Effects canvas is unavailable."
-        );
-      }
-
-      if (
-        typeof canvas.captureStream !==
-        "function"
-      ) {
-        throw new Error(
-          "This browser does not support canvas video processing."
-        );
-      }
-
-      cleanupOutput();
-
-      const output =
-        canvas.captureStream(30);
-
-      const videoTracks =
-        output.getVideoTracks();
-
-      const videoTrack =
-        videoTracks[0];
-
-      if (!videoTrack) {
-        throw new Error(
-          "Unable to create processed camera video."
-        );
-      }
-
-      outputStreamRef.current =
-        output;
-
-      outputTrackRef.current =
-        videoTrack;
-
-      const source =
-        sourceStreamRef.current;
-
-      if (
-        source &&
-        typeof source.getAudioTracks ===
-          "function"
-      ) {
-        source
-          .getAudioTracks()
-          .forEach(audioTrack => {
-            const exists =
-              output
-                .getAudioTracks()
-                .some(
-                  existing =>
-                    existing.id ===
-                    audioTrack.id
-                );
-
-            if (!exists) {
-              try {
-                output.addTrack(
-                  audioTrack
-                );
-              } catch {
-                /* Ignore duplicate audio-track errors. */
-              }
-            }
-          });
-      }
-
-      return output;
-    }, [cleanupOutput]);
-
-  /* =======================================================
-     BASE DRAW
-     ======================================================= */
-
-  const drawBase = useCallback(
-    (
-      video,
-      ctx,
-      width,
-      height,
-      filter = "none"
-    ) => {
-      ctx.save();
-
-      ctx.globalAlpha = 1;
-
-      ctx.globalCompositeOperation =
-        "source-over";
-
-      ctx.filter = filter;
-
-      ctx.clearRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.drawImage(
-        video,
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.restore();
-    },
-    []
-  );
-
-  /* =======================================================
-     OVERLAY
-     ======================================================= */
-
-  const drawOverlay = useCallback(
-    (
-      ctx,
-      width,
-      height,
-      color,
-      alpha,
-      mode = "source-over"
-    ) => {
-      ctx.save();
-
-      ctx.globalCompositeOperation =
-        mode;
-
-      ctx.globalAlpha = clamp(
-        alpha,
-        0,
-        1
-      );
-
-      ctx.fillStyle = color;
-
-      ctx.fillRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.restore();
-    },
-    []
-  );
-
-  /* =======================================================
-     VIGNETTE
-     ======================================================= */
-
-  const drawVignette = useCallback(
-    (
-      ctx,
-      width,
-      height,
-      strength
-    ) => {
-      const safeStrength =
-        clamp(
-          strength,
-          0,
-          0.9
-        );
-
-      const gradient =
-        ctx.createRadialGradient(
-          width * 0.5,
-          height * 0.45,
-          Math.min(
-            width,
-            height
-          ) * 0.12,
-          width * 0.5,
-          height * 0.5,
-          Math.max(
-            width,
-            height
-          ) * 0.76
-        );
-
-      gradient.addColorStop(
-        0,
-        "rgba(0,0,0,0)"
-      );
-
-      gradient.addColorStop(
-        0.55,
-        "rgba(0,0,0,0.015)"
-      );
-
-      gradient.addColorStop(
-        1,
-        "rgba(0,0,0," +
-          safeStrength +
-          ")"
-      );
-
-      ctx.save();
-
-      ctx.globalCompositeOperation =
-        "source-over";
-
-      ctx.fillStyle = gradient;
-
-      ctx.fillRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.restore();
-    },
-    []
-  );
-
-  /* =======================================================
-     FACE LIGHT
-     ======================================================= */
-
-  const drawFaceLight = useCallback(
-    (
-      ctx,
-      width,
-      height,
-      amount
-    ) => {
-      const gradient =
-        ctx.createRadialGradient(
-          width * 0.5,
-          height * 0.42,
-          Math.min(
-            width,
-            height
-          ) * 0.04,
-          width * 0.5,
-          height * 0.42,
-          Math.min(
-            width,
-            height
-          ) * 0.65
-        );
-
-      gradient.addColorStop(
-        0,
-        "rgba(255,245,225," +
-          amount +
-          ")"
-      );
-
-      gradient.addColorStop(
-        0.45,
-        "rgba(255,230,200," +
-          amount * 0.35 +
-          ")"
-      );
-
-      gradient.addColorStop(
-        1,
-        "rgba(255,255,255,0)"
-      );
-
-      ctx.save();
-
-      ctx.globalCompositeOperation =
-        "screen";
-
-      ctx.fillStyle = gradient;
-
-      ctx.fillRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.restore();
-    },
-    []
-  );
-
-  /* =======================================================
-     DUO TONE
-     ======================================================= */
-
-  const drawDuoTone = useCallback(
-    (
-      ctx,
-      width,
-      height,
-      amount
-    ) => {
-      const gradient =
-        ctx.createLinearGradient(
-          0,
-          0,
-          width,
-          height
-        );
-
-      gradient.addColorStop(
-        0,
-        "rgba(35,80,255," +
-          amount +
-          ")"
-      );
-
-      gradient.addColorStop(
-        0.48,
-        "rgba(80,30,160," +
-          amount * 0.45 +
-          ")"
-      );
-
-      gradient.addColorStop(
-        1,
-        "rgba(255,110,80," +
-          amount +
-          ")"
-      );
-
-      ctx.save();
-
-      ctx.globalCompositeOperation =
-        "soft-light";
-
-      ctx.fillStyle = gradient;
-
-      ctx.fillRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.restore();
-    },
-    []
-  );
-
-  /* =======================================================
-     EFFECT DRAWING
-     ======================================================= */
-
-  const drawEffect = useCallback(
-    (
-      video,
-      ctx,
-      width,
-      height
-    ) => {
-      const activeEffect =
-        enabledRef.current
-          ? effectRef.current
-          : "none";
-
-      const amount =
-        clamp(
-          intensityRef.current,
-          0,
-          100
-        ) / 100;
-
-      if (activeEffect === "none") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height
-        );
-        return;
-      }
-
-      if (activeEffect === "beauty") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "blur(" +
-            (0.15 +
-              amount * 0.9) +
-            "px) brightness(" +
-            (1.01 +
-              amount * 0.08) +
-            ") saturate(" +
-            (1.02 +
-              amount * 0.12) +
-            ") contrast(0.98)"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(255,225,205,1)",
-          amount * 0.06,
-          "screen"
-        );
-
-        return;
-      }
-
-      if (activeEffect === "face-light") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "brightness(" +
-            (1.03 +
-              amount * 0.18) +
-            ") contrast(" +
-            (1 +
-              amount * 0.04) +
-            ") saturate(" +
-            (1 +
-              amount * 0.06) +
-            ")"
-        );
-
-        drawFaceLight(
-          ctx,
-          width,
-          height,
-          0.1 +
-            amount * 0.24
-        );
-
-        return;
-      }
-
-      if (activeEffect === "cinematic") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "contrast(" +
-            (1.04 +
-              amount * 0.18) +
-            ") saturate(" +
-            (0.88 +
-              amount * 0.25) +
-            ") brightness(" +
-            (0.98 +
-              amount * 0.03) +
-            ")"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(12,55,70,1)",
-          amount * 0.08,
-          "soft-light"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(190,95,40,1)",
-          amount * 0.045,
-          "screen"
-        );
-
-        drawVignette(
-          ctx,
-          width,
-          height,
-          0.08 +
-            amount * 0.18
-        );
-
-        return;
-      }
-
-      if (activeEffect === "vivid") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "saturate(" +
-            (1.15 +
-              amount * 1.15) +
-            ") contrast(" +
-            (1.02 +
-              amount * 0.18) +
-            ") brightness(" +
-            (1 +
-              amount * 0.03) +
-            ")"
-        );
-
-        return;
-      }
-
-      if (activeEffect === "warm") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "sepia(" +
-            amount * 0.34 +
-            ") saturate(" +
-            (1.04 +
-              amount * 0.3) +
-            ") brightness(" +
-            (1.01 +
-              amount * 0.04) +
-            ")"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(255,155,70,1)",
-          amount * 0.1,
-          "soft-light"
-        );
-
-        return;
-      }
-
-      if (activeEffect === "cool") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "hue-rotate(" +
-            amount * 10 +
-            "deg) saturate(" +
-            (1 +
-              amount * 0.2) +
-            ") brightness(" +
-            (1.01 +
-              amount * 0.04) +
-            ")"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(50,130,255,1)",
-          amount * 0.1,
-          "soft-light"
-        );
-
-        return;
-      }
-
-      if (activeEffect === "noir") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "grayscale(1) contrast(" +
-            (1.05 +
-              amount * 0.55) +
-            ") brightness(" +
-            (1.02 -
-              amount * 0.08) +
-            ")"
-        );
-
-        drawVignette(
-          ctx,
-          width,
-          height,
-          0.1 +
-            amount * 0.25
-        );
-
-        return;
-      }
-
-      if (activeEffect === "vintage") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "sepia(" +
-            (0.2 +
-              amount * 0.38) +
-            ") saturate(" +
-            (0.82 +
-              amount * 0.15) +
-            ") contrast(" +
-            (0.98 +
-              amount * 0.12) +
-            ") brightness(" +
-            (1.02 -
-              amount * 0.03) +
-            ")"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(175,115,55,1)",
-          amount * 0.08,
-          "soft-light"
-        );
-
-        drawVignette(
-          ctx,
-          width,
-          height,
-          0.08 +
-            amount * 0.2
-        );
-
-        return;
-      }
-
-      if (activeEffect === "dream") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "blur(" +
-            (0.15 +
-              amount * 0.75) +
-            "px) brightness(" +
-            (1.03 +
-              amount * 0.12) +
-            ") saturate(" +
-            (1.02 +
-              amount * 0.25) +
-            ") contrast(" +
-            (0.96 -
-              amount * 0.04) +
-            ")"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(255,220,245,1)",
-          0.04 +
-            amount * 0.12,
-          "screen"
-        );
-
-        return;
-      }
-
-      if (
-        activeEffect ===
-        "purple-glow"
-      ) {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "saturate(" +
-            (1.08 +
-              amount * 0.7) +
-            ") contrast(" +
-            (1.01 +
-              amount * 0.16) +
-            ")"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(145,65,255,1)",
-          0.08 +
-            amount * 0.2,
-          "soft-light"
-        );
-
-        drawVignette(
-          ctx,
-          width,
-          height,
-          0.04 +
-            amount * 0.12
-        );
-
-        return;
-      }
-
-      if (activeEffect === "neon") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "saturate(" +
-            (1.25 +
-              amount * 1.4) +
-            ") contrast(" +
-            (1.08 +
-              amount * 0.3) +
-            ") brightness(" +
-            (1.01 +
-              amount * 0.05) +
-            ") hue-rotate(" +
-            amount * 18 +
-            "deg)"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(20,210,255,1)",
-          amount * 0.08,
-          "screen"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(200,20,255,1)",
-          amount * 0.07,
-          "soft-light"
-        );
-
-        return;
-      }
-
-      if (activeEffect === "drama") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "contrast(" +
-            (1.1 +
-              amount * 0.5) +
-            ") saturate(" +
-            (0.92 +
-              amount * 0.2) +
-            ") brightness(" +
-            (0.98 -
-              amount * 0.05) +
-            ")"
-        );
-
-        drawVignette(
-          ctx,
-          width,
-          height,
-          0.13 +
-            amount * 0.3
-        );
-
-        return;
-      }
-
-      if (activeEffect === "film") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "contrast(" +
-            (1.02 +
-              amount * 0.16) +
-            ") saturate(" +
-            (0.9 +
-              amount * 0.18) +
-            ") brightness(" +
-            (1.01 -
-              amount * 0.02) +
-            ") sepia(" +
-            amount * 0.1 +
-            ")"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(255,210,150,1)",
-          amount * 0.04,
-          "soft-light"
-        );
-
-        drawVignette(
-          ctx,
-          width,
-          height,
-          0.05 +
-            amount * 0.16
-        );
-
-        return;
-      }
-
-      if (
-        activeEffect ===
-        "soft-focus"
-      ) {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "blur(" +
-            (0.25 +
-              amount * 1.1) +
-            "px) brightness(" +
-            (1.01 +
-              amount * 0.06) +
-            ") saturate(" +
-            (1.01 +
-              amount * 0.08) +
-            ")"
-        );
-
-        drawOverlay(
-          ctx,
-          width,
-          height,
-          "rgba(255,255,255,1)",
-          amount * 0.05,
-          "screen"
-        );
-
-        return;
-      }
-
-      if (
-        activeEffect ===
-        "face-focus"
-      ) {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "contrast(" +
-            (1.02 +
-              amount * 0.1) +
-            ") saturate(" +
-            (1 +
-              amount * 0.08) +
-            ")"
-        );
-
-        drawVignette(
-          ctx,
-          width,
-          height,
-          0.08 +
-            amount * 0.38
-        );
-
-        return;
-      }
-
-      if (activeEffect === "hdr") {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "contrast(" +
-            (1.08 +
-              amount * 0.42) +
-            ") saturate(" +
-            (1.08 +
-              amount * 0.5) +
-            ") brightness(" +
-            (1.01 +
-              amount * 0.05) +
-            ")"
-        );
-
-        return;
-      }
-
-      if (
-        activeEffect ===
-        "duo-tone"
-      ) {
-        drawBase(
-          video,
-          ctx,
-          width,
-          height,
-          "saturate(" +
-            (0.82 +
-              amount * 0.28) +
-            ") contrast(" +
-            (1.02 +
-              amount * 0.16) +
-            ")"
-        );
-
-        drawDuoTone(
-          ctx,
-          width,
-          height,
-          0.2 +
-            amount * 0.35
-        );
-
-        return;
-      }
-
-      drawBase(
-        video,
-        ctx,
-        width,
-        height
-      );
     },
     [
-      drawBase,
-      drawOverlay,
-      drawVignette,
-      drawFaceLight,
-      drawDuoTone
+      cleanupOutput,
+      cleanupSourceVideo,
+      createOutputStream,
+      createSourceVideo,
+      prepareCanvas,
+      processFrame,
+      stopAnimation
     ]
   );
 
-  /* =======================================================
-     PROCESS FRAME
-     ======================================================= */
+  const stopProcessing = useCallback(() => {
+    processingRef.current = false;
+    stopAnimation();
 
-  const processFrame =
-    useCallback(() => {
-      if (
-        !processingRef.current ||
-        !mountedRef.current
-      ) {
-        return;
-      }
+    if (mountedRef.current) {
+      setEngineState("idle");
+      setFps(0);
+    }
+  }, [stopAnimation]);
 
-      const video =
-        sourceVideoRef.current;
-
-      const canvas =
-        canvasRef.current;
-
-      const ctx =
-        canvasContextRef.current;
-
-      if (
-        !video ||
-        !canvas ||
-        !ctx ||
-        video.readyState < 2
-      ) {
-        animationFrameRef.current =
-          requestAnimationFrame(
-            processFrame
-          );
-
-        return;
-      }
-
-      const width =
-        video.videoWidth;
-
-      const height =
-        video.videoHeight;
-
-      if (!width || !height) {
-        animationFrameRef.current =
-          requestAnimationFrame(
-            processFrame
-          );
-
+  const attachStream = useCallback(
+    async (source) => {
+      if (!isUsableStream(source)) {
         return;
       }
 
       try {
-        if (
-          canvas.width !== width ||
-          canvas.height !== height
-        ) {
-          prepareCanvas(
-            width,
-            height
-          );
-        }
-
-        drawEffect(
-          video,
-          ctx,
-          width,
-          height
-        );
-
-        const now =
-          performance.now();
-
-        fpsCounterRef.current.frames +=
-          1;
-
-        if (
-          !fpsCounterRef.current.time
-        ) {
-          fpsCounterRef.current.time =
-            now;
-        }
-
-        if (
-          now -
-            fpsCounterRef.current.time >=
-          1000
-        ) {
-          if (mountedRef.current) {
-            setFps(
-              fpsCounterRef.current.frames
-            );
-          }
-
-          fpsCounterRef.current = {
-            frames: 0,
-            time: now
-          };
-        }
+        await startProcessing(source);
       } catch (err) {
-        console.warn(
-          "[AIEffects] Frame processing error:",
-          err
-        );
-      }
-
-      if (
-        processingRef.current &&
-        mountedRef.current
-      ) {
-        animationFrameRef.current =
-          requestAnimationFrame(
-            processFrame
+        if (mountedRef.current) {
+          setEngineState("error");
+          setError(
+            err && err.message
+              ? err.message
+              : "Unable to attach camera stream."
           );
-      }
-    }, [
-      drawEffect,
-      prepareCanvas
-    ]);
-
-  /* =======================================================
-     START PROCESSING
-     ======================================================= */
-
-  const startProcessing =
-    useCallback(
-      async source => {
-        if (!source) {
-          return null;
         }
-
-        if (
-          processingRef.current &&
-          processedSourceRef.current ===
-            source
-        ) {
-          return outputStreamRef.current;
-        }
-
-        if (startingRef.current) {
-          return outputStreamRef.current;
-        }
-
-        startingRef.current = true;
-
-        try {
-          if (
-            processingRef.current &&
-            processedSourceRef.current !==
-              source
-          ) {
-            processingRef.current =
-              false;
-
-            processedSourceRef.current =
-              null;
-
-            stopAnimation();
-            cleanupOutput();
-            cleanupSourceVideo();
-          }
-
-          setEngineState("loading");
-          setError("");
-
-          sourceStreamRef.current =
-            source;
-
-          const video =
-            await createSourceVideo(
-              source
-            );
-
-          if (!mountedRef.current) {
-            return null;
-          }
-
-          const width =
-            video.videoWidth || 1280;
-
-          const height =
-            video.videoHeight || 720;
-
-          prepareCanvas(
-            width,
-            height
-          );
-
-          const output =
-            createOutputStream();
-
-          if (!output) {
-            throw new Error(
-              "Unable to create processed camera stream."
-            );
-          }
-
-          processedSourceRef.current =
-            source;
-
-          processingRef.current =
-            true;
-
-          setEngineState(
-            "processing"
-          );
-
-          fpsCounterRef.current = {
-            frames: 0,
-            time: performance.now()
-          };
-
-          stopAnimation();
-
-          animationFrameRef.current =
-            requestAnimationFrame(
-              processFrame
-            );
-
-          const streamCallback =
-            onProcessedStreamRef.current;
-
-          const trackCallback =
-            onProcessedTrackRef.current;
-
-          if (streamCallback) {
-            try {
-              streamCallback(output);
-            } catch (callbackError) {
-              console.warn(
-                "[AIEffects] Processed stream callback error:",
-                callbackError
-              );
-            }
-          }
-
-          if (
-            trackCallback &&
-            outputTrackRef.current
-          ) {
-            try {
-              trackCallback(
-                outputTrackRef.current,
-                output
-              );
-            } catch (callbackError) {
-              console.warn(
-                "[AIEffects] Processed track callback error:",
-                callbackError
-              );
-            }
-          }
-
-          return output;
-        } catch (err) {
-          processingRef.current =
-            false;
-
-          processedSourceRef.current =
-            null;
-
-          stopAnimation();
-          cleanupOutput();
-          cleanupSourceVideo();
-
-          throw err;
-        } finally {
-          startingRef.current = false;
-        }
-      },
-      [
-        cleanupOutput,
-        cleanupSourceVideo,
-        createOutputStream,
-        createSourceVideo,
-        prepareCanvas,
-        processFrame,
-        stopAnimation
-      ]
-    );
-
-  /* =======================================================
-     STOP PROCESSING
-     ======================================================= */
-
-  const stopProcessing =
-    useCallback(() => {
-      processingRef.current =
-        false;
-
-      processedSourceRef.current =
-        null;
-
-      stopAnimation();
-
-      fpsCounterRef.current = {
-        frames: 0,
-        time: 0
-      };
-
-      setFps(0);
-      setEngineState("idle");
-    }, [stopAnimation]);
-
-  /* =======================================================
-     ATTACH SOURCE
-     ======================================================= */
-
-  const attachStream =
-    useCallback(
-      async source => {
-        if (!source) {
-          return null;
-        }
-
-        if (
-          processingRef.current &&
-          processedSourceRef.current ===
-            source
-        ) {
-          return outputStreamRef.current;
-        }
-
-        try {
-          setError("");
-
-          return await startProcessing(
-            source
-          );
-        } catch (err) {
-          console.error(
-            "[AIEffects] Stream attachment failed:",
-            err
-          );
-
-          if (mountedRef.current) {
-            setError(
-              err &&
-              err.message
-                ? err.message
-                : "Unable to start camera effects."
-            );
-
-            setEngineState("error");
-          }
-
-          return null;
-        }
-      },
-      [startProcessing]
-    );
-
-  /* =======================================================
-     RESTART
-     ======================================================= */
-
-  const restart = useCallback(
-    async () => {
-      const source =
-        getSourceStream();
-
-      stopProcessing();
-
-      stopAnimation();
-
-      cleanupOutput();
-
-      cleanupSourceVideo();
-
-      setError("");
-
-      if (source) {
-        await attachStream(source);
-      } else {
-        setEngineState("idle");
       }
     },
-    [
-      getSourceStream,
-      stopProcessing,
-      stopAnimation,
-      cleanupOutput,
-      cleanupSourceVideo,
-      attachStream
-    ]
+    [startProcessing]
   );
 
-  /* =======================================================
-     EFFECT SELECTION
-     ======================================================= */
+  const restart = useCallback(async () => {
+    const source = getSourceStream();
 
-  const handleEffectChange =
-    useCallback(nextEffect => {
-      setEffect(nextEffect);
+    stopProcessing();
 
-      effectRef.current =
-        nextEffect;
+    cleanupOutput();
+    cleanupSourceVideo();
 
-      setError("");
-    }, []);
+    processedSourceRef.current = null;
+    sourceStreamRef.current = null;
 
-  /* =======================================================
-     ENABLE / DISABLE
-     ======================================================= */
+    setError("");
+    setEngineState("idle");
 
-  const handleEnabled =
-    useCallback(value => {
-      setEnabled(value);
-
-      enabledRef.current =
-        value;
-
-      setError("");
-    }, []);
-
-  /* =======================================================
-     SOURCE WATCHER
-     ======================================================= */
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer = null;
-
-    const tryAttach = () => {
-      if (cancelled) {
-        return;
-      }
-
-      const source =
-        getSourceStream();
-
-      if (!source) {
-        timer = setTimeout(
-          tryAttach,
-          250
-        );
-
-        return;
-      }
-
-      if (
-        processingRef.current &&
-        processedSourceRef.current ===
-          source
-      ) {
-        return;
-      }
-
-      attachStream(source);
-    };
-
-    tryAttach();
-
-    return () => {
-      cancelled = true;
-
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    };
+    if (source) {
+      await attachStream(source);
+    }
   }, [
+    attachStream,
+    cleanupOutput,
+    cleanupSourceVideo,
     getSourceStream,
-    attachStream
+    stopProcessing
   ]);
 
-  /* =======================================================
-     PREVIEW CONNECTION
-     ======================================================= */
+  const handleEffectChange = useCallback((nextEffect) => {
+    setEffect(nextEffect);
+    effectRef.current = nextEffect;
+  }, []);
 
-  useEffect(() => {
-    const preview =
-      previewVideoRef.current;
-
-    const output =
-      outputStreamRef.current;
-
-    if (!preview) {
-      return undefined;
-    }
-
-    if (
-      output &&
-      preview.srcObject !== output
-    ) {
-      preview.srcObject = output;
-
-      preview.play().catch(() => {});
-    }
-
-    if (!output) {
-      preview.srcObject = null;
-    }
-
-    return undefined;
-  }, [
-    engineState,
-    effect,
-    enabled,
-    previewOpen
-  ]);
-
-  /* =======================================================
-     MOUNT / UNMOUNT
-     ======================================================= */
+  const handleEnabledChange = useCallback((nextEnabled) => {
+    setEnabled(nextEnabled);
+    enabledRef.current = nextEnabled;
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
-      startingRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+
+    const checkSource = async () => {
+      if (cancelled || !mountedRef.current) {
+        return;
+      }
+
+      const source = getSourceStream();
+
+      if (isUsableStream(source)) {
+        await attachStream(source);
+        return;
+      }
+
+      timer = window.setTimeout(checkSource, 250);
+    };
+
+    checkSource();
+
+    return () => {
+      cancelled = true;
+
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [attachStream, getSourceStream]);
+
+  useEffect(() => {
+    const source = getSourceStream();
+
+    if (!source) {
+      return;
+    }
+
+    if (
+      source !== processedSourceRef.current &&
+      !startingRef.current
+    ) {
+      attachStream(source);
+    }
+  }, [attachStream, getSourceStream, stream]);
+
+  useEffect(() => {
+    const preview = previewVideoRef.current;
+
+    if (!preview) {
+      return;
+    }
+
+    const output = outputStreamRef.current;
+
+    if (output) {
+      preview.srcObject = output;
+
+      const playPreview = async () => {
+        try {
+          await preview.play();
+        } catch (err) {
+          // Browser autoplay policy may block preview playback.
+        }
+      };
+
+      playPreview();
+    }
+
+    return () => {
+      if (preview && preview.srcObject === output) {
+        preview.srcObject = null;
+      }
+    };
+  }, [engineState, effect, enabled, previewOpen]);
+
+  useEffect(() => {
+    return () => {
       processingRef.current = false;
 
-      processedSourceRef.current =
-        null;
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
 
-      stopAnimation();
-      cleanupOutput();
-      cleanupSourceVideo();
+      if (outputStreamRef.current) {
+        outputStreamRef.current.getVideoTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch (err) {
+            // Ignore cleanup errors.
+          }
+        });
+      }
+
+      outputStreamRef.current = null;
+      outputTrackRef.current = null;
+
+      const sourceVideo = sourceVideoRef.current;
+
+      if (sourceVideo) {
+        try {
+          sourceVideo.pause();
+        } catch (err) {
+          // Ignore cleanup errors.
+        }
+
+        try {
+          sourceVideo.srcObject = null;
+        } catch (err) {
+          // Ignore cleanup errors.
+        }
+      }
+
+      sourceVideoRef.current = null;
+      canvasRef.current = null;
+      canvasContextRef.current = null;
 
       if (previewVideoRef.current) {
         try {
           previewVideoRef.current.pause();
-        } catch {
-          /* Ignore. */
+        } catch (err) {
+          // Ignore cleanup errors.
         }
 
         try {
-          previewVideoRef.current.srcObject =
-            null;
-        } catch {
-          /* Ignore. */
+          previewVideoRef.current.srcObject = null;
+        } catch (err) {
+          // Ignore cleanup errors.
         }
       }
-
-      sourceStreamRef.current =
-        null;
-
-      canvasRef.current = null;
-      canvasContextRef.current = null;
     };
-  }, [
-    stopAnimation,
-    cleanupOutput,
-    cleanupSourceVideo
-  ]);
+  }, []);
 
-  /* =======================================================
-     VISIBLE EFFECTS
-     ======================================================= */
+  const visibleEffects = useMemo(() => {
+    if (category === "All") {
+      return EFFECTS;
+    }
 
-  const visibleEffects =
-    useMemo(() => {
-      if (category === "All") {
-        return EFFECTS;
-      }
+    return EFFECTS.filter((item) => item.category === category);
+  }, [category]);
 
-      return EFFECTS.filter(
-        item =>
-          item.category === category
-      );
-    }, [category]);
-
-  /* =======================================================
-     SELECTED EFFECT
-     ======================================================= */
-
-  const selectedEffect =
-    useMemo(() => {
-      return EFFECTS.find(
-        item =>
-          item.id === effect
-      );
-    }, [effect]);
-
-  /* =======================================================
-     STATUS
-     ======================================================= */
+  const selectedEffect = useMemo(() => {
+    return (
+      EFFECTS.find((item) => item.id === effect) ||
+      EFFECTS[0]
+    );
+  }, [effect]);
 
   const status = useMemo(() => {
-    if (error) {
+    if (engineState === "loading") {
       return {
-        label: "Effects error",
-        icon: CircleAlert,
-        className:
-          "text-red-300 bg-red-500/10 border-red-400/20"
-      };
-    }
-
-    if (
-      engineState === "loading"
-    ) {
-      return {
-        label: "Starting camera",
+        label: "Starting AI engine",
         icon: Loader2,
-        className:
-          "text-amber-300 bg-amber-500/10 border-amber-400/20"
+        className: "text-cyan-300"
       };
     }
 
-    if (
-      engineState === "processing"
-    ) {
+    if (engineState === "processing") {
       return {
-        label: "Effects active",
-        icon: Zap,
-        className:
-          "text-cyan-300 bg-cyan-500/10 border-cyan-400/20"
+        label: enabled ? "AI effects active" : "Camera processing",
+        icon: CircleCheck,
+        className: "text-emerald-300"
+      };
+    }
+
+    if (engineState === "error") {
+      return {
+        label: "AI engine error",
+        icon: CircleAlert,
+        className: "text-red-300"
       };
     }
 
     return {
       label: "Ready",
-      icon: CircleCheck,
-      className:
-        "text-emerald-300 bg-emerald-500/10 border-emerald-400/20"
+      icon: Sparkles,
+      className: "text-slate-300"
     };
-  }, [
-    engineState,
-    error
-  ]);
+  }, [enabled, engineState]);
 
-  const StatusIcon =
-    status.icon;
-
-  /* =======================================================
-     UI
-     ======================================================= */
+  const StatusIcon = status.icon;
 
   return (
     <div
       className={cx(
-        "relative w-full text-white",
+        "relative w-full overflow-hidden rounded-3xl border border-cyan-400/20 bg-slate-950/95 text-white shadow-2xl shadow-cyan-950/30 backdrop-blur-xl",
+        compact ? "max-w-xl" : "max-w-5xl",
         className
       )}
     >
-      <div
-        className="
-          overflow-hidden
-          rounded-[28px]
-          border
-          border-white/[0.08]
-          bg-[#08090d]/95
-          shadow-[0_25px_80px_rgba(0,0,0,0.55)]
-          backdrop-blur-3xl
-        "
-      >
-        {/* HEADER */}
-
-        <div
-          className="
-            relative
-            flex
-            items-center
-            justify-between
-            gap-3
-            border-b
-            border-white/[0.07]
-            px-5
-            py-4
-          "
+      {/* BACK BUTTON */}
+      <div className="absolute left-4 top-4 z-50">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={!onBack}
+          className={cx(
+            "group flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold backdrop-blur-xl transition-all",
+            onBack
+              ? "border-white/15 bg-black/45 text-white hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200"
+              : "cursor-not-allowed border-white/5 bg-black/20 text-slate-600"
+          )}
+          aria-label="Go back"
         >
-          <div className="flex items-center gap-3">
-            <div
-              className="
-                relative
-                flex
-                h-10
-                w-10
-                items-center
-                justify-center
-                rounded-2xl
-                bg-cyan-400/10
-                text-cyan-300
-              "
-            >
-              <Sparkles size={19} />
+          <ArrowLeft
+            size={17}
+            className="transition-transform group-hover:-translate-x-0.5"
+          />
+          <span>Back</span>
+        </button>
+      </div>
 
-              <span
-                className="
-                  absolute
-                  -right-0.5
-                  -top-0.5
-                  h-2
-                  w-2
-                  rounded-full
-                  bg-cyan-300
-                  shadow-[0_0_12px_rgba(34,211,238,0.9)]
-                "
-              />
+      {/* HEADER */}
+      <div className="border-b border-white/10 bg-white/[0.025] px-5 pb-4 pt-16 sm:px-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-500/10">
+              <Wand2 size={21} className="text-cyan-300" />
             </div>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-black tracking-tight">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-lg font-bold sm:text-xl">
                   AI Effects Studio
                 </h2>
 
-                <span
-                  className="
-                    rounded-full
-                    border
-                    border-cyan-400/20
-                    bg-cyan-400/10
-                    px-2
-                    py-0.5
-                    text-[8px]
-                    font-black
-                    uppercase
-                    tracking-widest
-                    text-cyan-300
-                  "
-                >
+                <span className="rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-300">
                   LIVE
                 </span>
               </div>
 
-              <p className="mt-0.5 text-[9px] font-semibold text-white/35">
-                Professional real-time camera effects
+              <p className="mt-0.5 text-xs text-slate-400">
+                Real-time camera visual effects
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            aria-label={
-              enabled
-                ? "Disable effects"
-                : "Enable effects"
-            }
-            aria-pressed={enabled}
-            onClick={() =>
-              handleEnabled(!enabled)
-            }
+            onClick={() => handleEnabledChange(!enabled)}
             className={cx(
-              "relative h-8 w-14 rounded-full border transition-all duration-300",
+              "relative flex h-9 w-16 shrink-0 items-center rounded-full border p-1 transition-all",
               enabled
-                ? "border-cyan-300/30 bg-cyan-400/20"
+                ? "border-cyan-400/40 bg-cyan-500/20"
                 : "border-white/10 bg-white/5"
             )}
+            aria-label={enabled ? "Disable AI effects" : "Enable AI effects"}
           >
             <span
               className={cx(
-                "absolute top-1 h-6 w-6 rounded-full transition-all duration-300",
+                "flex h-7 w-7 items-center justify-center rounded-full transition-all",
                 enabled
-                  ? "left-7 bg-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.6)]"
-                  : "left-1 bg-white/30"
+                  ? "translate-x-7 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-400/30"
+                  : "translate-x-0 bg-slate-600 text-slate-300"
               )}
-            />
+            >
+              {enabled ? (
+                <Eye size={15} />
+              ) : (
+                <EyeOff size={15} />
+              )}
+            </span>
           </button>
         </div>
 
-        {/* STATUS */}
-
-        <div className="px-5 pt-4">
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
           <div
             className={cx(
-              "flex items-center justify-between rounded-2xl border px-3 py-2.5",
+              "flex items-center gap-1.5",
               status.className
             )}
           >
-            <div className="flex items-center gap-2">
-              <StatusIcon
-                size={14}
-                className={
-                  engineState ===
-                  "loading"
-                    ? "animate-spin"
-                    : ""
-                }
-              />
+            <StatusIcon
+              size={14}
+              className={
+                engineState === "loading"
+                  ? "animate-spin"
+                  : ""
+              }
+            />
+            <span>{status.label}</span>
+          </div>
 
-              <span className="text-[9px] font-black uppercase tracking-widest">
-                {status.label}
+          {engineState === "processing" && (
+            <>
+              <span className="text-slate-700">•</span>
+              <span className="text-slate-400">
+                {fps > 0 ? fps + " FPS" : "Live"}
+              </span>
+            </>
+          )}
+
+          <span className="text-slate-700">•</span>
+
+          <span className="text-slate-400">
+            {selectedEffect.name}
+          </span>
+        </div>
+      </div>
+
+      {/* PREVIEW */}
+      {!compact && previewOpen && (
+        <div className="px-4 pt-4 sm:px-6">
+          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
+            <video
+              ref={previewVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="h-full w-full object-cover"
+            />
+
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20" />
+
+            <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs backdrop-blur-md">
+              <span
+                className={cx(
+                  "h-2 w-2 rounded-full",
+                  enabled
+                    ? "animate-pulse bg-emerald-400"
+                    : "bg-slate-500"
+                )}
+              />
+              <span className="text-slate-200">
+                {enabled ? "Effect preview" : "Original camera"}
               </span>
             </div>
 
-            <div className="flex items-center gap-3">
-              {fps > 0 && (
-                <span className="text-[8px] font-bold text-white/35">
-                  {fps} FPS
-                </span>
-              )}
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(false)}
+              className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/45 text-white backdrop-blur-md transition hover:bg-black/70"
+              aria-label="Hide preview"
+            >
+              <EyeOff size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
-              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {!compact && !previewOpen && (
+        <div className="px-4 pt-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] py-3 text-sm text-slate-300 transition hover:bg-white/[0.06]"
+          >
+            <Eye size={16} />
+            Show preview
+          </button>
+        </div>
+      )}
+
+      {/* EFFECTS */}
+      <div className="px-4 py-5 sm:px-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles size={17} className="text-cyan-300" />
+              <h3 className="font-semibold">Effects</h3>
             </div>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Choose a visual style for your live camera
+            </p>
+          </div>
+
+          <div className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-400 sm:flex">
+            <Zap size={13} className="text-yellow-300" />
+            Real-time
           </div>
         </div>
 
-        {/* PREVIEW */}
+        {/* CATEGORIES */}
+        <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {CATEGORIES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setCategory(item)}
+              className={cx(
+                "shrink-0 rounded-xl border px-3 py-2 text-xs font-medium transition-all",
+                category === item
+                  ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-200 shadow-lg shadow-cyan-500/10"
+                  : "border-white/10 bg-white/[0.025] text-slate-400 hover:border-white/20 hover:bg-white/[0.05] hover:text-white"
+              )}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
 
-        {!compact &&
-          previewOpen && (
-            <div className="px-5 pt-4">
-              <div
-                className="
-                  relative
-                  aspect-video
-                  overflow-hidden
-                  rounded-[22px]
-                  border
-                  border-white/[0.08]
-                  bg-black
-                "
-              >
-                <video
-                  ref={previewVideoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="
-                    h-full
-                    w-full
-                    object-cover
-                  "
-                />
-
-                {!enabled && (
-                  <div
-                    className="
-                      absolute
-                      inset-0
-                      flex
-                      items-center
-                      justify-center
-                      bg-black/55
-                      backdrop-blur-sm
-                    "
-                  >
-                    <div className="text-center">
-                      <EyeOff
-                        size={22}
-                        className="mx-auto mb-2 text-white/35"
-                      />
-
-                      <p className="text-[9px] font-black uppercase tracking-widest text-white/45">
-                        Effects Disabled
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div
-                  className="
-                    absolute
-                    left-3
-                    top-3
-                    flex
-                    items-center
-                    gap-2
-                    rounded-full
-                    border
-                    border-white/10
-                    bg-black/60
-                    px-3
-                    py-1.5
-                    backdrop-blur-xl
-                  "
-                >
-                  <span
-                    className="
-                      h-1.5
-                      w-1.5
-                      animate-pulse
-                      rounded-full
-                      bg-cyan-300
-                    "
-                  />
-
-                  <span className="text-[8px] font-black uppercase tracking-widest text-white/70">
-                    Live Preview
-                  </span>
-                </div>
-
-                <div
-                  className="
-                    absolute
-                    bottom-3
-                    left-3
-                    rounded-full
-                    border
-                    border-white/10
-                    bg-black/60
-                    px-3
-                    py-1.5
-                    backdrop-blur-xl
-                  "
-                >
-                  <span className="text-[8px] font-black uppercase tracking-widest text-white/60">
-                    {selectedEffect &&
-                    selectedEffect.name
-                      ? selectedEffect.name
-                      : "Original"}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  aria-label="Close preview"
-                  onClick={() =>
-                    setPreviewOpen(false)
-                  }
-                  className="
-                    absolute
-                    right-3
-                    top-3
-                    flex
-                    h-8
-                    w-8
-                    items-center
-                    justify-center
-                    rounded-full
-                    border
-                    border-white/10
-                    bg-black/60
-                    text-white/55
-                    backdrop-blur-xl
-                    transition
-                    hover:bg-white/10
-                    hover:text-white
-                  "
-                >
-                  <EyeOff size={14} />
-                </button>
-              </div>
-            </div>
+        {/* EFFECT GRID */}
+        <div
+          className={cx(
+            "grid gap-3",
+            compact
+              ? "grid-cols-2"
+              : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
           )}
+        >
+          {visibleEffects.map((item) => {
+            const selected = effect === item.id;
 
-        {/* EFFECT LIBRARY */}
-
-        <div className="px-5 pt-5">
-          <div className="mb-3 flex items-end justify-between gap-3">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-                Effects Library
-              </p>
-
-              <p className="mt-1 text-xs font-bold text-white/75">
-                Choose your live look
-              </p>
-            </div>
-
-            {!previewOpen && (
+            return (
               <button
+                key={item.id}
                 type="button"
-                onClick={() =>
-                  setPreviewOpen(true)
-                }
-                className="
-                  flex
-                  items-center
-                  gap-1.5
-                  rounded-lg
-                  bg-white/5
-                  px-2.5
-                  py-1.5
-                  text-[8px]
-                  font-black
-                  uppercase
-                  tracking-wider
-                  text-white/55
-                  transition
-                  hover:bg-white/10
-                  hover:text-white
-                "
+                onClick={() => handleEffectChange(item.id)}
+                className={cx(
+                  "group relative overflow-hidden rounded-2xl border p-3 text-left transition-all",
+                  selected
+                    ? "border-cyan-400/50 bg-cyan-400/[0.09] shadow-lg shadow-cyan-500/10"
+                    : "border-white/10 bg-white/[0.025] hover:border-cyan-400/25 hover:bg-white/[0.05]"
+                )}
               >
-                <Eye size={12} />
-                Preview
-              </button>
-            )}
-          </div>
-
-          {/* CATEGORIES */}
-
-          <div
-            className="
-              mb-3
-              flex
-              gap-1.5
-              overflow-x-auto
-              pb-1
-              scrollbar-none
-            "
-          >
-            {CATEGORIES.map(item => {
-              const selected =
-                category === item;
-
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() =>
-                    setCategory(item)
-                  }
-                  className={cx(
-                    "shrink-0 rounded-full border px-3 py-1.5 text-[8px] font-black uppercase tracking-wider transition",
-                    selected
-                      ? "border-cyan-300/25 bg-cyan-400/10 text-cyan-300"
-                      : "border-white/[0.06] bg-white/[0.025] text-white/35 hover:bg-white/[0.05] hover:text-white/65"
-                  )}
-                >
-                  {item}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* EFFECT GRID */}
-
-          <div
-            className="
-              grid
-              grid-cols-2
-              gap-2
-              sm:grid-cols-3
-            "
-          >
-            {visibleEffects.map(item => {
-              const Icon =
-                item.icon;
-
-              const selected =
-                effect === item.id;
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() =>
-                    handleEffectChange(
-                      item.id
-                    )
-                  }
-                  className={cx(
-                    "group relative overflow-hidden rounded-2xl border p-3 text-left transition-all duration-200",
-                    selected
-                      ? "border-cyan-300/30 bg-cyan-400/[0.09] shadow-[0_0_30px_rgba(34,211,238,0.08)]"
-                      : "border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.05]"
-                  )}
-                >
-                  {selected && (
-                    <span
-                      className="
-                        absolute
-                        right-2
-                        top-2
-                        flex
-                        h-4
-                        w-4
-                        items-center
-                        justify-center
-                        rounded-full
-                        bg-cyan-300
-                        text-black
-                      "
-                    >
-                      <CircleCheck
-                        size={10}
-                      />
-                    </span>
-                  )}
-
+                <div className="flex items-start justify-between gap-2">
                   <div
                     className={cx(
-                      "mb-2 flex h-9 w-9 items-center justify-center rounded-xl transition",
+                      "flex h-9 w-9 items-center justify-center rounded-xl border transition-all",
                       selected
-                        ? "bg-cyan-300 text-black"
-                        : "bg-white/5 text-white/45 group-hover:text-white/75"
+                        ? "border-cyan-300/30 bg-cyan-400/15 text-cyan-200"
+                        : "border-white/10 bg-white/5 text-slate-400 group-hover:text-cyan-300"
                     )}
                   >
-                    <Icon size={16} />
+                    {item.id === "none" ? (
+                      <Eye size={16} />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
                   </div>
 
-                  <p
-                    className={cx(
-                      "text-[10px] font-black",
-                      selected
-                        ? "text-white"
-                        : "text-white/70"
-                    )}
-                  >
-                    {item.name}
-                  </p>
+                  {selected && (
+                    <CircleCheck
+                      size={17}
+                      className="shrink-0 text-cyan-300"
+                    />
+                  )}
+                </div>
 
-                  <p className="mt-0.5 text-[8px] font-semibold text-white/30">
+                <div className="mt-3">
+                  <div className="text-sm font-semibold">
+                    {item.name}
+                  </div>
+
+                  <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
                     {item.description}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* INTENSITY */}
-
-        <div className="px-5 pt-5">
-          <div
-            className="
-              rounded-2xl
-              border
-              border-white/[0.07]
-              bg-white/[0.025]
-              p-4
-            "
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal
-                  size={13}
-                  className="text-white/40"
-                />
-
-                <span className="text-[9px] font-black uppercase tracking-widest text-white/55">
-                  Intensity
-                </span>
-              </div>
-
-              <span className="text-[10px] font-black tabular-nums text-cyan-300">
-                {intensity}%
+        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal
+                size={16}
+                className="text-cyan-300"
+              />
+              <span className="text-sm font-semibold">
+                Intensity
               </span>
             </div>
 
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={intensity}
-              aria-label="Effect intensity"
-              onChange={event =>
-                setIntensity(
-                  clamp(
-                    Number(
-                      event.target.value
-                    ),
-                    0,
-                    100
-                  )
-                )
-              }
-              className="
-                h-1.5
-                w-full
-                cursor-pointer
-                appearance-none
-                rounded-full
-                bg-white/10
-                accent-cyan-300
-              "
-            />
+            <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-xs font-semibold text-cyan-300">
+              {intensity}%
+            </span>
+          </div>
 
-            <div className="mt-2 flex justify-between text-[7px] font-bold uppercase tracking-wider text-white/20">
-              <span>Subtle</span>
-              <span>Strong</span>
-            </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={intensity}
+            onChange={(event) =>
+              setIntensity(Number(event.target.value))
+            }
+            className="w-full accent-cyan-400"
+            aria-label="Effect intensity"
+          />
+
+          <div className="mt-2 flex justify-between text-[10px] text-slate-600">
+            <span>Subtle</span>
+            <span>Strong</span>
           </div>
         </div>
 
         {/* ADVANCED */}
-
-        <div className="px-5 pt-3">
+        <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
           <button
             type="button"
-            aria-expanded={showAdvanced}
-            onClick={() =>
-              setShowAdvanced(
-                previous =>
-                  !previous
-              )
-            }
-            className="
-              flex
-              w-full
-              items-center
-              justify-between
-              rounded-xl
-              px-2
-              py-2
-              text-left
-              transition
-              hover:bg-white/[0.03]
-            "
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-white/[0.03]"
           >
             <div className="flex items-center gap-2">
-              <Wand2
-                size={13}
-                className="text-white/30"
-              />
+              <Zap size={16} className="text-purple-300" />
 
-              <span className="text-[8px] font-black uppercase tracking-widest text-white/35">
-                Advanced processing
-              </span>
+              <div>
+                <div className="text-sm font-semibold">
+                  Advanced processing
+                </div>
+
+                <div className="text-[11px] text-slate-500">
+                  Camera processing and performance
+                </div>
+              </div>
             </div>
 
             <ChevronDown
-              size={13}
+              size={17}
               className={cx(
-                "text-white/25 transition-transform",
-                showAdvanced
-                  ? "rotate-180"
-                  : ""
+                "text-slate-500 transition-transform",
+                showAdvanced ? "rotate-180" : ""
               )}
             />
           </button>
 
           {showAdvanced && (
-            <div
-              className="
-                mt-1
-                rounded-2xl
-                border
-                border-white/[0.06]
-                bg-white/[0.02]
-                p-3
-              "
-            >
-              <div className="flex items-start gap-3">
-                <div className="rounded-xl bg-cyan-400/10 p-2 text-cyan-300">
-                  <Sparkles size={14} />
+            <div className="border-t border-white/10 px-4 pb-4 pt-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-xs leading-relaxed text-slate-500">
+                  AI Effects runs locally on the camera feed. Your
+                  original camera audio is preserved in the processed
+                  stream.
                 </div>
 
-                <div>
-                  <p className="text-[9px] font-black text-white/65">
-                    Real-time browser effects
-                  </p>
-
-                  <p className="mt-1 text-[8px] leading-relaxed text-white/30">
-                    Video effects are
-                    processed directly
-                    in your browser.
-                    Your original
-                    camera and
-                    microphone tracks
-                    remain untouched.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={restart}
+                  className="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200"
+                >
+                  <RefreshCw size={14} />
+                  Restart engine
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={restart}
-                className="
-                  mt-3
-                  flex
-                  w-full
-                  items-center
-                  justify-center
-                  gap-2
-                  rounded-xl
-                  border
-                  border-white/[0.07]
-                  bg-white/[0.03]
-                  py-2.5
-                  text-[8px]
-                  font-black
-                  uppercase
-                  tracking-widest
-                  text-white/45
-                  transition
-                  hover:bg-white/[0.07]
-                  hover:text-white
-                "
-              >
-                <RefreshCw size={12} />
-                Restart Effects Engine
-              </button>
             </div>
           )}
         </div>
 
         {/* ERROR */}
-
         {error && (
-          <div className="px-5 pt-3">
-            <div
-              className="
-                flex
-                gap-3
-                rounded-2xl
-                border
-                border-red-400/15
-                bg-red-500/[0.06]
-                p-3
-              "
-            >
-              <CircleAlert
-                size={15}
-                className="mt-0.5 shrink-0 text-red-300"
-              />
+          <div className="mt-4 flex gap-3 rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4">
+            <CircleAlert
+              size={18}
+              className="mt-0.5 shrink-0 text-red-300"
+            />
 
-              <div className="min-w-0">
-                <p className="text-[9px] font-black text-red-200">
-                  Effects Error
-                </p>
-
-                <p className="mt-1 break-words text-[8px] leading-relaxed text-red-200/50">
-                  {error}
-                </p>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-red-200">
+                AI Effects unavailable
               </div>
+
+              <div className="mt-1 text-xs leading-relaxed text-red-300/70">
+                {error}
+              </div>
+
+              <button
+                type="button"
+                onClick={restart}
+                className="mt-3 flex items-center gap-2 rounded-lg border border-red-300/20 bg-red-400/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-400/15"
+              >
+                <RefreshCw size={13} />
+                Try again
+              </button>
             </div>
           </div>
         )}
+      </div>
 
-        {/* FOOTER */}
+      {/* FOOTER */}
+      <div className="border-t border-white/10 bg-white/[0.02] px-5 py-3.5 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-[10px] text-slate-600">
+          <div className="flex items-center gap-2">
+            <CircleCheck size={12} className="text-emerald-400/70" />
+            Camera protected
+          </div>
 
-        <div
-          className="
-            mt-5
-            border-t
-            border-white/[0.06]
-            px-5
-            py-3
-          "
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
-
-              <span className="text-[7px] font-black uppercase tracking-widest text-white/25">
-                Camera protected
-              </span>
-            </div>
-
-            <span className="text-[7px] font-bold text-white/20">
-              MPade AI Studio
-            </span>
+          <div className="flex items-center gap-2">
+            <Sparkles size={12} className="text-cyan-400/70" />
+            MPade AI Studio
           </div>
         </div>
       </div>
