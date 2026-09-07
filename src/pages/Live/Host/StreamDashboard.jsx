@@ -19,20 +19,15 @@ import { useStreamSocket } from './useStreamSocket';
 import { useStreamWebRTC } from './useStreamWebRTC';
 
 // Subcomponents
-import HostControls from './HostControls';
 import ChatBox from '../Shared/ChatBox';
-import LiveAnalyticsPanel from './HostAnalytics';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader';
-import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting';
 import GuestManager from '../Shared/GuestManager';
-import AIEffects from "../Shared/AIFilters";
+import AIEffects from '../Shared/AIFilters';
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
 import MultiHostPKBattleBar from '../../../components/live/MultiHostPKBattleBar.jsx';
-
-const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
 
 const DEFAULT_BATTLE_SCORES = {
   host: 0,
@@ -123,18 +118,26 @@ const StreamDashboard = () => {
       if (processedVideoElementRef.current) {
         processedVideoElementRef.current.srcObject = null;
       }
+    };
+  }, []);
 
-      if (processedVideoStream) {
-        processedVideoStream
-          .getTracks()
-          .forEach(track => {
-            try {
-              track.stop();
-            } catch {
-              // Track may already be stopped.
-            }
-          });
-      }
+  /* =========================================================
+     PROCESSED STREAM CLEANUP
+     ========================================================= */
+
+  useEffect(() => {
+    return () => {
+      if (!processedVideoStream) return;
+
+      processedVideoStream
+        .getTracks()
+        .forEach(track => {
+          try {
+            track.stop();
+          } catch {
+            // Track may already be stopped.
+          }
+        });
     };
   }, [processedVideoStream]);
 
@@ -145,7 +148,6 @@ const StreamDashboard = () => {
   const {
     socket,
     viewers,
-    joinAlert,
     activeGift,
     setActiveGift,
     incomingInvite,
@@ -318,7 +320,9 @@ const StreamDashboard = () => {
       setStreamData(data);
 
       setBattleScores({
-        host: Number(data.host_battle_points) || 0,
+        host:
+          Number(data.host_battle_points) || 0,
+
         challenger:
           Number(data.challenger_battle_points) || 0
       });
@@ -694,7 +698,22 @@ const StreamDashboard = () => {
     const giftPrice =
       Number(activeGift.price) || 0;
 
+    /*
+     * Small gifts:
+     * handled by DynamicStreamGrid.
+     *
+     * Large gifts:
+     * remain in activeGift and are displayed
+     * by GiftAlertOverlay.
+     */
     if (giftPrice < 50) {
+      console.log(
+        '🎁 [Gift] Routing small gift:',
+        activeGift.giftName ||
+          activeGift.name ||
+          activeGift.id
+      );
+
       setActiveSmallGift(activeGift);
 
       if (smallGiftTimerRef.current) {
@@ -712,6 +731,13 @@ const StreamDashboard = () => {
         }, 2200);
 
       setActiveGift(null);
+    } else {
+      console.log(
+        '🎁 [Gift] Routing large gift to horizontal overlay:',
+        activeGift.giftName ||
+          activeGift.name ||
+          activeGift.id
+      );
     }
   }, [activeGift, setActiveGift]);
 
@@ -940,10 +966,7 @@ const StreamDashboard = () => {
           .update({
             status: 'rejected'
           })
-          .eq(
-            'id',
-            requestId
-          );
+          .eq('id', requestId);
 
       if (error) {
         console.error(
@@ -1090,20 +1113,30 @@ const StreamDashboard = () => {
           MAIN LIVE STAGE
           ===================================================== */}
 
-      <main className="absolute inset-0 overflow-hidden">
+      <main className="absolute inset-0 relative overflow-hidden">
 
-        {/* ---------------------------------------------------
-            LIVE GIFTS
-            --------------------------------------------------- */}
+        {/* ===================================================
+            LARGE LIVE GIFTS
+            ===================================================
 
-        <GiftAlertOverlay
-          activeGift={activeGift}
-          setActiveGift={setActiveGift}
-        />
+            50+ coin gifts are displayed here.
 
-        {/* ---------------------------------------------------
+            GiftAlertOverlay is positioned relative to this
+            main stage and occupies the lower half
+            horizontally.
+        */}
+
+        {activeGift && (
+          <div className="absolute inset-0 z-[100] pointer-events-none overflow-hidden">
+            <GiftAlertOverlay
+              gift={activeGift}
+            />
+          </div>
+        )}
+
+        {/* ===================================================
             TOP LIVE HEADER
-            --------------------------------------------------- */}
+            =================================================== */}
 
         <header className="absolute top-0 left-0 right-0 z-[60] px-4 pt-7 pb-8 bg-gradient-to-b from-black/90 via-black/50 to-transparent">
 
@@ -1295,7 +1328,6 @@ const StreamDashboard = () => {
 
                 {/* =========================================
                     RAW CAMERA SOURCE
-                    Hidden because AIEffects processes it.
                     ========================================= */}
 
                 <video
