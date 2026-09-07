@@ -2133,12 +2133,7 @@ const AIEffects = ({
 
   return (
     <div
-      className={`
-        relative
-        w-full
-        text-white
-        ${className}
-      `}
+     className={"relative w-full text-white " + (className || "")}
     >
       <div
         className="
