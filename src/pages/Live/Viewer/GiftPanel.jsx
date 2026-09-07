@@ -1,4 +1,3 @@
-
 import React, {
   useState,
   useEffect,
@@ -146,12 +145,34 @@ const ModelViewer = ({ model }) => {
 // ============================================================
 // 🎁 GIFT PANEL
 // ============================================================
-const GiftPanel = ({ streamId, onClose }) => {
+// onGiftSent is called ONLY after:
+// 1. Gift is inserted successfully
+// 2. Coins are deducted successfully
+// 3. Gift panel is closed
+//
+// The parent component should use onGiftSent to display the
+// big 3D gift overlay.
+// ============================================================
+const GiftPanel = ({
+  streamId,
+  onClose,
+  onGiftSent
+}) => {
   const navigate = useNavigate();
 
   const [balance, setBalance] = useState(0);
   const [isSending, setIsSending] = useState(false);
-  const [activeBigGift, setActiveBigGift] = useState(null);
+
+  // ==========================================================
+  // 🛡️ COMPONENT MOUNT STATE
+  // ==========================================================
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // ============================================================
   // 🎁 COMPLETE GIFT CATALOG
@@ -439,8 +460,6 @@ const GiftPanel = ({ streamId, onClose }) => {
   // 💰 FETCH USER COIN BALANCE
   // ============================================================
   useEffect(() => {
-    let mounted = true;
-
     const fetchBalance = async () => {
       try {
         const {
@@ -478,7 +497,7 @@ const GiftPanel = ({ streamId, onClose }) => {
           return;
         }
 
-        if (mounted && data) {
+        if (mountedRef.current && data) {
           setBalance(Number(data.coins) || 0);
         }
       } catch (error) {
@@ -490,10 +509,6 @@ const GiftPanel = ({ streamId, onClose }) => {
     };
 
     fetchBalance();
-
-    return () => {
-      mounted = false;
-    };
   }, []);
 
   // ============================================================
@@ -519,36 +534,7 @@ const GiftPanel = ({ streamId, onClose }) => {
       return;
     }
 
-    // ==========================================================
-    // 🔊 PLAY GIFT SOUND
-    // ==========================================================
-    try {
-      const audio = new Audio(gift.sound);
-
-      audio.currentTime = 0;
-
-      await audio.play();
-    } catch (error) {
-      console.warn(
-        'Audio play blocked by browser:',
-        error
-      );
-    }
-
     setIsSending(true);
-
-    // ==========================================================
-    // 🎁 BIG GIFT VISUAL
-    // ==========================================================
-    let bigGiftTimer = null;
-
-    if (gift.big) {
-      setActiveBigGift(gift.model);
-
-      bigGiftTimer = setTimeout(() => {
-        setActiveBigGift(null);
-      }, 5000);
-    }
 
     try {
       // ========================================================
@@ -625,20 +611,44 @@ const GiftPanel = ({ streamId, onClose }) => {
       // ========================================================
       // 💰 UPDATE LOCAL BALANCE
       // ========================================================
-      if (mounted) {
+      if (mountedRef.current) {
         setBalance(newBalance);
       }
 
       // ========================================================
-      // ✅ CLOSE PANEL
+      // 🔊 PLAY SOUND ONLY AFTER SUCCESS
+      // ========================================================
+      try {
+        const audio = new Audio(gift.sound);
+
+        audio.currentTime = 0;
+
+        await audio.play();
+      } catch (error) {
+        console.warn(
+          'Audio play blocked by browser:',
+          error
+        );
+      }
+
+      // ========================================================
+      // ✅ CLOSE GIFT PANEL FIRST
       // ========================================================
       if (typeof onClose === 'function') {
         onClose();
       }
 
-      if (bigGiftTimer) {
-        clearTimeout(bigGiftTimer);
+      // ========================================================
+      // 🎁 TELL PARENT ABOUT SUCCESSFUL GIFT
+      // ========================================================
+      // The parent owns the big-gift overlay.
+      // We wait briefly so the GiftPanel disappears first.
+      if (typeof onGiftSent === 'function') {
+        setTimeout(() => {
+          onGiftSent(gift);
+        }, 100);
       }
+
     } catch (error) {
       console.error(
         'Unexpected error sending gift:',
@@ -649,7 +659,9 @@ const GiftPanel = ({ streamId, onClose }) => {
         'Unexpected error sending gift. Check the browser console.'
       );
     } finally {
-      setIsSending(false);
+      if (mountedRef.current) {
+        setIsSending(false);
+      }
     }
   };
 
@@ -657,144 +669,98 @@ const GiftPanel = ({ streamId, onClose }) => {
   // 🎨 UI
   // ============================================================
   return (
-    <>
-      {/* ======================================================
-          BIG GIFT DISPLAY
-      ====================================================== */}
-      {activeBigGift && (
-        <div className="fixed bottom-0 left-0 w-full h-1/2 z-[60] bg-gradient-to-t from-cyan-500/20 to-transparent pointer-events-none animate-in slide-in-from-bottom duration-700">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48">
-            <Canvas
-              camera={{
-                position: [0, 0, 5],
-                fov: 45
-              }}
-              gl={{
-                alpha: true
-              }}
-            >
-              <ambientLight intensity={2} />
-
-              <pointLight
-                position={[10, 10, 10]}
-              />
-
-              <Suspense fallback={null}>
-                <GiftModel
-                  url={activeBigGift}
-                />
-
-                <ContactShadows
-                  position={[0, -1, 0]}
-                  opacity={0.6}
-                  scale={4}
-                  blur={2}
-                />
-              </Suspense>
-
-              <OrbitControls
-                enableZoom={false}
-                enablePan={false}
-                autoRotate
-                autoRotateSpeed={10}
-              />
-            </Canvas>
-          </div>
-        </div>
-      )}
+    <div className="flex flex-col bg-black/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[2rem] p-4 h-[60vh] text-white relative z-50">
 
       {/* ======================================================
-          GIFT PANEL
+          HEADER
       ====================================================== */}
-      <div className="flex flex-col bg-black/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[2rem] p-4 h-[60vh] text-white relative z-50">
+      <div className="flex justify-between items-center mb-4">
 
-        {/* HEADER */}
-        <div className="flex justify-between items-center mb-4">
+        {/* BALANCE */}
+        <div className="flex items-center gap-1">
 
-          {/* BALANCE */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2 bg-yellow-400/10 px-3 py-1.5 rounded-l-full border border-yellow-400/20">
 
-            <div className="flex items-center gap-2 bg-yellow-400/10 px-3 py-1.5 rounded-l-full border border-yellow-400/20">
+            <Zap
+              size={14}
+              className="text-yellow-400 fill-yellow-400"
+            />
 
-              <Zap
-                size={14}
-                className="text-yellow-400 fill-yellow-400"
-              />
-
-              <span className="text-sm font-bold">
-                {balance}
-              </span>
-
-            </div>
-
-            {/* RECHARGE */}
-            <button
-              type="button"
-              onClick={() => navigate('/live/recharge')}
-              className="flex items-center gap-1 bg-yellow-400 px-3 py-1.5 rounded-r-full border border-yellow-400 active:scale-95 transition-all"
-            >
-              <Plus
-                size={14}
-                className="text-black font-black"
-              />
-
-              <span className="text-[10px] font-black text-black uppercase">
-                Recharge
-              </span>
-            </button>
+            <span className="text-sm font-bold">
+              {balance}
+            </span>
 
           </div>
 
-          {/* CLOSE */}
+          {/* RECHARGE */}
           <button
             type="button"
-            onClick={onClose}
-            className="p-1 opacity-50 hover:opacity-100"
-            aria-label="Close gifts"
+            onClick={() => navigate('/live/recharge')}
+            className="flex items-center gap-1 bg-yellow-400 px-3 py-1.5 rounded-r-full border border-yellow-400 active:scale-95 transition-all"
           >
-            <X />
+            <Plus
+              size={14}
+              className="text-black font-black"
+            />
+
+            <span className="text-[10px] font-black text-black uppercase">
+              Recharge
+            </span>
           </button>
 
         </div>
 
-        {/* GIFT GRID */}
-        <div className="grid grid-cols-4 gap-3 overflow-y-auto pb-10 scrollbar-hide">
-
-          {GIFTS.map((gift) => (
-            <button
-              key={gift.id}
-              type="button"
-              onClick={() => handleInstantSend(gift)}
-              disabled={
-                isSending ||
-                Number(balance) < Number(gift.price)
-              }
-              className={`flex flex-col items-center p-2 rounded-2xl bg-white/5 border border-transparent hover:border-yellow-400/50 active:scale-95 transition-all ${
-                Number(balance) < Number(gift.price)
-                  ? 'opacity-40 grayscale-[0.5]'
-                  : 'opacity-100'
-              }`}
-            >
-
-              <ModelViewer
-                model={gift.model}
-              />
-
-              <span className="text-[10px] opacity-60 mt-1 truncate w-full">
-                {gift.name}
-              </span>
-
-              <span className="text-xs font-black text-yellow-400">
-                {gift.price}
-              </span>
-
-            </button>
-          ))}
-
-        </div>
+        {/* CLOSE */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-1 opacity-50 hover:opacity-100"
+          aria-label="Close gifts"
+        >
+          <X />
+        </button>
 
       </div>
-    </>
+
+      {/* ======================================================
+          GIFT GRID
+      ====================================================== */}
+      <div className="grid grid-cols-4 gap-3 overflow-y-auto pb-10 scrollbar-hide">
+
+        {GIFTS.map((gift) => (
+          <button
+            key={gift.id}
+            type="button"
+            onClick={() => handleInstantSend(gift)}
+            disabled={
+              isSending ||
+              Number(balance) < Number(gift.price)
+            }
+            className={`flex flex-col items-center p-2 rounded-2xl bg-white/5 border border-transparent hover:border-yellow-400/50 active:scale-95 transition-all ${
+              Number(balance) < Number(gift.price)
+                ? 'opacity-40 grayscale-[0.5]'
+                : 'opacity-100'
+            }`}
+          >
+
+            <ModelViewer
+              model={gift.model}
+            />
+
+            <span className="text-[10px] opacity-60 mt-1 truncate w-full">
+              {gift.name}
+            </span>
+
+            <span className="text-xs font-black text-yellow-400">
+              {gift.price}
+            </span>
+
+          </button>
+        ))}
+
+      </div>
+
+    </div>
   );
 };
 
