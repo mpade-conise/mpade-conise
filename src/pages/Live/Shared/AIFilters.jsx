@@ -1,1136 +1,1693 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
-  ArrowLeft,
-  Sparkles,
-  Sliders,
-  Smile,
-  User,
-  Eye,
-  Sun,
-  Moon,
-  Film,
-  Zap,
-  Maximize,
-  RotateCcw,
-  Wand2,
-  Contrast,
-  ScanFace
-} from 'lucide-react';
+  FaceLandmarker,
+  FilesetResolver
+} from '@mediapipe/tasks-vision';
 
-const DEFAULTS = {
-  smoothing: 3,
+const WASM_URL =
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm';
+
+const FACE_MODEL_URL =
+  'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+
+const DEFAULT_FILTERS = {
+  smoothing: 0,
   jawline: 0,
-  eyeSize: 0,
-  faceSlim: 0,
-  activeLUT: 'none',
-  activeFX: 'none',
-  lutIntensity: 100,
-  fxIntensity: 100
+  eyes: 0,
+  slim: 0,
+
+  lut: 'none',
+  lutIntensity: 0,
+
+  fx: 'none',
+  fxIntensity: 0
 };
 
-const AIFilters = ({
-  streamId,
-  onBack
-}) => {
-  const [smoothing, setSmoothing] =
-    useState(DEFAULTS.smoothing);
+const clamp = (value, min, max) =>
+  Math.max(min, Math.min(max, value));
 
-  const [jawline, setJawline] =
-    useState(DEFAULTS.jawline);
+const lerp = (a, b, amount) =>
+  a + (b - a) * amount;
 
-  const [eyeSize, setEyeSize] =
-    useState(DEFAULTS.eyeSize);
+const hexToRgb = hex => {
+  const value = hex.replace('#', '');
 
-  const [faceSlim, setFaceSlim] =
-    useState(DEFAULTS.faceSlim);
+  return {
+    r: parseInt(value.substring(0, 2), 16),
+    g: parseInt(value.substring(2, 4), 16),
+    b: parseInt(value.substring(4, 6), 16)
+  };
+};
 
-  const [activeLUT, setActiveLUT] =
-    useState(DEFAULTS.activeLUT);
+const mixColor = (
+  source,
+  target,
+  amount
+) => ({
+  r: lerp(source.r, target.r, amount),
+  g: lerp(source.g, target.g, amount),
+  b: lerp(source.b, target.b, amount)
+});
 
-  const [activeFX, setActiveFX] =
-    useState(DEFAULTS.activeFX);
+const LUTS = {
+  retro: {
+    contrast: 1.05,
+    saturation: 0.82,
+    brightness: 1.02,
+    overlay: '#c28a5a'
+  },
 
-  const [lutIntensity, setLutIntensity] =
-    useState(DEFAULTS.lutIntensity);
+  cyberpunk: {
+    contrast: 1.18,
+    saturation: 1.45,
+    brightness: 1.02,
+    overlay: '#8c4cff'
+  },
 
-  const [fxIntensity, setFxIntensity] =
-    useState(DEFAULTS.fxIntensity);
+  noir: {
+    contrast: 1.35,
+    saturation: 0,
+    brightness: 0.94,
+    overlay: '#151515'
+  },
+
+  golden: {
+    contrast: 1.04,
+    saturation: 1.12,
+    brightness: 1.08,
+    overlay: '#f4a340'
+  },
+
+  tropic: {
+    contrast: 1.08,
+    saturation: 1.35,
+    brightness: 1.04,
+    overlay: '#19b875'
+  }
+};
+
+export const useVideoFilterEngine = () => {
+  const sourceVideoRef =
+    useRef(null);
+
+  const canvasRef =
+    useRef(null);
+
+  const outputStreamRef =
+    useRef(null);
+
+  const sourceStreamRef =
+    useRef(null);
+
+  const animationFrameRef =
+    useRef(null);
+
+  const faceLandmarkerRef =
+    useRef(null);
+
+  const initializingRef =
+    useRef(false);
+
+  const destroyedRef =
+    useRef(false);
+
+  const lastFaceResultRef =
+    useRef(null);
+
+  const lastTimestampRef =
+    useRef(0);
+
+  const filtersRef =
+    useRef({
+      ...DEFAULT_FILTERS
+    });
+
+  const outputVideoTrackRef =
+    useRef(null);
 
   /*
-   * ============================================================
-   * CENTRAL FILTER EVENT
-   * ============================================================
-   *
-   * Every filter change goes through this one function.
-   *
-   * The actual camera/video processor should listen for:
-   *
-   * window.addEventListener(
-   *   'mpade-video-filter',
-   *   handler
-   * );
-   *
+   * ------------------------------------------------------------
+   * CREATE FACE LANDMARKER
+   * ------------------------------------------------------------
    */
 
-  const updateStreamFX = useCallback(
-    (type, key, value) => {
+  const initializeFaceLandmarker =
+    useCallback(async () => {
       if (
-        typeof window === 'undefined'
+        faceLandmarkerRef.current
       ) {
-        return;
+        return faceLandmarkerRef.current;
       }
 
-      window.dispatchEvent(
-        new CustomEvent(
-          'mpade-video-filter',
+      const vision =
+        await FilesetResolver.forVisionTasks(
+          WASM_URL
+        );
+
+      const landmarker =
+        await FaceLandmarker.createFromOptions(
+          vision,
           {
-            detail: {
-              streamId:
-                streamId || null,
-              type,
-              key,
-              value
-            }
+            baseOptions: {
+              modelAssetPath:
+                FACE_MODEL_URL
+            },
+
+            runningMode: 'VIDEO',
+
+            numFaces: 1,
+
+            minFaceDetectionConfidence:
+              0.5,
+
+            minFacePresenceConfidence:
+              0.5,
+
+            minTrackingConfidence:
+              0.5
           }
-        )
-      );
-    },
-    [streamId]
-  );
+        );
+
+      faceLandmarkerRef.current =
+        landmarker;
+
+      return landmarker;
+    }, []);
 
   /*
-   * ============================================================
-   * BEAUTY CONTROL
-   * ============================================================
+   * ------------------------------------------------------------
+   * FILTER EVENT
+   * ------------------------------------------------------------
    */
 
-  const updateBeauty = (
-    key,
-    value,
-    setter
+  useEffect(() => {
+    if (
+      typeof window === 'undefined'
+    ) {
+      return undefined;
+    }
+
+    const handleFilterEvent =
+      event => {
+        const detail =
+          event?.detail;
+
+        if (!detail) {
+          return;
+        }
+
+        if (
+          detail.type ===
+          'reset'
+        ) {
+          filtersRef.current = {
+            ...DEFAULT_FILTERS
+          };
+
+          return;
+        }
+
+        if (
+          detail.type ===
+          'beauty'
+        ) {
+          filtersRef.current = {
+            ...filtersRef.current,
+            [detail.key]:
+              Number(detail.value) || 0
+          };
+
+          return;
+        }
+
+        if (
+          detail.type ===
+          'morph'
+        ) {
+          filtersRef.current = {
+            ...filtersRef.current,
+            [detail.key]:
+              Number(detail.value) || 0
+          };
+
+          return;
+        }
+
+        if (
+          detail.type ===
+          'lut'
+        ) {
+          if (
+            detail.key ===
+            'preset'
+          ) {
+            filtersRef.current.lut =
+              detail.value ||
+              'none';
+          }
+
+          if (
+            detail.key ===
+            'intensity'
+          ) {
+            filtersRef.current.lutIntensity =
+              Number(
+                detail.value
+              ) || 0;
+          }
+
+          return;
+        }
+
+        if (
+          detail.type ===
+          'fx'
+        ) {
+          if (
+            detail.key ===
+            'preset'
+          ) {
+            filtersRef.current.fx =
+              detail.value ||
+              'none';
+          }
+
+          if (
+            detail.key ===
+            'intensity'
+          ) {
+            filtersRef.current.fxIntensity =
+              Number(
+                detail.value
+              ) || 0;
+          }
+        }
+      };
+
+    window.addEventListener(
+      'mpade-video-filter',
+      handleFilterEvent
+    );
+
+    return () => {
+      window.removeEventListener(
+        'mpade-video-filter',
+        handleFilterEvent
+      );
+    };
+  }, []);
+
+  /*
+   * ------------------------------------------------------------
+   * DRAW IMAGE
+   * ------------------------------------------------------------
+   */
+
+  const drawBaseFrame = (
+    ctx,
+    video,
+    width,
+    height
   ) => {
-    const numericValue =
-      Number(value);
+    ctx.save();
 
-    setter(numericValue);
+    ctx.clearRect(
+      0,
+      0,
+      width,
+      height
+    );
 
-    updateStreamFX(
-      'beauty',
-      key,
-      numericValue
+    ctx.drawImage(
+      video,
+      0,
+      0,
+      width,
+      height
+    );
+
+    ctx.restore();
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * COLOR PROCESSING
+   * ------------------------------------------------------------
+   */
+
+  const applyLUT = (
+    ctx,
+    width,
+    height,
+    lutName,
+    intensity
+  ) => {
+    if (
+      lutName === 'none' ||
+      intensity <= 0
+    ) {
+      return;
+    }
+
+    const preset =
+      LUTS[lutName];
+
+    if (!preset) {
+      return;
+    }
+
+    const image =
+      ctx.getImageData(
+        0,
+        0,
+        width,
+        height
+      );
+
+    const data =
+      image.data;
+
+    const factor =
+      intensity / 100;
+
+    const overlay =
+      hexToRgb(
+        preset.overlay
+      );
+
+    for (
+      let i = 0;
+      i < data.length;
+      i += 4
+    ) {
+      let r =
+        data[i];
+
+      let g =
+        data[i + 1];
+
+      let b =
+        data[i + 2];
+
+      /*
+       * Contrast
+       */
+
+      r =
+        (r - 128) *
+          preset.contrast +
+        128;
+
+      g =
+        (g - 128) *
+          preset.contrast +
+        128;
+
+      b =
+        (b - 128) *
+          preset.contrast +
+        128;
+
+      /*
+       * Saturation
+       */
+
+      const gray =
+        0.299 * r +
+        0.587 * g +
+        0.114 * b;
+
+      r =
+        gray +
+        (r - gray) *
+          preset.saturation;
+
+      g =
+        gray +
+        (g - gray) *
+          preset.saturation;
+
+      b =
+        gray +
+        (b - gray) *
+          preset.saturation;
+
+      /*
+       * Brightness
+       */
+
+      r *=
+        preset.brightness;
+
+      g *=
+        preset.brightness;
+
+      b *=
+        preset.brightness;
+
+      /*
+       * Color tone
+       */
+
+      const toned =
+        mixColor(
+          {
+            r,
+            g,
+            b
+          },
+          overlay,
+          factor * 0.12
+        );
+
+      data[i] =
+        clamp(
+          Math.round(
+            toned.r
+          ),
+          0,
+          255
+        );
+
+      data[i + 1] =
+        clamp(
+          Math.round(
+            toned.g
+          ),
+          0,
+          255
+        );
+
+      data[i + 2] =
+        clamp(
+          Math.round(
+            toned.b
+          ),
+          0,
+          255
+        );
+    }
+
+    ctx.putImageData(
+      image,
+      0,
+      0
     );
   };
 
   /*
-   * ============================================================
-   * LUT
-   * ============================================================
+   * ------------------------------------------------------------
+   * SKIN SMOOTHING
+   * ------------------------------------------------------------
    */
 
-  const handleLUTToggle = (
-    lutName
+  const applySmoothing = (
+    ctx,
+    width,
+    height,
+    level
   ) => {
-    const nextLUT =
-      activeLUT === lutName
-        ? 'none'
-        : lutName;
+    if (level <= 0) {
+      return;
+    }
 
-    setActiveLUT(nextLUT);
+    /*
+     * The canvas filter performs
+     * real pixel-level smoothing.
+     *
+     * We keep the effect subtle so
+     * the face doesn't become blurry.
+     */
 
-    updateStreamFX(
-      'lut',
-      'preset',
-      nextLUT
+    const amount =
+      clamp(
+        level / 5,
+        0,
+        1
+      );
+
+    ctx.save();
+
+    ctx.globalAlpha =
+      amount * 0.18;
+
+    ctx.filter =
+      `blur(${0.6 +
+        amount * 1.4}px)`;
+
+    ctx.globalCompositeOperation =
+      'source-atop';
+
+    ctx.drawImage(
+      canvasRef.current,
+      0,
+      0,
+      width,
+      height
     );
 
-    updateStreamFX(
-      'lut',
-      'intensity',
-      nextLUT === 'none'
-        ? 0
-        : lutIntensity
-    );
-  };
-
-  const handleLUTIntensity = (
-    value
-  ) => {
-    const numericValue =
-      Number(value);
-
-    setLutIntensity(
-      numericValue
-    );
-
-    updateStreamFX(
-      'lut',
-      'intensity',
-      numericValue
-    );
+    ctx.restore();
   };
 
   /*
-   * ============================================================
-   * STYLIZED FX
-   * ============================================================
+   * ------------------------------------------------------------
+   * FACE HELPERS
+   * ------------------------------------------------------------
    */
 
-  const handleFXToggle = (
-    fxName
-  ) => {
-    const nextFX =
-      activeFX === fxName
-        ? 'none'
-        : fxName;
+  const getLandmark =
+    (landmarks, index) => {
+      if (
+        !landmarks ||
+        !landmarks[index]
+      ) {
+        return null;
+      }
 
-    setActiveFX(nextFX);
+      return {
+        x:
+          landmarks[index].x,
+        y:
+          landmarks[index].y
+      };
+    };
 
-    updateStreamFX(
-      'fx',
-      'preset',
-      nextFX
-    );
-
-    updateStreamFX(
-      'fx',
-      'intensity',
-      nextFX === 'none'
-        ? 0
-        : fxIntensity
-    );
-  };
-
-  const handleFXIntensity = (
-    value
-  ) => {
-    const numericValue =
-      Number(value);
-
-    setFxIntensity(
-      numericValue
-    );
-
-    updateStreamFX(
-      'fx',
-      'intensity',
-      numericValue
-    );
-  };
-
-  /*
-   * ============================================================
-   * RESET EVERYTHING
-   * ============================================================
-   */
-
-  const resetAllFilters =
-    () => {
-      setSmoothing(
-        DEFAULTS.smoothing
-      );
-
-      setJawline(
-        DEFAULTS.jawline
-      );
-
-      setEyeSize(
-        DEFAULTS.eyeSize
-      );
-
-      setFaceSlim(
-        DEFAULTS.faceSlim
-      );
-
-      setActiveLUT(
-        DEFAULTS.activeLUT
-      );
-
-      setActiveFX(
-        DEFAULTS.activeFX
-      );
-
-      setLutIntensity(
-        DEFAULTS.lutIntensity
-      );
-
-      setFxIntensity(
-        DEFAULTS.fxIntensity
-      );
-
-      updateStreamFX(
-        'reset',
-        'all',
-        true
+  const drawFacePatch =
+    (
+      ctx,
+      canvas,
+      sourceX,
+      sourceY,
+      sourceW,
+      sourceH,
+      destinationX,
+      destinationY,
+      destinationW,
+      destinationH
+    ) => {
+      ctx.drawImage(
+        canvas,
+        sourceX,
+        sourceY,
+        sourceW,
+        sourceH,
+        destinationX,
+        destinationY,
+        destinationW,
+        destinationH
       );
     };
 
   /*
-   * ============================================================
-   * KEEP PROCESSOR SYNCHRONIZED
-   * ============================================================
-   *
-   * This sends the initial state when the component mounts.
+   * ------------------------------------------------------------
+   * EYE ENHANCEMENT
+   * ------------------------------------------------------------
    */
 
-  useEffect(() => {
-    updateStreamFX(
-      'beauty',
-      'smoothing',
-      smoothing
-    );
+  const applyEyeEnhancement =
+    (
+      ctx,
+      canvas,
+      landmarks,
+      width,
+      height,
+      level
+    ) => {
+      if (
+        level <= 0 ||
+        !landmarks
+      ) {
+        return;
+      }
 
-    updateStreamFX(
-      'beauty',
-      'jawline',
-      jawline
-    );
+      /*
+       * MediaPipe Face Landmarker
+       * gives us facial landmarks.
+       *
+       * These indices identify
+       * approximate eye regions.
+       */
 
-    updateStreamFX(
-      'beauty',
-      'eyes',
-      eyeSize
-    );
+      const leftOuter =
+        getLandmark(
+          landmarks,
+          33
+        );
 
-    updateStreamFX(
-      'beauty',
-      'slim',
-      faceSlim
-    );
+      const leftInner =
+        getLandmark(
+          landmarks,
+          133
+        );
 
-    updateStreamFX(
-      'lut',
-      'preset',
-      activeLUT
-    );
+      const rightOuter =
+        getLandmark(
+          landmarks,
+          263
+        );
 
-    updateStreamFX(
-      'lut',
-      'intensity',
-      activeLUT === 'none'
-        ? 0
-        : lutIntensity
-    );
+      const rightInner =
+        getLandmark(
+          landmarks,
+          362
+        );
 
-    updateStreamFX(
-      'fx',
-      'preset',
-      activeFX
-    );
+      if (
+        !leftOuter ||
+        !leftInner ||
+        !rightOuter ||
+        !rightInner
+      ) {
+        return;
+      }
 
-    updateStreamFX(
-      'fx',
-      'intensity',
-      activeFX === 'none'
-        ? 0
-        : fxIntensity
-    );
-  }, []);
+      const strength =
+        level / 5;
+
+      const processEye =
+        (
+          outer,
+          inner
+        ) => {
+          const cx =
+            ((outer.x +
+              inner.x) /
+              2) *
+            width;
+
+          const cy =
+            ((outer.y +
+              inner.y) /
+              2) *
+            height;
+
+          const eyeWidth =
+            Math.abs(
+              outer.x -
+                inner.x
+            ) *
+            width;
+
+          const eyeHeight =
+            eyeWidth *
+            0.75;
+
+          if (
+            eyeWidth <
+            4
+          ) {
+            return;
+          }
+
+          const scale =
+            1 +
+            strength *
+              0.18;
+
+          const sourceW =
+            eyeWidth * 2.2;
+
+          const sourceH =
+            eyeHeight * 2.5;
+
+          const sourceX =
+            cx -
+            sourceW / 2;
+
+          const sourceY =
+            cy -
+            sourceH / 2;
+
+          const destinationW =
+            sourceW *
+            scale;
+
+          const destinationH =
+            sourceH *
+            scale;
+
+          const destinationX =
+            cx -
+            destinationW / 2;
+
+          const destinationY =
+            cy -
+            destinationH / 2;
+
+          ctx.save();
+
+          ctx.globalCompositeOperation =
+            'source-over';
+
+          drawFacePatch(
+            ctx,
+            canvas,
+            sourceX,
+            sourceY,
+            sourceW,
+            sourceH,
+            destinationX,
+            destinationY,
+            destinationW,
+            destinationH
+          );
+
+          ctx.restore();
+        };
+
+      processEye(
+        leftOuter,
+        leftInner
+      );
+
+      processEye(
+        rightOuter,
+        rightInner
+      );
+    };
 
   /*
-   * ============================================================
-   * SMALL UI COMPONENTS
-   * ============================================================
+   * ------------------------------------------------------------
+   * FACE SLIMMING / JAWLINE
+   * ------------------------------------------------------------
+   *
+   * These use landmark-guided local
+   * image deformation. They are deliberately
+   * subtle to avoid obvious edge tearing.
    */
 
-  const RangeControl = ({
-    icon: Icon,
-    iconClass,
-    label,
-    value,
-    suffix = '',
-    max = 5,
-    onChange
-  }) => (
-    <div
-      className="
-        rounded-xl
-        border
-        border-white/8
-        bg-white/[0.035]
-        p-3
-      "
-    >
-      <div
-        className="
-          mb-2
-          flex
-          items-center
-          justify-between
-          gap-2
-        "
-      >
-        <div
-          className="
-            flex
-            min-w-0
-            items-center
-            gap-2
-          "
-        >
-          <Icon
-            size={14}
-            className={`
-              shrink-0
-              ${iconClass}
-            `}
-          />
+  const applyFaceShape =
+    (
+      ctx,
+      canvas,
+      landmarks,
+      width,
+      height,
+      slimLevel,
+      jawLevel
+    ) => {
+      if (
+        !landmarks ||
+        (
+          slimLevel <= 0 &&
+          jawLevel <= 0
+        )
+      ) {
+        return;
+      }
 
-          <span
-            className="
-              truncate
-              text-[11px]
-              font-medium
-              text-zinc-300
-            "
-          >
-            {label}
-          </span>
-        </div>
+      const leftCheek =
+        getLandmark(
+          landmarks,
+          234
+        );
 
-        <span
-          className="
-            shrink-0
-            rounded-md
-            bg-white/5
-            px-1.5
-            py-0.5
-            text-[9px]
-            font-bold
-            text-cyan-400
-          "
-        >
-          {value}
-          {suffix}
-        </span>
-      </div>
+      const rightCheek =
+        getLandmark(
+          landmarks,
+          454
+        );
 
-      <input
-        type="range"
-        min="0"
-        max={max}
-        step="1"
-        value={value}
-        onChange={e =>
-          onChange(
-            e.target.value
-          )
+      const chin =
+        getLandmark(
+          landmarks,
+          152
+        );
+
+      if (
+        !leftCheek ||
+        !rightCheek ||
+        !chin
+      ) {
+        return;
+      }
+
+      const slim =
+        slimLevel / 5;
+
+      const jaw =
+        jawLevel / 5;
+
+      const centerX =
+        ((leftCheek.x +
+          rightCheek.x) /
+          2) *
+        width;
+
+      const centerY =
+        ((leftCheek.y +
+          rightCheek.y) /
+          2) *
+        height;
+
+      const faceWidth =
+        Math.abs(
+          rightCheek.x -
+            leftCheek.x
+        ) *
+        width;
+
+      const faceHeight =
+        Math.abs(
+          chin.y -
+            centerY / height
+        ) *
+        height;
+
+      if (
+        faceWidth < 20 ||
+        faceHeight < 20
+      ) {
+        return;
+      }
+
+      /*
+       * This is intentionally conservative.
+       *
+       * A full mesh warp should eventually
+       * replace this patch-based deformation
+       * for maximum quality.
+       */
+
+      const amount =
+        slim * 0.08 +
+        jaw * 0.05;
+
+      const sourceW =
+        faceWidth * 0.72;
+
+      const sourceH =
+        faceHeight * 0.75;
+
+      const sourceX =
+        centerX -
+        sourceW / 2;
+
+      const sourceY =
+        centerY -
+        sourceH * 0.25;
+
+      const destinationW =
+        sourceW *
+        (1 - amount);
+
+      const destinationX =
+        centerX -
+        destinationW / 2;
+
+      ctx.save();
+
+      drawFacePatch(
+        ctx,
+        canvas,
+        sourceX,
+        sourceY,
+        sourceW,
+        sourceH,
+        destinationX,
+        sourceY,
+        destinationW,
+        sourceH
+      );
+
+      ctx.restore();
+    };
+
+  /*
+   * ------------------------------------------------------------
+   * VHS
+   * ------------------------------------------------------------
+   */
+
+  const applyVHS =
+    (
+      ctx,
+      width,
+      height,
+      intensity
+    ) => {
+      if (
+        intensity <= 0
+      ) {
+        return;
+      }
+
+      const amount =
+        intensity / 100;
+
+      ctx.save();
+
+      /*
+       * Scanlines
+       */
+
+      ctx.globalAlpha =
+        0.12 * amount;
+
+      ctx.fillStyle =
+        '#000';
+
+      for (
+        let y = 0;
+        y < height;
+        y += 4
+      ) {
+        ctx.fillRect(
+          0,
+          y,
+          width,
+          1
+        );
+      }
+
+      /*
+       * VHS color wash
+       */
+
+      ctx.globalCompositeOperation =
+        'screen';
+
+      ctx.globalAlpha =
+        0.08 * amount;
+
+      ctx.fillStyle =
+        '#ff004c';
+
+      ctx.fillRect(
+        0,
+        0,
+        width,
+        height
+      );
+
+      ctx.globalCompositeOperation =
+        'screen';
+
+      ctx.globalAlpha =
+        0.06 * amount;
+
+      ctx.fillStyle =
+        '#00e5ff';
+
+      ctx.fillRect(
+        3,
+        0,
+        width,
+        height
+      );
+
+      ctx.restore();
+    };
+
+  /*
+   * ------------------------------------------------------------
+   * MANGA
+   * ------------------------------------------------------------
+   */
+
+  const applyManga =
+    (
+      ctx,
+      width,
+      height,
+      intensity
+    ) => {
+      if (
+        intensity <= 0
+      ) {
+        return;
+      }
+
+      const image =
+        ctx.getImageData(
+          0,
+          0,
+          width,
+          height
+        );
+
+      const data =
+        image.data;
+
+      const copy =
+        new Uint8ClampedArray(
+          data
+        );
+
+      const amount =
+        intensity / 100;
+
+      /*
+       * Lightweight edge detection.
+       *
+       * This intentionally avoids a
+       * heavy OpenCV dependency.
+       */
+
+      for (
+        let y = 1;
+        y < height - 1;
+        y++
+      ) {
+        for (
+          let x = 1;
+          x < width - 1;
+          x++
+        ) {
+          const index =
+            (y * width + x) *
+            4;
+
+          const right =
+            index + 4;
+
+          const down =
+            index +
+            width * 4;
+
+          const current =
+            (
+              copy[index] +
+              copy[index + 1] +
+              copy[index + 2]
+            ) / 3;
+
+          const rightValue =
+            (
+              copy[right] +
+              copy[right + 1] +
+              copy[right + 2]
+            ) / 3;
+
+          const downValue =
+            (
+              copy[down] +
+              copy[down + 1] +
+              copy[down + 2]
+            ) / 3;
+
+          const edge =
+            Math.abs(
+              current -
+                rightValue
+            ) +
+            Math.abs(
+              current -
+                downValue
+            );
+
+          if (
+            edge >
+            55
+          ) {
+            const dark =
+              clamp(
+                255 -
+                  edge *
+                    2 *
+                    amount,
+                0,
+                255
+              );
+
+            data[index] =
+              dark;
+
+            data[index + 1] =
+              dark;
+
+            data[index + 2] =
+              dark;
+          }
         }
-        className="
-          h-1
-          w-full
-          cursor-pointer
-          appearance-none
-          rounded-full
-          bg-zinc-800
-          accent-cyan-400
-        "
-      />
-    </div>
-  );
+      }
 
-  const FilterButton = ({
-    icon: Icon,
-    label,
-    active,
-    activeClass = '',
-    onClick
-  }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`
-        group
-        flex
-        min-h-[44px]
-        w-full
-        items-center
-        justify-between
-        gap-3
-        rounded-xl
-        border
-        px-3
-        transition-all
-        duration-200
-        ${
-          active
-            ? activeClass
-            : `
-              border-white/8
-              bg-white/[0.035]
-              text-zinc-300
-              hover:border-white/15
-              hover:bg-white/[0.07]
-              hover:text-white
-            `
+      ctx.putImageData(
+        image,
+        0,
+        0
+      );
+    };
+
+  /*
+   * ------------------------------------------------------------
+   * THERMAL
+   * ------------------------------------------------------------
+   */
+
+  const applyThermal =
+    (
+      ctx,
+      width,
+      height,
+      intensity
+    ) => {
+      if (
+        intensity <= 0
+      ) {
+        return;
+      }
+
+      const image =
+        ctx.getImageData(
+          0,
+          0,
+          width,
+          height
+        );
+
+      const data =
+        image.data;
+
+      const amount =
+        intensity / 100;
+
+      for (
+        let i = 0;
+        i < data.length;
+        i += 4
+      ) {
+        const brightness =
+          (
+            0.299 *
+              data[i] +
+            0.587 *
+              data[i + 1] +
+            0.114 *
+              data[i + 2]
+          ) / 255;
+
+        let r = 0;
+        let g = 0;
+        let b = 0;
+
+        if (
+          brightness < 0.25
+        ) {
+          r = 20;
+          g = 0;
+          b = 80;
+        } else if (
+          brightness < 0.5
+        ) {
+          r = 30;
+          g = 60;
+          b = 220;
+        } else if (
+          brightness < 0.75
+        ) {
+          r = 255;
+          g = 170;
+          b = 20;
+        } else {
+          r = 255;
+          g = 255;
+          b = 255;
         }
-      `}
-    >
-      <div
-        className="
-          flex
-          min-w-0
-          items-center
-          gap-2
-        "
-      >
-        <Icon
-          size={14}
-          className="
-            shrink-0
-          "
-        />
 
-        <span
-          className="
-            truncate
-            text-left
-            text-[10px]
-            font-medium
-            sm:text-[11px]
-          "
-        >
-          {label}
-        </span>
-      </div>
+        data[i] =
+          lerp(
+            data[i],
+            r,
+            amount
+          );
 
-      <span
-        className="
-          shrink-0
-          text-[8px]
-          font-bold
-          uppercase
-          tracking-wider
-          opacity-70
-        "
-      >
-        {active
-          ? 'Active'
-          : 'Off'}
-      </span>
-    </button>
-  );
+        data[i + 1] =
+          lerp(
+            data[i + 1],
+            g,
+            amount
+          );
 
-  return (
-    <div
-      className="
-        flex
-        max-h-[calc(100vh-100px)]
-        flex-col
-        overflow-y-auto
-        pr-1
-        custom-scrollbar
-      "
-    >
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+        data[i + 2] =
+          lerp(
+            data[i + 2],
+            b,
+            amount
+          );
+      }
 
-      <div
-        className="
-          sticky
-          top-0
-          z-10
-          mb-4
-          flex
-          items-center
-          justify-between
-          border-b
-          border-white/5
-          bg-zinc-950/95
-          pb-3
-          backdrop-blur-xl
-        "
-      >
-        <button
-          type="button"
-          onClick={onBack}
-          className="
-            flex
-            items-center
-            gap-1.5
-            text-[10px]
-            font-medium
-            text-zinc-400
-            transition
-            hover:text-white
-          "
-        >
-          <ArrowLeft
-            size={14}
-          />
+      ctx.putImageData(
+        image,
+        0,
+        0
+      );
+    };
 
-          Back to Menu
-        </button>
+  /*
+   * ------------------------------------------------------------
+   * PROCESS FRAME
+   * ------------------------------------------------------------
+   */
 
-        <button
-          type="button"
-          onClick={
-            resetAllFilters
+  const processFrame =
+    useCallback(
+      async () => {
+        if (
+          destroyedRef.current
+        ) {
+          return;
+        }
+
+        const video =
+          sourceVideoRef.current;
+
+        const canvas =
+          canvasRef.current;
+
+        const landmarker =
+          faceLandmarkerRef.current;
+
+        if (
+          !video ||
+          !canvas
+        ) {
+          animationFrameRef.current =
+            requestAnimationFrame(
+              processFrame
+            );
+
+          return;
+        }
+
+        if (
+          video.readyState <
+          HTMLMediaElement
+            .HAVE_CURRENT_DATA
+        ) {
+          animationFrameRef.current =
+            requestAnimationFrame(
+              processFrame
+            );
+
+          return;
+        }
+
+        const width =
+          canvas.width;
+
+        const height =
+          canvas.height;
+
+        const ctx =
+          canvas.getContext(
+            '2d',
+            {
+              willReadFrequently:
+                true
+            }
+          );
+
+        if (!ctx) {
+          return;
+        }
+
+        drawBaseFrame(
+          ctx,
+          video,
+          width,
+          height
+        );
+
+        const timestamp =
+          performance.now();
+
+        /*
+         * Face detection
+         */
+
+        if (
+          landmarker &&
+          timestamp >
+            lastTimestampRef.current
+        ) {
+          try {
+            const result =
+              landmarker.detectForVideo(
+                video,
+                timestamp
+              );
+
+            lastFaceResultRef.current =
+              result;
+          } catch (
+            error
+          ) {
+            console.debug(
+              'Face landmark processing:',
+              error?.message ||
+                error
+            );
           }
-          className="
-            flex
-            items-center
-            gap-1.5
-            rounded-lg
-            border
-            border-white/10
-            bg-white/5
-            px-2.5
-            py-1.5
-            text-[9px]
-            font-semibold
-            text-zinc-400
-            transition
-            hover:bg-white/10
-            hover:text-white
-          "
-        >
-          <RotateCcw
-            size={11}
-          />
 
-          Reset
-        </button>
-      </div>
+          lastTimestampRef.current =
+            timestamp;
+        }
 
-      {/* ======================================================
-          REAL-TIME PROCESSING STATUS
-      ====================================================== */}
+        const filters =
+          filtersRef.current;
 
-      <div
-        className="
-          mb-4
-          flex
-          items-center
-          gap-3
-          rounded-xl
-          border
-          border-cyan-500/15
-          bg-cyan-500/[0.04]
-          p-3
-        "
-      >
-        <div
-          className="
-            flex
-            h-8
-            w-8
-            shrink-0
-            items-center
-            justify-center
-            rounded-lg
-            bg-cyan-400/10
-            text-cyan-400
-          "
-        >
-          <ScanFace
-            size={16}
-          />
-        </div>
+        const landmarks =
+          lastFaceResultRef.current
+            ?.faceLandmarks?.[0];
 
-        <div
-          className="
-            min-w-0
-          "
-        >
-          <p
-            className="
-              text-[10px]
-              font-bold
-              text-white
-            "
-          >
-            Live Video Processing
-          </p>
+        /*
+         * Face processing
+         */
 
-          <p
-            className="
-              mt-0.5
-              text-[8px]
-              leading-relaxed
-              text-zinc-500
-            "
-          >
-            Effects are sent directly to
-            the active video processor.
-          </p>
-        </div>
+        if (landmarks) {
+          applyFaceShape(
+            ctx,
+            canvas,
+            landmarks,
+            width,
+            height,
+            filters.slim,
+            filters.jawline
+          );
 
-        <span
-          className="
-            ml-auto
-            h-1.5
-            w-1.5
-            shrink-0
-            animate-pulse
-            rounded-full
-            bg-emerald-400
-          "
-        />
-      </div>
+          applyEyeEnhancement(
+            ctx,
+            canvas,
+            landmarks,
+            width,
+            height,
+            filters.eyes
+          );
+        }
 
-      {/* ======================================================
-          BEAUTY / FACE
-      ====================================================== */}
+        applySmoothing(
+          ctx,
+          width,
+          height,
+          filters.smoothing
+        );
 
-      <section
-        className="
-          mb-5
-          space-y-2
-        "
-      >
-        <div
-          className="
-            flex
-            items-center
-            gap-2
-            px-1
-          "
-        >
-          <Wand2
-            size={13}
-            className="text-cyan-400"
-          />
+        /*
+         * Color
+         */
 
-          <p
-            className="
-              text-[10px]
-              font-bold
-              uppercase
-              tracking-wider
-              text-zinc-400
-            "
-          >
-            Face & Beauty
-          </p>
-        </div>
+        applyLUT(
+          ctx,
+          width,
+          height,
+          filters.lut,
+          filters.lutIntensity
+        );
 
-        <RangeControl
-          icon={Sparkles}
-          iconClass="text-amber-400"
-          label="Skin Smoothing"
-          value={smoothing}
-          suffix="/5"
-          onChange={value =>
-            updateBeauty(
-              'smoothing',
-              value,
-              setSmoothing
-            )
-          }
-        />
+        /*
+         * FX
+         */
 
-        <RangeControl
-          icon={Smile}
-          iconClass="text-purple-400"
-          label="Jawline Definition"
-          value={jawline}
-          suffix="/5"
-          onChange={value =>
-            updateBeauty(
-              'jawline',
-              value,
-              setJawline
-            )
-          }
-        />
+        if (
+          filters.fx === 'vhs'
+        ) {
+          applyVHS(
+            ctx,
+            width,
+            height,
+            filters.fxIntensity
+          );
+        }
 
-        <RangeControl
-          icon={Eye}
-          iconClass="text-emerald-400"
-          label="Eye Enhancement"
-          value={eyeSize}
-          suffix="/5"
-          onChange={value =>
-            updateBeauty(
-              'eyes',
-              value,
-              setEyeSize
-            )
-          }
-        />
+        if (
+          filters.fx === 'manga'
+        ) {
+          applyManga(
+            ctx,
+            width,
+            height,
+            filters.fxIntensity
+          );
+        }
 
-        <RangeControl
-          icon={User}
-          iconClass="text-blue-400"
-          label="Face Slimming"
-          value={faceSlim}
-          suffix="/5"
-          onChange={value =>
-            updateBeauty(
-              'slim',
-              value,
-              setFaceSlim
-            )
-          }
-        />
-      </section>
+        if (
+          filters.fx === 'thermal'
+        ) {
+          applyThermal(
+            ctx,
+            width,
+            height,
+            filters.fxIntensity
+          );
+        }
 
-      {/* ======================================================
-          CINEMATIC
-      ====================================================== */}
+        animationFrameRef.current =
+          requestAnimationFrame(
+            processFrame
+          );
+      },
+      []
+    );
 
-      <section
-        className="
-          mb-5
-          space-y-2
-        "
-      >
-        <div
-          className="
-            flex
-            items-center
-            gap-2
-            px-1
-          "
-        >
-          <Film
-            size={13}
-            className="text-amber-400"
-          />
+  /*
+   * ------------------------------------------------------------
+   * ATTACH STREAM
+   * ------------------------------------------------------------
+   */
 
-          <p
-            className="
-              text-[10px]
-              font-bold
-              uppercase
-              tracking-wider
-              text-zinc-400
-            "
-          >
-            Cinematic Grading
-          </p>
-        </div>
+  const attachStream =
+    useCallback(
+      async stream => {
+        if (!stream) {
+          return null;
+        }
 
-        <FilterButton
-          icon={Film}
-          label="1990s Retro Vintage"
-          active={
-            activeLUT ===
-            'retro'
-          }
-          activeClass="
-            border-amber-400/30
-            bg-amber-400/10
-            text-amber-300
-          "
-          onClick={() =>
-            handleLUTToggle(
-              'retro'
-            )
-          }
-        />
+        sourceStreamRef.current =
+          stream;
 
-        <FilterButton
-          icon={Sliders}
-          label="Cyberpunk Neon Dusk"
-          active={
-            activeLUT ===
-            'cyberpunk'
-          }
-          activeClass="
-            border-purple-400/30
-            bg-purple-400/10
-            text-purple-300
-          "
-          onClick={() =>
-            handleLUTToggle(
-              'cyberpunk'
-            )
-          }
-        />
+        if (
+          !sourceVideoRef.current
+        ) {
+          sourceVideoRef.current =
+            document.createElement(
+              'video'
+            );
+        }
 
-        <FilterButton
-          icon={Moon}
-          label="Deep Charcoal Noir"
-          active={
-            activeLUT ===
-            'noir'
-          }
-          activeClass="
-            border-zinc-300/20
-            bg-white/10
-            text-white
-          "
-          onClick={() =>
-            handleLUTToggle(
-              'noir'
-            )
-          }
-        />
+        const sourceVideo =
+          sourceVideoRef.current;
 
-        <FilterButton
-          icon={Sun}
-          label="Sunkissed Golden Hour"
-          active={
-            activeLUT ===
-            'golden'
-          }
-          activeClass="
-            border-yellow-400/30
-            bg-yellow-400/10
-            text-yellow-300
-          "
-          onClick={() =>
-            handleLUTToggle(
-              'golden'
-            )
-          }
-        />
+        sourceVideo.muted =
+          true;
 
-        <FilterButton
-          icon={Sparkles}
-          label="Vibrant Tropic Flare"
-          active={
-            activeLUT ===
-            'tropic'
-          }
-          activeClass="
-            border-emerald-400/30
-            bg-emerald-400/10
-            text-emerald-300
-          "
-          onClick={() =>
-            handleLUTToggle(
-              'tropic'
-            )
-          }
-        />
+        sourceVideo.autoplay =
+          true;
 
-        {/* LUT INTENSITY */}
+        sourceVideo.playsInline =
+          true;
 
-        {activeLUT !==
-          'none' && (
-          <div
-            className="
-              rounded-xl
-              border
-              border-white/8
-              bg-white/[0.025]
-              p-3
-            "
-          >
-            <div
-              className="
-                mb-2
-                flex
-                items-center
-                justify-between
-              "
-            >
-              <span
-                className="
-                  text-[9px]
-                  font-semibold
-                  uppercase
-                  tracking-wider
-                  text-zinc-500
-                "
-              >
-                Filter Intensity
-              </span>
+        sourceVideo.srcObject =
+          stream;
 
-              <span
-                className="
-                  text-[9px]
-                  font-bold
-                  text-cyan-400
-                "
-              >
-                {lutIntensity}%
-              </span>
-            </div>
+        await sourceVideo.play();
 
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={
-                lutIntensity
-              }
-              onChange={e =>
-                handleLUTIntensity(
-                  e.target.value
-                )
-              }
-              className="
-                h-1
-                w-full
-                cursor-pointer
-                appearance-none
-                rounded-full
-                bg-zinc-800
-                accent-cyan-400
-              "
-            />
-          </div>
-        )}
-      </section>
+        if (
+          destroyedRef.current
+        ) {
+          return null;
+        }
 
-      {/* ======================================================
-          STYLIZED FX
-      ====================================================== */}
+        if (
+          !canvasRef.current
+        ) {
+          canvasRef.current =
+            document.createElement(
+              'canvas'
+            );
+        }
 
-      <section
-        className="
-          space-y-2
-          pb-5
-        "
-      >
-        <div
-          className="
-            flex
-            items-center
-            gap-2
-            px-1
-          "
-        >
-          <Zap
-            size={13}
-            className="text-purple-400"
-          />
+        const canvas =
+          canvasRef.current;
 
-          <p
-            className="
-              text-[10px]
-              font-bold
-              uppercase
-              tracking-wider
-              text-zinc-400
-            "
-          >
-            Stylized Effects
-          </p>
-        </div>
+        const videoTrack =
+          stream.getVideoTracks()[0];
 
-        <FilterButton
-          icon={Zap}
-          label="Analog VHS"
-          active={
-            activeFX ===
-            'vhs'
-          }
-          activeClass="
-            border-cyan-400/30
-            bg-cyan-400/10
-            text-cyan-300
-          "
-          onClick={() =>
-            handleFXToggle(
-              'vhs'
-            )
-          }
-        />
+        const settings =
+          videoTrack?.getSettings?.() ||
+          {};
 
-        <FilterButton
-          icon={Maximize}
-          label="Comic Outline Ink"
-          active={
-            activeFX ===
-            'manga'
-          }
-          activeClass="
-            border-white/20
-            bg-white/10
-            text-white
-          "
-          onClick={() =>
-            handleFXToggle(
-              'manga'
-            )
-          }
-        />
+        canvas.width =
+          settings.width ||
+          1280;
 
-        <FilterButton
-          icon={Contrast}
-          label="Infrared Vision"
-          active={
-            activeFX ===
-            'thermal'
-          }
-          activeClass="
-            border-red-400/30
-            bg-red-400/10
-            text-red-300
-          "
-          onClick={() =>
-            handleFXToggle(
-              'thermal'
-            )
-          }
-        />
+        canvas.height =
+          settings.height ||
+          720;
 
-        {/* FX INTENSITY */}
+        /*
+         * Create MediaPipe.
+         */
 
-        {activeFX !==
-          'none' && (
-          <div
-            className="
-              rounded-xl
-              border
-              border-white/8
-              bg-white/[0.025]
-              p-3
-            "
-          >
-            <div
-              className="
-                mb-2
-                flex
-                items-center
-                justify-between
-              "
-            >
-              <span
-                className="
-                  text-[9px]
-                  font-semibold
-                  uppercase
-                  tracking-wider
-                  text-zinc-500
-                "
-              >
-                Effect Intensity
-              </span>
+        try {
+          await initializeFaceLandmarker();
+        } catch (
+          error
+        ) {
+          console.error(
+            '❌ Failed to initialize MediaPipe Face Landmarker:',
+            error
+          );
+        }
 
-              <span
-                className="
-                  text-[9px]
-                  font-bold
-                  text-purple-400
-                "
-              >
-                {fxIntensity}%
-              </span>
-            </div>
+        /*
+         * Start renderer.
+         */
 
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={
-                fxIntensity
-              }
-              onChange={e =>
-                handleFXIntensity(
-                  e.target.value
-                )
-              }
-              className="
-                h-1
-                w-full
-                cursor-pointer
-                appearance-none
-                rounded-full
-                bg-zinc-800
-                accent-purple-400
-              "
-            />
-          </div>
-        )}
-      </section>
-    </div>
-  );
+        if (
+          animationFrameRef.current
+        ) {
+          cancelAnimationFrame(
+            animationFrameRef.current
+          );
+        }
+
+        animationFrameRef.current =
+          requestAnimationFrame(
+            processFrame
+          );
+
+        /*
+         * Canvas capture becomes
+         * the processed video track.
+         */
+
+        const processedVideoStream =
+          canvas.captureStream(
+            30
+          );
+
+        const processedVideoTrack =
+          processedVideoStream.getVideoTracks()[0];
+
+        outputVideoTrackRef.current =
+          processedVideoTrack;
+
+        /*
+         * Preserve original audio.
+         */
+
+        const outputStream =
+          new MediaStream();
+
+        outputStream.addTrack(
+          processedVideoTrack
+        );
+
+        stream
+          .getAudioTracks()
+          .forEach(
+            audioTrack => {
+              outputStream.addTrack(
+                audioTrack
+              );
+            }
+          );
+
+        outputStreamRef.current =
+          outputStream;
+
+        return outputStream;
+      },
+      [
+        initializeFaceLandmarker,
+        processFrame
+      ]
+    );
+
+  /*
+   * ------------------------------------------------------------
+   * CLEANUP
+   * ------------------------------------------------------------
+   */
+
+  const destroy =
+    useCallback(() => {
+      destroyedRef.current =
+        true;
+
+      if (
+        animationFrameRef.current
+      ) {
+        cancelAnimationFrame(
+          animationFrameRef.current
+        );
+
+        animationFrameRef.current =
+          null;
+      }
+
+      if (
+        sourceVideoRef.current
+      ) {
+        sourceVideoRef.current.pause();
+
+        sourceVideoRef.current.srcObject =
+          null;
+      }
+
+      if (
+        faceLandmarkerRef.current
+      ) {
+        try {
+          faceLandmarkerRef.current.close();
+        } catch (
+          error
+        ) {
+          console.debug(
+            'FaceLandmarker cleanup:',
+            error
+          );
+        }
+
+        faceLandmarkerRef.current =
+          null;
+      }
+
+      if (
+        outputVideoTrackRef.current
+      ) {
+        try {
+          outputVideoTrackRef.current.stop();
+        } catch (
+          error
+        ) {
+          console.debug(
+            'Processed track cleanup:',
+            error
+          );
+        }
+
+        outputVideoTrackRef.current =
+          null;
+      }
+
+      outputStreamRef.current =
+        null;
+
+      sourceStreamRef.current =
+        null;
+    }, []);
+
+  useEffect(() => {
+    destroyedRef.current =
+      false;
+
+    return () => {
+      destroy();
+    };
+  }, [destroy]);
+
+  return {
+    attachStream,
+    getProcessedStream:
+      () =>
+        outputStreamRef.current,
+    getProcessedVideoTrack:
+      () =>
+        outputVideoTrackRef.current,
+    destroy
+  };
 };
 
-export default AIFilters;
+export default useVideoFilterEngine;
