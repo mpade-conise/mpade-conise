@@ -226,11 +226,6 @@ const AIEffects = ({
 
   const animationFrameRef = useRef(null);
   const processingRef = useRef(false);
-
-  /*
-   * Identifies the exact MediaStream currently being processed.
-   * This prevents parent re-renders from restarting the engine.
-   */
   const processedSourceRef = useRef(null);
 
   /* =======================================================
@@ -244,19 +239,6 @@ const AIEffects = ({
   /* =======================================================
      CALLBACK REFS
      ======================================================= */
-
-  /*
-   * IMPORTANT:
-   *
-   * Parent callbacks are stored in refs.
-   * We never put them into the processing lifecycle
-   * dependency chain.
-   *
-   * This prevents React #185 caused by:
-   *
-   * process -> parent setState -> render -> new callback
-   * -> process again -> parent setState -> ...
-   */
 
   const onProcessedStreamRef =
     useRef(onProcessedStream);
@@ -336,12 +318,6 @@ const AIEffects = ({
 
   const cleanupOutput = useCallback(() => {
     if (outputStreamRef.current) {
-      /*
-       * ONLY stop the generated canvas video track.
-       *
-       * Never stop source camera or microphone tracks.
-       */
-
       outputStreamRef.current
         .getVideoTracks()
         .forEach(track => {
@@ -379,7 +355,9 @@ const AIEffects = ({
      ======================================================= */
 
   const stopAnimation = useCallback(() => {
-    if (animationFrameRef.current !== null) {
+    if (
+      animationFrameRef.current !== null
+    ) {
       cancelAnimationFrame(
         animationFrameRef.current
       );
@@ -407,11 +385,6 @@ const AIEffects = ({
           "The camera stream does not contain a video track."
         );
       }
-
-      /*
-       * Reuse existing hidden video when
-       * it already belongs to this stream.
-       */
 
       if (
         sourceVideoRef.current &&
@@ -470,7 +443,6 @@ const AIEffects = ({
 
             settled = true;
             cleanup();
-
             resolve();
           };
 
@@ -508,15 +480,10 @@ const AIEffects = ({
       try {
         await video.play();
       } catch {
-        /*
-         * Muted autoplay is normally allowed.
-         * If the browser delays playback, RAF
-         * will wait until video becomes ready.
-         */
+        // Muted autoplay may be delayed by the browser.
       }
 
-      sourceVideoRef.current =
-        video;
+      sourceVideoRef.current = video;
 
       return video;
     },
@@ -585,9 +552,6 @@ const AIEffects = ({
         );
       }
 
-      /*
-       * Clean only an old generated output.
-       */
       cleanupOutput();
 
       const output =
@@ -611,10 +575,8 @@ const AIEffects = ({
         videoTrack;
 
       /*
-       * PRESERVE ORIGINAL AUDIO
-       *
-       * The effects engine changes video only.
-       * Audio remains the original WebRTC audio.
+       * Preserve original audio.
+       * The effects engine processes video only.
        */
 
       const source =
@@ -663,7 +625,6 @@ const AIEffects = ({
       ctx.save();
 
       ctx.globalAlpha = 1;
-
       ctx.globalCompositeOperation =
         "source-over";
 
@@ -738,6 +699,13 @@ const AIEffects = ({
       height,
       strength
     ) => {
+      const safeStrength =
+        clamp(
+          strength,
+          0,
+          0.9
+        );
+
       const gradient =
         ctx.createRadialGradient(
           width * 0.5,
@@ -764,13 +732,16 @@ const AIEffects = ({
         "rgba(0,0,0,0.015)"
       );
 
+      /*
+       * IMPORTANT:
+       * Avoid multiline template literals here.
+       * This keeps the Vercel/Rolldown parser happy.
+       */
       gradient.addColorStop(
         1,
-        `rgba(0,0,0,${clamp(
-          strength,
-          0,
-          0.9
-        )})`
+        "rgba(0,0,0," +
+          safeStrength +
+          ")"
       );
 
       ctx.save();
@@ -821,14 +792,16 @@ const AIEffects = ({
 
       gradient.addColorStop(
         0,
-        `rgba(255,245,225,${amount})`
+        "rgba(255,245,225," +
+          amount +
+          ")"
       );
 
       gradient.addColorStop(
         0.45,
-        `rgba(255,230,200,${
-          amount * 0.35
-        })`
+        "rgba(255,230,200," +
+          amount * 0.35 +
+          ")"
       );
 
       gradient.addColorStop(
@@ -876,19 +849,23 @@ const AIEffects = ({
 
       gradient.addColorStop(
         0,
-        `rgba(35,80,255,${amount})`
+        "rgba(35,80,255," +
+          amount +
+          ")"
       );
 
       gradient.addColorStop(
         0.48,
-        `rgba(80,30,160,${
-          amount * 0.45
-        })`
+        "rgba(80,30,160," +
+          amount * 0.45 +
+          ")"
       );
 
       gradient.addColorStop(
         1,
-        `rgba(255,110,80,${amount})`
+        "rgba(255,110,80," +
+          amount +
+          ")"
       );
 
       ctx.save();
@@ -954,13 +931,16 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `blur(${
-            0.15 + amount * 0.9
-          }px) brightness(${
-            1.01 + amount * 0.08
-          }) saturate(${
-            1.02 + amount * 0.12
-          }) contrast(0.98)`
+          "blur(" +
+            (0.15 +
+              amount * 0.9) +
+            "px) brightness(" +
+            (1.01 +
+              amount * 0.08) +
+            ") saturate(" +
+            (1.02 +
+              amount * 0.12) +
+            ") contrast(0.98)"
         );
 
         drawOverlay(
@@ -985,13 +965,16 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `brightness(${
-            1.03 + amount * 0.18
-          }) contrast(${
-            1 + amount * 0.04
-          }) saturate(${
-            1 + amount * 0.06
-          })`
+          "brightness(" +
+            (1.03 +
+              amount * 0.18) +
+            ") contrast(" +
+            (1 +
+              amount * 0.04) +
+            ") saturate(" +
+            (1 +
+              amount * 0.06) +
+            ")"
         );
 
         drawFaceLight(
@@ -1015,13 +998,16 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `contrast(${
-            1.04 + amount * 0.18
-          }) saturate(${
-            0.88 + amount * 0.25
-          }) brightness(${
-            0.98 + amount * 0.03
-          })`
+          "contrast(" +
+            (1.04 +
+              amount * 0.18) +
+            ") saturate(" +
+            (0.88 +
+              amount * 0.25) +
+            ") brightness(" +
+            (0.98 +
+              amount * 0.03) +
+            ")"
         );
 
         drawOverlay(
@@ -1063,13 +1049,16 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `saturate(${
-            1.15 + amount * 1.15
-          }) contrast(${
-            1.02 + amount * 0.18
-          }) brightness(${
-            1 + amount * 0.03
-          })`
+          "saturate(" +
+            (1.15 +
+              amount * 1.15) +
+            ") contrast(" +
+            (1.02 +
+              amount * 0.18) +
+            ") brightness(" +
+            (1 +
+              amount * 0.03) +
+            ")"
         );
 
         return;
@@ -1085,13 +1074,15 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `sepia(${
-            amount * 0.34
-          }) saturate(${
-            1.04 + amount * 0.3
-          }) brightness(${
-            1.01 + amount * 0.04
-          })`
+          "sepia(" +
+            amount * 0.34 +
+            ") saturate(" +
+            (1.04 +
+              amount * 0.3) +
+            ") brightness(" +
+            (1.01 +
+              amount * 0.04) +
+            ")"
         );
 
         drawOverlay(
@@ -1116,13 +1107,15 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `hue-rotate(${
-            amount * 10
-          }deg) saturate(${
-            1 + amount * 0.2
-          }) brightness(${
-            1.01 + amount * 0.04
-          })`
+          "hue-rotate(" +
+            amount * 10 +
+            "deg) saturate(" +
+            (1 +
+              amount * 0.2) +
+            ") brightness(" +
+            (1.01 +
+              amount * 0.04) +
+            ")"
         );
 
         drawOverlay(
@@ -1147,11 +1140,13 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `grayscale(1) contrast(${
-            1.05 + amount * 0.55
-          }) brightness(${
-            1.02 - amount * 0.08
-          })`
+          "grayscale(1) contrast(" +
+            (1.05 +
+              amount * 0.55) +
+            ") brightness(" +
+            (1.02 -
+              amount * 0.08) +
+            ")"
         );
 
         drawVignette(
@@ -1175,15 +1170,19 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `sepia(${
-            0.20 + amount * 0.38
-          }) saturate(${
-            0.82 + amount * 0.15
-          }) contrast(${
-            0.98 + amount * 0.12
-          }) brightness(${
-            1.02 - amount * 0.03
-          })`
+          "sepia(" +
+            (0.20 +
+              amount * 0.38) +
+            ") saturate(" +
+            (0.82 +
+              amount * 0.15) +
+            ") contrast(" +
+            (0.98 +
+              amount * 0.12) +
+            ") brightness(" +
+            (1.02 -
+              amount * 0.03) +
+            ")"
         );
 
         drawOverlay(
@@ -1216,15 +1215,19 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `blur(${
-            0.15 + amount * 0.75
-          }px) brightness(${
-            1.03 + amount * 0.12
-          }) saturate(${
-            1.02 + amount * 0.25
-          }) contrast(${
-            0.96 - amount * 0.04
-          })`
+          "blur(" +
+            (0.15 +
+              amount * 0.75) +
+            "px) brightness(" +
+            (1.03 +
+              amount * 0.12) +
+            ") saturate(" +
+            (1.02 +
+              amount * 0.25) +
+            ") contrast(" +
+            (0.96 -
+              amount * 0.04) +
+            ")"
         );
 
         drawOverlay(
@@ -1250,11 +1253,13 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `saturate(${
-            1.08 + amount * 0.7
-          }) contrast(${
-            1.01 + amount * 0.16
-          })`
+          "saturate(" +
+            (1.08 +
+              amount * 0.7) +
+            ") contrast(" +
+            (1.01 +
+              amount * 0.16) +
+            ")"
         );
 
         drawOverlay(
@@ -1288,15 +1293,18 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `saturate(${
-            1.25 + amount * 1.4
-          }) contrast(${
-            1.08 + amount * 0.30
-          }) brightness(${
-            1.01 + amount * 0.05
-          }) hue-rotate(${
-            amount * 18
-          }deg)`
+          "saturate(" +
+            (1.25 +
+              amount * 1.4) +
+            ") contrast(" +
+            (1.08 +
+              amount * 0.30) +
+            ") brightness(" +
+            (1.01 +
+              amount * 0.05) +
+            ") hue-rotate(" +
+            amount * 18 +
+            "deg)"
         );
 
         drawOverlay(
@@ -1330,13 +1338,16 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `contrast(${
-            1.10 + amount * 0.50
-          }) saturate(${
-            0.92 + amount * 0.20
-          }) brightness(${
-            0.98 - amount * 0.05
-          })`
+          "contrast(" +
+            (1.10 +
+              amount * 0.50) +
+            ") saturate(" +
+            (0.92 +
+              amount * 0.20) +
+            ") brightness(" +
+            (0.98 -
+              amount * 0.05) +
+            ")"
         );
 
         drawVignette(
@@ -1360,15 +1371,18 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `contrast(${
-            1.02 + amount * 0.16
-          }) saturate(${
-            0.90 + amount * 0.18
-          }) brightness(${
-            1.01 - amount * 0.02
-          }) sepia(${
-            amount * 0.10
-          })`
+          "contrast(" +
+            (1.02 +
+              amount * 0.16) +
+            ") saturate(" +
+            (0.90 +
+              amount * 0.18) +
+            ") brightness(" +
+            (1.01 -
+              amount * 0.02) +
+            ") sepia(" +
+            amount * 0.10 +
+            ")"
         );
 
         drawOverlay(
@@ -1401,13 +1415,16 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `blur(${
-            0.25 + amount * 1.1
-          }px) brightness(${
-            1.01 + amount * 0.06
-          }) saturate(${
-            1.01 + amount * 0.08
-          })`
+          "blur(" +
+            (0.25 +
+              amount * 1.1) +
+            "px) brightness(" +
+            (1.01 +
+              amount * 0.06) +
+            ") saturate(" +
+            (1.01 +
+              amount * 0.08) +
+            ")"
         );
 
         drawOverlay(
@@ -1432,11 +1449,13 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `contrast(${
-            1.02 + amount * 0.10
-          }) saturate(${
-            1 + amount * 0.08
-          })`
+          "contrast(" +
+            (1.02 +
+              amount * 0.10) +
+            ") saturate(" +
+            (1 +
+              amount * 0.08) +
+            ")"
         );
 
         drawVignette(
@@ -1460,13 +1479,16 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `contrast(${
-            1.08 + amount * 0.42
-          }) saturate(${
-            1.08 + amount * 0.50
-          }) brightness(${
-            1.01 + amount * 0.05
-          })`
+          "contrast(" +
+            (1.08 +
+              amount * 0.42) +
+            ") saturate(" +
+            (1.08 +
+              amount * 0.50) +
+            ") brightness(" +
+            (1.01 +
+              amount * 0.05) +
+            ")"
         );
 
         return;
@@ -1482,11 +1504,13 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          `saturate(${
-            0.82 + amount * 0.28
-          }) contrast(${
-            1.02 + amount * 0.16
-          })`
+          "saturate(" +
+            (0.82 +
+              amount * 0.28) +
+            ") contrast(" +
+            (1.02 +
+              amount * 0.16) +
+            ")"
         );
 
         drawDuoTone(
@@ -1590,7 +1614,8 @@ const AIEffects = ({
         const now =
           performance.now();
 
-        fpsCounterRef.current.frames += 1;
+        fpsCounterRef.current.frames +=
+          1;
 
         if (
           !fpsCounterRef.current.time
@@ -1642,10 +1667,6 @@ const AIEffects = ({
           return null;
         }
 
-        /*
-         * Already processing this exact stream.
-         * DO NOT start again.
-         */
         if (
           processingRef.current &&
           processedSourceRef.current ===
@@ -1654,16 +1675,13 @@ const AIEffects = ({
           return outputStreamRef.current;
         }
 
-        /*
-         * If another source is being processed,
-         * stop the generated processing loop first.
-         */
         if (
           processingRef.current &&
           processedSourceRef.current !==
             source
         ) {
-          processingRef.current = false;
+          processingRef.current =
+            false;
 
           stopAnimation();
 
@@ -1711,7 +1729,8 @@ const AIEffects = ({
         processedSourceRef.current =
           source;
 
-        processingRef.current = true;
+        processingRef.current =
+          true;
 
         setEngineState(
           "processing"
@@ -1730,9 +1749,8 @@ const AIEffects = ({
           );
 
         /*
-         * CALLBACKS ARE READ FROM REFS.
-         *
-         * This is the critical React #185 fix.
+         * Read callbacks from refs.
+         * This prevents the React #185 loop.
          */
 
         const streamCallback =
@@ -1800,9 +1818,6 @@ const AIEffects = ({
           return null;
         }
 
-        /*
-         * Prevent duplicate initialization.
-         */
         if (
           processingRef.current &&
           processedSourceRef.current ===
@@ -1904,20 +1919,6 @@ const AIEffects = ({
   /* =======================================================
      SOURCE WATCHER
      ======================================================= */
-
-  /*
-   * IMPORTANT:
-   *
-   * StreamDashboard can mount AIEffects before
-   * localVideoRef.current.srcObject exists.
-   *
-   * We therefore watch for the camera stream
-   * to become available.
-   *
-   * This watcher does NOT continuously restart
-   * processing because attachStream() checks
-   * processedSourceRef.
-   */
 
   useEffect(() => {
     let cancelled = false;
