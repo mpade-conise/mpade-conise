@@ -1,4 +1,3 @@
-
 import React, {
   useCallback,
   useEffect,
@@ -36,31 +35,39 @@ import {
 /*
  * IMPORTANT:
  *
- * The MediaPipe WASM files were copied into:
+ * Your project currently uses:
+ *
+ * @mediapipe/tasks-vision@0.10.17
+ *
+ * Therefore the fallback CDN MUST use the same version.
+ *
+ * The local path is preferred because the WASM files have
+ * already been copied into:
  *
  * public/mediapipe/wasm/
- *
- * Vite serves the public folder from the root URL.
- *
- * Therefore:
- *
- * public/mediapipe/wasm/
- *
- * becomes:
- *
- * /mediapipe/wasm
- *
- * Do NOT use /public/mediapipe/wasm.
  */
-const MEDIAPIPE_WASM = "/mediapipe/wasm";
+
+const LOCAL_MEDIAPIPE_WASM = "/mediapipe/wasm";
+
+const CDN_MEDIAPIPE_WASM =
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm";
 
 /*
  * Selfie segmentation model.
- *
- * This model is hosted by Google's MediaPipe model storage.
  */
 const SELFIE_SEGMENTER_MODEL =
   "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
+
+/*
+ * We deliberately start with CPU.
+ *
+ * This avoids the GPU "ModuleFactory not set" failure
+ * while we verify that the WASM runtime itself is healthy.
+ *
+ * Once the CPU version is confirmed working, GPU can be
+ * introduced separately.
+ */
+const MEDIAPIPE_DELEGATE = "CPU";
 
 /* =========================================================
    EFFECT DEFINITIONS
@@ -112,15 +119,8 @@ function clamp(value, min, max) {
   );
 }
 
-function isSegmentationEffect(effect) {
-  return (
-    effect === "background-blur" ||
-    effect === "background-remove"
-  );
-}
-
 /* =========================================================
-   AI EFFECTS COMPONENT
+   AI EFFECTS
    ========================================================= */
 
 const AIEffects = ({
@@ -136,13 +136,18 @@ const AIEffects = ({
      ======================================================= */
 
   const [enabled, setEnabled] = useState(true);
-  const [effect, setEffect] = useState("none");
-  const [intensity, setIntensity] = useState(55);
+
+  const [effect, setEffect] =
+    useState("none");
+
+  const [intensity, setIntensity] =
+    useState(55);
 
   const [engineState, setEngineState] =
     useState("idle");
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   const [showAdvanced, setShowAdvanced] =
     useState(false);
@@ -150,46 +155,62 @@ const AIEffects = ({
   const [previewOpen, setPreviewOpen] =
     useState(true);
 
-  const [fps, setFps] = useState(0);
+  const [fps, setFps] =
+    useState(0);
 
   /* =======================================================
      REFS
      ======================================================= */
 
-  const mountedRef = useRef(false);
+  const mountedRef =
+    useRef(true);
 
-  const segmenterRef = useRef(null);
+  const segmenterRef =
+    useRef(null);
 
-  const sourceStreamRef = useRef(null);
+  const segmenterPromiseRef =
+    useRef(null);
 
-  const sourceVideoRef = useRef(null);
+  const sourceStreamRef =
+    useRef(null);
 
-  const canvasRef = useRef(null);
+  const sourceVideoRef =
+    useRef(null);
 
-  const canvasContextRef = useRef(null);
+  const canvasRef =
+    useRef(null);
 
-  const maskCanvasRef = useRef(null);
+  const canvasContextRef =
+    useRef(null);
 
-  const maskContextRef = useRef(null);
+  const maskCanvasRef =
+    useRef(null);
+
+  const maskContextRef =
+    useRef(null);
 
   /*
    * Reusable background canvas.
    *
-   * The previous implementation created this canvas
-   * on every frame. That causes unnecessary garbage
-   * collection and can reduce FPS significantly.
+   * Creating a new canvas on every frame is expensive.
    */
-  const backgroundCanvasRef = useRef(null);
+  const backgroundCanvasRef =
+    useRef(null);
 
-  const backgroundContextRef = useRef(null);
+  const backgroundContextRef =
+    useRef(null);
 
-  const outputStreamRef = useRef(null);
+  const outputStreamRef =
+    useRef(null);
 
-  const outputTrackRef = useRef(null);
+  const outputTrackRef =
+    useRef(null);
 
-  const animationFrameRef = useRef(null);
+  const animationFrameRef =
+    useRef(null);
 
-  const effectRef = useRef(effect);
+  const effectRef =
+    useRef(effect);
 
   const intensityRef =
     useRef(intensity);
@@ -206,15 +227,14 @@ const AIEffects = ({
   const previewVideoRef =
     useRef(null);
 
-  const fpsCounterRef = useRef({
-    frames: 0,
-    time: 0
-  });
-
-  const lastTimestampRef = useRef(0);
+  const fpsCounterRef =
+    useRef({
+      frames: 0,
+      time: 0
+    });
 
   /* =======================================================
-     SYNCHRONIZE REFS
+     KEEP REFS SYNCHRONIZED
      ======================================================= */
 
   useEffect(() => {
@@ -233,444 +253,602 @@ const AIEffects = ({
      GET SOURCE STREAM
      ======================================================= */
 
-  const getSourceStream = useCallback(() => {
-    /*
-     * Prefer the explicitly supplied stream.
-     */
-    if (stream) {
-      return stream;
-    }
+  const getSourceStream =
+    useCallback(() => {
+      if (stream) {
+        return stream;
+      }
 
-    /*
-     * Otherwise try the supplied video element.
-     */
-    if (
-      videoRef &&
-      videoRef.current &&
-      videoRef.current.srcObject
-    ) {
-      return videoRef.current.srcObject;
-    }
+      if (
+        videoRef &&
+        videoRef.current &&
+        videoRef.current.srcObject
+      ) {
+        return videoRef.current.srcObject;
+      }
 
-    return null;
-  }, [stream, videoRef]);
+      return null;
+    }, [
+      stream,
+      videoRef
+    ]);
+
+  /* =======================================================
+     CHECK LOCAL MEDIAPIPE FILE
+     ======================================================= */
+
+  const checkLocalWasm =
+    useCallback(async () => {
+      try {
+        const response =
+          await fetch(
+            `${LOCAL_MEDIAPIPE_WASM}/vision_wasm_internal.js`,
+            {
+              method: "GET",
+              cache: "no-store"
+            }
+          );
+
+        if (!response.ok) {
+          return false;
+        }
+
+        /*
+         * This is important.
+         *
+         * If Vercel/Vite returns index.html here,
+         * the response will have HTML rather than
+         * MediaPipe's JavaScript.
+         */
+        const contentType =
+          response.headers.get(
+            "content-type"
+          ) || "";
+
+        if (
+          contentType.includes("text/html")
+        ) {
+          console.warn(
+            "[AIEffects] Local MediaPipe JS returned HTML instead of JavaScript."
+          );
+
+          return false;
+        }
+
+        const text =
+          await response.text();
+
+        if (
+          text.trim().startsWith("<!doctype") ||
+          text.trim().startsWith("<html")
+        ) {
+          console.warn(
+            "[AIEffects] Local MediaPipe JS contains HTML."
+          );
+
+          return false;
+        }
+
+        return true;
+      } catch (err) {
+        console.warn(
+          "[AIEffects] Local MediaPipe WASM check failed:",
+          err
+        );
+
+        return false;
+      }
+    }, []);
+
+  /* =======================================================
+     GET VALID MEDIAPIPE WASM PATH
+     ======================================================= */
+
+  const getMediaPipeWasmPath =
+    useCallback(async () => {
+      /*
+       * First try the local files.
+       */
+      const localWorks =
+        await checkLocalWasm();
+
+      if (localWorks) {
+        console.log(
+          "[AIEffects] Using local MediaPipe WASM:",
+          LOCAL_MEDIAPIPE_WASM
+        );
+
+        return LOCAL_MEDIAPIPE_WASM;
+      }
+
+      /*
+       * If the local deployment is broken,
+       * use the matching 0.10.17 CDN.
+       */
+      console.warn(
+        "[AIEffects] Local MediaPipe WASM unavailable."
+      );
+
+      console.log(
+        "[AIEffects] Falling back to MediaPipe CDN:",
+        CDN_MEDIAPIPE_WASM
+      );
+
+      return CDN_MEDIAPIPE_WASM;
+    }, [
+      checkLocalWasm
+    ]);
 
   /* =======================================================
      INITIALIZE MEDIA PIPE
      ======================================================= */
 
-  const initializeAI = useCallback(
-    async () => {
+  const initializeAI =
+    useCallback(async () => {
       /*
        * Already initialized.
        */
-      if (segmenterRef.current) {
+      if (
+        segmenterRef.current
+      ) {
         return segmenterRef.current;
       }
 
       /*
-       * Prevent multiple simultaneous initialization
-       * requests.
+       * Another initialization is already running.
+       *
+       * Return the same promise instead of starting
+       * another MediaPipe instance.
        */
-      if (initializingRef.current) {
-        return null;
+      if (
+        segmenterPromiseRef.current
+      ) {
+        return segmenterPromiseRef.current;
       }
+
+      setError("");
+      setEngineState("loading");
 
       initializingRef.current = true;
 
-      try {
-        setError("");
-        setEngineState("loading");
-
-        console.log(
-          "[AIEffects] Initializing MediaPipe..."
-        );
-
-        console.log(
-          "[AIEffects] WASM path:",
-          MEDIAPIPE_WASM
-        );
-
-        /*
-         * Load MediaPipe Tasks Vision WASM locally.
-         */
-        const vision =
-          await FilesetResolver.forVisionTasks(
-            MEDIAPIPE_WASM
-          );
-
-        if (!mountedRef.current) {
-          return null;
-        }
-
-        let segmenter = null;
-
-        /*
-         * Try GPU first.
-         */
-        try {
-          console.log(
-            "[AIEffects] Trying GPU delegate..."
-          );
-
-          segmenter =
-            await ImageSegmenter.createFromOptions(
-              vision,
-              {
-                baseOptions: {
-                  modelAssetPath:
-                    SELFIE_SEGMENTER_MODEL,
-                  delegate: "GPU"
-                },
-
-                runningMode: "VIDEO",
-
-                outputCategoryMask: true,
-
-                outputConfidenceMasks: false
-              }
-            );
-
-          console.log(
-            "[AIEffects] GPU delegate initialized."
-          );
-        } catch (gpuError) {
-          console.warn(
-            "[AIEffects] GPU initialization failed. Falling back to CPU.",
-            gpuError
-          );
-
-          /*
-           * CPU fallback.
-           */
-          segmenter =
-            await ImageSegmenter.createFromOptions(
-              vision,
-              {
-                baseOptions: {
-                  modelAssetPath:
-                    SELFIE_SEGMENTER_MODEL,
-                  delegate: "CPU"
-                },
-
-                runningMode: "VIDEO",
-
-                outputCategoryMask: true,
-
-                outputConfidenceMasks: false
-              }
-            );
-
-          console.log(
-            "[AIEffects] CPU delegate initialized."
-          );
-        }
-
-        if (!mountedRef.current) {
+      const initialization =
+        (async () => {
           try {
-            segmenter.close();
-          } catch {
-            // Ignore cleanup errors.
+            console.log(
+              "[AIEffects] Initializing MediaPipe..."
+            );
+
+            const wasmPath =
+              await getMediaPipeWasmPath();
+
+            console.log(
+              "[AIEffects] WASM path:",
+              wasmPath
+            );
+
+            /*
+             * Create the Tasks Vision runtime.
+             */
+            const vision =
+              await FilesetResolver.forVisionTasks(
+                wasmPath
+              );
+
+            if (
+              !mountedRef.current
+            ) {
+              return null;
+            }
+
+            console.log(
+              "[AIEffects] Creating ImageSegmenter..."
+            );
+
+            /*
+             * CPU is intentional here.
+             *
+             * The current error is:
+             *
+             * ModuleFactory not set
+             *
+             * We should first make sure the WASM
+             * runtime works correctly before enabling
+             * GPU.
+             */
+            console.log(
+              "[AIEffects] Using CPU delegate..."
+            );
+
+            let segmenter = null;
+
+            try {
+              segmenter =
+                await ImageSegmenter.createFromOptions(
+                  vision,
+                  {
+                    baseOptions: {
+                      modelAssetPath:
+                        SELFIE_SEGMENTER_MODEL,
+
+                      delegate:
+                        MEDIAPIPE_DELEGATE
+                    },
+
+                    runningMode:
+                      "VIDEO",
+
+                    outputCategoryMask:
+                      true,
+
+                    outputConfidenceMasks:
+                      false
+                  }
+                );
+            } catch (cpuError) {
+              console.error(
+                "[AIEffects] CPU ImageSegmenter creation failed:",
+                cpuError
+              );
+
+              throw cpuError;
+            }
+
+            if (
+              !mountedRef.current
+            ) {
+              try {
+                segmenter.close();
+              } catch {
+                // Ignore cleanup failure.
+              }
+
+              return null;
+            }
+
+            segmenterRef.current =
+              segmenter;
+
+            setEngineState(
+              "ready"
+            );
+
+            console.log(
+              "[AIEffects] MediaPipe initialized successfully."
+            );
+
+            return segmenter;
+          } catch (err) {
+            console.error(
+              "[AIEffects] MediaPipe initialization failed:",
+              err
+            );
+
+            setEngineState(
+              "error"
+            );
+
+            const message =
+              err?.message ||
+              "The AI engine could not be initialized.";
+
+            /*
+             * Give a useful message for the known
+             * ModuleFactory problem.
+             */
+            if (
+              message
+                .toLowerCase()
+                .includes("modulefactory")
+            ) {
+              setError(
+                "MediaPipe WASM failed to load correctly. Check /mediapipe/wasm assets or use the CDN fallback."
+              );
+            } else {
+              setError(
+                message
+              );
+            }
+
+            return null;
+          } finally {
+            initializingRef.current =
+              false;
+
+            segmenterPromiseRef.current =
+              null;
           }
+        })();
 
-          return null;
-        }
+      segmenterPromiseRef.current =
+        initialization;
 
-        segmenterRef.current =
-          segmenter;
-
-        setEngineState("ready");
-
-        console.log(
-          "[AIEffects] MediaPipe is ready."
-        );
-
-        return segmenter;
-      } catch (err) {
-        console.error(
-          "[AIEffects] MediaPipe initialization failed:",
-          err
-        );
-
-        setEngineState("error");
-
-        setError(
-          err?.message ||
-            "The AI engine could not be initialized."
-        );
-
-        return null;
-      } finally {
-        initializingRef.current = false;
-      }
-    },
-    []
-  );
+      return initialization;
+    }, [
+      getMediaPipeWasmPath
+    ]);
 
   /* =======================================================
      CREATE SOURCE VIDEO
      ======================================================= */
 
-  const createSourceVideo = useCallback(
-    async source => {
-      if (!source) {
-        throw new Error(
-          "No camera stream is available."
-        );
-      }
+  const createSourceVideo =
+    useCallback(
+      async source => {
+        if (!source) {
+          throw new Error(
+            "No camera stream is available."
+          );
+        }
 
-      /*
-       * Reuse existing video if it already points
-       * to the same MediaStream.
-       */
-      if (
-        sourceVideoRef.current &&
-        sourceVideoRef.current.srcObject ===
-          source
-      ) {
-        const existing =
-          sourceVideoRef.current;
-
+        /*
+         * Reuse the existing video.
+         */
         if (
-          existing.readyState >= 2 &&
-          existing.videoWidth > 0
+          sourceVideoRef.current &&
+          sourceVideoRef.current.srcObject ===
+            source
         ) {
-          return existing;
+          return sourceVideoRef.current;
         }
 
-        await existing.play().catch(() => {});
+        /*
+         * Clean old helper video.
+         */
+        if (
+          sourceVideoRef.current
+        ) {
+          try {
+            sourceVideoRef.current.pause();
+            sourceVideoRef.current.srcObject =
+              null;
+          } catch {
+            // Ignore.
+          }
 
-        return existing;
-      }
-
-      /*
-       * If a previous source video exists,
-       * disconnect it first.
-       */
-      if (sourceVideoRef.current) {
-        try {
-          sourceVideoRef.current.pause();
-          sourceVideoRef.current.srcObject =
+          sourceVideoRef.current =
             null;
-        } catch {
-          // Ignore.
         }
 
-        sourceVideoRef.current = null;
-      }
+        const video =
+          document.createElement(
+            "video"
+          );
 
-      const video =
-        document.createElement("video");
+        video.autoplay =
+          true;
 
-      video.autoplay = true;
-      video.muted = true;
-      video.playsInline = true;
+        video.muted =
+          true;
 
-      /*
-       * Important for some browsers.
-       */
-      video.setAttribute(
-        "playsinline",
-        "true"
-      );
+        video.playsInline =
+          true;
 
-      video.srcObject = source;
+        video.setAttribute(
+          "playsinline",
+          ""
+        );
 
-      await new Promise(
-        (resolve, reject) => {
-          let finished = false;
+        video.srcObject =
+          source;
 
-          const cleanup = () => {
-            video.removeEventListener(
+        await new Promise(
+          (resolve, reject) => {
+            let finished =
+              false;
+
+            const cleanup =
+              () => {
+                video.removeEventListener(
+                  "loadedmetadata",
+                  handleLoaded
+                );
+
+                video.removeEventListener(
+                  "error",
+                  handleError
+                );
+              };
+
+            const handleLoaded =
+              () => {
+                if (
+                  finished
+                ) {
+                  return;
+                }
+
+                finished =
+                  true;
+
+                cleanup();
+
+                resolve();
+              };
+
+            const handleError =
+              () => {
+                if (
+                  finished
+                ) {
+                  return;
+                }
+
+                finished =
+                  true;
+
+                cleanup();
+
+                reject(
+                  new Error(
+                    "Unable to load the camera stream."
+                  )
+                );
+              };
+
+            video.addEventListener(
               "loadedmetadata",
               handleLoaded
             );
 
-            video.removeEventListener(
-              "canplay",
-              handleLoaded
-            );
-
-            video.removeEventListener(
+            video.addEventListener(
               "error",
               handleError
             );
-          };
-
-          const handleLoaded = () => {
-            if (finished) return;
 
             if (
-              video.videoWidth <= 0 ||
-              video.videoHeight <= 0
+              video.readyState >= 1
             ) {
-              return;
+              handleLoaded();
             }
-
-            finished = true;
-
-            cleanup();
-
-            resolve();
-          };
-
-          const handleError = () => {
-            if (finished) return;
-
-            finished = true;
-
-            cleanup();
-
-            reject(
-              new Error(
-                "Unable to load the camera stream."
-              )
-            );
-          };
-
-          video.addEventListener(
-            "loadedmetadata",
-            handleLoaded
-          );
-
-          video.addEventListener(
-            "canplay",
-            handleLoaded
-          );
-
-          video.addEventListener(
-            "error",
-            handleError
-          );
-
-          /*
-           * Metadata may already be available.
-           */
-          if (
-            video.readyState >= 1 &&
-            video.videoWidth > 0
-          ) {
-            handleLoaded();
           }
-        }
-      );
-
-      await video.play().catch(error => {
-        console.warn(
-          "[AIEffects] Source video play warning:",
-          error
         );
-      });
 
-      sourceVideoRef.current = video;
+        try {
+          await video.play();
+        } catch {
+          /*
+           * Camera streams are normally allowed to
+           * autoplay because the helper video is
+           * muted.
+           */
+        }
 
-      return video;
-    },
-    []
-  );
+        sourceVideoRef.current =
+          video;
+
+        return video;
+      },
+      []
+    );
 
   /* =======================================================
-     PREPARE CANVASES
+     CREATE CANVASES
      ======================================================= */
 
-  const prepareCanvases = useCallback(
-    (width, height) => {
-      /*
-       * Main output canvas.
-       */
-      if (!canvasRef.current) {
-        canvasRef.current =
-          document.createElement("canvas");
-      }
+  const prepareCanvases =
+    useCallback(
+      (width, height) => {
+        /*
+         * Main output canvas.
+         */
+        if (
+          !canvasRef.current
+        ) {
+          canvasRef.current =
+            document.createElement(
+              "canvas"
+            );
+        }
 
-      canvasRef.current.width = width;
-      canvasRef.current.height = height;
+        canvasRef.current.width =
+          width;
 
-      canvasContextRef.current =
-        canvasRef.current.getContext(
-          "2d",
-          {
-            alpha: true,
-            desynchronized: true
-          }
-        );
+        canvasRef.current.height =
+          height;
 
-      /*
-       * Segmentation mask canvas.
-       */
-      if (!maskCanvasRef.current) {
-        maskCanvasRef.current =
-          document.createElement("canvas");
-      }
+        if (
+          !canvasContextRef.current
+        ) {
+          canvasContextRef.current =
+            canvasRef.current.getContext(
+              "2d",
+              {
+                alpha: true,
+                desynchronized: true
+              }
+            );
+        }
 
-      maskCanvasRef.current.width = width;
-      maskCanvasRef.current.height =
-        height;
+        /*
+         * Mask canvas.
+         */
+        if (
+          !maskCanvasRef.current
+        ) {
+          maskCanvasRef.current =
+            document.createElement(
+              "canvas"
+            );
+        }
 
-      maskContextRef.current =
-        maskCanvasRef.current.getContext(
-          "2d",
-          {
-            alpha: true
-          }
-        );
+        maskCanvasRef.current.width =
+          width;
 
-      /*
-       * Reusable blurred background canvas.
-       */
-      if (!backgroundCanvasRef.current) {
-        backgroundCanvasRef.current =
-          document.createElement("canvas");
-      }
+        maskCanvasRef.current.height =
+          height;
 
-      backgroundCanvasRef.current.width =
-        width;
+        if (
+          !maskContextRef.current
+        ) {
+          maskContextRef.current =
+            maskCanvasRef.current.getContext(
+              "2d",
+              {
+                alpha: true
+              }
+            );
+        }
 
-      backgroundCanvasRef.current.height =
-        height;
+        /*
+         * Background canvas.
+         */
+        if (
+          !backgroundCanvasRef.current
+        ) {
+          backgroundCanvasRef.current =
+            document.createElement(
+              "canvas"
+            );
+        }
 
-      backgroundContextRef.current =
-        backgroundCanvasRef.current.getContext(
-          "2d",
-          {
-            alpha: true,
-            desynchronized: true
-          }
-        );
-    },
-    []
-  );
+        backgroundCanvasRef.current.width =
+          width;
+
+        backgroundCanvasRef.current.height =
+          height;
+
+        if (
+          !backgroundContextRef.current
+        ) {
+          backgroundContextRef.current =
+            backgroundCanvasRef.current.getContext(
+              "2d"
+            );
+        }
+      },
+      []
+    );
 
   /* =======================================================
      CREATE OUTPUT STREAM
      ======================================================= */
 
-  const createOutputStream = useCallback(
-    () => {
-      if (!canvasRef.current) {
+  const createOutputStream =
+    useCallback(() => {
+      if (
+        !canvasRef.current
+      ) {
         return null;
       }
 
       /*
-       * Stop only the previously generated
-       * video track.
+       * Do not stop the source camera.
        *
-       * NEVER stop the original camera track.
+       * Only stop our generated output track.
        */
-      if (outputTrackRef.current) {
+      if (
+        outputTrackRef.current
+      ) {
         try {
           outputTrackRef.current.stop();
         } catch {
           // Ignore.
         }
 
-        outputTrackRef.current = null;
+        outputTrackRef.current =
+          null;
       }
 
-      /*
-       * captureStream is supported by modern
-       * Chrome, Edge and most Chromium browsers.
-       */
       const output =
         canvasRef.current.captureStream(
           30
@@ -684,7 +862,7 @@ const AIEffects = ({
         null;
 
       /*
-       * Preserve original microphone tracks.
+       * Preserve source audio.
        */
       const source =
         sourceStreamRef.current;
@@ -694,167 +872,172 @@ const AIEffects = ({
           .getAudioTracks()
           .forEach(track => {
             try {
-              output.addTrack(track);
+              output.addTrack(
+                track
+              );
             } catch {
-              /*
-               * Track may already be attached.
-               */
+              // Ignore duplicate track.
             }
           });
       }
 
       return output;
-    },
-    []
-  );
+    }, []);
 
   /* =======================================================
      DRAW ORIGINAL
      ======================================================= */
 
-  const drawOriginal = useCallback(
-    (
-      video,
-      ctx,
-      width,
-      height
-    ) => {
-      ctx.globalCompositeOperation =
-        "source-over";
-
-      ctx.filter = "none";
-
-      ctx.clearRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.drawImage(
+  const drawOriginal =
+    useCallback(
+      (
         video,
-        0,
-        0,
+        ctx,
         width,
         height
-      );
-    },
-    []
-  );
+      ) => {
+        ctx.globalCompositeOperation =
+          "source-over";
 
-  /* =======================================================
-     BUILD SEGMENTATION MASK
-     ======================================================= */
+        ctx.filter =
+          "none";
 
-  const buildMask = useCallback(
-    (
-      result,
-      width,
-      height
-    ) => {
-      const mask =
-        result?.categoryMask;
-
-      if (!mask) {
-        return null;
-      }
-
-      const maskWidth =
-        mask.width || width;
-
-      const maskHeight =
-        mask.height || height;
-
-      const data =
-        mask.getAsUint8Array?.();
-
-      if (!data) {
-        return null;
-      }
-
-      const image =
-        new ImageData(
+        ctx.clearRect(
+          0,
+          0,
           width,
           height
         );
 
-      /*
-       * Convert the MediaPipe mask into
-       * a transparent foreground mask.
-       */
-      for (
-        let y = 0;
-        y < height;
-        y++
-      ) {
-        const sourceY =
-          Math.min(
-            maskHeight - 1,
-            Math.floor(
-              (y / height) *
-                maskHeight
-            )
+        ctx.drawImage(
+          video,
+          0,
+          0,
+          width,
+          height
+        );
+      },
+      []
+    );
+
+  /* =======================================================
+     BUILD MASK
+     ======================================================= */
+
+  const buildMask =
+    useCallback(
+      (
+        result,
+        width,
+        height
+      ) => {
+        const mask =
+          result?.categoryMask;
+
+        if (!mask) {
+          return null;
+        }
+
+        const maskWidth =
+          mask.width ||
+          width;
+
+        const maskHeight =
+          mask.height ||
+          height;
+
+        const data =
+          mask.getAsUint8Array?.();
+
+        if (!data) {
+          return null;
+        }
+
+        const image =
+          new ImageData(
+            width,
+            height
           );
 
         for (
-          let x = 0;
-          x < width;
-          x++
+          let y = 0;
+          y < height;
+          y++
         ) {
-          const sourceX =
+          const sourceY =
             Math.min(
-              maskWidth - 1,
+              maskHeight - 1,
               Math.floor(
-                (x / width) *
-                  maskWidth
+                (y / height) *
+                  maskHeight
               )
             );
 
-          const sourceIndex =
-            sourceY *
-              maskWidth +
-            sourceX;
+          for (
+            let x = 0;
+            x < width;
+            x++
+          ) {
+            const sourceX =
+              Math.min(
+                maskWidth - 1,
+                Math.floor(
+                  (x / width) *
+                    maskWidth
+                )
+              );
 
-          const value =
-            data[sourceIndex] || 0;
+            const sourceIndex =
+              sourceY *
+                maskWidth +
+              sourceX;
 
-          const outputIndex =
-            (y * width + x) * 4;
+            const value =
+              data[sourceIndex] ||
+              0;
 
-          /*
-           * Selfie segmenter category mask:
-           * foreground = non-zero.
-           */
-          const alpha =
-            value > 0
-              ? 255
-              : 0;
+            const outputIndex =
+              (y * width + x) *
+              4;
 
-          image.data[
-            outputIndex
-          ] = 255;
+            /*
+             * Selfie segmentation category mask:
+             *
+             * 0 = background
+             * 1 = person
+             *
+             * Treat non-zero as foreground.
+             */
+            const alpha =
+              value > 0
+                ? 255
+                : 0;
 
-          image.data[
-            outputIndex + 1
-          ] = 255;
+            image.data[
+              outputIndex
+            ] = 255;
 
-          image.data[
-            outputIndex + 2
-          ] = 255;
+            image.data[
+              outputIndex + 1
+            ] = 255;
 
-          image.data[
-            outputIndex + 3
-          ] = alpha;
+            image.data[
+              outputIndex + 2
+            ] = 255;
+
+            image.data[
+              outputIndex + 3
+            ] = alpha;
+          }
         }
-      }
 
-      return image;
-    },
-    []
-  );
+        return image;
+      },
+      []
+    );
 
   /* =======================================================
-     DRAW BACKGROUND BLUR
+     BACKGROUND BLUR
      ======================================================= */
 
   const drawBackgroundBlur =
@@ -912,11 +1095,9 @@ const AIEffects = ({
             22;
 
         /*
-         * -----------------------------------
-         * STEP 1: Draw blurred frame
-         * -----------------------------------
+         * Draw blurred source to reusable
+         * background canvas.
          */
-
         backgroundCtx.clearRect(
           0,
           0,
@@ -933,22 +1114,22 @@ const AIEffects = ({
           video,
           -blur,
           -blur,
-          width + blur * 2,
-          height + blur * 2
+          width +
+            blur * 2,
+          height +
+            blur * 2
         );
 
         backgroundCtx.restore();
 
         /*
-         * -----------------------------------
-         * STEP 2: Draw sharp foreground
-         * -----------------------------------
+         * Draw sharp source.
          */
-
         ctx.globalCompositeOperation =
           "source-over";
 
-        ctx.filter = "none";
+        ctx.filter =
+          "none";
 
         ctx.clearRect(
           0,
@@ -966,11 +1147,8 @@ const AIEffects = ({
         );
 
         /*
-         * -----------------------------------
-         * STEP 3: Apply foreground mask
-         * -----------------------------------
+         * Prepare mask.
          */
-
         maskCtx.clearRect(
           0,
           0,
@@ -984,6 +1162,9 @@ const AIEffects = ({
           0
         );
 
+        /*
+         * Keep foreground.
+         */
         ctx.globalCompositeOperation =
           "destination-in";
 
@@ -996,12 +1177,9 @@ const AIEffects = ({
         );
 
         /*
-         * -----------------------------------
-         * STEP 4: Put blurred background
-         * behind foreground
-         * -----------------------------------
+         * Place blurred background behind
+         * the foreground.
          */
-
         ctx.globalCompositeOperation =
           "destination-over";
 
@@ -1013,13 +1191,11 @@ const AIEffects = ({
           height
         );
 
-        /*
-         * Reset canvas state.
-         */
         ctx.globalCompositeOperation =
           "source-over";
 
-        ctx.filter = "none";
+        ctx.filter =
+          "none";
       },
       [
         buildMask,
@@ -1059,13 +1235,86 @@ const AIEffects = ({
           return;
         }
 
-        /*
-         * Draw original frame.
-         */
         ctx.globalCompositeOperation =
           "source-over";
 
-        ctx.filter = "none";
+        ctx.filter =
+          "none";
+
+        ctx.clearRect(
+          0,
+          0,
+          width,
+          height
+        );
+
+        /*
+         * Draw source.
+         */
+        ctx.drawImage(
+          video,
+          0,
+          0,
+          width,
+          height
+        );
+
+        /*
+         * Prepare mask.
+         */
+        maskCtx.clearRect(
+          0,
+          0,
+          width,
+          height
+        );
+
+        maskCtx.putImageData(
+          mask,
+          0,
+          0
+        );
+
+        /*
+         * Keep only the person.
+         */
+        ctx.globalCompositeOperation =
+          "destination-in";
+
+        ctx.drawImage(
+          maskCanvasRef.current,
+          0,
+          0,
+          width,
+          height
+        );
+
+        ctx.globalCompositeOperation =
+          "source-over";
+      },
+      [
+        buildMask,
+        drawOriginal
+      ]
+    );
+
+  /* =======================================================
+     FACE FOCUS
+     ======================================================= */
+
+  const drawFaceFocus =
+    useCallback(
+      (
+        video,
+        ctx,
+        width,
+        height
+      ) => {
+        ctx.globalCompositeOperation =
+          "source-over";
+
+        ctx.filter =
+          "none";
 
         ctx.clearRect(
           0,
@@ -1083,412 +1332,278 @@ const AIEffects = ({
         );
 
         /*
-         * Put mask into mask canvas.
+         * Cinematic vignette.
+         *
+         * This is intentionally a visual
+         * focus effect, not actual face detection.
          */
-        maskCtx.clearRect(
+        const strength =
+          0.08 +
+          (intensityRef.current /
+            100) *
+            0.42;
+
+        const gradient =
+          ctx.createRadialGradient(
+            width * 0.5,
+            height * 0.42,
+            Math.min(
+              width,
+              height
+            ) * 0.12,
+            width * 0.5,
+            height * 0.5,
+            Math.max(
+              width,
+              height
+            ) * 0.75
+          );
+
+        gradient.addColorStop(
+          0,
+          "rgba(0,0,0,0)"
+        );
+
+        gradient.addColorStop(
+          0.55,
+          "rgba(0,0,0,0.02)"
+        );
+
+        gradient.addColorStop(
+          1,
+          `rgba(0,0,0,${strength})`
+        );
+
+        ctx.fillStyle =
+          gradient;
+
+        ctx.fillRect(
           0,
           0,
           width,
           height
         );
-
-        maskCtx.putImageData(
-          mask,
-          0,
-          0
-        );
-
-        /*
-         * Keep foreground only.
-         */
-        ctx.globalCompositeOperation =
-          "destination-in";
-
-        ctx.drawImage(
-          maskCanvasRef.current,
-          0,
-          0,
-          width,
-          height
-        );
-
-        /*
-         * Reset.
-         */
-        ctx.globalCompositeOperation =
-          "source-over";
-
-        ctx.filter = "none";
       },
-      [
-        buildMask,
-        drawOriginal
-      ]
+      []
     );
 
   /* =======================================================
-     FACE FOCUS
+     PROCESS FRAME
      ======================================================= */
 
-  const drawFaceFocus = useCallback(
-    (
-      video,
-      ctx,
-      width,
-      height
-    ) => {
-      ctx.globalCompositeOperation =
-        "source-over";
+  const processFrame =
+    useCallback(
+      timestamp => {
+        if (
+          !processingRef.current ||
+          !mountedRef.current
+        ) {
+          return;
+        }
 
-      ctx.filter = "none";
+        const video =
+          sourceVideoRef.current;
 
-      ctx.clearRect(
-        0,
-        0,
-        width,
-        height
-      );
+        const canvas =
+          canvasRef.current;
 
-      ctx.drawImage(
-        video,
-        0,
-        0,
-        width,
-        height
-      );
+        const ctx =
+          canvasContextRef.current;
 
-      /*
-       * Cinematic vignette.
-       *
-       * This is intentionally a visual
-       * focus effect rather than claiming
-       * to perform face detection.
-       */
-      const strength =
-        0.08 +
-        (intensityRef.current /
-          100) *
-          0.42;
-
-      const gradient =
-        ctx.createRadialGradient(
-          width * 0.5,
-          height * 0.42,
-          Math.min(
-            width,
-            height
-          ) * 0.12,
-          width * 0.5,
-          height * 0.5,
-          Math.max(
-            width,
-            height
-          ) * 0.75
-        );
-
-      gradient.addColorStop(
-        0,
-        "rgba(0,0,0,0)"
-      );
-
-      gradient.addColorStop(
-        0.55,
-        "rgba(0,0,0,0.02)"
-      );
-
-      gradient.addColorStop(
-        1,
-        `rgba(0,0,0,${strength})`
-      );
-
-      ctx.fillStyle =
-        gradient;
-
-      ctx.fillRect(
-        0,
-        0,
-        width,
-        height
-      );
-    },
-    []
-  );
-
-  /* =======================================================
-     PROCESS ONE FRAME
-     ======================================================= */
-
-  const processFrame = useCallback(
-    timestamp => {
-      if (
-        !processingRef.current ||
-        !mountedRef.current
-      ) {
-        return;
-      }
-
-      const video =
-        sourceVideoRef.current;
-
-      const canvas =
-        canvasRef.current;
-
-      const ctx =
-        canvasContextRef.current;
-
-      const maskCtx =
-        maskContextRef.current;
-
-      /*
-       * If video isn't ready yet,
-       * keep trying.
-       */
-      if (
-        !video ||
-        !canvas ||
-        !ctx ||
-        video.readyState < 2
-      ) {
-        animationFrameRef.current =
-          requestAnimationFrame(
-            processFrame
-          );
-
-        return;
-      }
-
-      const width =
-        video.videoWidth;
-
-      const height =
-        video.videoHeight;
-
-      if (!width || !height) {
-        animationFrameRef.current =
-          requestAnimationFrame(
-            processFrame
-          );
-
-        return;
-      }
-
-      /*
-       * Resize canvases if camera
-       * resolution changes.
-       */
-      if (
-        canvas.width !== width ||
-        canvas.height !== height
-      ) {
-        prepareCanvases(
-          width,
-          height
-        );
-      }
-
-      try {
-        const activeEffect =
-          enabledRef.current
-            ? effectRef.current
-            : "none";
-
-        /*
-         * =================================
-         * ORIGINAL
-         * =================================
-         */
+        const maskCtx =
+          maskContextRef.current;
 
         if (
-          activeEffect === "none"
+          !video ||
+          !canvas ||
+          !ctx ||
+          video.readyState < 2
         ) {
-          drawOriginal(
-            video,
-            ctx,
+          animationFrameRef.current =
+            requestAnimationFrame(
+              processFrame
+            );
+
+          return;
+        }
+
+        const width =
+          video.videoWidth;
+
+        const height =
+          video.videoHeight;
+
+        if (
+          !width ||
+          !height
+        ) {
+          animationFrameRef.current =
+            requestAnimationFrame(
+              processFrame
+            );
+
+          return;
+        }
+
+        if (
+          canvas.width !== width ||
+          canvas.height !== height
+        ) {
+          prepareCanvases(
             width,
             height
           );
         }
 
-        /*
-         * =================================
-         * FACE FOCUS
-         * =================================
-         */
+        try {
+          const activeEffect =
+            enabledRef.current
+              ? effectRef.current
+              : "none";
 
-        else if (
-          activeEffect ===
-          "face-focus"
-        ) {
-          drawFaceFocus(
-            video,
-            ctx,
-            width,
-            height
-          );
-        }
-
-        /*
-         * =================================
-         * AI SEGMENTATION
-         * =================================
-         */
-
-        else if (
-          isSegmentationEffect(
-            activeEffect
-          )
-        ) {
-          const segmenter =
-            segmenterRef.current;
-
-          if (!segmenter) {
-            /*
-             * AI is still loading.
-             * Show original video instead
-             * of a blank frame.
-             */
+          /*
+           * ORIGINAL
+           */
+          if (
+            activeEffect === "none"
+          ) {
             drawOriginal(
               video,
               ctx,
               width,
               height
             );
-          } else {
+          }
+
+          /*
+           * FACE FOCUS
+           */
+          else if (
+            activeEffect ===
+            "face-focus"
+          ) {
+            drawFaceFocus(
+              video,
+              ctx,
+              width,
+              height
+            );
+          }
+
+          /*
+           * AI SEGMENTATION
+           */
+          else {
+            const segmenter =
+              segmenterRef.current;
+
             /*
-             * MediaPipe VIDEO mode requires
-             * monotonically increasing timestamps.
+             * If AI isn't ready yet,
+             * show original camera instead
+             * of producing a broken frame.
              */
-            let mediaTimestamp =
-              Math.round(timestamp);
-
-            if (
-              mediaTimestamp <=
-              lastTimestampRef.current
-            ) {
-              mediaTimestamp =
-                lastTimestampRef.current +
-                1;
-            }
-
-            lastTimestampRef.current =
-              mediaTimestamp;
-
-            const result =
-              segmenter.segmentForVideo(
-                video,
-                mediaTimestamp
-              );
-
-            if (
-              activeEffect ===
-              "background-blur"
-            ) {
-              drawBackgroundBlur(
+            if (!segmenter) {
+              drawOriginal(
                 video,
                 ctx,
-                maskCtx,
-                result,
                 width,
                 height
               );
-            } else if (
-              activeEffect ===
-              "background-remove"
-            ) {
-              drawBackgroundRemoval(
-                video,
-                ctx,
-                maskCtx,
-                result,
-                width,
-                height
-              );
-            }
+            } else {
+              const result =
+                segmenter.segmentForVideo(
+                  video,
+                  timestamp
+                );
 
-            /*
-             * Release MediaPipe result
-             * resources when supported.
-             */
-            try {
-              result?.categoryMask?.close?.();
-            } catch {
-              // Ignore.
-            }
+              if (
+                activeEffect ===
+                "background-blur"
+              ) {
+                drawBackgroundBlur(
+                  video,
+                  ctx,
+                  maskCtx,
+                  result,
+                  width,
+                  height
+                );
+              } else if (
+                activeEffect ===
+                "background-remove"
+              ) {
+                drawBackgroundRemoval(
+                  video,
+                  ctx,
+                  maskCtx,
+                  result,
+                  width,
+                  height
+                );
+              }
 
-            try {
-              result?.confidenceMasks?.forEach(
-                mask => {
-                  mask?.close?.();
-                }
-              );
-            } catch {
-              // Ignore.
+              /*
+               * Release the MediaPipe mask.
+               */
+              try {
+                result?.categoryMask?.close?.();
+              } catch {
+                // Ignore.
+              }
             }
           }
-        }
 
-        /*
-         * =================================
-         * FPS COUNTER
-         * =================================
-         */
+          /*
+           * FPS
+           */
+          const now =
+            performance.now();
 
-        const now =
-          performance.now();
+          fpsCounterRef.current.frames++;
 
-        fpsCounterRef.current.frames += 1;
+          if (
+            !fpsCounterRef.current.time
+          ) {
+            fpsCounterRef.current.time =
+              now;
+          }
 
-        if (
-          !fpsCounterRef.current.time
-        ) {
-          fpsCounterRef.current.time =
-            now;
-        }
+          if (
+            now -
+              fpsCounterRef.current
+                .time >=
+            1000
+          ) {
+            setFps(
+              fpsCounterRef.current
+                .frames
+            );
 
-        if (
-          now -
-            fpsCounterRef.current.time >=
-          1000
-        ) {
-          const currentFPS =
-            fpsCounterRef.current.frames;
-
-          setFps(
-            Math.round(
-              currentFPS
-            )
+            fpsCounterRef.current = {
+              frames: 0,
+              time: now
+            };
+          }
+        } catch (err) {
+          console.warn(
+            "[AIEffects] Frame processing error:",
+            err
           );
-
-          fpsCounterRef.current = {
-            frames: 0,
-            time: now
-          };
         }
-      } catch (err) {
-        console.warn(
-          "[AIEffects] Frame processing error:",
-          err
-        );
 
-        /*
-         * Don't kill the entire processing
-         * loop because of one bad frame.
-         */
-      }
-
-      animationFrameRef.current =
-        requestAnimationFrame(
-          processFrame
-        );
-    },
-    [
-      drawOriginal,
-      drawFaceFocus,
-      drawBackgroundBlur,
-      drawBackgroundRemoval,
-      prepareCanvases
-    ]
-  );
+        animationFrameRef.current =
+          requestAnimationFrame(
+            processFrame
+          );
+      },
+      [
+        drawOriginal,
+        drawFaceFocus,
+        drawBackgroundBlur,
+        drawBackgroundRemoval,
+        prepareCanvases
+      ]
+    );
 
   /* =======================================================
      START PROCESSING
@@ -1497,36 +1612,10 @@ const AIEffects = ({
   const startProcessing =
     useCallback(
       async source => {
-        /*
-         * Already processing this stream.
-         */
-        if (
-          processingRef.current &&
-          sourceStreamRef.current === source
-        ) {
-          return outputStreamRef.current;
-        }
-
-        /*
-         * Stop old processing loop.
-         * This does NOT stop the camera.
-         */
         if (
           processingRef.current
         ) {
-          processingRef.current =
-            false;
-
-          if (
-            animationFrameRef.current
-          ) {
-            cancelAnimationFrame(
-              animationFrameRef.current
-            );
-
-            animationFrameRef.current =
-              null;
-          }
+          return outputStreamRef.current;
         }
 
         const video =
@@ -1541,10 +1630,12 @@ const AIEffects = ({
         }
 
         const width =
-          video.videoWidth || 1280;
+          video.videoWidth ||
+          1280;
 
         const height =
-          video.videoHeight || 720;
+          video.videoHeight ||
+          720;
 
         prepareCanvases(
           width,
@@ -1563,49 +1654,25 @@ const AIEffects = ({
         processingRef.current =
           true;
 
-        lastTimestampRef.current =
-          0;
+        setEngineState(
+          segmenterRef.current
+            ? "processing"
+            : "ready"
+        );
 
         fpsCounterRef.current = {
           frames: 0,
-          time: 0
+          time: performance.now()
         };
 
-        setFps(0);
-
-        setEngineState(
-          isSegmentationEffect(
-            effectRef.current
-          )
-            ? segmenterRef.current
-              ? "processing"
-              : "loading"
-            : "processing"
-        );
-
-        /*
-         * Attach output to preview immediately.
-         */
-        const preview =
-          previewVideoRef.current;
-
-        if (preview) {
-          preview.srcObject =
-            output;
-
-          preview.play().catch(() => {});
-        }
-
-        /*
-         * Start rendering.
-         */
         animationFrameRef.current =
           requestAnimationFrame(
             processFrame
           );
 
         /*
-         * Notify StreamDashboard.
+         * Give StreamDashboard the
+         * processed MediaStream.
          */
         if (
           onProcessedStream
@@ -1615,6 +1682,10 @@ const AIEffects = ({
           );
         }
 
+        /*
+         * Give StreamDashboard the
+         * processed video track.
+         */
         if (
           onProcessedTrack &&
           outputTrackRef.current
@@ -1694,14 +1765,31 @@ const AIEffects = ({
             source;
 
           /*
-           * Initialize AI only when needed.
+           * AI is required only for
+           * segmentation effects.
            */
-          if (
-            isSegmentationEffect(
-              effectRef.current
-            )
-          ) {
-            await initializeAI();
+          const needsAI =
+            effectRef.current ===
+              "background-blur" ||
+            effectRef.current ===
+              "background-remove";
+
+          if (needsAI) {
+            const segmenter =
+              await initializeAI();
+
+            /*
+             * Do not stop camera processing
+             * if MediaPipe failed.
+             *
+             * The original camera will still
+             * be rendered.
+             */
+            if (!segmenter) {
+              console.warn(
+                "[AIEffects] AI unavailable. Continuing with original video."
+              );
+            }
           }
 
           const output =
@@ -1716,13 +1804,13 @@ const AIEffects = ({
             err
           );
 
-          setEngineState(
-            "error"
-          );
-
           setError(
             err?.message ||
               "Unable to start AI processing."
+          );
+
+          setEngineState(
+            "error"
           );
 
           return null;
@@ -1744,19 +1832,12 @@ const AIEffects = ({
         const source =
           getSourceStream();
 
-        if (!source) {
-          setError(
-            "No camera stream is available."
-          );
-
-          return;
-        }
-
-        /*
-         * Completely reset MediaPipe.
-         */
         stopProcessing();
 
+        /*
+         * If an old segmenter exists,
+         * close it completely.
+         */
         if (
           segmenterRef.current
         ) {
@@ -1770,12 +1851,26 @@ const AIEffects = ({
             null;
         }
 
-        /*
-         * Reinitialize.
-         */
-        await attachStream(
-          source
+        segmenterPromiseRef.current =
+          null;
+
+        setError("");
+
+        setEngineState(
+          "idle"
         );
+
+        /*
+         * If current effect requires AI,
+         * initialize it again.
+         */
+        if (
+          source
+        ) {
+          await attachStream(
+            source
+          );
+        }
       },
       [
         getSourceStream,
@@ -1791,8 +1886,6 @@ const AIEffects = ({
   const handleEffectChange =
     useCallback(
       async nextEffect => {
-        setError("");
-
         setEffect(
           nextEffect
         );
@@ -1800,53 +1893,47 @@ const AIEffects = ({
         effectRef.current =
           nextEffect;
 
+        setError("");
+
         /*
-         * AI segmentation effects require
-         * MediaPipe.
+         * AI effects require MediaPipe.
          */
         if (
-          isSegmentationEffect(
-            nextEffect
-          )
+          nextEffect ===
+            "background-blur" ||
+          nextEffect ===
+            "background-remove"
         ) {
           const segmenter =
             await initializeAI();
 
-          /*
-           * If initialization failed,
-           * keep the original camera running
-           * instead of breaking the stream.
-           */
           if (!segmenter) {
             return;
           }
 
           /*
-           * If processing is already running,
-           * the next animation frame will
-           * automatically use the new effect.
+           * If processing wasn't started
+           * for some reason, attach now.
            */
           if (
-            processingRef.current
+            !processingRef.current
           ) {
-            setEngineState(
-              "processing"
-            );
-          }
-        } else {
-          /*
-           * No AI required.
-           */
-          if (
-            processingRef.current
-          ) {
-            setEngineState(
-              "processing"
-            );
+            const source =
+              getSourceStream();
+
+            if (source) {
+              await startProcessing(
+                source
+              );
+            }
           }
         }
       },
-      [initializeAI]
+      [
+        initializeAI,
+        getSourceStream,
+        startProcessing
+      ]
     );
 
   /* =======================================================
@@ -1856,77 +1943,33 @@ const AIEffects = ({
   const handleEnabled =
     useCallback(
       value => {
-        setEnabled(value);
+        setEnabled(
+          value
+        );
 
         enabledRef.current =
           value;
-
-        /*
-         * Keep processing alive.
-         *
-         * When disabled, processFrame
-         * automatically renders the
-         * original camera.
-         */
-        if (
-          processingRef.current
-        ) {
-          setEngineState(
-            value
-              ? "processing"
-              : "ready"
-          );
-        }
       },
       []
     );
 
   /* =======================================================
-     SOURCE STREAM EFFECT
+     SOURCE STREAM CHANGES
      ======================================================= */
 
   useEffect(() => {
-    mountedRef.current =
-      true;
-
     const source =
       getSourceStream();
 
     if (!source) {
-      return () => {
-        mountedRef.current =
-          false;
-      };
+      return undefined;
     }
 
-    let cancelled = false;
-
-    const start = async () => {
-      const output =
-        await attachStream(
-          source
-        );
-
-      if (
-        cancelled &&
-        output
-      ) {
-        /*
-         * Don't stop the original
-         * source stream.
-         *
-         * Only generated output may
-         * be stopped.
-         */
-        return;
-      }
-    };
-
-    start();
+    attachStream(
+      source
+    );
 
     return () => {
-      cancelled = true;
-
       stopProcessing();
     };
   }, [
@@ -1954,7 +1997,9 @@ const AIEffects = ({
       preview.srcObject =
         output;
 
-      preview.play().catch(() => {});
+      preview
+        .play()
+        .catch(() => {});
     }
   }, [
     effect,
@@ -1977,9 +2022,6 @@ const AIEffects = ({
       processingRef.current =
         false;
 
-      /*
-       * Cancel animation loop.
-       */
       if (
         animationFrameRef.current
       ) {
@@ -1992,26 +2034,7 @@ const AIEffects = ({
       }
 
       /*
-       * Disconnect preview.
-       */
-      if (
-        previewVideoRef.current
-      ) {
-        try {
-          previewVideoRef.current.pause();
-
-          previewVideoRef.current.srcObject =
-            null;
-        } catch {
-          // Ignore.
-        }
-      }
-
-      /*
-       * Disconnect source video.
-       *
-       * IMPORTANT:
-       * This does NOT stop camera tracks.
+       * Clean helper video.
        */
       if (
         sourceVideoRef.current
@@ -2030,7 +2053,10 @@ const AIEffects = ({
       }
 
       /*
-       * Stop ONLY generated video tracks.
+       * IMPORTANT:
+       *
+       * Never stop the original camera
+       * or microphone tracks here.
        */
       if (
         outputStreamRef.current
@@ -2062,23 +2088,26 @@ const AIEffects = ({
       segmenterRef.current =
         null;
 
+      segmenterPromiseRef.current =
+        null;
+
       outputStreamRef.current =
         null;
 
       outputTrackRef.current =
         null;
 
-      sourceStreamRef.current =
+      canvasRef.current =
         null;
 
-      /*
-       * Release canvases.
-       */
-      canvasRef.current = null;
-      canvasContextRef.current = null;
+      canvasContextRef.current =
+        null;
 
-      maskCanvasRef.current = null;
-      maskContextRef.current = null;
+      maskCanvasRef.current =
+        null;
+
+      maskContextRef.current =
+        null;
 
       backgroundCanvasRef.current =
         null;
@@ -2104,7 +2133,8 @@ const AIEffects = ({
       }
 
       if (
-        engineState === "loading"
+        engineState ===
+        "loading"
       ) {
         return {
           label: "Loading AI",
@@ -2115,7 +2145,8 @@ const AIEffects = ({
       }
 
       if (
-        engineState === "processing"
+        engineState ===
+        "processing"
       ) {
         return {
           label: "Processing",
@@ -2126,7 +2157,8 @@ const AIEffects = ({
       }
 
       if (
-        engineState === "ready"
+        engineState ===
+        "ready"
       ) {
         return {
           label: "AI Ready",
@@ -2174,9 +2206,7 @@ const AIEffects = ({
           backdrop-blur-3xl
         "
       >
-        {/* =================================================
-            HEADER
-            ================================================= */}
+        {/* HEADER */}
 
         <div
           className="
@@ -2256,11 +2286,6 @@ const AIEffects = ({
 
           <button
             type="button"
-            aria-label={
-              enabled
-                ? "Disable AI effects"
-                : "Enable AI effects"
-            }
             onClick={() =>
               handleEnabled(
                 !enabled
@@ -2300,9 +2325,7 @@ const AIEffects = ({
           </button>
         </div>
 
-        {/* =================================================
-            STATUS BAR
-            ================================================= */}
+        {/* STATUS */}
 
         <div className="px-5 pt-4">
           <div
@@ -2352,9 +2375,7 @@ const AIEffects = ({
           </div>
         </div>
 
-        {/* =================================================
-            PREVIEW
-            ================================================= */}
+        {/* PREVIEW */}
 
         {!compact &&
           previewOpen && (
@@ -2371,7 +2392,9 @@ const AIEffects = ({
                 "
               >
                 <video
-                  ref={previewVideoRef}
+                  ref={
+                    previewVideoRef
+                  }
                   autoPlay
                   muted
                   playsInline
@@ -2441,9 +2464,10 @@ const AIEffects = ({
 
                 <button
                   type="button"
-                  aria-label="Hide preview"
                   onClick={() =>
-                    setPreviewOpen(false)
+                    setPreviewOpen(
+                      false
+                    )
                   }
                   className="
                     absolute
@@ -2465,15 +2489,15 @@ const AIEffects = ({
                     hover:text-white
                   "
                 >
-                  <EyeOff size={14} />
+                  <EyeOff
+                    size={14}
+                  />
                 </button>
               </div>
             </div>
           )}
 
-        {/* =================================================
-            EFFECTS
-            ================================================= */}
+        {/* EFFECTS */}
 
         <div className="px-5 pt-5">
           <div className="mb-3 flex items-center justify-between">
@@ -2491,7 +2515,9 @@ const AIEffects = ({
               <button
                 type="button"
                 onClick={() =>
-                  setPreviewOpen(true)
+                  setPreviewOpen(
+                    true
+                  )
                 }
                 className="
                   flex
@@ -2523,7 +2549,8 @@ const AIEffects = ({
                 item.icon;
 
               const selected =
-                effect === item.id;
+                effect ===
+                item.id;
 
               return (
                 <button
@@ -2590,7 +2617,9 @@ const AIEffects = ({
                       }
                     `}
                   >
-                    <Icon size={16} />
+                    <Icon
+                      size={16}
+                    />
                   </div>
 
                   <p
@@ -2613,7 +2642,9 @@ const AIEffects = ({
 
                   {item.requiresAI && (
                     <div className="mt-2 flex items-center gap-1 text-[7px] font-black uppercase tracking-widest text-cyan-300/60">
-                      <Sparkles size={8} />
+                      <Sparkles
+                        size={8}
+                      />
                       AI
                     </div>
                   )}
@@ -2623,9 +2654,7 @@ const AIEffects = ({
           </div>
         </div>
 
-        {/* =================================================
-            INTENSITY
-            ================================================= */}
+        {/* INTENSITY */}
 
         <div className="px-5 pt-5">
           <div
@@ -2658,12 +2687,15 @@ const AIEffects = ({
               type="range"
               min="0"
               max="100"
-              value={intensity}
+              value={
+                intensity
+              }
               onChange={event =>
                 setIntensity(
                   clamp(
                     Number(
-                      event.target.value
+                      event.target
+                        .value
                     ),
                     0,
                     100
@@ -2682,15 +2714,18 @@ const AIEffects = ({
             />
 
             <div className="mt-2 flex justify-between text-[7px] font-bold uppercase tracking-wider text-white/20">
-              <span>Subtle</span>
-              <span>Strong</span>
+              <span>
+                Subtle
+              </span>
+
+              <span>
+                Strong
+              </span>
             </div>
           </div>
         </div>
 
-        {/* =================================================
-            ADVANCED
-            ================================================= */}
+        {/* ADVANCED */}
 
         <div className="px-5 pt-3">
           <button
@@ -2752,7 +2787,9 @@ const AIEffects = ({
             >
               <div className="flex items-start gap-3">
                 <div className="rounded-xl bg-cyan-400/10 p-2 text-cyan-300">
-                  <Sparkles size={14} />
+                  <Sparkles
+                    size={14}
+                  />
                 </div>
 
                 <div>
@@ -2764,15 +2801,17 @@ const AIEffects = ({
                     AI frames are processed
                     directly in your browser.
                     Your original camera and
-                    microphone tracks are not
-                    stopped by this panel.
+                    microphone tracks remain
+                    untouched.
                   </p>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={restart}
+                onClick={
+                  restart
+                }
                 className="
                   mt-3
                   flex
@@ -2798,15 +2837,14 @@ const AIEffects = ({
                 <RefreshCw
                   size={12}
                 />
+
                 Restart AI Engine
               </button>
             </div>
           )}
         </div>
 
-        {/* =================================================
-            ERROR
-            ================================================= */}
+        {/* ERROR */}
 
         {error && (
           <div className="px-5 pt-3">
@@ -2839,9 +2877,7 @@ const AIEffects = ({
           </div>
         )}
 
-        {/* =================================================
-            FOOTER
-            ================================================= */}
+        {/* FOOTER */}
 
         <div
           className="
@@ -2874,4 +2910,3 @@ const AIEffects = ({
 };
 
 export default AIEffects;
-
