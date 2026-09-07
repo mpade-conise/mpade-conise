@@ -1,4 +1,4 @@
-```jsx
+
 import React, {
   useCallback,
   useEffect,
@@ -9,7 +9,6 @@ import React, {
 
 import {
   Sparkles,
-  Wand2,
   SlidersHorizontal,
   Zap,
   CircleCheck,
@@ -19,15 +18,7 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  Sun,
-  Palette,
-  Aperture,
-  Film,
-  Snowflake,
-  Flame,
-  Moon,
-  Star,
-  ScanFace
+  Wand2
 } from "lucide-react";
 
 /* =========================================================
@@ -45,64 +36,64 @@ const EFFECTS = [
   {
     id: "beauty",
     name: "Beauty",
-    description: "Soft skin look",
+    description: "Smooth skin look",
     icon: Sparkles,
     category: "Beauty"
   },
   {
     id: "face-light",
     name: "Face Light",
-    description: "Bright natural light",
-    icon: Sun,
+    description: "Bright studio light",
+    icon: Sparkles,
     category: "Beauty"
   },
   {
     id: "cinematic",
     name: "Cinematic",
     description: "Movie-style color",
-    icon: Aperture,
+    icon: Wand2,
     category: "Cinematic"
   },
   {
     id: "vivid",
     name: "Vivid",
     description: "Rich vibrant color",
-    icon: Palette,
+    icon: Sparkles,
     category: "Color"
   },
   {
     id: "warm",
     name: "Warm",
-    description: "Golden atmosphere",
-    icon: Flame,
+    description: "Golden warm tone",
+    icon: Sparkles,
     category: "Color"
   },
   {
     id: "cool",
     name: "Cool",
     description: "Clean blue tone",
-    icon: Snowflake,
+    icon: Sparkles,
     category: "Color"
   },
   {
     id: "noir",
     name: "Noir",
-    description: "Classic black & white",
-    icon: Moon,
+    description: "Black and white",
+    icon: Wand2,
     category: "Cinematic"
   },
   {
     id: "vintage",
     name: "Vintage",
-    description: "Retro film look",
-    icon: Film,
+    description: "Classic film tone",
+    icon: Wand2,
     category: "Cinematic"
   },
   {
     id: "dream",
     name: "Dream",
     description: "Soft glowing look",
-    icon: Star,
+    icon: Sparkles,
     category: "Beauty"
   },
   {
@@ -115,7 +106,7 @@ const EFFECTS = [
   {
     id: "neon",
     name: "Neon",
-    description: "Electric colors",
+    description: "Electric color boost",
     icon: Zap,
     category: "Creative"
   },
@@ -123,42 +114,42 @@ const EFFECTS = [
     id: "drama",
     name: "Drama",
     description: "Deep cinematic contrast",
-    icon: Flame,
+    icon: Wand2,
     category: "Cinematic"
   },
   {
     id: "film",
     name: "Film",
-    description: "Professional film tone",
-    icon: Film,
+    description: "Professional film look",
+    icon: Wand2,
     category: "Cinematic"
   },
   {
     id: "soft-focus",
     name: "Soft Focus",
-    description: "Gentle camera softness",
-    icon: Wand2,
+    description: "Gentle soft image",
+    icon: Sparkles,
     category: "Beauty"
   },
   {
     id: "face-focus",
     name: "Face Focus",
-    description: "Cinematic visual focus",
-    icon: ScanFace,
+    description: "Cinematic vignette",
+    icon: Eye,
     category: "Cinematic"
   },
   {
     id: "hdr",
     name: "HDR-style",
     description: "Enhanced dynamic look",
-    icon: Sun,
+    icon: Zap,
     category: "Color"
   },
   {
     id: "duo-tone",
     name: "Duo Tone",
-    description: "Two-tone creative color",
-    icon: Palette,
+    description: "Two-tone color",
+    icon: Sparkles,
     category: "Creative"
   }
 ];
@@ -180,52 +171,15 @@ const CATEGORIES = [
    UTILITY
    ========================================================= */
 
-function clamp(
-  value,
-  min,
-  max
-) {
+function clamp(value, min, max) {
   return Math.min(
     max,
-    Math.max(
-      min,
-      value
-    )
+    Math.max(min, value)
   );
 }
 
 /* =========================================================
-   COLOR HELPERS
-   ========================================================= */
-
-function hexToRgb(hex) {
-  const value =
-    hex.replace(
-      "#",
-      ""
-    );
-
-  const bigint =
-    parseInt(
-      value,
-      16
-    );
-
-  return {
-    r:
-      (bigint >> 16) &
-      255,
-    g:
-      (bigint >> 8) &
-      255,
-    b:
-      bigint &
-      255
-  };
-}
-
-/* =========================================================
-   AIEFFECTS
+   AIEffects
    ========================================================= */
 
 const AIEffects = ({
@@ -240,50 +194,32 @@ const AIEffects = ({
      STATE
      ======================================================= */
 
-  const [
-    enabled,
-    setEnabled
-  ] = useState(true);
+  const [enabled, setEnabled] =
+    useState(true);
 
-  const [
-    effect,
-    setEffect
-  ] = useState("none");
+  const [effect, setEffect] =
+    useState("none");
 
-  const [
-    intensity,
-    setIntensity
-  ] = useState(55);
+  const [intensity, setIntensity] =
+    useState(55);
 
-  const [
-    category,
-    setCategory
-  ] = useState("All");
+  const [category, setCategory] =
+    useState("All");
 
-  const [
-    engineState,
-    setEngineState
-  ] = useState("idle");
+  const [engineState, setEngineState] =
+    useState("idle");
 
-  const [
-    error,
-    setError
-  ] = useState("");
+  const [error, setError] =
+    useState("");
 
-  const [
-    showAdvanced,
-    setShowAdvanced
-  ] = useState(false);
+  const [showAdvanced, setShowAdvanced] =
+    useState(false);
 
-  const [
-    previewOpen,
-    setPreviewOpen
-  ] = useState(true);
+  const [previewOpen, setPreviewOpen] =
+    useState(true);
 
-  const [
-    fps,
-    setFps
-  ] = useState(0);
+  const [fps, setFps] =
+    useState(0);
 
   /* =======================================================
      REFS
@@ -313,9 +249,6 @@ const AIEffects = ({
   const animationFrameRef =
     useRef(null);
 
-  const processingRef =
-    useRef(false);
-
   const effectRef =
     useRef(effect);
 
@@ -324,6 +257,9 @@ const AIEffects = ({
 
   const enabledRef =
     useRef(enabled);
+
+  const processingRef =
+    useRef(false);
 
   const previewVideoRef =
     useRef(null);
@@ -335,7 +271,7 @@ const AIEffects = ({
     });
 
   /* =======================================================
-     SYNCHRONIZE REFS
+     SYNC REFS
      ======================================================= */
 
   useEffect(() => {
@@ -403,10 +339,11 @@ const AIEffects = ({
         ) {
           try {
             sourceVideoRef.current.pause();
+
             sourceVideoRef.current.srcObject =
               null;
           } catch {
-            // Ignore cleanup failure.
+            // Ignore cleanup errors.
           }
 
           sourceVideoRef.current =
@@ -436,10 +373,7 @@ const AIEffects = ({
           source;
 
         await new Promise(
-          (
-            resolve,
-            reject
-          ) => {
+          (resolve, reject) => {
             let finished =
               false;
 
@@ -458,9 +392,7 @@ const AIEffects = ({
 
             const handleLoaded =
               () => {
-                if (
-                  finished
-                ) {
+                if (finished) {
                   return;
                 }
 
@@ -474,9 +406,7 @@ const AIEffects = ({
 
             const handleError =
               () => {
-                if (
-                  finished
-                ) {
+                if (finished) {
                   return;
                 }
 
@@ -503,8 +433,7 @@ const AIEffects = ({
             );
 
             if (
-              video.readyState >=
-              1
+              video.readyState >= 1
             ) {
               handleLoaded();
             }
@@ -514,7 +443,7 @@ const AIEffects = ({
         try {
           await video.play();
         } catch {
-          // Muted camera streams normally autoplay.
+          // Muted camera preview normally allows autoplay.
         }
 
         sourceVideoRef.current =
@@ -531,10 +460,7 @@ const AIEffects = ({
 
   const prepareCanvas =
     useCallback(
-      (
-        width,
-        height
-      ) => {
+      (width, height) => {
         if (
           !canvasRef.current
         ) {
@@ -557,7 +483,7 @@ const AIEffects = ({
             canvasRef.current.getContext(
               "2d",
               {
-                alpha: true,
+                alpha: false,
                 desynchronized: true
               }
             );
@@ -609,41 +535,35 @@ const AIEffects = ({
       if (source) {
         source
           .getAudioTracks()
-          .forEach(
-            track => {
-              try {
-                if (
-                  !output
-                    .getAudioTracks()
-                    .includes(
-                      track
-                    )
-                ) {
-                  output.addTrack(
-                    track
-                  );
-                }
-              } catch {
-                // Ignore duplicate track.
-              }
+          .forEach(track => {
+            try {
+              output.addTrack(
+                track
+              );
+            } catch {
+              // Ignore duplicate track.
             }
-          );
+          });
       }
 
       return output;
     }, []);
 
   /* =======================================================
-     RESET CANVAS
+     DRAW BASE IMAGE
      ======================================================= */
 
-  const resetCanvas =
+  const drawBase =
     useCallback(
       (
+        video,
         ctx,
         width,
-        height
+        height,
+        filter = "none"
       ) => {
+        ctx.save();
+
         ctx.globalCompositeOperation =
           "source-over";
 
@@ -651,32 +571,11 @@ const AIEffects = ({
           1;
 
         ctx.filter =
-          "none";
+          filter;
 
         ctx.clearRect(
           0,
           0,
-          width,
-          height
-        );
-      },
-      []
-    );
-
-  /* =======================================================
-     DRAW ORIGINAL
-     ======================================================= */
-
-  const drawOriginal =
-    useCallback(
-      (
-        video,
-        ctx,
-        width,
-        height
-      ) => {
-        resetCanvas(
-          ctx,
           width,
           height
         );
@@ -688,76 +587,36 @@ const AIEffects = ({
           width,
           height
         );
+
+        ctx.restore();
       },
-      [
-        resetCanvas
-      ]
+      []
     );
 
   /* =======================================================
-     VIGNETTE
+     OVERLAY
      ======================================================= */
 
-  const drawVignette =
+  const drawOverlay =
     useCallback(
       (
         ctx,
         width,
         height,
-        strength,
-        centerX = 0.5,
-        centerY = 0.5
+        color,
+        alpha,
+        mode = "source-over"
       ) => {
-        const gradient =
-          ctx.createRadialGradient(
-            width *
-              centerX,
-            height *
-              centerY,
-            Math.min(
-              width,
-              height
-            ) *
-              0.12,
-            width *
-              centerX,
-            height *
-              centerY,
-            Math.max(
-              width,
-              height
-            ) *
-              0.78
-          );
-
-        gradient.addColorStop(
-          0,
-          "rgba(0,0,0,0)"
-        );
-
-        gradient.addColorStop(
-          0.55,
-          "rgba(0,0,0,0)"
-        );
-
-        gradient.addColorStop(
-          0.8,
-          `rgba(0,0,0,${strength *
-            0.45})`
-        );
-
-        gradient.addColorStop(
-          1,
-          `rgba(0,0,0,${strength})`
-        );
-
         ctx.save();
 
         ctx.globalCompositeOperation =
-          "source-over";
+          mode;
+
+        ctx.globalAlpha =
+          clamp(alpha, 0, 1);
 
         ctx.fillStyle =
-          gradient;
+          color;
 
         ctx.fillRect(
           0,
@@ -772,33 +631,59 @@ const AIEffects = ({
     );
 
   /* =======================================================
-     COLOR OVERLAY
+     VIGNETTE
      ======================================================= */
 
-  const drawColorOverlay =
+  const drawVignette =
     useCallback(
       (
         ctx,
         width,
         height,
-        color,
-        alpha,
-        blendMode = "source-over"
+        strength
       ) => {
+        const gradient =
+          ctx.createRadialGradient(
+            width * 0.5,
+            height * 0.45,
+            Math.min(
+              width,
+              height
+            ) * 0.12,
+            width * 0.5,
+            height * 0.5,
+            Math.max(
+              width,
+              height
+            ) * 0.76
+          );
+
+        gradient.addColorStop(
+          0,
+          "rgba(0,0,0,0)"
+        );
+
+        gradient.addColorStop(
+          0.55,
+          "rgba(0,0,0,0.015)"
+        );
+
+        gradient.addColorStop(
+          1,
+          `rgba(0,0,0,${clamp(
+            strength,
+            0,
+            0.9
+          )})`
+        );
+
         ctx.save();
 
         ctx.globalCompositeOperation =
-          blendMode;
+          "source-over";
 
         ctx.fillStyle =
-          color;
-
-        ctx.globalAlpha =
-          clamp(
-            alpha,
-            0,
-            1
-          );
+          gradient;
 
         ctx.fillRect(
           0,
@@ -827,17 +712,17 @@ const AIEffects = ({
         const gradient =
           ctx.createRadialGradient(
             width * 0.5,
-            height * 0.38,
+            height * 0.42,
             Math.min(
               width,
               height
-            ) * 0.08,
+            ) * 0.04,
             width * 0.5,
             height * 0.42,
             Math.min(
               width,
               height
-            ) * 0.52
+            ) * 0.65
           );
 
         gradient.addColorStop(
@@ -847,8 +732,7 @@ const AIEffects = ({
 
         gradient.addColorStop(
           0.45,
-          `rgba(255,225,185,${amount *
-            0.35})`
+          `rgba(255,230,200,${amount * 0.35})`
         );
 
         gradient.addColorStop(
@@ -888,54 +772,33 @@ const AIEffects = ({
         height,
         amount
       ) => {
-        /*
-         * Subtle blue/purple dual-tone
-         * treatment without expensive
-         * per-pixel processing.
-         */
-
-        drawColorOverlay(
-          ctx,
-          width,
-          height,
-          "#35156b",
-          0.10 +
-            amount *
-              0.20,
-          "soft-light"
-        );
-
         const gradient =
           ctx.createLinearGradient(
             0,
-            height,
+            0,
             width,
-            0
+            height
           );
 
         gradient.addColorStop(
           0,
-          `rgba(30,110,255,${0.08 +
-            amount *
-              0.18})`
+          `rgba(35,80,255,${amount})`
         );
 
         gradient.addColorStop(
-          0.5,
-          "rgba(0,0,0,0)"
+          0.48,
+          `rgba(80,30,160,${amount * 0.45})`
         );
 
         gradient.addColorStop(
           1,
-          `rgba(190,55,255,${0.08 +
-            amount *
-              0.18})`
+          `rgba(255,110,80,${amount})`
         );
 
         ctx.save();
 
         ctx.globalCompositeOperation =
-          "screen";
+          "soft-light";
 
         ctx.fillStyle =
           gradient;
@@ -949,9 +812,7 @@ const AIEffects = ({
 
         ctx.restore();
       },
-      [
-        drawColorOverlay
-      ]
+      []
     );
 
   /* =======================================================
@@ -964,23 +825,16 @@ const AIEffects = ({
         video,
         ctx,
         width,
-        height,
-        activeEffect,
-        activeIntensity
+        height
       ) => {
-        const amount =
-          clamp(
-            activeIntensity /
-              100,
-            0,
-            1
-          );
+        const activeEffect =
+          enabledRef.current
+            ? effectRef.current
+            : "none";
 
-        resetCanvas(
-          ctx,
-          width,
-          height
-        );
+        const amount =
+          intensityRef.current /
+          100;
 
         /* -------------------------------------------------
            ORIGINAL
@@ -990,10 +844,9 @@ const AIEffects = ({
           activeEffect ===
           "none"
         ) {
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
+            ctx,
             width,
             height
           );
@@ -1002,7 +855,7 @@ const AIEffects = ({
         }
 
         /* -------------------------------------------------
-           BEAUTY
+           BEAUTY / SKIN SMOOTH
            ------------------------------------------------- */
 
         if (
@@ -1011,41 +864,30 @@ const AIEffects = ({
         ) {
           const blur =
             0.15 +
-            amount *
-              1.1;
+            amount * 0.9;
 
           const brightness =
-            1.02 +
-            amount *
-              0.07;
+            1.01 +
+            amount * 0.08;
 
           const saturation =
             1.02 +
-            amount *
-              0.12;
+            amount * 0.12;
 
-          ctx.filter =
-            `blur(${blur}px) brightness(${brightness}) saturate(${saturation}) contrast(0.99)`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#fff1e6",
-            0.025 +
-              amount *
-                0.055,
+            `blur(${blur}px) brightness(${brightness}) saturate(${saturation}) contrast(0.98)`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(255,225,205,1)",
+            amount * 0.06,
             "screen"
           );
 
@@ -1060,33 +902,20 @@ const AIEffects = ({
           activeEffect ===
           "face-light"
         ) {
-          ctx.filter =
-            `brightness(${1.02 +
-              amount *
-                0.12}) contrast(${1 +
-              amount *
-                0.03}) saturate(${1 +
-              amount *
-                0.08})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
+            ctx,
             width,
-            height
+            height,
+            `brightness(${1.03 + amount * 0.18}) contrast(${1 + amount * 0.04}) saturate(${1 + amount * 0.06})`
           );
-
-          ctx.filter =
-            "none";
 
           drawFaceLight(
             ctx,
             width,
             height,
-            0.06 +
-              amount *
-                0.18
+            0.10 +
+              amount * 0.24
           );
 
           return;
@@ -1100,35 +929,30 @@ const AIEffects = ({
           activeEffect ===
           "cinematic"
         ) {
-          ctx.filter =
-            `contrast(${1.05 +
-              amount *
-                0.16}) saturate(${0.92 +
-              amount *
-                0.12}) brightness(${0.98 +
-              amount *
-                0.04})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#0d3940",
-            0.025 +
-              amount *
-                0.075,
+            `contrast(${1.04 + amount * 0.18}) saturate(${0.88 + amount * 0.25}) brightness(${0.98 + amount * 0.03})`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(12,55,70,1)",
+            amount * 0.08,
             "soft-light"
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(190,95,40,1)",
+            amount * 0.045,
+            "screen"
           );
 
           drawVignette(
@@ -1136,10 +960,7 @@ const AIEffects = ({
             width,
             height,
             0.08 +
-              amount *
-                0.22,
-            0.5,
-            0.45
+              amount * 0.18
           );
 
           return;
@@ -1153,25 +974,13 @@ const AIEffects = ({
           activeEffect ===
           "vivid"
         ) {
-          ctx.filter =
-            `saturate(${1.08 +
-              amount *
-                0.82}) contrast(${1.02 +
-              amount *
-                0.18}) brightness(${1 +
-              amount *
-                0.025})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
+            ctx,
             width,
-            height
+            height,
+            `saturate(${1.15 + amount * 1.15}) contrast(${1.02 + amount * 0.18}) brightness(${1 + amount * 0.03})`
           );
-
-          ctx.filter =
-            "none";
 
           return;
         }
@@ -1184,34 +993,20 @@ const AIEffects = ({
           activeEffect ===
           "warm"
         ) {
-          ctx.filter =
-            `sepia(${0.08 +
-              amount *
-                0.30}) saturate(${1.03 +
-              amount *
-                0.18}) brightness(${1.01 +
-              amount *
-                0.045})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#ff9d55",
-            0.025 +
-              amount *
-                0.10,
+            `sepia(${amount * 0.34}) saturate(${1.04 + amount * 0.3}) brightness(${1.01 + amount * 0.04})`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(255,155,70,1)",
+            amount * 0.10,
             "soft-light"
           );
 
@@ -1226,34 +1021,20 @@ const AIEffects = ({
           activeEffect ===
           "cool"
         ) {
-          ctx.filter =
-            `hue-rotate(${8 +
-              amount *
-                12}deg) saturate(${1.02 +
-              amount *
-                0.18}) brightness(${1 +
-              amount *
-                0.03})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#4ba6ff",
-            0.025 +
-              amount *
-                0.10,
+            `hue-rotate(${amount * 10}deg) saturate(${1 + amount * 0.2}) brightness(${1.01 + amount * 0.04})`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(50,130,255,1)",
+            amount * 0.10,
             "soft-light"
           );
 
@@ -1268,31 +1049,20 @@ const AIEffects = ({
           activeEffect ===
           "noir"
         ) {
-          ctx.filter =
-            `grayscale(1) contrast(${1.05 +
-              amount *
-                0.48}) brightness(${0.98 -
-              amount *
-                0.05})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
+            ctx,
             width,
-            height
+            height,
+            `grayscale(1) contrast(${1.05 + amount * 0.55}) brightness(${1.02 - amount * 0.08})`
           );
-
-          ctx.filter =
-            "none";
 
           drawVignette(
             ctx,
             width,
             height,
-            0.12 +
-              amount *
-                0.28
+            0.10 +
+              amount * 0.25
           );
 
           return;
@@ -1306,46 +1076,29 @@ const AIEffects = ({
           activeEffect ===
           "vintage"
         ) {
-          ctx.filter =
-            `sepia(${0.15 +
-              amount *
-                0.42}) contrast(${0.96 +
-              amount *
-                0.12}) saturate(${0.82 +
-              amount *
-                0.10}) brightness(${1.01 -
-              amount *
-                0.025})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#8a5b35",
-            0.025 +
-              amount *
-                0.07,
-            "multiply"
+            `sepia(${0.20 + amount * 0.38}) saturate(${0.82 + amount * 0.15}) contrast(${0.98 + amount * 0.12}) brightness(${1.02 - amount * 0.03})`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(175,115,55,1)",
+            amount * 0.08,
+            "soft-light"
           );
 
           drawVignette(
             ctx,
             width,
             height,
-            0.10 +
-              amount *
-                0.24
+            0.08 +
+              amount * 0.20
           );
 
           return;
@@ -1359,39 +1112,21 @@ const AIEffects = ({
           activeEffect ===
           "dream"
         ) {
-          const blur =
-            0.5 +
-            amount *
-              1.8;
-
-          ctx.filter =
-            `blur(${blur}px) brightness(${1.02 +
-              amount *
-                0.11}) saturate(${1.03 +
-              amount *
-                0.18})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            -blur * 0.5,
-            -blur * 0.5,
-            width +
-              blur,
-            height +
-              blur
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#ffffff",
+            `blur(${0.15 + amount * 0.75}px) brightness(${1.03 + amount * 0.12}) saturate(${1.02 + amount * 0.25}) contrast(${0.96 - amount * 0.04})`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(255,220,245,1)",
             0.04 +
-              amount *
-                0.11,
+              amount * 0.12,
             "screen"
           );
 
@@ -1406,76 +1141,31 @@ const AIEffects = ({
           activeEffect ===
           "purple-glow"
         ) {
-          ctx.filter =
-            `saturate(${1.05 +
-              amount *
-                0.45}) contrast(${1 +
-              amount *
-                0.12})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#8b3dff",
-            0.05 +
-              amount *
-                0.16,
-            "screen"
+            `saturate(${1.08 + amount * 0.7}) contrast(${1.01 + amount * 0.16})`
           );
 
-          const purpleGradient =
-            ctx.createRadialGradient(
-              width * 0.5,
-              height * 0.35,
-              0,
-              width * 0.5,
-              height * 0.45,
-              Math.max(
-                width,
-                height
-              ) * 0.75
-            );
-
-          purpleGradient.addColorStop(
-            0,
-            `rgba(220,100,255,${0.04 +
-              amount *
-                0.10})`
-          );
-
-          purpleGradient.addColorStop(
-            1,
-            "rgba(0,0,0,0)"
-          );
-
-          ctx.save();
-
-          ctx.globalCompositeOperation =
-            "screen";
-
-          ctx.fillStyle =
-            purpleGradient;
-
-          ctx.fillRect(
-            0,
-            0,
+          drawOverlay(
+            ctx,
             width,
-            height
+            height,
+            "rgba(145,65,255,1)",
+            0.08 +
+              amount * 0.20,
+            "soft-light"
           );
 
-          ctx.restore();
+          drawVignette(
+            ctx,
+            width,
+            height,
+            0.04 +
+              amount * 0.12
+          );
 
           return;
         }
@@ -1488,56 +1178,30 @@ const AIEffects = ({
           activeEffect ===
           "neon"
         ) {
-          ctx.filter =
-            `saturate(${1.25 +
-              amount *
-                0.90}) contrast(${1.05 +
-              amount *
-                0.28}) brightness(${1 +
-              amount *
-                0.03}) hue-rotate(${amount *
-              8}deg)`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#00eaff",
-            0.025 +
-              amount *
-                0.10,
+            `saturate(${1.25 + amount * 1.4}) contrast(${1.08 + amount * 0.30}) brightness(${1.01 + amount * 0.05}) hue-rotate(${amount * 18}deg)`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(20,210,255,1)",
+            amount * 0.08,
             "screen"
           );
 
-          drawColorOverlay(
+          drawOverlay(
             ctx,
             width,
             height,
-            "#ff00e6",
-            0.018 +
-              amount *
-                0.075,
-            "screen"
-          );
-
-          drawVignette(
-            ctx,
-            width,
-            height,
-            0.04 +
-              amount *
-                0.14
+            "rgba(200,20,255,1)",
+            amount * 0.07,
+            "soft-light"
           );
 
           return;
@@ -1551,44 +1215,20 @@ const AIEffects = ({
           activeEffect ===
           "drama"
         ) {
-          ctx.filter =
-            `contrast(${1.12 +
-              amount *
-                0.42}) saturate(${0.94 +
-              amount *
-                0.12}) brightness(${0.99 -
-              amount *
-                0.07})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#101827",
-            0.025 +
-              amount *
-                0.08,
-            "multiply"
+            `contrast(${1.10 + amount * 0.50}) saturate(${0.92 + amount * 0.20}) brightness(${0.98 - amount * 0.05})`
           );
 
           drawVignette(
             ctx,
             width,
             height,
-            0.12 +
-              amount *
-                0.30
+            0.13 +
+              amount * 0.30
           );
 
           return;
@@ -1602,34 +1242,20 @@ const AIEffects = ({
           activeEffect ===
           "film"
         ) {
-          ctx.filter =
-            `contrast(${1.02 +
-              amount *
-                0.14}) saturate(${0.88 +
-              amount *
-                0.08}) brightness(${1.01 -
-              amount *
-                0.02})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#c49a6c",
-            0.025 +
-              amount *
-                0.06,
+            `contrast(${1.02 + amount * 0.16}) saturate(${0.90 + amount * 0.18}) brightness(${1.01 - amount * 0.02}) sepia(${amount * 0.10})`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(255,210,150,1)",
+            amount * 0.04,
             "soft-light"
           );
 
@@ -1638,8 +1264,7 @@ const AIEffects = ({
             width,
             height,
             0.05 +
-              amount *
-                0.18
+              amount * 0.16
           );
 
           return;
@@ -1653,37 +1278,20 @@ const AIEffects = ({
           activeEffect ===
           "soft-focus"
         ) {
-          const blur =
-            0.25 +
-            amount *
-              1.35;
-
-          ctx.filter =
-            `blur(${blur}px) brightness(${1.01 +
-              amount *
-                0.06}) saturate(${1.01 +
-              amount *
-                0.08})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#ffffff",
-            0.015 +
-              amount *
-                0.065,
+            `blur(${0.25 + amount * 1.1}px) brightness(${1.01 + amount * 0.06}) saturate(${1.01 + amount * 0.08})`
+          );
+
+          drawOverlay(
+            ctx,
+            width,
+            height,
+            "rgba(255,255,255,1)",
+            amount * 0.05,
             "screen"
           );
 
@@ -1698,41 +1306,20 @@ const AIEffects = ({
           activeEffect ===
           "face-focus"
         ) {
-          ctx.filter =
-            `contrast(${1.01 +
-              amount *
-                0.08}) saturate(${1 +
-              amount *
-                0.08})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
+            ctx,
             width,
-            height
+            height,
+            `contrast(${1.02 + amount * 0.10}) saturate(${1 + amount * 0.08})`
           );
-
-          ctx.filter =
-            "none";
-
-          /*
-           * Visual cinematic focus.
-           *
-           * This does NOT perform face detection.
-           * It creates a focus area around the
-           * normal portrait region.
-           */
 
           drawVignette(
             ctx,
             width,
             height,
-            0.10 +
-              amount *
-                0.34,
-            0.5,
-            0.40
+            0.08 +
+              amount * 0.38
           );
 
           return;
@@ -1746,35 +1333,12 @@ const AIEffects = ({
           activeEffect ===
           "hdr"
         ) {
-          ctx.filter =
-            `contrast(${1.04 +
-              amount *
-                0.28}) saturate(${1.04 +
-              amount *
-                0.30}) brightness(${1.01 +
-              amount *
-                0.04})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
-            width,
-            height
-          );
-
-          ctx.filter =
-            "none";
-
-          drawColorOverlay(
             ctx,
             width,
             height,
-            "#ffffff",
-            0.01 +
-              amount *
-                0.035,
-            "screen"
+            `contrast(${1.08 + amount * 0.42}) saturate(${1.08 + amount * 0.50}) brightness(${1.01 + amount * 0.05})`
           );
 
           return;
@@ -1788,29 +1352,20 @@ const AIEffects = ({
           activeEffect ===
           "duo-tone"
         ) {
-          ctx.filter =
-            `contrast(${1.03 +
-              amount *
-                0.18}) saturate(${0.92 +
-              amount *
-                0.16})`;
-
-          ctx.drawImage(
+          drawBase(
             video,
-            0,
-            0,
+            ctx,
             width,
-            height
+            height,
+            `saturate(${0.82 + amount * 0.28}) contrast(${1.02 + amount * 0.16})`
           );
-
-          ctx.filter =
-            "none";
 
           drawDuoTone(
             ctx,
             width,
             height,
-            amount
+            0.20 +
+              amount * 0.35
           );
 
           return;
@@ -1820,21 +1375,17 @@ const AIEffects = ({
            FALLBACK
            ------------------------------------------------- */
 
-        ctx.filter =
-          "none";
-
-        ctx.drawImage(
+        drawBase(
           video,
-          0,
-          0,
+          ctx,
           width,
           height
         );
       },
       [
-        resetCanvas,
+        drawBase,
+        drawOverlay,
         drawVignette,
-        drawColorOverlay,
         drawFaceLight,
         drawDuoTone
       ]
@@ -1867,8 +1418,7 @@ const AIEffects = ({
           !video ||
           !canvas ||
           !ctx ||
-          video.readyState <
-            2
+          video.readyState < 2
         ) {
           animationFrameRef.current =
             requestAnimationFrame(
@@ -1897,10 +1447,8 @@ const AIEffects = ({
         }
 
         if (
-          canvas.width !==
-            width ||
-          canvas.height !==
-            height
+          canvas.width !== width ||
+          canvas.height !== height
         ) {
           prepareCanvas(
             width,
@@ -1909,18 +1457,11 @@ const AIEffects = ({
         }
 
         try {
-          const activeEffect =
-            enabledRef.current
-              ? effectRef.current
-              : "none";
-
           drawEffect(
             video,
             ctx,
             width,
-            height,
-            activeEffect,
-            intensityRef.current
+            height
           );
 
           const now =
@@ -1937,13 +1478,11 @@ const AIEffects = ({
 
           if (
             now -
-              fpsCounterRef.current
-                .time >=
+              fpsCounterRef.current.time >=
             1000
           ) {
             setFps(
-              fpsCounterRef.current
-                .frames
+              fpsCounterRef.current.frames
             );
 
             fpsCounterRef.current = {
@@ -1964,8 +1503,8 @@ const AIEffects = ({
           );
       },
       [
-        prepareCanvas,
-        drawEffect
+        drawEffect,
+        prepareCanvas
       ]
     );
 
@@ -2084,13 +1623,9 @@ const AIEffects = ({
 
       setFps(0);
 
-      if (
-        mountedRef.current
-      ) {
-        setEngineState(
-          "idle"
-        );
-      }
+      setEngineState(
+        "idle"
+      );
     }, []);
 
   /* =======================================================
@@ -2132,7 +1667,7 @@ const AIEffects = ({
 
           setError(
             err?.message ||
-              "Unable to start effects processing."
+              "Unable to start camera effects."
           );
 
           setEngineState(
@@ -2148,7 +1683,7 @@ const AIEffects = ({
     );
 
   /* =======================================================
-     RESTART PROCESSING
+     RESTART ENGINE
      ======================================================= */
 
   const restart =
@@ -2159,20 +1694,24 @@ const AIEffects = ({
 
         stopProcessing();
 
+        setError("");
+
+        setEngineState(
+          "idle"
+        );
+
         if (
           outputStreamRef.current
         ) {
           outputStreamRef.current
             .getVideoTracks()
-            .forEach(
-              track => {
-                try {
-                  track.stop();
-                } catch {
-                  // Ignore.
-                }
+            .forEach(track => {
+              try {
+                track.stop();
+              } catch {
+                // Ignore.
               }
-            );
+            });
         }
 
         outputStreamRef.current =
@@ -2181,15 +1720,9 @@ const AIEffects = ({
         outputTrackRef.current =
           null;
 
-        setError("");
-
         if (source) {
           await attachStream(
             source
-          );
-        } else {
-          setEngineState(
-            "idle"
           );
         }
       },
@@ -2215,8 +1748,24 @@ const AIEffects = ({
           nextEffect;
 
         setError("");
+
+        if (
+          !processingRef.current
+        ) {
+          const source =
+            getSourceStream();
+
+          if (source) {
+            attachStream(
+              source
+            );
+          }
+        }
       },
-      []
+      [
+        getSourceStream,
+        attachStream
+      ]
     );
 
   /* =======================================================
@@ -2237,30 +1786,6 @@ const AIEffects = ({
     );
 
   /* =======================================================
-     INTENSITY
-     ======================================================= */
-
-  const handleIntensity =
-    useCallback(
-      value => {
-        const next =
-          clamp(
-            Number(value),
-            0,
-            100
-          );
-
-        setIntensity(
-          next
-        );
-
-        intensityRef.current =
-          next;
-      },
-      []
-    );
-
-  /* =======================================================
      SOURCE STREAM CHANGES
      ======================================================= */
 
@@ -2269,6 +1794,10 @@ const AIEffects = ({
       getSourceStream();
 
     if (!source) {
+      setEngineState(
+        "idle"
+      );
+
       return undefined;
     }
 
@@ -2286,7 +1815,7 @@ const AIEffects = ({
   ]);
 
   /* =======================================================
-     PREVIEW
+     PREVIEW CONNECTION
      ======================================================= */
 
   useEffect(() => {
@@ -2299,8 +1828,7 @@ const AIEffects = ({
     if (
       preview &&
       output &&
-      preview.srcObject !==
-        output
+      preview.srcObject !== output
     ) {
       preview.srcObject =
         output;
@@ -2360,8 +1888,8 @@ const AIEffects = ({
       /*
        * IMPORTANT:
        *
-       * Never stop the original camera
-       * or microphone tracks.
+       * Never stop the original
+       * camera or microphone tracks.
        */
 
       if (
@@ -2369,15 +1897,13 @@ const AIEffects = ({
       ) {
         outputStreamRef.current
           .getVideoTracks()
-          .forEach(
-            track => {
-              try {
-                track.stop();
-              } catch {
-                // Ignore.
-              }
+          .forEach(track => {
+            try {
+              track.stop();
+            } catch {
+              // Ignore.
             }
-          );
+          });
       }
 
       outputStreamRef.current =
@@ -2424,8 +1950,7 @@ const AIEffects = ({
     useMemo(() => {
       if (error) {
         return {
-          label:
-            "Effects error",
+          label: "Effects error",
           icon: CircleAlert,
           className:
             "text-red-300 bg-red-500/10 border-red-400/20"
@@ -2437,8 +1962,7 @@ const AIEffects = ({
         "loading"
       ) {
         return {
-          label:
-            "Starting camera",
+          label: "Starting camera",
           icon: Loader2,
           className:
             "text-amber-300 bg-amber-500/10 border-amber-400/20"
@@ -2450,8 +1974,7 @@ const AIEffects = ({
         "processing"
       ) {
         return {
-          label:
-            "Effects active",
+          label: "Effects active",
           icon: Zap,
           className:
             "text-cyan-300 bg-cyan-500/10 border-cyan-400/20"
@@ -2459,8 +1982,7 @@ const AIEffects = ({
       }
 
       return {
-        label:
-          "Effects ready",
+        label: "Ready",
         icon: CircleCheck,
         className:
           "text-emerald-300 bg-emerald-500/10 border-emerald-400/20"
@@ -2497,7 +2019,9 @@ const AIEffects = ({
           backdrop-blur-3xl
         "
       >
-        {/* HEADER */}
+        {/* =================================================
+            HEADER
+            ================================================= */}
 
         <div
           className="
@@ -2570,7 +2094,7 @@ const AIEffects = ({
               </div>
 
               <p className="mt-0.5 text-[9px] font-semibold text-white/35">
-                Real-time camera effects
+                Professional real-time camera effects
               </p>
             </div>
           </div>
@@ -2623,7 +2147,9 @@ const AIEffects = ({
           </button>
         </div>
 
-        {/* STATUS */}
+        {/* =================================================
+            STATUS
+            ================================================= */}
 
         <div className="px-5 pt-4">
           <div
@@ -2673,7 +2199,9 @@ const AIEffects = ({
           </div>
         </div>
 
-        {/* PREVIEW */}
+        {/* =================================================
+            PREVIEW
+            ================================================= */}
 
         {!compact &&
           previewOpen && (
@@ -2760,6 +2288,31 @@ const AIEffects = ({
                   </span>
                 </div>
 
+                <div
+                  className="
+                    absolute
+                    bottom-3
+                    left-3
+                    rounded-full
+                    border
+                    border-white/10
+                    bg-black/60
+                    px-3
+                    py-1.5
+                    backdrop-blur-xl
+                  "
+                >
+                  <span className="text-[8px] font-black uppercase tracking-widest text-white/60">
+                    {
+                      EFFECTS.find(
+                        item =>
+                          item.id ===
+                          effect
+                      )?.name
+                    }
+                  </span>
+                </div>
+
                 <button
                   type="button"
                   onClick={() =>
@@ -2795,13 +2348,15 @@ const AIEffects = ({
             </div>
           )}
 
-        {/* EFFECT SELECTOR */}
+        {/* =================================================
+            EFFECTS HEADER
+            ================================================= */}
 
         <div className="px-5 pt-5">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">
-                Effects
+                Effects Library
               </p>
 
               <p className="mt-1 text-xs font-bold text-white/75">
@@ -2841,7 +2396,9 @@ const AIEffects = ({
             )}
           </div>
 
-          {/* CATEGORY TABS */}
+          {/* =================================================
+              CATEGORY FILTER
+              ================================================= */}
 
           <div
             className="
@@ -2853,49 +2410,56 @@ const AIEffects = ({
               scrollbar-none
             "
           >
-            {CATEGORIES.map(
-              item => {
-                const selected =
-                  category ===
-                  item;
+            {CATEGORIES.map(item => {
+              const selected =
+                category ===
+                item;
 
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() =>
-                      setCategory(
-                        item
-                      )
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() =>
+                    setCategory(
+                      item
+                    )
+                  }
+                  className={`
+                    shrink-0
+                    rounded-full
+                    border
+                    px-3
+                    py-1.5
+                    text-[8px]
+                    font-black
+                    uppercase
+                    tracking-wider
+                    transition
+                    ${
+                      selected
+                        ? "border-cyan-300/25 bg-cyan-400/10 text-cyan-300"
+                        : "border-white/[0.06] bg-white/[0.025] text-white/35 hover:bg-white/[0.05] hover:text-white/65"
                     }
-                    className={`
-                      shrink-0
-                      rounded-full
-                      border
-                      px-3
-                      py-1.5
-                      text-[7px]
-                      font-black
-                      uppercase
-                      tracking-widest
-                      transition
-                      ${
-                        selected
-                          ? "border-cyan-300/25 bg-cyan-300/10 text-cyan-300"
-                          : "border-white/[0.07] bg-white/[0.025] text-white/30 hover:bg-white/5 hover:text-white/60"
-                      }
-                    `}
-                  >
-                    {item}
-                  </button>
-                );
-              }
-            )}
+                  `}
+                >
+                  {item}
+                </button>
+              );
+            })}
           </div>
 
-          {/* EFFECT GRID */}
+          {/* =================================================
+              EFFECT GRID
+              ================================================= */}
 
-          <div className="grid grid-cols-2 gap-2">
+          <div
+            className="
+              grid
+              grid-cols-2
+              gap-2
+              sm:grid-cols-3
+            "
+          >
             {visibleEffects.map(
               item => {
                 const Icon =
@@ -2907,7 +2471,9 @@ const AIEffects = ({
 
                 return (
                   <button
-                    key={item.id}
+                    key={
+                      item.id
+                    }
                     type="button"
                     onClick={() =>
                       handleEffectChange(
@@ -3001,7 +2567,9 @@ const AIEffects = ({
           </div>
         </div>
 
-        {/* INTENSITY */}
+        {/* =================================================
+            INTENSITY
+            ================================================= */}
 
         <div className="px-5 pt-5">
           <div
@@ -3038,9 +2606,15 @@ const AIEffects = ({
                 intensity
               }
               onChange={event =>
-                handleIntensity(
-                  event.target
-                    .value
+                setIntensity(
+                  clamp(
+                    Number(
+                      event.target
+                        .value
+                    ),
+                    0,
+                    100
+                  )
                 )
               }
               className="
@@ -3066,7 +2640,9 @@ const AIEffects = ({
           </div>
         </div>
 
-        {/* ADVANCED */}
+        {/* =================================================
+            ADVANCED
+            ================================================= */}
 
         <div className="px-5 pt-3">
           <button
@@ -3135,17 +2711,16 @@ const AIEffects = ({
 
                 <div>
                   <p className="text-[9px] font-black text-white/65">
-                    Real-time Effects Engine
+                    Real-time browser effects
                   </p>
 
                   <p className="mt-1 text-[8px] leading-relaxed text-white/30">
-                    Camera frames are
-                    processed directly
-                    in your browser.
-                    The original camera
-                    and microphone
-                    tracks remain
-                    untouched.
+                    Effects are processed
+                    directly in your browser
+                    using the camera video
+                    canvas. Your original
+                    camera and microphone
+                    tracks remain untouched.
                   </p>
                 </div>
               </div>
@@ -3181,13 +2756,15 @@ const AIEffects = ({
                   size={12}
                 />
 
-                Restart Effects
+                Restart Effects Engine
               </button>
             </div>
           )}
         </div>
 
-        {/* ERROR */}
+        {/* =================================================
+            ERROR
+            ================================================= */}
 
         {error && (
           <div className="px-5 pt-3">
@@ -3220,7 +2797,9 @@ const AIEffects = ({
           </div>
         )}
 
-        {/* FOOTER */}
+        {/* =================================================
+            FOOTER
+            ================================================= */}
 
         <div
           className="
@@ -3251,4 +2830,4 @@ const AIEffects = ({
 };
 
 export default AIEffects;
-```
+
