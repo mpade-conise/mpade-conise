@@ -1,4 +1,3 @@
-```jsx
 import React, {
   useCallback,
   useEffect,
@@ -198,6 +197,7 @@ const AIEffects = ({
      ======================================================= */
 
   const mountedRef = useRef(false);
+  const startingRef = useRef(false);
 
   /* =======================================================
      SOURCE
@@ -240,18 +240,19 @@ const AIEffects = ({
      CALLBACK REFS
      ======================================================= */
 
-  const onProcessedStreamRef =
-    useRef(onProcessedStream);
+  const onProcessedStreamRef = useRef(
+    onProcessedStream
+  );
 
-  const onProcessedTrackRef =
-    useRef(onProcessedTrack);
+  const onProcessedTrackRef = useRef(
+    onProcessedTrack
+  );
 
   /* =======================================================
      PREVIEW
      ======================================================= */
 
-  const previewVideoRef =
-    useRef(null);
+  const previewVideoRef = useRef(null);
 
   /* =======================================================
      FPS
@@ -324,7 +325,7 @@ const AIEffects = ({
           try {
             track.stop();
           } catch {
-            // Ignore.
+            /* Ignore cleanup errors. */
           }
         });
     }
@@ -343,7 +344,7 @@ const AIEffects = ({
         sourceVideoRef.current.pause();
         sourceVideoRef.current.srcObject = null;
       } catch {
-        // Ignore.
+        /* Ignore cleanup errors. */
       }
     }
 
@@ -375,6 +376,15 @@ const AIEffects = ({
       if (!source) {
         throw new Error(
           "No camera stream is available."
+        );
+      }
+
+      if (
+        typeof source.getVideoTracks !==
+        "function"
+      ) {
+        throw new Error(
+          "Invalid camera stream."
         );
       }
 
@@ -480,7 +490,11 @@ const AIEffects = ({
       try {
         await video.play();
       } catch {
-        // Muted autoplay may be delayed by the browser.
+        /* Browser may delay muted playback. */
+      }
+
+      if (!mountedRef.current) {
+        return video;
       }
 
       sourceVideoRef.current = video;
@@ -498,9 +512,7 @@ const AIEffects = ({
     (width, height) => {
       if (!canvasRef.current) {
         canvasRef.current =
-          document.createElement(
-            "canvas"
-          );
+          document.createElement("canvas");
       }
 
       const canvas =
@@ -555,9 +567,7 @@ const AIEffects = ({
       cleanupOutput();
 
       const output =
-        canvasRef.current.captureStream(
-          30
-        );
+        canvasRef.current.captureStream(30);
 
       const videoTrack =
         output.getVideoTracks()[0];
@@ -576,13 +586,17 @@ const AIEffects = ({
 
       /*
        * Preserve original audio.
-       * The effects engine processes video only.
+       * Only the video is processed.
        */
 
       const source =
         sourceStreamRef.current;
 
-      if (source) {
+      if (
+        source &&
+        typeof source.getAudioTracks ===
+          "function"
+      ) {
         source
           .getAudioTracks()
           .forEach(audioTrack => {
@@ -601,7 +615,7 @@ const AIEffects = ({
                   audioTrack
                 );
               } catch {
-                // Ignore duplicate-track errors.
+                /* Ignore duplicate track errors. */
               }
             }
           });
@@ -732,11 +746,6 @@ const AIEffects = ({
         "rgba(0,0,0,0.015)"
       );
 
-      /*
-       * IMPORTANT:
-       * Avoid multiline template literals here.
-       * This keeps the Vercel/Rolldown parser happy.
-       */
       gradient.addColorStop(
         1,
         "rgba(0,0,0," +
@@ -906,26 +915,17 @@ const AIEffects = ({
       const amount =
         intensityRef.current / 100;
 
-      /* ORIGINAL */
-
-      if (
-        activeEffect === "none"
-      ) {
+      if (activeEffect === "none") {
         drawBase(
           video,
           ctx,
           width,
           height
         );
-
         return;
       }
 
-      /* BEAUTY */
-
-      if (
-        activeEffect === "beauty"
-      ) {
+      if (activeEffect === "beauty") {
         drawBase(
           video,
           ctx,
@@ -955,11 +955,7 @@ const AIEffects = ({
         return;
       }
 
-      /* FACE LIGHT */
-
-      if (
-        activeEffect === "face-light"
-      ) {
+      if (activeEffect === "face-light") {
         drawBase(
           video,
           ctx,
@@ -981,18 +977,14 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          0.10 +
+          0.1 +
             amount * 0.24
         );
 
         return;
       }
 
-      /* CINEMATIC */
-
-      if (
-        activeEffect === "cinematic"
-      ) {
+      if (activeEffect === "cinematic") {
         drawBase(
           video,
           ctx,
@@ -1039,11 +1031,7 @@ const AIEffects = ({
         return;
       }
 
-      /* VIVID */
-
-      if (
-        activeEffect === "vivid"
-      ) {
+      if (activeEffect === "vivid") {
         drawBase(
           video,
           ctx,
@@ -1064,11 +1052,7 @@ const AIEffects = ({
         return;
       }
 
-      /* WARM */
-
-      if (
-        activeEffect === "warm"
-      ) {
+      if (activeEffect === "warm") {
         drawBase(
           video,
           ctx,
@@ -1090,18 +1074,14 @@ const AIEffects = ({
           width,
           height,
           "rgba(255,155,70,1)",
-          amount * 0.10,
+          amount * 0.1,
           "soft-light"
         );
 
         return;
       }
 
-      /* COOL */
-
-      if (
-        activeEffect === "cool"
-      ) {
+      if (activeEffect === "cool") {
         drawBase(
           video,
           ctx,
@@ -1123,18 +1103,14 @@ const AIEffects = ({
           width,
           height,
           "rgba(50,130,255,1)",
-          amount * 0.10,
+          amount * 0.1,
           "soft-light"
         );
 
         return;
       }
 
-      /* NOIR */
-
-      if (
-        activeEffect === "noir"
-      ) {
+      if (activeEffect === "noir") {
         drawBase(
           video,
           ctx,
@@ -1153,25 +1129,21 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          0.10 +
+          0.1 +
             amount * 0.25
         );
 
         return;
       }
 
-      /* VINTAGE */
-
-      if (
-        activeEffect === "vintage"
-      ) {
+      if (activeEffect === "vintage") {
         drawBase(
           video,
           ctx,
           width,
           height,
           "sepia(" +
-            (0.20 +
+            (0.2 +
               amount * 0.38) +
             ") saturate(" +
             (0.82 +
@@ -1199,17 +1171,13 @@ const AIEffects = ({
           width,
           height,
           0.08 +
-            amount * 0.20
+            amount * 0.2
         );
 
         return;
       }
 
-      /* DREAM */
-
-      if (
-        activeEffect === "dream"
-      ) {
+      if (activeEffect === "dream") {
         drawBase(
           video,
           ctx,
@@ -1243,10 +1211,9 @@ const AIEffects = ({
         return;
       }
 
-      /* PURPLE GLOW */
-
       if (
-        activeEffect === "purple-glow"
+        activeEffect ===
+        "purple-glow"
       ) {
         drawBase(
           video,
@@ -1268,7 +1235,7 @@ const AIEffects = ({
           height,
           "rgba(145,65,255,1)",
           0.08 +
-            amount * 0.20,
+            amount * 0.2,
           "soft-light"
         );
 
@@ -1283,11 +1250,7 @@ const AIEffects = ({
         return;
       }
 
-      /* NEON */
-
-      if (
-        activeEffect === "neon"
-      ) {
+      if (activeEffect === "neon") {
         drawBase(
           video,
           ctx,
@@ -1298,7 +1261,7 @@ const AIEffects = ({
               amount * 1.4) +
             ") contrast(" +
             (1.08 +
-              amount * 0.30) +
+              amount * 0.3) +
             ") brightness(" +
             (1.01 +
               amount * 0.05) +
@@ -1328,22 +1291,18 @@ const AIEffects = ({
         return;
       }
 
-      /* DRAMA */
-
-      if (
-        activeEffect === "drama"
-      ) {
+      if (activeEffect === "drama") {
         drawBase(
           video,
           ctx,
           width,
           height,
           "contrast(" +
-            (1.10 +
-              amount * 0.50) +
+            (1.1 +
+              amount * 0.5) +
             ") saturate(" +
             (0.92 +
-              amount * 0.20) +
+              amount * 0.2) +
             ") brightness(" +
             (0.98 -
               amount * 0.05) +
@@ -1355,17 +1314,13 @@ const AIEffects = ({
           width,
           height,
           0.13 +
-            amount * 0.30
+            amount * 0.3
         );
 
         return;
       }
 
-      /* FILM */
-
-      if (
-        activeEffect === "film"
-      ) {
+      if (activeEffect === "film") {
         drawBase(
           video,
           ctx,
@@ -1375,13 +1330,13 @@ const AIEffects = ({
             (1.02 +
               amount * 0.16) +
             ") saturate(" +
-            (0.90 +
+            (0.9 +
               amount * 0.18) +
             ") brightness(" +
             (1.01 -
               amount * 0.02) +
             ") sepia(" +
-            amount * 0.10 +
+            amount * 0.1 +
             ")"
         );
 
@@ -1405,10 +1360,9 @@ const AIEffects = ({
         return;
       }
 
-      /* SOFT FOCUS */
-
       if (
-        activeEffect === "soft-focus"
+        activeEffect ===
+        "soft-focus"
       ) {
         drawBase(
           video,
@@ -1439,10 +1393,9 @@ const AIEffects = ({
         return;
       }
 
-      /* FACE FOCUS */
-
       if (
-        activeEffect === "face-focus"
+        activeEffect ===
+        "face-focus"
       ) {
         drawBase(
           video,
@@ -1451,7 +1404,7 @@ const AIEffects = ({
           height,
           "contrast(" +
             (1.02 +
-              amount * 0.10) +
+              amount * 0.1) +
             ") saturate(" +
             (1 +
               amount * 0.08) +
@@ -1469,11 +1422,7 @@ const AIEffects = ({
         return;
       }
 
-      /* HDR */
-
-      if (
-        activeEffect === "hdr"
-      ) {
+      if (activeEffect === "hdr") {
         drawBase(
           video,
           ctx,
@@ -1484,7 +1433,7 @@ const AIEffects = ({
               amount * 0.42) +
             ") saturate(" +
             (1.08 +
-              amount * 0.50) +
+              amount * 0.5) +
             ") brightness(" +
             (1.01 +
               amount * 0.05) +
@@ -1494,10 +1443,9 @@ const AIEffects = ({
         return;
       }
 
-      /* DUO TONE */
-
       if (
-        activeEffect === "duo-tone"
+        activeEffect ===
+        "duo-tone"
       ) {
         drawBase(
           video,
@@ -1517,14 +1465,12 @@ const AIEffects = ({
           ctx,
           width,
           height,
-          0.20 +
+          0.2 +
             amount * 0.35
         );
 
         return;
       }
-
-      /* FALLBACK */
 
       drawBase(
         video,
@@ -1675,105 +1621,109 @@ const AIEffects = ({
           return outputStreamRef.current;
         }
 
-        if (
-          processingRef.current &&
-          processedSourceRef.current !==
-            source
-        ) {
+        if (startingRef.current) {
+          return outputStreamRef.current;
+        }
+
+        startingRef.current = true;
+
+        try {
+          if (
+            processingRef.current &&
+            processedSourceRef.current !==
+              source
+          ) {
+            processingRef.current =
+              false;
+
+            processedSourceRef.current =
+              null;
+
+            stopAnimation();
+            cleanupOutput();
+            cleanupSourceVideo();
+          }
+
+          setEngineState("loading");
+
+          sourceStreamRef.current =
+            source;
+
+          const video =
+            await createSourceVideo(
+              source
+            );
+
+          if (!mountedRef.current) {
+            return null;
+          }
+
+          const width =
+            video.videoWidth || 1280;
+
+          const height =
+            video.videoHeight || 720;
+
+          prepareCanvas(
+            width,
+            height
+          );
+
+          const output =
+            createOutputStream();
+
+          if (!output) {
+            throw new Error(
+              "Unable to create processed camera stream."
+            );
+          }
+
+          processedSourceRef.current =
+            source;
+
           processingRef.current =
-            false;
+            true;
+
+          setEngineState(
+            "processing"
+          );
+
+          fpsCounterRef.current = {
+            frames: 0,
+            time: performance.now()
+          };
 
           stopAnimation();
 
-          cleanupOutput();
+          animationFrameRef.current =
+            requestAnimationFrame(
+              processFrame
+            );
 
-          cleanupSourceVideo();
+          const streamCallback =
+            onProcessedStreamRef.current;
+
+          const trackCallback =
+            onProcessedTrackRef.current;
+
+          if (streamCallback) {
+            streamCallback(output);
+          }
+
+          if (
+            trackCallback &&
+            outputTrackRef.current
+          ) {
+            trackCallback(
+              outputTrackRef.current,
+              output
+            );
+          }
+
+          return output;
+        } finally {
+          startingRef.current = false;
         }
-
-        setEngineState(
-          "loading"
-        );
-
-        sourceStreamRef.current =
-          source;
-
-        const video =
-          await createSourceVideo(
-            source
-          );
-
-        if (!mountedRef.current) {
-          return null;
-        }
-
-        const width =
-          video.videoWidth || 1280;
-
-        const height =
-          video.videoHeight || 720;
-
-        prepareCanvas(
-          width,
-          height
-        );
-
-        const output =
-          createOutputStream();
-
-        if (!output) {
-          throw new Error(
-            "Unable to create processed camera stream."
-          );
-        }
-
-        processedSourceRef.current =
-          source;
-
-        processingRef.current =
-          true;
-
-        setEngineState(
-          "processing"
-        );
-
-        fpsCounterRef.current = {
-          frames: 0,
-          time: performance.now()
-        };
-
-        stopAnimation();
-
-        animationFrameRef.current =
-          requestAnimationFrame(
-            processFrame
-          );
-
-        /*
-         * Read callbacks from refs.
-         * This prevents the React #185 loop.
-         */
-
-        const streamCallback =
-          onProcessedStreamRef.current;
-
-        const trackCallback =
-          onProcessedTrackRef.current;
-
-        if (streamCallback) {
-          streamCallback(output);
-        }
-
-        if (
-          trackCallback &&
-          outputTrackRef.current
-        ) {
-          trackCallback(
-            outputTrackRef.current,
-            output
-          );
-        }
-
-        return output;
       },
       [
         cleanupOutput,
@@ -1802,9 +1752,7 @@ const AIEffects = ({
 
       setFps(0);
 
-      setEngineState(
-        "idle"
-      );
+      setEngineState("idle");
     }, [stopAnimation]);
 
   /* =======================================================
@@ -1840,13 +1788,13 @@ const AIEffects = ({
 
           if (mountedRef.current) {
             setError(
-              err?.message ||
-                "Unable to start camera effects."
+              err &&
+              err.message
+                ? err.message
+                : "Unable to start camera effects."
             );
 
-            setEngineState(
-              "error"
-            );
+            setEngineState("error");
           }
 
           return null;
@@ -2017,6 +1965,9 @@ const AIEffects = ({
       mountedRef.current =
         false;
 
+      startingRef.current =
+        false;
+
       processingRef.current =
         false;
 
@@ -2133,7 +2084,10 @@ const AIEffects = ({
 
   return (
     <div
-     className={"relative w-full text-white " + (className || "")}
+      className={
+        "relative w-full text-white " +
+        (className || "")
+      }
     >
       <div
         className="
@@ -2234,36 +2188,20 @@ const AIEffects = ({
                 !enabled
               )
             }
-            className={`
-              relative
-              h-8
-              w-14
-              rounded-full
-              border
-              transition-all
-              duration-300
-              ${
-                enabled
-                  ? "border-cyan-300/30 bg-cyan-400/20"
-                  : "border-white/10 bg-white/5"
-              }
-            `}
+            className={
+              "relative h-8 w-14 rounded-full border transition-all duration-300 " +
+              (enabled
+                ? "border-cyan-300/30 bg-cyan-400/20"
+                : "border-white/10 bg-white/5")
+            }
           >
             <span
-              className={`
-                absolute
-                top-1
-                h-6
-                w-6
-                rounded-full
-                transition-all
-                duration-300
-                ${
-                  enabled
-                    ? "left-7 bg-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.6)]"
-                    : "left-1 bg-white/30"
-                }
-              `}
+              className={
+                "absolute top-1 h-6 w-6 rounded-full transition-all duration-300 " +
+                (enabled
+                  ? "left-7 bg-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.6)]"
+                  : "left-1 bg-white/30")
+              }
             />
           </button>
         </div>
@@ -2272,16 +2210,10 @@ const AIEffects = ({
 
         <div className="px-5 pt-4">
           <div
-            className={`
-              flex
-              items-center
-              justify-between
-              rounded-2xl
-              border
-              px-3
-              py-2.5
-              ${status.className}
-            `}
+            className={
+              "flex items-center justify-between rounded-2xl border px-3 py-2.5 " +
+              (status.className || "")
+            }
           >
             <div className="flex items-center gap-2">
               <StatusIcon
@@ -2413,8 +2345,10 @@ const AIEffects = ({
                   "
                 >
                   <span className="text-[8px] font-black uppercase tracking-widest text-white/60">
-                    {selectedEffect?.name ||
-                      "Original"}
+                    {selectedEffect &&
+                    selectedEffect.name
+                      ? selectedEffect.name
+                      : "Original"}
                   </span>
                 </div>
 
@@ -2520,23 +2454,12 @@ const AIEffects = ({
                   onClick={() =>
                     setCategory(item)
                   }
-                  className={`
-                    shrink-0
-                    rounded-full
-                    border
-                    px-3
-                    py-1.5
-                    text-[8px]
-                    font-black
-                    uppercase
-                    tracking-wider
-                    transition
-                    ${
-                      selected
-                        ? "border-cyan-300/25 bg-cyan-400/10 text-cyan-300"
-                        : "border-white/[0.06] bg-white/[0.025] text-white/35 hover:bg-white/[0.05] hover:text-white/65"
-                    }
-                  `}
+                  className={
+                    "shrink-0 rounded-full border px-3 py-1.5 text-[8px] font-black uppercase tracking-wider transition " +
+                    (selected
+                      ? "border-cyan-300/25 bg-cyan-400/10 text-cyan-300"
+                      : "border-white/[0.06] bg-white/[0.025] text-white/35 hover:bg-white/[0.05] hover:text-white/65")
+                  }
                 >
                   {item}
                 </button>
@@ -2554,106 +2477,79 @@ const AIEffects = ({
               sm:grid-cols-3
             "
           >
-            {visibleEffects.map(
-              item => {
-                const Icon =
-                  item.icon;
+            {visibleEffects.map(item => {
+              const Icon =
+                item.icon;
 
-                const selected =
-                  effect ===
-                  item.id;
+              const selected =
+                effect === item.id;
 
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() =>
-                      handleEffectChange(
-                        item.id
-                      )
-                    }
-                    className={`
-                      group
-                      relative
-                      overflow-hidden
-                      rounded-2xl
-                      border
-                      p-3
-                      text-left
-                      transition-all
-                      duration-200
-                      ${
-                        selected
-                          ? "border-cyan-300/30 bg-cyan-400/[0.09] shadow-[0_0_30px_rgba(34,211,238,0.08)]"
-                          : "border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.05]"
-                      }
-                    `}
-                  >
-                    {selected && (
-                      <span
-                        className="
-                          absolute
-                          right-2
-                          top-2
-                          flex
-                          h-4
-                          w-4
-                          items-center
-                          justify-center
-                          rounded-full
-                          bg-cyan-300
-                          text-black
-                        "
-                      >
-                        <CircleCheck
-                          size={10}
-                        />
-                      </span>
-                    )}
-
-                    <div
-                      className={`
-                        mb-2
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() =>
+                    handleEffectChange(
+                      item.id
+                    )
+                  }
+                  className={
+                    "group relative overflow-hidden rounded-2xl border p-3 text-left transition-all duration-200 " +
+                    (selected
+                      ? "border-cyan-300/30 bg-cyan-400/[0.09] shadow-[0_0_30px_rgba(34,211,238,0.08)]"
+                      : "border-white/[0.07] bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.05]")
+                  }
+                >
+                  {selected && (
+                    <span
+                      className="
+                        absolute
+                        right-2
+                        top-2
                         flex
-                        h-9
-                        w-9
+                        h-4
+                        w-4
                         items-center
                         justify-center
-                        rounded-xl
-                        transition
-                        ${
-                          selected
-                            ? "bg-cyan-300 text-black"
-                            : "bg-white/5 text-white/45 group-hover:text-white/75"
-                        }
-                      `}
+                        rounded-full
+                        bg-cyan-300
+                        text-black
+                      "
                     >
-                      <Icon size={16} />
-                    </div>
+                      <CircleCheck
+                        size={10}
+                      />
+                    </span>
+                  )}
 
-                    <p
-                      className={`
-                        text-[10px]
-                        font-black
-                        ${
-                          selected
-                            ? "text-white"
-                            : "text-white/70"
-                        }
-                      `}
-                    >
-                      {item.name}
-                    </p>
+                  <div
+                    className={
+                      "mb-2 flex h-9 w-9 items-center justify-center rounded-xl transition " +
+                      (selected
+                        ? "bg-cyan-300 text-black"
+                        : "bg-white/5 text-white/45 group-hover:text-white/75")
+                    }
+                  >
+                    <Icon size={16} />
+                  </div>
 
-                    <p className="mt-0.5 text-[8px] font-semibold text-white/30">
-                      {
-                        item.description
-                      }
-                    </p>
-                  </button>
-                );
-              }
-            )}
+                  <p
+                    className={
+                      "text-[10px] font-black " +
+                      (selected
+                        ? "text-white"
+                        : "text-white/70")
+                    }
+                  >
+                    {item.name}
+                  </p>
+
+                  <p className="mt-0.5 text-[8px] font-semibold text-white/30">
+                    {item.description}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -2695,8 +2591,7 @@ const AIEffects = ({
                 setIntensity(
                   clamp(
                     Number(
-                      event.target
-                        .value
+                      event.target.value
                     ),
                     0,
                     100
@@ -2715,13 +2610,8 @@ const AIEffects = ({
             />
 
             <div className="mt-2 flex justify-between text-[7px] font-bold uppercase tracking-wider text-white/20">
-              <span>
-                Subtle
-              </span>
-
-              <span>
-                Strong
-              </span>
+              <span>Subtle</span>
+              <span>Strong</span>
             </div>
           </div>
         </div>
@@ -2763,15 +2653,12 @@ const AIEffects = ({
 
             <ChevronDown
               size={13}
-              className={`
-                text-white/25
-                transition-transform
-                ${
-                  showAdvanced
-                    ? "rotate-180"
-                    : ""
-                }
-              `}
+              className={
+                "text-white/25 transition-transform " +
+                (showAdvanced
+                  ? "rotate-180"
+                  : "")
+              }
             />
           </button>
 
@@ -2908,4 +2795,3 @@ const AIEffects = ({
 };
 
 export default AIEffects;
-```
