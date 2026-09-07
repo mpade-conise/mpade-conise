@@ -27,6 +27,7 @@ import StreamHeader from '../Shared/StreamHeader';
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting';
 import GuestManager from '../Shared/GuestManager';
+import AIEffects from '../Shared/AIEffects';
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
 import MultiHostPKBattleBar from '../../../components/live/MultiHostPKBattleBar.jsx';
@@ -53,6 +54,16 @@ const StreamDashboard = () => {
   const [isCameraOff, setIsCameraOff] = useState(false);
 
   const [chatFilter, setChatFilter] = useState('all');
+
+  /* =========================================================
+     AI EFFECTS STATE
+     ========================================================= */
+
+  const [processedVideoStream, setProcessedVideoStream] =
+    useState(null);
+
+  const [processedVideoTrack, setProcessedVideoTrack] =
+    useState(null);
 
   /* =========================================================
      STREAM DATA
@@ -84,6 +95,8 @@ const StreamDashboard = () => {
 
   const challengerVideoRef = useRef(null);
 
+  const processedVideoElementRef = useRef(null);
+
   const mountedRef = useRef(true);
 
   const smallGiftTimerRef = useRef(null);
@@ -106,8 +119,24 @@ const StreamDashboard = () => {
         clearTimeout(smallGiftTimerRef.current);
         smallGiftTimerRef.current = null;
       }
+
+      if (processedVideoElementRef.current) {
+        processedVideoElementRef.current.srcObject = null;
+      }
+
+      if (processedVideoStream) {
+        processedVideoStream
+          .getTracks()
+          .forEach(track => {
+            try {
+              track.stop();
+            } catch {
+              // Track may already be stopped.
+            }
+          });
+      }
     };
-  }, []);
+  }, [processedVideoStream]);
 
   /* =========================================================
      STREAM SOCKET CONTROLLER
@@ -131,14 +160,101 @@ const StreamDashboard = () => {
   const {
     localVideoRef,
     hardwareReady,
-    primaryRemoteStream
+    primaryRemoteStream,
+    localStream
   } = useStreamWebRTC(
     streamId,
     socket,
     isCameraOff,
     isMuted,
-    challengerVideoRef
+    challengerVideoRef,
+    processedVideoTrack
   );
+
+  /* =========================================================
+     AI EFFECTS → PROCESSED VIDEO
+     ========================================================= */
+
+  const handleProcessedStream = stream => {
+    if (!mountedRef.current) return;
+
+    if (!stream) {
+      setProcessedVideoStream(null);
+      setProcessedVideoTrack(null);
+      return;
+    }
+
+    console.log(
+      '🎨 [StreamDashboard] Received processed AI Effects stream.'
+    );
+
+    setProcessedVideoStream(stream);
+
+    const videoTrack =
+      stream.getVideoTracks?.()[0] || null;
+
+    setProcessedVideoTrack(videoTrack);
+
+    if (videoTrack) {
+      console.log(
+        '🎥 [StreamDashboard] Processed video track ready:',
+        videoTrack.id
+      );
+    }
+  };
+
+  const handleProcessedTrack = track => {
+    if (!mountedRef.current) return;
+
+    console.log(
+      '🎥 [StreamDashboard] AI Effects video track:',
+      track?.id || 'none'
+    );
+
+    setProcessedVideoTrack(track || null);
+  };
+
+  /* =========================================================
+     ATTACH PROCESSED STREAM TO HOST PREVIEW
+     ========================================================= */
+
+  useEffect(() => {
+    const videoElement =
+      processedVideoElementRef.current;
+
+    if (!videoElement) return;
+
+    if (!processedVideoStream) {
+      videoElement.srcObject = null;
+      return;
+    }
+
+    if (
+      videoElement.srcObject !==
+      processedVideoStream
+    ) {
+      videoElement.srcObject =
+        processedVideoStream;
+    }
+
+    videoElement
+      .play()
+      .catch(error => {
+        console.warn(
+          '⚠️ [StreamDashboard] Processed preview autoplay:',
+          error
+        );
+      });
+
+    return () => {
+      if (
+        videoElement.srcObject ===
+        processedVideoStream
+      ) {
+        videoElement.srcObject = null;
+      }
+    };
+  }, [processedVideoStream]);
 
   /* =========================================================
      KEEP REF-BASED COLLECTIONS SYNCHRONIZED
@@ -203,7 +319,8 @@ const StreamDashboard = () => {
 
       setBattleScores({
         host: Number(data.host_battle_points) || 0,
-        challenger: Number(data.challenger_battle_points) || 0
+        challenger:
+          Number(data.challenger_battle_points) || 0
       });
     };
 
@@ -305,25 +422,29 @@ const StreamDashboard = () => {
         );
       }
 
-      const approved = approvedResult.data || [];
-      const pending = pendingResult.data || [];
+      const approved =
+        approvedResult.data || [];
 
-      /*
-       * Defensive deduplication.
-       * The database is the source of truth.
-       */
+      const pending =
+        pendingResult.data || [];
 
-      const uniqueApproved = Array.from(
-        new Map(
-          approved.map(guest => [guest.id, guest])
-        ).values()
-      );
+      const uniqueApproved =
+        Array.from(
+          new Map(
+            approved.map(
+              guest => [guest.id, guest]
+            )
+          ).values()
+        );
 
-      const uniquePending = Array.from(
-        new Map(
-          pending.map(request => [request.id, request])
-        ).values()
-      );
+      const uniquePending =
+        Array.from(
+          new Map(
+            pending.map(
+              request => [request.id, request]
+            )
+          ).values()
+        );
 
       setActiveCoHosts(uniqueApproved);
       setPendingRequests(uniquePending);
@@ -347,7 +468,8 @@ const StreamDashboard = () => {
   useEffect(() => {
     if (!streamId) return;
 
-    const channelName = `host_requests_${streamId}`;
+    const channelName =
+      `host_requests_${streamId}`;
 
     console.log(
       '📡 [StreamDashboard] Starting guest realtime:',
@@ -356,10 +478,6 @@ const StreamDashboard = () => {
 
     const channel = supabase
       .channel(channelName)
-
-      /* -----------------------------------------------------
-         NEW REQUEST
-         ----------------------------------------------------- */
 
       .on(
         'postgres_changes',
@@ -374,12 +492,17 @@ const StreamDashboard = () => {
 
           const request = payload.new;
 
-          if (!request || request.status !== 'pending') {
+          if (
+            !request ||
+            request.status !== 'pending'
+          ) {
             return;
           }
 
           if (
-            pendingRequestIdsRef.current.has(request.id)
+            pendingRequestIdsRef.current.has(
+              request.id
+            )
           ) {
             return;
           }
@@ -392,20 +515,20 @@ const StreamDashboard = () => {
           setPendingRequests(previous => {
             if (
               previous.some(
-                item => item.id === request.id
+                item =>
+                  item.id === request.id
               )
             ) {
               return previous;
             }
 
-            return [...previous, request];
+            return [
+              ...previous,
+              request
+            ];
           });
         }
       )
-
-      /* -----------------------------------------------------
-         REQUEST UPDATE
-         ----------------------------------------------------- */
 
       .on(
         'postgres_changes',
@@ -428,39 +551,45 @@ const StreamDashboard = () => {
             updated.status
           );
 
-          /*
-           * APPROVED
-           */
-
-          if (updated.status === 'approved') {
+          if (
+            updated.status === 'approved'
+          ) {
             setPendingRequests(previous =>
               previous.filter(
-                request => request.id !== updated.id
+                request =>
+                  request.id !== updated.id
               )
             );
 
             setActiveCoHosts(previous => {
-              const exists = previous.some(
-                guest => guest.id === updated.id
-              );
+              const exists =
+                previous.some(
+                  guest =>
+                    guest.id ===
+                    updated.id
+                );
 
               if (exists) {
-                return previous.map(guest =>
-                  guest.id === updated.id
-                    ? { ...guest, ...updated }
-                    : guest
+                return previous.map(
+                  guest =>
+                    guest.id ===
+                    updated.id
+                      ? {
+                          ...guest,
+                          ...updated
+                        }
+                      : guest
                 );
               }
 
-              return [...previous, updated];
+              return [
+                ...previous,
+                updated
+              ];
             });
 
             return;
           }
-
-          /*
-           * REMOVED / REJECTED / DISCONNECTED
-           */
 
           if (
             updated.status === 'rejected' ||
@@ -469,27 +598,28 @@ const StreamDashboard = () => {
           ) {
             setPendingRequests(previous =>
               previous.filter(
-                request => request.id !== updated.id
+                request =>
+                  request.id !== updated.id
               )
             );
 
             setActiveCoHosts(previous =>
               previous.filter(
-                guest => guest.id !== updated.id
+                guest =>
+                  guest.id !== updated.id
               )
             );
 
             return;
           }
 
-          /*
-           * OTHER STATUS CHANGES
-           */
-
           setPendingRequests(previous =>
             previous.map(request =>
               request.id === updated.id
-                ? { ...request, ...updated }
+                ? {
+                    ...request,
+                    ...updated
+                  }
                 : request
             )
           );
@@ -497,16 +627,15 @@ const StreamDashboard = () => {
           setActiveCoHosts(previous =>
             previous.map(guest =>
               guest.id === updated.id
-                ? { ...guest, ...updated }
+                ? {
+                    ...guest,
+                    ...updated
+                  }
                 : guest
             )
           );
         }
       )
-
-      /* -----------------------------------------------------
-         REQUEST DELETE
-         ----------------------------------------------------- */
 
       .on(
         'postgres_changes',
@@ -519,19 +648,22 @@ const StreamDashboard = () => {
         payload => {
           if (!mountedRef.current) return;
 
-          const deletedId = payload.old?.id;
+          const deletedId =
+            payload.old?.id;
 
           if (!deletedId) return;
 
           setPendingRequests(previous =>
             previous.filter(
-              request => request.id !== deletedId
+              request =>
+                request.id !== deletedId
             )
           );
 
           setActiveCoHosts(previous =>
             previous.filter(
-              guest => guest.id !== deletedId
+              guest =>
+                guest.id !== deletedId
             )
           );
         }
@@ -559,26 +691,25 @@ const StreamDashboard = () => {
   useEffect(() => {
     if (!activeGift) return;
 
-    const giftPrice = Number(activeGift.price) || 0;
-
-    /*
-     * Small gifts become lightweight particles.
-     * Larger gifts remain with GiftAlertOverlay.
-     */
+    const giftPrice =
+      Number(activeGift.price) || 0;
 
     if (giftPrice < 50) {
       setActiveSmallGift(activeGift);
 
       if (smallGiftTimerRef.current) {
-        clearTimeout(smallGiftTimerRef.current);
+        clearTimeout(
+          smallGiftTimerRef.current
+        );
       }
 
-      smallGiftTimerRef.current = setTimeout(() => {
-        if (!mountedRef.current) return;
+      smallGiftTimerRef.current =
+        setTimeout(() => {
+          if (!mountedRef.current) return;
 
-        setActiveSmallGift(null);
-        smallGiftTimerRef.current = null;
-      }, 2200);
+          setActiveSmallGift(null);
+          smallGiftTimerRef.current = null;
+        }, 2200);
 
       setActiveGift(null);
     }
@@ -610,7 +741,8 @@ const StreamDashboard = () => {
 
       setReactions(previous =>
         previous.filter(
-          item => item.id !== reactionId
+          item =>
+            item.id !== reactionId
         )
       );
     }, 2000);
@@ -623,7 +755,11 @@ const StreamDashboard = () => {
      ========================================================= */
 
   const handleAcceptInvite = async () => {
-    if (!incomingInvite || !socket || !streamId) {
+    if (
+      !incomingInvite ||
+      !socket ||
+      !streamId
+    ) {
       console.warn(
         '⚠️ [Battle] Cannot accept invite.'
       );
@@ -656,10 +792,14 @@ const StreamDashboard = () => {
         }
       );
 
-      socket.emit('accept_battle_invite', {
-        hostRoomId: streamId,
-        challengerRoomId: peerStreamId
-      });
+      socket.emit(
+        'accept_battle_invite',
+        {
+          hostRoomId: streamId,
+          challengerRoomId:
+            peerStreamId
+        }
+      );
 
       setIsBattleMode(true);
       setIncomingInvite(null);
@@ -685,31 +825,33 @@ const StreamDashboard = () => {
       `✅ [Guest] Approving ${request.username || request.user_id} as ${mode}.`
     );
 
-    /*
-     * Prevent double-click duplication.
-     */
-
     if (
-      activeCoHostIdsRef.current.has(request.id)
+      activeCoHostIdsRef.current.has(
+        request.id
+      )
     ) {
       setPendingRequests(previous =>
         previous.filter(
-          item => item.id !== request.id
+          item =>
+            item.id !== request.id
         )
       );
 
       return;
     }
 
-    const { data, error } = await supabase
-      .from('live_guest_requests')
-      .update({
-        status: 'approved',
-        mode
-      })
-      .eq('id', request.id)
-      .select()
-      .single();
+    const { data, error } =
+      await supabase
+        .from(
+          'live_guest_requests'
+        )
+        .update({
+          status: 'approved',
+          mode
+        })
+        .eq('id', request.id)
+        .select()
+        .single();
 
     if (error) {
       console.error(
@@ -719,48 +861,57 @@ const StreamDashboard = () => {
       return;
     }
 
-    const approvedGuest = data || {
-      ...request,
-      status: 'approved',
-      mode
-    };
+    const approvedGuest =
+      data || {
+        ...request,
+        status: 'approved',
+        mode
+      };
 
     setPendingRequests(previous =>
       previous.filter(
-        item => item.id !== request.id
+        item =>
+          item.id !== request.id
       )
     );
 
-    /*
-     * Add only once.
-     */
-
     setActiveCoHosts(previous => {
-      const exists = previous.some(
-        guest => guest.id === approvedGuest.id
-      );
+      const exists =
+        previous.some(
+          guest =>
+            guest.id ===
+            approvedGuest.id
+        );
 
       if (exists) {
-        return previous.map(guest =>
-          guest.id === approvedGuest.id
-            ? { ...guest, ...approvedGuest }
-            : guest
+        return previous.map(
+          guest =>
+            guest.id ===
+            approvedGuest.id
+              ? {
+                  ...guest,
+                  ...approvedGuest
+                }
+              : guest
         );
       }
 
-      return [...previous, approvedGuest];
+      return [
+        ...previous,
+        approvedGuest
+      ];
     });
 
-    /*
-     * Notify backend only after database approval succeeds.
-     */
-
     if (socket?.connected) {
-      socket.emit('approve_cohost', {
-        streamId,
-        guestId: request.user_id,
-        mode
-      });
+      socket.emit(
+        'approve_cohost',
+        {
+          streamId,
+          guestId:
+            request.user_id,
+          mode
+        }
+      );
     } else {
       console.warn(
         '⚠️ [Guest] Socket unavailable during approval.'
@@ -772,199 +923,44 @@ const StreamDashboard = () => {
      GUEST REJECTION
      ========================================================= */
 
-  const handleRejectGuest = async requestId => {
-    if (!requestId) return;
+  const handleRejectGuest =
+    async requestId => {
+      if (!requestId) return;
 
-    console.log(
-      '❌ [Guest] Rejecting request:',
-      requestId
-    );
-
-    const { error } = await supabase
-      .from('live_guest_requests')
-      .update({
-        status: 'rejected'
-      })
-      .eq('id', requestId);
-
-    if (error) {
-      console.error(
-        '❌ [Guest] Rejection failed:',
-        error
+      console.log(
+        '❌ [Guest] Rejecting request:',
+        requestId
       );
-      return;
-    }
 
-    setPendingRequests(previous =>
-      previous.filter(
-        request => request.id !== requestId
-      )
-    );
-  };
+      const { error } =
+        await supabase
+          .from(
+            'live_guest_requests'
+          )
+          .update({
+            status: 'rejected'
+          })
+          .eq(
+            'id',
+            requestId
+          );
 
-  /* =========================================================
-     VIDEO FILTER ENGINE
-     ========================================================= */
-
-  useEffect(() => {
-    const fxState = {
-      smoothing: 3,
-      jawline: 0,
-      eyes: 0,
-      slim: 0,
-      lut: 'none',
-      fx: 'none'
-    };
-
-    const handleFilterChange = event => {
-      const videoElement = localVideoRef.current;
-
-      if (!videoElement) return;
-
-      const detail = event?.detail;
-
-      if (!detail) return;
-
-      const {
-        type,
-        key,
-        value
-      } = detail;
-
-      if (type === 'beautify') {
-        fxState.smoothing =
-          Number.parseFloat(value) || 0;
+      if (error) {
+        console.error(
+          '❌ [Guest] Rejection failed:',
+          error
+        );
+        return;
       }
 
-      if (
-        type === 'morph' &&
-        Object.prototype.hasOwnProperty.call(
-          fxState,
-          key
+      setPendingRequests(previous =>
+        previous.filter(
+          request =>
+            request.id !==
+            requestId
         )
-      ) {
-        fxState[key] =
-          Number.parseFloat(value) || 0;
-      }
-
-      if (type === 'lut') {
-        fxState.lut = key || 'none';
-      }
-
-      if (type === 'fx') {
-        fxState.fx = key || 'none';
-      }
-
-      let filterString = '';
-
-      let transformString =
-        'scaleX(-1)';
-
-      /* ---------------- LUT ---------------- */
-
-      switch (fxState.lut) {
-        case 'retro':
-          filterString +=
-            'sepia(35%) contrast(110%) saturate(90%) hue-rotate(-5deg) ';
-          break;
-
-        case 'cyberpunk':
-          filterString +=
-            'hue-rotate(135deg) saturate(165%) contrast(115%) ';
-          break;
-
-        case 'noir':
-          filterString +=
-            'grayscale(100%) contrast(140%) brightness(95%) ';
-          break;
-
-        case 'golden':
-          filterString +=
-            'sepia(20%) saturate(140%) brightness(105%) hue-rotate(10deg) ';
-          break;
-
-        case 'tropic':
-          filterString +=
-            'saturate(180%) contrast(105%) hue-rotate(-5deg) ';
-          break;
-
-        default:
-          break;
-      }
-
-      /* ---------------- FX ---------------- */
-
-      switch (fxState.fx) {
-        case 'vhs':
-          filterString +=
-            'contrast(120%) saturate(130%) hue-rotate(15deg) brightness(105%) ';
-          break;
-
-        case 'manga':
-          filterString +=
-            'grayscale(100%) contrast(300%) ';
-          break;
-
-        case 'thermal':
-          filterString +=
-            'hue-rotate(240deg) saturate(200%) invert(100%) ';
-          break;
-
-        default:
-          break;
-      }
-
-      /* ---------------- BEAUTIFY ---------------- */
-
-      if (fxState.smoothing > 0) {
-        filterString +=
-          `blur(${fxState.smoothing * 0.15}px) ` +
-          `contrast(${100 + fxState.smoothing * 1.5}%) ` +
-          `brightness(${100 + fxState.smoothing * 1.2}%) `;
-      }
-
-      /* ---------------- FACE MORPH ---------------- */
-
-      if (
-        fxState.slim > 0 ||
-        fxState.jawline > 0
-      ) {
-        const horizontalCompression =
-          1 -
-          fxState.slim * 0.015 -
-          fxState.jawline * 0.008;
-
-        transformString +=
-          ` scaleX(${horizontalCompression})`;
-      }
-
-      if (fxState.eyes > 0) {
-        const eyeExpansion =
-          1 + fxState.eyes * 0.012;
-
-        transformString +=
-          ` scaleY(${eyeExpansion})`;
-      }
-
-      videoElement.style.filter =
-        filterString.trim() || 'none';
-
-      videoElement.style.transform =
-        transformString;
-    };
-
-    window.addEventListener(
-      'mpade-video-filter',
-      handleFilterChange
-    );
-
-    return () => {
-      window.removeEventListener(
-        'mpade-video-filter',
-        handleFilterChange
       );
     };
-  }, [localVideoRef]);
 
   /* =========================================================
      PANEL MANAGEMENT
@@ -972,7 +968,9 @@ const StreamDashboard = () => {
 
   const togglePanel = panel => {
     setActivePanel(previous =>
-      previous === panel ? null : panel
+      previous === panel
+        ? null
+        : panel
     );
   };
 
@@ -993,11 +991,13 @@ const StreamDashboard = () => {
     return (
       <div className="h-[100dvh] w-full bg-black flex items-center justify-center font-black italic text-cyan-400 tracking-widest">
         <div className="flex flex-col items-center gap-4">
+
           <div className="w-10 h-10 border-2 border-cyan-400/20 border-t-cyan-400 rounded-full animate-spin" />
 
           <span className="text-xs">
             CONNECTING TO LIVE STUDIO...
           </span>
+
         </div>
       </div>
     );
@@ -1025,26 +1025,28 @@ const StreamDashboard = () => {
     },
 
     ...(activeCoHosts.length > 0
-      ? activeCoHosts.map((guest, index) => ({
-          id:
-            guest.id ||
-            `cohost-${index}`,
+      ? activeCoHosts.map(
+          (guest, index) => ({
+            id:
+              guest.id ||
+              `cohost-${index}`,
 
-          username:
-            guest.username ||
-            `Host ${index + 2}`,
+            username:
+              guest.username ||
+              `Host ${index + 2}`,
 
-          avatar:
-            guest.avatar_url,
+            avatar:
+              guest.avatar_url,
 
-          score: Math.max(
-            0,
-            battleScores.challenger -
-              index * 120
-          ),
+            score: Math.max(
+              0,
+              battleScores.challenger -
+                index * 120
+            ),
 
-          topGifters: []
-        }))
+            topGifters: []
+          })
+        )
       : [
           {
             id: 'challenger',
@@ -1055,7 +1057,8 @@ const StreamDashboard = () => {
               'https://api.dicebear.com/7.x/avataaars/svg?seed=rival',
 
             score:
-              battleScores.challenger || 0,
+              battleScores.challenger ||
+              0,
 
             topGifters: []
           }
@@ -1068,6 +1071,20 @@ const StreamDashboard = () => {
 
   return (
     <div className="h-[100dvh] w-full bg-zinc-950 text-white overflow-hidden relative font-sans">
+
+      {/* =====================================================
+          AI EFFECTS ENGINE
+          ===================================================== */}
+
+      <AIEffects
+        stream={localStream}
+        onProcessedStream={
+          handleProcessedStream
+        }
+        onProcessedTrack={
+          handleProcessedTrack
+        }
+      />
 
       {/* =====================================================
           MAIN LIVE STAGE
@@ -1095,20 +1112,22 @@ const StreamDashboard = () => {
             <StreamHeader
               data={streamData}
               isHost={true}
-              viewerCount={viewers.length}
-              onLeave={handleLeaveStream}
+              viewerCount={
+                viewers.length
+              }
+              onLeave={
+                handleLeaveStream
+              }
             />
 
-            {/* Goal */}
-
             <div className="flex justify-start pl-1 pointer-events-auto">
+
               <LiveStreamGoalBar
                 streamId={streamId}
                 isHost={true}
               />
-            </div>
 
-            {/* PK */}
+            </div>
 
             {isBattleMode && (
               <div className="w-full max-w-lg mx-auto pt-1 pointer-events-auto">
@@ -1129,6 +1148,7 @@ const StreamDashboard = () => {
             =================================================== */}
 
         <AnimatePresence>
+
           {pendingRequests.length > 0 &&
             activePanel !== 'guests' && (
 
@@ -1242,17 +1262,23 @@ const StreamDashboard = () => {
                 {pendingRequests.length > 2 && (
                   <button
                     onClick={() =>
-                      setActivePanel('guests')
+                      setActivePanel(
+                        'guests'
+                      )
                     }
                     className="pointer-events-auto block mx-auto mt-1 text-[9px] font-black uppercase tracking-widest text-white/50 hover:text-white transition"
                   >
-                    +{pendingRequests.length - 2} more requests
+                    +
+                    {pendingRequests.length -
+                      2}{' '}
+                    more requests
                   </button>
                 )}
 
               </div>
 
             )}
+
         </AnimatePresence>
 
         {/* ===================================================
@@ -1267,12 +1293,32 @@ const StreamDashboard = () => {
             hostVideo={
               <div className="relative w-full h-full bg-black">
 
+                {/* =========================================
+                    RAW CAMERA SOURCE
+                    Hidden because AIEffects processes it.
+                    ========================================= */}
+
                 <video
                   ref={localVideoRef}
                   autoPlay
                   muted
                   playsInline
+                  className="absolute w-px h-px opacity-0 pointer-events-none"
+                  aria-hidden="true"
+                />
+
+                {/* =========================================
+                    PROCESSED AI EFFECTS VIDEO
+                    ========================================= */}
+
+                <video
+                  ref={processedVideoElementRef}
+                  autoPlay
+                  muted
+                  playsInline
                   className={`
+                    absolute
+                    inset-0
                     w-full
                     h-full
                     object-cover
@@ -1286,14 +1332,20 @@ const StreamDashboard = () => {
                   `}
                 />
 
+                {/* =========================================
+                    CAMERA OFF
+                    ========================================= */}
+
                 {isCameraOff && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900">
 
                     <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-3">
+
                       <VideoOff
                         size={22}
                         className="text-white/30"
                       />
+
                     </div>
 
                     <span className="text-[10px] font-black uppercase tracking-widest text-white/30">
@@ -1315,21 +1367,13 @@ const StreamDashboard = () => {
                 streamData?.host?.avatar_url
             }}
 
-            coHosts={activeCoHosts}
-
-            /*
-             * The WebRTC hook remains the owner of the
-             * remote media stream.
-             */
+            coHosts={
+              activeCoHosts
+            }
 
             coHostStream={
               primaryRemoteStream
             }
-
-            /*
-             * Fallback video element remains available
-             * for the existing WebRTC architecture.
-             */
 
             coHostVideo={
               primaryRemoteStream
@@ -1338,7 +1382,9 @@ const StreamDashboard = () => {
                   <div className="relative w-full h-full bg-black">
 
                     <video
-                      ref={challengerVideoRef}
+                      ref={
+                        challengerVideoRef
+                      }
                       autoPlay
                       playsInline
                       className="w-full h-full object-cover"
@@ -1353,7 +1399,8 @@ const StreamDashboard = () => {
               (
                 primaryRemoteStream
                   ? {
-                      username: 'Co-Host'
+                      username:
+                        'Co-Host'
                     }
                   : null
               )
@@ -1380,10 +1427,6 @@ const StreamDashboard = () => {
 
           <div className="flex flex-col gap-3">
 
-            {/* -----------------------------------------------
-                CHAT
-                ----------------------------------------------- */}
-
             <div className="w-full max-w-[350px] pointer-events-auto">
 
               <div className="h-44 overflow-y-auto floating-chat-container">
@@ -1399,10 +1442,6 @@ const StreamDashboard = () => {
 
             </div>
 
-            {/* -----------------------------------------------
-                CONTROL DOCK
-                ----------------------------------------------- */}
-
             <nav className="w-full max-w-xl mx-auto pointer-events-auto">
 
               <div className="flex items-center justify-between gap-1 p-1.5 rounded-full border border-white/10 bg-zinc-950/85 backdrop-blur-2xl shadow-2xl">
@@ -1412,7 +1451,8 @@ const StreamDashboard = () => {
                 <button
                   onClick={() =>
                     setIsCameraOff(
-                      previous => !previous
+                      previous =>
+                        !previous
                     )
                   }
                   className={`
@@ -1444,7 +1484,8 @@ const StreamDashboard = () => {
                 <button
                   onClick={() =>
                     setIsMuted(
-                      previous => !previous
+                      previous =>
+                        !previous
                     )
                   }
                   className={`
@@ -1475,7 +1516,9 @@ const StreamDashboard = () => {
 
                 <button
                   onClick={() =>
-                    togglePanel('guests')
+                    togglePanel(
+                      'guests'
+                    )
                   }
                   className={`
                     relative
@@ -1484,7 +1527,8 @@ const StreamDashboard = () => {
                     flex items-center justify-center
                     transition-all
                     ${
-                      activePanel === 'guests'
+                      activePanel ===
+                      'guests'
                         ? 'bg-cyan-400 text-black'
                         : 'bg-white/5 text-white hover:bg-white/10'
                     }
@@ -1493,20 +1537,25 @@ const StreamDashboard = () => {
                 >
                   <Users size={17} />
 
-                  {pendingRequests.length > 0 && (
+                  {pendingRequests.length >
+                    0 && (
                     <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-[#fe2c55] border-2 border-zinc-950 text-[8px] font-black flex items-center justify-center">
-                      {pendingRequests.length > 9
+                      {pendingRequests.length >
+                      9
                         ? '9+'
                         : pendingRequests.length}
                     </span>
                   )}
+
                 </button>
 
                 {/* Settings */}
 
                 <button
                   onClick={() =>
-                    togglePanel('settings')
+                    togglePanel(
+                      'settings'
+                    )
                   }
                   className={`
                     w-11 h-11
@@ -1514,7 +1563,8 @@ const StreamDashboard = () => {
                     flex items-center justify-center
                     transition-all
                     ${
-                      activePanel === 'settings'
+                      activePanel ===
+                      'settings'
                         ? 'bg-white text-black'
                         : 'bg-white/5 text-white hover:bg-white/10'
                     }
@@ -1582,7 +1632,8 @@ const StreamDashboard = () => {
                 </p>
 
                 <p className="text-sm font-bold">
-                  @{incomingInvite.senderUsername ||
+                  @
+                  {incomingInvite.senderUsername ||
                     'Another host'}{' '}
                   wants to battle
                 </p>
@@ -1591,7 +1642,9 @@ const StreamDashboard = () => {
 
                   <button
                     onClick={() =>
-                      setIncomingInvite(null)
+                      setIncomingInvite(
+                        null
+                      )
                     }
                     className="flex-1 h-10 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-[10px] font-black uppercase tracking-wider"
                   >
@@ -1599,7 +1652,9 @@ const StreamDashboard = () => {
                   </button>
 
                   <button
-                    onClick={handleAcceptInvite}
+                    onClick={
+                      handleAcceptInvite
+                    }
                     className="flex-1 h-10 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-black text-[10px] font-black uppercase tracking-wider"
                   >
                     Accept
@@ -1643,15 +1698,14 @@ const StreamDashboard = () => {
             className="absolute top-0 right-0 z-[100] w-full sm:w-80 h-full bg-zinc-950/98 backdrop-blur-2xl border-l border-white/10 shadow-2xl overflow-y-auto"
           >
 
-            {/* -----------------------------------------------
-                GUEST MANAGER
-                ----------------------------------------------- */}
-
-            {activePanel === 'guests' && (
+            {activePanel ===
+              'guests' && (
 
               <GuestManager
                 streamId={streamId}
-                activeGuests={activeCoHosts}
+                activeGuests={
+                  activeCoHosts
+                }
                 setActiveGuests={
                   setActiveCoHosts
                 }
@@ -1662,42 +1716,49 @@ const StreamDashboard = () => {
                   setPendingRequests
                 }
                 onBack={() =>
-                  setActivePanel(null)
+                  setActivePanel(
+                    null
+                  )
                 }
                 socket={socket}
               />
 
             )}
 
-            {/* -----------------------------------------------
-                SETTINGS
-                ----------------------------------------------- */}
-
-            {activePanel === 'settings' && (
+            {activePanel ===
+              'settings' && (
 
               <SettingsPanel
                 streamId={streamId}
-                streamData={streamData}
+                streamData={
+                  streamData
+                }
                 socket={socket}
                 currentCoHosts={
                   activeCoHosts
                 }
                 onDropUser={user => {
-                  if (!user?.id) return;
+                  if (!user?.id)
+                    return;
 
                   setActiveCoHosts(
                     previous =>
                       previous.filter(
                         guest =>
-                          guest.id !== user.id
+                          guest.id !==
+                          user.id
                       )
                   );
                 }}
                 onDropAll={() =>
-                  setActiveCoHosts([])
+                  setActiveCoHosts(
+                    []
+                  )
                 }
                 onClose={() =>
-                  setActivePanel(null)
+                  setActivePanel(
+                    null
+                  )
                 }
               />
 
