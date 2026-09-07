@@ -27,7 +27,7 @@ import StreamHeader from '../Shared/StreamHeader';
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting';
 import GuestManager from '../Shared/GuestManager';
-import AIFilters from "../Shared/AIFilters";
+import AIEffects from "../Shared/AIFilters";
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
 import MultiHostPKBattleBar from '../../../components/live/MultiHostPKBattleBar.jsx';
