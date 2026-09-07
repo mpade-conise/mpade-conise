@@ -218,6 +218,27 @@ const StreamDashboard = () => {
   };
 
   /* =========================================================
+     AI EFFECTS BACK BUTTON
+     ========================================================= */
+
+  const handleAIEffectsBack = () => {
+    console.log(
+      '↩️ [StreamDashboard] Leaving AI Effects.'
+    );
+
+    /*
+     * Clear the processed stream/track before closing
+     * the AI Effects panel so WebRTC can safely return
+     * to the normal local camera track.
+     */
+
+    setProcessedVideoStream(null);
+    setProcessedVideoTrack(null);
+
+    setActivePanel(null);
+  };
+
+  /* =========================================================
      ATTACH PROCESSED STREAM TO HOST PREVIEW
      ========================================================= */
 
@@ -455,11 +476,7 @@ const StreamDashboard = () => {
       setPendingRequests(uniquePending);
 
       console.log(
-        '👥 [StreamDashboard]',
-        uniqueApproved.length,
-        'active co-host(s),',
-        uniquePending.length,
-        'pending request(s).'
+        `👥 [StreamDashboard] ${uniqueApproved.length} active co-host(s), ${uniquePending.length} pending request(s).`
       );
     };
 
@@ -478,7 +495,7 @@ const StreamDashboard = () => {
     if (!streamId) return;
 
     const channelName =
-      'host_requests_' + streamId;
+      `host_requests_${streamId}`;
 
     console.log(
       '📡 [StreamDashboard] Starting guest realtime:',
@@ -494,7 +511,7 @@ const StreamDashboard = () => {
           event: 'INSERT',
           schema: 'public',
           table: 'live_guest_requests',
-          filter: 'stream_id=eq.' + streamId
+          filter: `stream_id=eq.${streamId}`
         },
         payload => {
           if (!mountedRef.current) return;
@@ -545,7 +562,7 @@ const StreamDashboard = () => {
           event: 'UPDATE',
           schema: 'public',
           table: 'live_guest_requests',
-          filter: 'stream_id=eq.' + streamId
+          filter: `stream_id=eq.${streamId}`
         },
         payload => {
           if (!mountedRef.current) return;
@@ -652,7 +669,7 @@ const StreamDashboard = () => {
           event: 'DELETE',
           schema: 'public',
           table: 'live_guest_requests',
-          filter: 'stream_id=eq.' + streamId
+          filter: `stream_id=eq.${streamId}`
         },
         payload => {
           if (!mountedRef.current) return;
@@ -680,8 +697,7 @@ const StreamDashboard = () => {
 
       .subscribe(status => {
         console.log(
-          '📡 [Guest Realtime]',
-          status
+          `📡 [Guest Realtime] ${status}`
         );
       });
 
@@ -757,7 +773,7 @@ const StreamDashboard = () => {
 
     const reactionId =
       reactionTrigger.id ||
-      Date.now() + '-' + Math.random();
+      `${Date.now()}-${Math.random()}`;
 
     const reaction = {
       ...reactionTrigger,
@@ -855,10 +871,7 @@ const StreamDashboard = () => {
     if (!request?.id) return;
 
     console.log(
-      '✅ [Guest] Approving',
-      request.username || request.user_id,
-      'as',
-      mode + '.'
+      `✅ [Guest] Approving ${request.username || request.user_id} as ${mode}.`
     );
 
     if (
@@ -1062,11 +1075,11 @@ const StreamDashboard = () => {
           (guest, index) => ({
             id:
               guest.id ||
-              'cohost-' + index,
+              `cohost-${index}`,
 
             username:
               guest.username ||
-              'Host ' + (index + 2),
+              `Host ${index + 2}`,
 
             avatar:
               guest.avatar_url,
@@ -1117,9 +1130,11 @@ const StreamDashboard = () => {
 
         {activeGift && (
           <div className="absolute inset-0 z-[100] pointer-events-none overflow-hidden">
+
             <GiftAlertOverlay
               gift={activeGift}
             />
+
           </div>
         )}
 
@@ -1333,15 +1348,19 @@ const StreamDashboard = () => {
                     ========================================= */}
 
                 <video
-                  ref={processedVideoElementRef}
+                  ref={
+                    processedVideoElementRef
+                  }
                   autoPlay
                   muted
                   playsInline
                   className={
                     'absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ' +
-                    (isCameraOff
-                      ? 'opacity-0'
-                      : 'opacity-100')
+                    (
+                      isCameraOff
+                        ? 'opacity-0'
+                        : 'opacity-100'
+                    )
                   }
                 />
 
@@ -1459,7 +1478,9 @@ const StreamDashboard = () => {
 
               <div className="flex items-center justify-between gap-1 p-1.5 rounded-full border border-white/10 bg-zinc-950/85 backdrop-blur-2xl shadow-2xl">
 
-                {/* Camera */}
+                {/* =================================================
+                    CAMERA
+                    ================================================= */}
 
                 <button
                   onClick={() =>
@@ -1470,9 +1491,11 @@ const StreamDashboard = () => {
                   }
                   className={
                     'w-11 h-11 rounded-full flex items-center justify-center transition-all ' +
-                    (isCameraOff
-                      ? 'bg-red-500 text-white'
-                      : 'bg-white/5 text-white hover:bg-white/10')
+                    (
+                      isCameraOff
+                        ? 'bg-red-500 text-white'
+                        : 'bg-white/5 text-white hover:bg-white/10'
+                    )
                   }
                   title={
                     isCameraOff
@@ -1487,7 +1510,9 @@ const StreamDashboard = () => {
                   )}
                 </button>
 
-                {/* Microphone */}
+                {/* =================================================
+                    MICROPHONE
+                    ================================================= */}
 
                 <button
                   onClick={() =>
@@ -1498,9 +1523,11 @@ const StreamDashboard = () => {
                   }
                   className={
                     'w-11 h-11 rounded-full flex items-center justify-center transition-all ' +
-                    (isMuted
-                      ? 'bg-red-500 text-white'
-                      : 'bg-white/5 text-white hover:bg-white/10')
+                    (
+                      isMuted
+                        ? 'bg-red-500 text-white'
+                        : 'bg-white/5 text-white hover:bg-white/10'
+                    )
                   }
                   title={
                     isMuted
@@ -1515,7 +1542,9 @@ const StreamDashboard = () => {
                   )}
                 </button>
 
-                {/* AI EFFECTS */}
+                {/* =================================================
+                    AI EFFECTS
+                    ================================================= */}
 
                 <button
                   onClick={() =>
@@ -1525,10 +1554,12 @@ const StreamDashboard = () => {
                   }
                   className={
                     'w-11 h-11 rounded-full flex items-center justify-center transition-all ' +
-                    (activePanel ===
-                    'ai-effects'
-                      ? 'bg-cyan-400 text-black shadow-lg shadow-cyan-400/30'
-                      : 'bg-white/5 text-white hover:bg-white/10')
+                    (
+                      activePanel ===
+                      'ai-effects'
+                        ? 'bg-cyan-400 text-black shadow-lg shadow-cyan-400/30'
+                        : 'bg-white/5 text-white hover:bg-white/10'
+                    )
                   }
                   title="AI Effects"
                   aria-label="Open AI Effects"
@@ -1536,7 +1567,9 @@ const StreamDashboard = () => {
                   <Sparkles size={17} />
                 </button>
 
-                {/* Guests */}
+                {/* =================================================
+                    GUESTS
+                    ================================================= */}
 
                 <button
                   onClick={() =>
@@ -1546,10 +1579,12 @@ const StreamDashboard = () => {
                   }
                   className={
                     'relative w-11 h-11 rounded-full flex items-center justify-center transition-all ' +
-                    (activePanel ===
-                    'guests'
-                      ? 'bg-cyan-400 text-black'
-                      : 'bg-white/5 text-white hover:bg-white/10')
+                    (
+                      activePanel ===
+                      'guests'
+                        ? 'bg-cyan-400 text-black'
+                        : 'bg-white/5 text-white hover:bg-white/10'
+                    )
                   }
                   title="Guests"
                 >
@@ -1567,7 +1602,9 @@ const StreamDashboard = () => {
 
                 </button>
 
-                {/* Settings */}
+                {/* =================================================
+                    SETTINGS
+                    ================================================= */}
 
                 <button
                   onClick={() =>
@@ -1577,10 +1614,12 @@ const StreamDashboard = () => {
                   }
                   className={
                     'w-11 h-11 rounded-full flex items-center justify-center transition-all ' +
-                    (activePanel ===
-                    'settings'
-                      ? 'bg-white text-black'
-                      : 'bg-white/5 text-white hover:bg-white/10')
+                    (
+                      activePanel ===
+                      'settings'
+                        ? 'bg-white text-black'
+                        : 'bg-white/5 text-white hover:bg-white/10'
+                    )
                   }
                   title="Studio settings"
                 >
@@ -1712,7 +1751,7 @@ const StreamDashboard = () => {
           >
 
             {/* =================================================
-                AI EFFECTS PANEL
+                AI EFFECTS
                 ================================================= */}
 
             {activePanel ===
@@ -1726,15 +1765,15 @@ const StreamDashboard = () => {
                 onProcessedTrack={
                   handleProcessedTrack
                 }
-                onBack={() =>
-                  setActivePanel(null)
+                onBack={
+                  handleAIEffectsBack
                 }
               />
 
             )}
 
             {/* =================================================
-                GUEST PANEL
+                GUEST MANAGER
                 ================================================= */}
 
             {activePanel ===
@@ -1765,7 +1804,7 @@ const StreamDashboard = () => {
             )}
 
             {/* =================================================
-                SETTINGS PANEL
+                SETTINGS
                 ================================================= */}
 
             {activePanel ===
