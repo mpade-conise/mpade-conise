@@ -164,13 +164,26 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+/*
+ * A stream is usable only when it has a LIVE and ENABLED
+ * video track.
+ *
+ * This is important because a MediaStream can still exist
+ * while its camera track has been disabled.
+ */
 function isUsableStream(source) {
-  return (
-    source &&
-    typeof source.getVideoTracks === "function" &&
-    source.getVideoTracks().some(
-      (track) => track && track.readyState !== "ended"
-    )
+  if (
+    !source ||
+    typeof source.getVideoTracks !== "function"
+  ) {
+    return false;
+  }
+
+  return source.getVideoTracks().some(
+    (track) =>
+      track &&
+      track.readyState === "live" &&
+      track.enabled !== false
   );
 }
 
@@ -208,7 +221,7 @@ const AIFilters = ({
 
   /*
    * ==========================================================
-   * LIFECYCLE REFS
+   * LIFECYCLE
    * ==========================================================
    */
 
@@ -221,8 +234,25 @@ const AIFilters = ({
    * ==========================================================
    */
 
+  /*
+   * The dashboard-owned camera stream.
+   *
+   * We NEVER stop tracks belonging to this stream.
+   */
   const sourceStreamRef = useRef(null);
+
+  /*
+   * Hidden video used by the canvas processor.
+   */
   const sourceVideoRef = useRef(null);
+
+  /*
+   * Camera opened directly by AIFilters.
+   *
+   * We are allowed to stop this stream because AIFilters
+   * owns it.
+   */
+  const aiOwnedStreamRef = useRef(null);
 
   /*
    * ==========================================================
@@ -268,8 +298,11 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const onProcessedStreamRef = useRef(onProcessedStream);
-  const onProcessedTrackRef = useRef(onProcessedTrack);
+  const onProcessedStreamRef =
+    useRef(onProcessedStream);
+
+  const onProcessedTrackRef =
+    useRef(onProcessedTrack);
 
   /*
    * ==========================================================
@@ -297,11 +330,13 @@ const AIFilters = ({
    */
 
   useEffect(() => {
-    onProcessedStreamRef.current = onProcessedStream;
+    onProcessedStreamRef.current =
+      onProcessedStream;
   }, [onProcessedStream]);
 
   useEffect(() => {
-    onProcessedTrackRef.current = onProcessedTrack;
+    onProcessedTrackRef.current =
+      onProcessedTrack;
   }, [onProcessedTrack]);
 
   useEffect(() => {
@@ -320,22 +355,57 @@ const AIFilters = ({
    * ==========================================================
    * SOURCE STREAM
    * ==========================================================
+   *
+   * Priority:
+   *
+   * 1. Working dashboard stream
+   * 2. Dashboard video element stream
+   * 3. AI-owned camera
+   * 4. Previously stored stream
+   *
+   * AIFilters does NOT automatically stop any stream here.
    */
 
   const getSourceStream = useCallback(() => {
+    /*
+     * 1. Dashboard stream.
+     */
     if (isUsableStream(stream)) {
       return stream;
     }
 
+    /*
+     * 2. Dashboard video element.
+     */
     if (
       videoRef &&
       videoRef.current &&
-      isUsableStream(videoRef.current.srcObject)
+      isUsableStream(
+        videoRef.current.srcObject
+      )
     ) {
       return videoRef.current.srcObject;
     }
 
-    if (isUsableStream(sourceStreamRef.current)) {
+    /*
+     * 3. AI-owned camera.
+     */
+    if (
+      isUsableStream(
+        aiOwnedStreamRef.current
+      )
+    ) {
+      return aiOwnedStreamRef.current;
+    }
+
+    /*
+     * 4. Previously stored source.
+     */
+    if (
+      isUsableStream(
+        sourceStreamRef.current
+      )
+    ) {
       return sourceStreamRef.current;
     }
 
@@ -344,13 +414,170 @@ const AIFilters = ({
 
   /*
    * ==========================================================
+   * OPEN INDEPENDENT CAMERA
+   * ==========================================================
+   *
+   * This is the important independent architecture.
+   *
+   * If the dashboard has no active camera, AIFilters can
+   * request its own VIDEO-ONLY camera.
+   *
+   * We intentionally do NOT request audio here because the
+   * dashboard/WebRTC system already owns microphone handling.
+   */
+
+  const openIndependentCamera = useCallback(
+    async () => {
+      /*
+       * Reuse an existing AI-owned camera if still alive.
+       */
+      if (
+        isUsableStream(
+          aiOwnedStreamRef.current
+        )
+      ) {
+        return aiOwnedStreamRef.current;
+      }
+
+      if (
+        typeof navigator === "undefined" ||
+        !navigator.mediaDevices ||
+        typeof navigator.mediaDevices.getUserMedia !==
+          "function"
+      ) {
+        throw new Error(
+          "Camera access is not supported by this browser."
+        );
+      }
+
+      let independentStream = null;
+
+      try {
+        independentStream =
+          await navigator.mediaDevices.getUserMedia(
+            {
+              video: {
+                facingMode: "user",
+                width: {
+                  ideal: 1280
+                },
+                height: {
+                  ideal: 720
+                },
+                frameRate: {
+                  ideal: 30,
+                  max: 30
+                }
+              },
+              audio: false
+            }
+          );
+      } catch (err) {
+        if (
+          err &&
+          err.name === "NotAllowedError"
+        ) {
+          throw new Error(
+            "Camera permission was denied. Please allow camera access and try again."
+          );
+        }
+
+        if (
+          err &&
+          err.name === "NotFoundError"
+        ) {
+          throw new Error(
+            "No camera was found on this device."
+          );
+        }
+
+        if (
+          err &&
+          err.name === "NotReadableError"
+        ) {
+          throw new Error(
+            "The camera is already being used by another application."
+          );
+        }
+
+        if (
+          err &&
+          err.name === "OverconstrainedError"
+        ) {
+          /*
+           * Retry with a simple camera request.
+           */
+          try {
+            independentStream =
+              await navigator.mediaDevices.getUserMedia(
+                {
+                  video: true,
+                  audio: false
+                }
+              );
+          } catch (retryError) {
+            throw new Error(
+              "Unable to access the camera."
+            );
+          }
+        } else {
+          throw new Error(
+            err &&
+              err.message
+              ? err.message
+              : "Unable to access the camera."
+          );
+        }
+      }
+
+      const videoTracks =
+        independentStream.getVideoTracks();
+
+      if (!videoTracks.length) {
+        independentStream
+          .getTracks()
+          .forEach((track) => {
+            try {
+              track.stop();
+            } catch (stopError) {
+              // Ignore.
+            }
+          });
+
+        throw new Error(
+          "The camera opened but no video track was available."
+        );
+      }
+
+      /*
+       * Make sure the track is enabled.
+       */
+      videoTracks.forEach((track) => {
+        track.enabled = true;
+      });
+
+      aiOwnedStreamRef.current =
+        independentStream;
+
+      return independentStream;
+    },
+    []
+  );
+
+  /*
+   * ==========================================================
    * STOP ANIMATION
    * ==========================================================
    */
 
   const stopAnimation = useCallback(() => {
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
+    if (
+      animationFrameRef.current !== null
+    ) {
+      cancelAnimationFrame(
+        animationFrameRef.current
+      );
+
       animationFrameRef.current = null;
     }
   }, []);
@@ -358,19 +585,20 @@ const AIFilters = ({
   /*
    * ==========================================================
    * CLEAN PROCESSED OUTPUT
-   *
-   * IMPORTANT:
-   * This ONLY stops the canvas-created video track.
-   *
-   * It NEVER stops the real camera track.
    * ==========================================================
+   *
+   * ONLY the canvas-created video track is stopped here.
+   *
+   * Original camera tracks are never stopped here.
    */
 
   const cleanupOutput = useCallback(() => {
-    const output = outputStreamRef.current;
+    const output =
+      outputStreamRef.current;
 
     if (output) {
-      const tracks = output.getVideoTracks();
+      const tracks =
+        output.getVideoTracks();
 
       tracks.forEach((track) => {
         try {
@@ -388,97 +616,170 @@ const AIFilters = ({
   /*
    * ==========================================================
    * CLEAN HIDDEN SOURCE VIDEO
-   *
-   * This does NOT stop camera tracks.
    * ==========================================================
+   *
+   * Detaching the video element does NOT stop camera tracks.
    */
 
-  const cleanupSourceVideo = useCallback(() => {
-    const video = sourceVideoRef.current;
+  const cleanupSourceVideo =
+    useCallback(() => {
+      const video =
+        sourceVideoRef.current;
 
-    if (!video) {
-      return;
-    }
+      if (!video) {
+        return;
+      }
 
-    try {
-      video.pause();
-    } catch (err) {
-      // Ignore.
-    }
+      try {
+        video.pause();
+      } catch (err) {
+        // Ignore.
+      }
 
-    try {
-      video.srcObject = null;
-    } catch (err) {
-      // Ignore.
-    }
+      try {
+        video.srcObject = null;
+      } catch (err) {
+        // Ignore.
+      }
 
-    sourceVideoRef.current = null;
-  }, []);
+      sourceVideoRef.current = null;
+    }, []);
 
   /*
    * ==========================================================
-   * RESTORE ORIGINAL CAMERA TRACK
+   * CLEAN AI-OWNED CAMERA
+   * ==========================================================
    *
-   * THIS IS THE IMPORTANT FIX.
+   * IMPORTANT:
    *
-   * The original camera track is restored BEFORE the processed
-   * canvas track is stopped.
+   * This is the ONLY function that stops the camera obtained
+   * directly by AIFilters.
    *
-   * We intentionally do NOT send the original stream through
-   * onProcessedStream because the parent may have cleanup logic
-   * that stops tracks belonging to that stream.
+   * It NEVER stops the dashboard's localStream.
+   */
+
+  const cleanupOwnedCamera =
+    useCallback(() => {
+      const ownedStream =
+        aiOwnedStreamRef.current;
+
+      if (!ownedStream) {
+        return;
+      }
+
+      ownedStream
+        .getTracks()
+        .forEach((track) => {
+          try {
+            track.stop();
+          } catch (err) {
+            // Ignore cleanup errors.
+          }
+        });
+
+      aiOwnedStreamRef.current = null;
+    }, []);
+
+  /*
+   * ==========================================================
+   * RESTORE ORIGINAL CAMERA
    * ==========================================================
    */
 
-  const restoreOriginalCamera = useCallback(() => {
-    const source =
-      sourceStreamRef.current ||
-      getSourceStream();
+  const restoreOriginalCamera =
+    useCallback(() => {
+      /*
+       * Prefer the dashboard stream when available.
+       *
+       * Do NOT restore an AI-owned camera as the parent's
+       * original camera.
+       */
+      let source = null;
 
-    if (!source) {
-      if (onProcessedTrackRef.current) {
-        onProcessedTrackRef.current(null);
+      if (isUsableStream(stream)) {
+        source = stream;
+      } else if (
+        videoRef &&
+        videoRef.current &&
+        isUsableStream(
+          videoRef.current.srcObject
+        )
+      ) {
+        source =
+          videoRef.current.srcObject;
+      } else if (
+        sourceStreamRef.current &&
+        sourceStreamRef.current !==
+          aiOwnedStreamRef.current &&
+        isUsableStream(
+          sourceStreamRef.current
+        )
+      ) {
+        source =
+          sourceStreamRef.current;
       }
 
-      if (onProcessedStreamRef.current) {
-        onProcessedStreamRef.current(null);
+      if (!source) {
+        /*
+         * There is no parent-owned camera to restore.
+         */
+        if (
+          onProcessedTrackRef.current
+        ) {
+          onProcessedTrackRef.current(
+            null
+          );
+        }
+
+        if (
+          onProcessedStreamRef.current
+        ) {
+          onProcessedStreamRef.current(
+            null
+          );
+        }
+
+        return null;
       }
 
-      return null;
-    }
+      const originalVideoTracks =
+        typeof source.getVideoTracks ===
+        "function"
+          ? source.getVideoTracks()
+          : [];
 
-    const originalVideoTracks =
-      typeof source.getVideoTracks === "function"
-        ? source.getVideoTracks()
-        : [];
+      const originalTrack =
+        originalVideoTracks.find(
+          (track) =>
+            track &&
+            track.readyState ===
+              "live"
+        ) || null;
 
-    const originalTrack =
-      originalVideoTracks.find(
-        (track) =>
-          track &&
-          track.readyState !== "ended"
-      ) || null;
+      /*
+       * Restore original WebRTC video track.
+       */
+      if (
+        onProcessedTrackRef.current
+      ) {
+        onProcessedTrackRef.current(
+          originalTrack
+        );
+      }
 
-    /*
-     * First restore the original video track.
-     */
-    if (onProcessedTrackRef.current) {
-      onProcessedTrackRef.current(
-        originalTrack
-      );
-    }
+      /*
+       * Clear processed stream reference.
+       */
+      if (
+        onProcessedStreamRef.current
+      ) {
+        onProcessedStreamRef.current(
+          null
+        );
+      }
 
-    /*
-     * Clear processed stream reference.
-     *
-     * DO NOT send source here.
-     */
-    if (onProcessedStreamRef.current) {
-      onProcessedStreamRef.current(null);
-    }
-
-    return originalTrack;
-  }, [getSourceStream]);
+      return originalTrack;
+    }, [stream, videoRef]);
 
   /*
    * ==========================================================
@@ -486,53 +787,66 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const cleanupProcessing = useCallback(() => {
-    processingRef.current = false;
-    startingRef.current = false;
+  const cleanupProcessing =
+    useCallback(() => {
+      processingRef.current = false;
+      startingRef.current = false;
 
-    stopAnimation();
+      stopAnimation();
 
-    /*
-     * MOST IMPORTANT ORDER:
-     *
-     * 1. Restore original camera track.
-     * 2. Give React/WebRTC a frame to switch tracks.
-     * 3. Stop processed canvas track.
-     */
+      /*
+       * Restore the parent-owned camera first.
+       */
+      restoreOriginalCamera();
 
-    restoreOriginalCamera();
-
-    if (typeof window !== "undefined") {
-      window.requestAnimationFrame(() => {
+      /*
+       * Give React/WebRTC an opportunity to receive the
+       * original track before the canvas track is stopped.
+       */
+      if (
+        typeof window !== "undefined"
+      ) {
+        window.requestAnimationFrame(
+          () => {
+            cleanupOutput();
+            cleanupSourceVideo();
+          }
+        );
+      } else {
         cleanupOutput();
         cleanupSourceVideo();
-      });
-    } else {
-      cleanupOutput();
-      cleanupSourceVideo();
-    }
+      }
 
-    processedSourceRef.current = null;
+      processedSourceRef.current =
+        null;
 
-    fpsCounterRef.current = {
-      frames: 0,
-      time: 0
-    };
+      sourceStreamRef.current = null;
 
-    if (mountedRef.current) {
-      setEngineState("idle");
-      setFps(0);
-    }
-  }, [
-    cleanupOutput,
-    cleanupSourceVideo,
-    restoreOriginalCamera,
-    stopAnimation
-  ]);
+      /*
+       * Stop ONLY the camera that AI opened itself.
+       */
+      cleanupOwnedCamera();
+
+      fpsCounterRef.current = {
+        frames: 0,
+        time: 0
+      };
+
+      if (mountedRef.current) {
+        setEngineState("idle");
+        setFps(0);
+      }
+    }, [
+      cleanupOutput,
+      cleanupOwnedCamera,
+      cleanupSourceVideo,
+      restoreOriginalCamera,
+      stopAnimation
+    ]);
 
   /*
    * ==========================================================
-   * INDEPENDENT BACK BUTTON
+   * BACK / CLOSE
    * ==========================================================
    */
 
@@ -540,7 +854,7 @@ const AIFilters = ({
     setError("");
 
     /*
-     * Restore camera before visually closing.
+     * Restore camera before closing.
      */
     cleanupProcessing();
 
@@ -567,8 +881,8 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const createSourceVideo = useCallback(
-    async (source) => {
+  const createSourceVideo =
+    useCallback(async (source) => {
       if (!isUsableStream(source)) {
         throw new Error(
           "No usable camera stream was found."
@@ -587,11 +901,18 @@ const AIFilters = ({
         "true"
       );
 
+      video.setAttribute(
+        "autoplay",
+        "true"
+      );
+
       video.srcObject = source;
 
       await new Promise(
         (resolve, reject) => {
           let finished = false;
+
+          let timeout = null;
 
           const finish = (callback) => {
             if (finished) {
@@ -600,13 +921,21 @@ const AIFilters = ({
 
             finished = true;
 
-            video.onloadedmetadata = null;
+            if (timeout) {
+              window.clearTimeout(
+                timeout
+              );
+            }
+
+            video.onloadedmetadata =
+              null;
+
             video.onerror = null;
 
             callback();
           };
 
-          const timeout =
+          timeout =
             window.setTimeout(() => {
               if (video.readyState >= 1) {
                 finish(resolve);
@@ -621,14 +950,12 @@ const AIFilters = ({
               }
             }, 5000);
 
-          video.onloadedmetadata = () => {
-            window.clearTimeout(timeout);
-            finish(resolve);
-          };
+          video.onloadedmetadata =
+            () => {
+              finish(resolve);
+            };
 
           video.onerror = () => {
-            window.clearTimeout(timeout);
-
             finish(() => {
               reject(
                 new Error(
@@ -644,14 +971,54 @@ const AIFilters = ({
         await video.play();
       } catch (err) {
         /*
-         * Autoplay may already be allowed.
+         * The hidden video is muted, so this should normally
+         * be allowed. If autoplay is blocked, processing will
+         * continue attempting to use the video element.
          */
       }
 
+      /*
+       * Wait briefly for actual dimensions if metadata exists
+       * but dimensions have not arrived yet.
+       */
+      if (
+        !video.videoWidth ||
+        !video.videoHeight
+      ) {
+        await new Promise(
+          (resolve) => {
+            let checks = 0;
+
+            const checkDimensions =
+              () => {
+                if (
+                  video.videoWidth &&
+                  video.videoHeight
+                ) {
+                  resolve();
+                  return;
+                }
+
+                checks += 1;
+
+                if (checks >= 20) {
+                  resolve();
+                  return;
+                }
+
+                window.setTimeout(
+                  checkDimensions,
+                  100
+                );
+              };
+
+            checkDimensions();
+          }
+        );
+      }
+
       return video;
-    },
-    []
-  );
+    }, []);
 
   /*
    * ==========================================================
@@ -659,43 +1026,47 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const prepareCanvas = useCallback(
-    (width, height) => {
-      let canvas = canvasRef.current;
+  const prepareCanvas =
+    useCallback(
+      (width, height) => {
+        let canvas =
+          canvasRef.current;
 
-      if (!canvas) {
-        canvas =
-          document.createElement(
-            "canvas"
+        if (!canvas) {
+          canvas =
+            document.createElement(
+              "canvas"
+            );
+
+          canvasRef.current =
+            canvas;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const context =
+          canvas.getContext("2d", {
+            alpha: false,
+            desynchronized: true
+          });
+
+        if (!context) {
+          throw new Error(
+            "Your browser does not support the required canvas engine."
           );
+        }
 
-        canvasRef.current = canvas;
-      }
+        canvasContextRef.current =
+          context;
 
-      canvas.width = width;
-      canvas.height = height;
-
-      const context =
-        canvas.getContext("2d", {
-          alpha: false,
-          desynchronized: true
-        });
-
-      if (!context) {
-        throw new Error(
-          "Your browser does not support the required canvas engine."
-        );
-      }
-
-      canvasContextRef.current = context;
-
-      return {
-        canvas,
-        context
-      };
-    },
-    []
-  );
+        return {
+          canvas,
+          context
+        };
+      },
+      []
+    );
 
   /*
    * ==========================================================
@@ -704,59 +1075,63 @@ const AIFilters = ({
    */
 
   const createOutputStream =
-    useCallback((source, canvas) => {
-      if (
-        !canvas ||
-        typeof canvas.captureStream !==
-          "function"
-      ) {
-        throw new Error(
-          "Canvas streaming is not supported by this browser."
-        );
-      }
-
-      const output =
-        canvas.captureStream(30);
-
-      const videoTracks =
-        output.getVideoTracks();
-
-      if (!videoTracks.length) {
-        throw new Error(
-          "Unable to create the processed camera track."
-        );
-      }
-
-      /*
-       * Preserve original camera audio.
-       *
-       * The audio tracks are NOT stopped by
-       * cleanupOutput().
-       */
-      const sourceAudioTracks =
-        typeof source.getAudioTracks ===
-        "function"
-          ? source.getAudioTracks()
-          : [];
-
-      sourceAudioTracks.forEach(
-        (track) => {
-          try {
-            output.addTrack(track);
-          } catch (err) {
-            /*
-             * Ignore duplicate audio errors.
-             */
-          }
+    useCallback(
+      (source, canvas) => {
+        if (
+          !canvas ||
+          typeof canvas.captureStream !==
+            "function"
+        ) {
+          throw new Error(
+            "Canvas streaming is not supported by this browser."
+          );
         }
-      );
 
-      outputStreamRef.current = output;
-      outputTrackRef.current =
-        videoTracks[0];
+        const output =
+          canvas.captureStream(30);
 
-      return output;
-    }, []);
+        const videoTracks =
+          output.getVideoTracks();
+
+        if (!videoTracks.length) {
+          throw new Error(
+            "Unable to create the processed camera track."
+          );
+        }
+
+        /*
+         * Preserve original camera audio.
+         *
+         * Audio tracks are NOT stopped by cleanupOutput().
+         */
+        const sourceAudioTracks =
+          typeof source.getAudioTracks ===
+          "function"
+            ? source.getAudioTracks()
+            : [];
+
+        sourceAudioTracks.forEach(
+          (track) => {
+            try {
+              output.addTrack(track);
+            } catch (err) {
+              /*
+               * Ignore duplicate audio errors.
+               */
+            }
+          }
+        );
+
+        outputStreamRef.current =
+          output;
+
+        outputTrackRef.current =
+          videoTracks[0];
+
+        return output;
+      },
+      []
+    );
 
   /*
    * ==========================================================
@@ -801,34 +1176,36 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const drawOverlay = useCallback(
-    (
-      context,
-      width,
-      height,
-      color,
-      alpha,
-      composite
-    ) => {
-      context.save();
-
-      context.globalCompositeOperation =
-        composite || "screen";
-
-      context.globalAlpha = alpha;
-      context.fillStyle = color;
-
-      context.fillRect(
-        0,
-        0,
+  const drawOverlay =
+    useCallback(
+      (
+        context,
         width,
-        height
-      );
+        height,
+        color,
+        alpha,
+        composite
+      ) => {
+        context.save();
 
-      context.restore();
-    },
-    []
-  );
+        context.globalCompositeOperation =
+          composite || "screen";
+
+        context.globalAlpha = alpha;
+
+        context.fillStyle = color;
+
+        context.fillRect(
+          0,
+          0,
+          width,
+          height
+        );
+
+        context.restore();
+      },
+      []
+    );
 
   /*
    * ==========================================================
@@ -836,63 +1213,65 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const drawVignette = useCallback(
-    (
-      context,
-      width,
-      height,
-      strength
-    ) => {
-      const gradient =
-        context.createRadialGradient(
-          width / 2,
-          height / 2,
-          Math.min(
-            width,
-            height
-          ) * 0.18,
-          width / 2,
-          height / 2,
-          Math.max(
-            width,
-            height
-          ) * 0.72
+  const drawVignette =
+    useCallback(
+      (
+        context,
+        width,
+        height,
+        strength
+      ) => {
+        const gradient =
+          context.createRadialGradient(
+            width / 2,
+            height / 2,
+            Math.min(
+              width,
+              height
+            ) * 0.18,
+            width / 2,
+            height / 2,
+            Math.max(
+              width,
+              height
+            ) * 0.72
+          );
+
+        gradient.addColorStop(
+          0,
+          "rgba(0,0,0,0)"
         );
 
-      gradient.addColorStop(
-        0,
-        "rgba(0,0,0,0)"
-      );
+        gradient.addColorStop(
+          1,
+          "rgba(0,0,0," +
+            clamp(
+              strength,
+              0,
+              1
+            ) +
+            ")"
+        );
 
-      gradient.addColorStop(
-        1,
-        "rgba(0,0,0," +
-          clamp(
-            strength,
-            0,
-            1
-          ) +
-          ")"
-      );
+        context.save();
 
-      context.save();
+        context.globalCompositeOperation =
+          "multiply";
 
-      context.globalCompositeOperation =
-        "multiply";
+        context.fillStyle =
+          gradient;
 
-      context.fillStyle = gradient;
+        context.fillRect(
+          0,
+          0,
+          width,
+          height
+        );
 
-      context.fillRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      context.restore();
-    },
-    []
-  );
+        context.restore();
+      },
+      []
+    );
 
   /*
    * ==========================================================
@@ -1052,631 +1431,27 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const drawEffect = useCallback(
-    (
-      video,
-      context,
-      width,
-      height
-    ) => {
-      const selected =
-        effectRef.current;
+  const drawEffect =
+    useCallback(
+      (
+        video,
+        context,
+        width,
+        height
+      ) => {
+        const selected =
+          effectRef.current;
 
-      const amount = clamp(
-        intensityRef.current / 100,
-        0,
-        1
-      );
-
-      if (
-        !enabledRef.current ||
-        selected === "none"
-      ) {
-        drawBase(
-          video,
-          context,
-          width,
-          height,
-          "none"
+        const amount = clamp(
+          intensityRef.current / 100,
+          0,
+          1
         );
 
-        return;
-      }
-
-      switch (selected) {
-        case "beauty":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "blur(" +
-              (
-                0.25 +
-                amount * 0.9
-              ).toFixed(2) +
-              "px) brightness(" +
-              (
-                1 +
-                amount * 0.08
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.12
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(255,220,210,1)",
-            amount * 0.08,
-            "screen"
-          );
-          break;
-
-        case "face-light":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "brightness(" +
-              (
-                1 +
-                amount * 0.16
-              ).toFixed(2) +
-              ") contrast(" +
-              (
-                1 +
-                amount * 0.06
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.08
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawFaceLight(
-            context,
-            width,
-            height,
-            amount
-          );
-          break;
-
-        case "cinematic":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "contrast(" +
-              (
-                1 +
-                amount * 0.2
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.1
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 -
-                amount * 0.04
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(10,120,120,1)",
-            amount * 0.11,
-            "soft-light"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(255,125,50,1)",
-            amount * 0.07,
-            "screen"
-          );
-
-          drawVignette(
-            context,
-            width,
-            height,
-            amount * 0.32
-          );
-          break;
-
-        case "vivid":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "saturate(" +
-              (
-                1 +
-                amount * 0.75
-              ).toFixed(2) +
-              ") contrast(" +
-              (
-                1 +
-                amount * 0.16
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 +
-                amount * 0.04
-              ).toFixed(2) +
-              ")"
-          );
-          break;
-
-        case "warm":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "sepia(" +
-              (
-                amount * 0.3
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.3
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 +
-                amount * 0.04
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(255,150,65,1)",
-            amount * 0.1,
-            "soft-light"
-          );
-          break;
-
-        case "cool":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "hue-rotate(" +
-              (
-                -amount * 12
-              ).toFixed(1) +
-              "deg) saturate(" +
-              (
-                1 +
-                amount * 0.18
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 +
-                amount * 0.03
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(50,130,255,1)",
-            amount * 0.1,
-            "soft-light"
-          );
-          break;
-
-        case "noir":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "grayscale(1) contrast(" +
-              (
-                1 +
-                amount * 0.45
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 -
-                amount * 0.06
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawVignette(
-            context,
-            width,
-            height,
-            amount * 0.5
-          );
-          break;
-
-        case "vintage":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "sepia(" +
-              (
-                amount * 0.48
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 -
-                amount * 0.1
-              ).toFixed(2) +
-              ") contrast(" +
-              (
-                1 +
-                amount * 0.1
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 +
-                amount * 0.03
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(120,70,30,1)",
-            amount * 0.08,
-            "multiply"
-          );
-
-          drawVignette(
-            context,
-            width,
-            height,
-            amount * 0.25
-          );
-          break;
-
-        case "dream":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "blur(" +
-              (
-                0.25 +
-                amount * 1.2
-              ).toFixed(2) +
-              "px) brightness(" +
-              (
-                1 +
-                amount * 0.08
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.1
-              ).toFixed(2) +
-              ") contrast(" +
-              (
-                1 -
-                amount * 0.04
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(255,180,225,1)",
-            amount * 0.08,
-            "screen"
-          );
-          break;
-
-        case "purple-glow":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "saturate(" +
-              (
-                1 +
-                amount * 0.2
-              ).toFixed(2) +
-              ") contrast(" +
-              (
-                1 +
-                amount * 0.1
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(155,65,255,1)",
-            amount * 0.15,
-            "soft-light"
-          );
-
-          drawVignette(
-            context,
-            width,
-            height,
-            amount * 0.28
-          );
-          break;
-
-        case "neon":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "saturate(" +
-              (
-                1 +
-                amount * 0.8
-              ).toFixed(2) +
-              ") contrast(" +
-              (
-                1 +
-                amount * 0.2
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 +
-                amount * 0.05
-              ).toFixed(2) +
-              ") hue-rotate(" +
-              (
-                amount * 12
-              ).toFixed(1) +
-              "deg)"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(0,255,255,1)",
-            amount * 0.08,
-            "screen"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(255,0,190,1)",
-            amount * 0.06,
-            "soft-light"
-          );
-          break;
-
-        case "drama":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "contrast(" +
-              (
-                1 +
-                amount * 0.5
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.12
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 -
-                amount * 0.08
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawVignette(
-            context,
-            width,
-            height,
-            amount * 0.55
-          );
-          break;
-
-        case "film":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "contrast(" +
-              (
-                1 +
-                amount * 0.16
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.04
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 -
-                amount * 0.02
-              ).toFixed(2) +
-              ") sepia(" +
-              (
-                amount * 0.16
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(255,145,65,1)",
-            amount * 0.06,
-            "soft-light"
-          );
-
-          drawVignette(
-            context,
-            width,
-            height,
-            amount * 0.2
-          );
-          break;
-
-        case "soft-focus":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "blur(" +
-              (
-                0.2 +
-                amount * 1.25
-              ).toFixed(2) +
-              "px) brightness(" +
-              (
-                1 +
-                amount * 0.07
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.08
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawOverlay(
-            context,
-            width,
-            height,
-            "rgba(255,255,255,1)",
-            amount * 0.07,
-            "screen"
-          );
-          break;
-
-        case "face-focus":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "contrast(" +
-              (
-                1 +
-                amount * 0.14
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.1
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawVignette(
-            context,
-            width,
-            height,
-            0.18 +
-              amount * 0.38
-          );
-          break;
-
-        case "hdr":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "contrast(" +
-              (
-                1 +
-                amount * 0.38
-              ).toFixed(2) +
-              ") saturate(" +
-              (
-                1 +
-                amount * 0.25
-              ).toFixed(2) +
-              ") brightness(" +
-              (
-                1 +
-                amount * 0.03
-              ).toFixed(2) +
-              ")"
-          );
-          break;
-
-        case "duo-tone":
-          drawBase(
-            video,
-            context,
-            width,
-            height,
-            "saturate(" +
-              (
-                1 +
-                amount * 0.18
-              ).toFixed(2) +
-              ") contrast(" +
-              (
-                1 +
-                amount * 0.12
-              ).toFixed(2) +
-              ")"
-          );
-
-          drawDuoTone(
-            context,
-            width,
-            height,
-            amount
-          );
-          break;
-
-        default:
+        if (
+          !enabledRef.current ||
+          selected === "none"
+        ) {
           drawBase(
             video,
             context,
@@ -1684,16 +1459,621 @@ const AIFilters = ({
             height,
             "none"
           );
-      }
-    },
-    [
-      drawBase,
-      drawDuoTone,
-      drawFaceLight,
-      drawOverlay,
-      drawVignette
-    ]
-  );
+
+          return;
+        }
+
+        switch (selected) {
+          case "beauty":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "blur(" +
+                (
+                  0.25 +
+                  amount * 0.9
+                ).toFixed(2) +
+                "px) brightness(" +
+                (
+                  1 +
+                  amount * 0.08
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.12
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(255,220,210,1)",
+              amount * 0.08,
+              "screen"
+            );
+            break;
+
+          case "face-light":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "brightness(" +
+                (
+                  1 +
+                  amount * 0.16
+                ).toFixed(2) +
+                ") contrast(" +
+                (
+                  1 +
+                  amount * 0.06
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.08
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawFaceLight(
+              context,
+              width,
+              height,
+              amount
+            );
+            break;
+
+          case "cinematic":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "contrast(" +
+                (
+                  1 +
+                  amount * 0.2
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.1
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 -
+                  amount * 0.04
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(10,120,120,1)",
+              amount * 0.11,
+              "soft-light"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(255,125,50,1)",
+              amount * 0.07,
+              "screen"
+            );
+
+            drawVignette(
+              context,
+              width,
+              height,
+              amount * 0.32
+            );
+            break;
+
+          case "vivid":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "saturate(" +
+                (
+                  1 +
+                  amount * 0.75
+                ).toFixed(2) +
+                ") contrast(" +
+                (
+                  1 +
+                  amount * 0.16
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 +
+                  amount * 0.04
+                ).toFixed(2) +
+                ")"
+            );
+            break;
+
+          case "warm":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "sepia(" +
+                (
+                  amount * 0.3
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.3
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 +
+                  amount * 0.04
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(255,150,65,1)",
+              amount * 0.1,
+              "soft-light"
+            );
+            break;
+
+          case "cool":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "hue-rotate(" +
+                (
+                  -amount * 12
+                ).toFixed(1) +
+                "deg) saturate(" +
+                (
+                  1 +
+                  amount * 0.18
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 +
+                  amount * 0.03
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(50,130,255,1)",
+              amount * 0.1,
+              "soft-light"
+            );
+            break;
+
+          case "noir":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "grayscale(1) contrast(" +
+                (
+                  1 +
+                  amount * 0.45
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 -
+                  amount * 0.06
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawVignette(
+              context,
+              width,
+              height,
+              amount * 0.5
+            );
+            break;
+
+          case "vintage":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "sepia(" +
+                (
+                  amount * 0.48
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 -
+                  amount * 0.1
+                ).toFixed(2) +
+                ") contrast(" +
+                (
+                  1 +
+                  amount * 0.1
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 +
+                  amount * 0.03
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(120,70,30,1)",
+              amount * 0.08,
+              "multiply"
+            );
+
+            drawVignette(
+              context,
+              width,
+              height,
+              amount * 0.25
+            );
+            break;
+
+          case "dream":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "blur(" +
+                (
+                  0.25 +
+                  amount * 1.2
+                ).toFixed(2) +
+                "px) brightness(" +
+                (
+                  1 +
+                  amount * 0.08
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.1
+                ).toFixed(2) +
+                ") contrast(" +
+                (
+                  1 -
+                  amount * 0.04
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(255,180,225,1)",
+              amount * 0.08,
+              "screen"
+            );
+            break;
+
+          case "purple-glow":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "saturate(" +
+                (
+                  1 +
+                  amount * 0.2
+                ).toFixed(2) +
+                ") contrast(" +
+                (
+                  1 +
+                  amount * 0.1
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(155,65,255,1)",
+              amount * 0.15,
+              "soft-light"
+            );
+
+            drawVignette(
+              context,
+              width,
+              height,
+              amount * 0.28
+            );
+            break;
+
+          case "neon":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "saturate(" +
+                (
+                  1 +
+                  amount * 0.8
+                ).toFixed(2) +
+                ") contrast(" +
+                (
+                  1 +
+                  amount * 0.2
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 +
+                  amount * 0.05
+                ).toFixed(2) +
+                ") hue-rotate(" +
+                (
+                  amount * 12
+                ).toFixed(1) +
+                "deg)"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(0,255,255,1)",
+              amount * 0.08,
+              "screen"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(255,0,190,1)",
+              amount * 0.06,
+              "soft-light"
+            );
+            break;
+
+          case "drama":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "contrast(" +
+                (
+                  1 +
+                  amount * 0.5
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.12
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 -
+                  amount * 0.08
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawVignette(
+              context,
+              width,
+              height,
+              amount * 0.55
+            );
+            break;
+
+          case "film":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "contrast(" +
+                (
+                  1 +
+                  amount * 0.16
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.04
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 -
+                  amount * 0.02
+                ).toFixed(2) +
+                ") sepia(" +
+                (
+                  amount * 0.16
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(255,145,65,1)",
+              amount * 0.06,
+              "soft-light"
+            );
+
+            drawVignette(
+              context,
+              width,
+              height,
+              amount * 0.2
+            );
+            break;
+
+          case "soft-focus":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "blur(" +
+                (
+                  0.2 +
+                  amount * 1.25
+                ).toFixed(2) +
+                "px) brightness(" +
+                (
+                  1 +
+                  amount * 0.07
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.08
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawOverlay(
+              context,
+              width,
+              height,
+              "rgba(255,255,255,1)",
+              amount * 0.07,
+              "screen"
+            );
+            break;
+
+          case "face-focus":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "contrast(" +
+                (
+                  1 +
+                  amount * 0.14
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.1
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawVignette(
+              context,
+              width,
+              height,
+              0.18 +
+                amount * 0.38
+            );
+            break;
+
+          case "hdr":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "contrast(" +
+                (
+                  1 +
+                  amount * 0.38
+                ).toFixed(2) +
+                ") saturate(" +
+                (
+                  1 +
+                  amount * 0.25
+                ).toFixed(2) +
+                ") brightness(" +
+                (
+                  1 +
+                  amount * 0.03
+                ).toFixed(2) +
+                ")"
+            );
+            break;
+
+          case "duo-tone":
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "saturate(" +
+                (
+                  1 +
+                  amount * 0.18
+                ).toFixed(2) +
+                ") contrast(" +
+                (
+                  1 +
+                  amount * 0.12
+                ).toFixed(2) +
+                ")"
+            );
+
+            drawDuoTone(
+              context,
+              width,
+              height,
+              amount
+            );
+            break;
+
+          default:
+            drawBase(
+              video,
+              context,
+              width,
+              height,
+              "none"
+            );
+        }
+      },
+      [
+        drawBase,
+        drawDuoTone,
+        drawFaceLight,
+        drawOverlay,
+        drawVignette
+      ]
+    );
 
   /*
    * ==========================================================
@@ -1701,100 +2081,110 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const processFrame = useCallback(() => {
-    if (
-      !processingRef.current ||
-      !mountedRef.current ||
-      !open
-    ) {
-      animationFrameRef.current = null;
-      return;
-    }
+  const processFrame =
+    useCallback(() => {
+      if (
+        !processingRef.current ||
+        !mountedRef.current ||
+        !open
+      ) {
+        animationFrameRef.current =
+          null;
 
-    const video =
-      sourceVideoRef.current;
-
-    const canvas =
-      canvasRef.current;
-
-    const context =
-      canvasContextRef.current;
-
-    if (
-      !video ||
-      !canvas ||
-      !context
-    ) {
-      animationFrameRef.current =
-        requestAnimationFrame(
-          processFrame
-        );
-
-      return;
-    }
-
-    if (video.readyState < 2) {
-      animationFrameRef.current =
-        requestAnimationFrame(
-          processFrame
-        );
-
-      return;
-    }
-
-    const width =
-      video.videoWidth || 1280;
-
-    const height =
-      video.videoHeight || 720;
-
-    if (
-      canvas.width !== width ||
-      canvas.height !== height
-    ) {
-      canvas.width = width;
-      canvas.height = height;
-    }
-
-    drawEffect(
-      video,
-      context,
-      width,
-      height
-    );
-
-    const now =
-      performance.now();
-
-    if (
-      !fpsCounterRef.current.time
-    ) {
-      fpsCounterRef.current.time =
-        now;
-    }
-
-    fpsCounterRef.current.frames += 1;
-
-    if (
-      now -
-        fpsCounterRef.current.time >=
-      1000
-    ) {
-      if (mountedRef.current) {
-        setFps(
-          fpsCounterRef.current.frames
-        );
+        return;
       }
 
-      fpsCounterRef.current.frames = 0;
-      fpsCounterRef.current.time = now;
-    }
+      const video =
+        sourceVideoRef.current;
 
-    animationFrameRef.current =
-      requestAnimationFrame(
-        processFrame
+      const canvas =
+        canvasRef.current;
+
+      const context =
+        canvasContextRef.current;
+
+      if (
+        !video ||
+        !canvas ||
+        !context
+      ) {
+        animationFrameRef.current =
+          requestAnimationFrame(
+            processFrame
+          );
+
+        return;
+      }
+
+      /*
+       * Camera video has not produced enough data yet.
+       */
+      if (video.readyState < 2) {
+        animationFrameRef.current =
+          requestAnimationFrame(
+            processFrame
+          );
+
+        return;
+      }
+
+      const width =
+        video.videoWidth || 1280;
+
+      const height =
+        video.videoHeight || 720;
+
+      if (
+        canvas.width !== width ||
+        canvas.height !== height
+      ) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      drawEffect(
+        video,
+        context,
+        width,
+        height
       );
-  }, [drawEffect, open]);
+
+      const now =
+        performance.now();
+
+      if (
+        !fpsCounterRef.current.time
+      ) {
+        fpsCounterRef.current.time =
+          now;
+      }
+
+      fpsCounterRef.current.frames +=
+        1;
+
+      if (
+        now -
+          fpsCounterRef.current.time >=
+        1000
+      ) {
+        if (mountedRef.current) {
+          setFps(
+            fpsCounterRef.current.frames
+          );
+        }
+
+        fpsCounterRef.current.frames =
+          0;
+
+        fpsCounterRef.current.time =
+          now;
+      }
+
+      animationFrameRef.current =
+        requestAnimationFrame(
+          processFrame
+        );
+    }, [drawEffect, open]);
 
   /*
    * ==========================================================
@@ -1813,14 +2203,21 @@ const AIFilters = ({
           return null;
         }
 
+        /*
+         * Already processing this exact stream.
+         */
         if (
           processingRef.current &&
-          processedSourceRef.current === source &&
+          processedSourceRef.current ===
+            source &&
           outputStreamRef.current
         ) {
           return outputStreamRef.current;
         }
 
+        /*
+         * Another start operation is currently running.
+         */
         if (startingRef.current) {
           return outputStreamRef.current;
         }
@@ -1834,8 +2231,10 @@ const AIFilters = ({
           stopAnimation();
 
           /*
-           * We are replacing an old processed output.
-           * The source camera is never stopped.
+           * Replace old processed output.
+           *
+           * IMPORTANT:
+           * This does NOT stop the source camera.
            */
           cleanupOutput();
           cleanupSourceVideo();
@@ -1863,6 +2262,17 @@ const AIFilters = ({
             }
 
             return null;
+          }
+
+          /*
+           * Verify that the source is still alive.
+           */
+          if (
+            !isUsableStream(source)
+          ) {
+            throw new Error(
+              "The camera stream ended before AI processing could start."
+            );
           }
 
           sourceVideoRef.current =
@@ -1908,11 +2318,17 @@ const AIFilters = ({
             "processing"
           );
 
+          /*
+           * Start canvas processing.
+           */
           animationFrameRef.current =
             requestAnimationFrame(
               processFrame
             );
 
+          /*
+           * Send processed MediaStream to dashboard.
+           */
           if (
             onProcessedStreamRef.current
           ) {
@@ -1921,6 +2337,9 @@ const AIFilters = ({
             );
           }
 
+          /*
+           * Send processed video track to WebRTC.
+           */
           if (
             onProcessedTrackRef.current &&
             outputTrackRef.current
@@ -1932,6 +2351,17 @@ const AIFilters = ({
 
           return output;
         } catch (err) {
+          /*
+           * If processing failed, clean only AI-created
+           * resources. Never stop the source camera here.
+           */
+          processingRef.current =
+            false;
+
+          stopAnimation();
+          cleanupOutput();
+          cleanupSourceVideo();
+
           if (mountedRef.current) {
             setEngineState("error");
 
@@ -1964,11 +2394,15 @@ const AIFilters = ({
    * ==========================================================
    * STOP PROCESSING WITHOUT CLOSING UI
    * ==========================================================
+   *
+   * This only pauses the processing loop.
+   * It does not stop the camera.
    */
 
   const stopProcessing =
     useCallback(() => {
-      processingRef.current = false;
+      processingRef.current =
+        false;
 
       stopAnimation();
 
@@ -1982,21 +2416,97 @@ const AIFilters = ({
    * ==========================================================
    * ATTACH CAMERA
    * ==========================================================
+   *
+   * If a working source is supplied, use it.
+   *
+   * If no working source exists, open an independent camera.
    */
 
   const attachStream =
     useCallback(
       async (source) => {
+        if (!open) {
+          return null;
+        }
+
+        let actualSource =
+          source;
+
+        /*
+         * Prefer an existing working source.
+         */
         if (
-          !open ||
-          !isUsableStream(source)
+          !isUsableStream(actualSource)
         ) {
-          return;
+          try {
+            actualSource =
+              await openIndependentCamera();
+          } catch (err) {
+            if (mountedRef.current) {
+              setEngineState("error");
+
+              setError(
+                err &&
+                  err.message
+                  ? err.message
+                  : "Unable to open the camera."
+              );
+            }
+
+            return null;
+          }
+        }
+
+        if (
+          !isUsableStream(actualSource)
+        ) {
+          if (mountedRef.current) {
+            setEngineState("error");
+            setError(
+              "No active camera stream is available."
+            );
+          }
+
+          return null;
+        }
+
+        /*
+         * If the dashboard camera became available while
+         * an AI-owned camera was being opened, prefer the
+         * dashboard stream and stop the unnecessary AI-owned
+         * stream.
+         */
+        const dashboardSource =
+          isUsableStream(stream)
+            ? stream
+            : videoRef &&
+              videoRef.current &&
+              isUsableStream(
+                videoRef.current.srcObject
+              )
+            ? videoRef.current
+                .srcObject
+            : null;
+
+        if (
+          dashboardSource &&
+          actualSource ===
+            aiOwnedStreamRef.current &&
+          dashboardSource !==
+            actualSource
+        ) {
+          /*
+           * The dashboard owns this stream, so use it instead.
+           */
+          actualSource =
+            dashboardSource;
+
+          cleanupOwnedCamera();
         }
 
         try {
-          await startProcessing(
-            source
+          return await startProcessing(
+            actualSource
           );
         } catch (err) {
           if (mountedRef.current) {
@@ -2009,9 +2519,18 @@ const AIFilters = ({
                 : "Unable to attach camera stream."
             );
           }
+
+          return null;
         }
       },
-      [open, startProcessing]
+      [
+        cleanupOwnedCamera,
+        open,
+        openIndependentCamera,
+        startProcessing,
+        stream,
+        videoRef
+      ]
     );
 
   /*
@@ -2020,22 +2539,28 @@ const AIFilters = ({
    * ==========================================================
    */
 
-  const restart = useCallback(
-    async () => {
+  const restart =
+    useCallback(async () => {
       if (!open) {
         return;
       }
 
-      const source =
-        getSourceStream();
+      /*
+       * Stop current canvas processing.
+       */
+      processingRef.current =
+        false;
+
+      stopAnimation();
 
       /*
-       * Restore the real camera first.
+       * Restore parent-owned camera track.
        */
       restoreOriginalCamera();
 
-      stopProcessing();
-
+      /*
+       * Clean processed canvas output.
+       */
       cleanupOutput();
       cleanupSourceVideo();
 
@@ -2043,25 +2568,36 @@ const AIFilters = ({
         null;
 
       sourceStreamRef.current =
-        source;
+        null;
 
+      /*
+       * Reset state.
+       */
       setError("");
       setEngineState("idle");
+      setFps(0);
 
-      if (source) {
-        await attachStream(source);
-      }
-    },
-    [
+      /*
+       * Re-check camera.
+       *
+       * attachStream() will use:
+       *
+       * 1. Dashboard camera if active.
+       * 2. Otherwise an independent AI camera.
+       */
+      const source =
+        getSourceStream();
+
+      await attachStream(source);
+    }, [
       attachStream,
       cleanupOutput,
       cleanupSourceVideo,
       getSourceStream,
       open,
       restoreOriginalCamera,
-      stopProcessing
-    ]
-  );
+      stopAnimation
+    ]);
 
   /*
    * ==========================================================
@@ -2070,24 +2606,20 @@ const AIFilters = ({
    */
 
   const handleEffectChange =
-    useCallback(
-      (nextEffect) => {
-        setEffect(nextEffect);
-        effectRef.current =
-          nextEffect;
-      },
-      []
-    );
+    useCallback((nextEffect) => {
+      setEffect(nextEffect);
+
+      effectRef.current =
+        nextEffect;
+    }, []);
 
   const handleEnabledChange =
-    useCallback(
-      (nextEnabled) => {
-        setEnabled(nextEnabled);
-        enabledRef.current =
-          nextEnabled;
-      },
-      []
-    );
+    useCallback((nextEnabled) => {
+      setEnabled(nextEnabled);
+
+      enabledRef.current =
+        nextEnabled;
+    }, []);
 
   /*
    * ==========================================================
@@ -2107,6 +2639,13 @@ const AIFilters = ({
    * ==========================================================
    * CAMERA WATCHER
    * ==========================================================
+   *
+   * AI Effects is independent.
+   *
+   * When opened:
+   *
+   * 1. Use dashboard camera if active.
+   * 2. Otherwise open an AI-owned camera.
    */
 
   useEffect(() => {
@@ -2115,9 +2654,8 @@ const AIFilters = ({
     }
 
     let cancelled = false;
-    let timer = null;
 
-    const checkSource =
+    const startCamera =
       async () => {
         if (
           cancelled ||
@@ -2130,33 +2668,17 @@ const AIFilters = ({
         const source =
           getSourceStream();
 
-        if (
-          isUsableStream(source)
-        ) {
-          await attachStream(
-            source
-          );
+        await attachStream(source);
 
+        if (cancelled) {
           return;
         }
-
-        timer =
-          window.setTimeout(
-            checkSource,
-            250
-          );
       };
 
-    checkSource();
+    startCamera();
 
     return () => {
       cancelled = true;
-
-      if (timer) {
-        window.clearTimeout(
-          timer
-        );
-      }
     };
   }, [
     attachStream,
@@ -2168,6 +2690,9 @@ const AIFilters = ({
    * ==========================================================
    * SOURCE CHANGES
    * ==========================================================
+   *
+   * If the dashboard provides a new camera stream while the
+   * AI studio is open, switch back to the dashboard stream.
    */
 
   useEffect(() => {
@@ -2182,6 +2707,10 @@ const AIFilters = ({
       return;
     }
 
+    /*
+     * If dashboard now has a different working source,
+     * use that source instead of an AI-owned camera.
+     */
     if (
       source !==
         processedSourceRef.current &&
@@ -2222,7 +2751,9 @@ const AIFilters = ({
           try {
             await preview.play();
           } catch (err) {
-            // Autoplay may be blocked.
+            /*
+             * Autoplay may be blocked.
+             */
           }
         };
 
@@ -2248,10 +2779,59 @@ const AIFilters = ({
 
   /*
    * ==========================================================
-   * CLOSED STATE
+   * COMPONENT UNMOUNT CLEANUP
    * ==========================================================
    *
-   * When closed, only the independent launcher is rendered.
+   * This is deliberately separate from the UI close logic.
+   *
+   * It protects against the component being destroyed by
+   * React while AI-owned resources are still active.
+   */
+
+  useEffect(() => {
+    return () => {
+      processingRef.current =
+        false;
+
+      stopAnimation();
+
+      /*
+       * Restore WebRTC before destroying processed output.
+       */
+      restoreOriginalCamera();
+
+      /*
+       * Stop canvas output only.
+       */
+      cleanupOutput();
+
+      /*
+       * Detach hidden source video.
+       */
+      cleanupSourceVideo();
+
+      /*
+       * Stop ONLY AI-owned camera.
+       */
+      cleanupOwnedCamera();
+
+      sourceStreamRef.current =
+        null;
+
+      processedSourceRef.current =
+        null;
+    };
+  }, [
+    cleanupOutput,
+    cleanupOwnedCamera,
+    cleanupSourceVideo,
+    restoreOriginalCamera,
+    stopAnimation
+  ]);
+
+  /*
+   * ==========================================================
+   * CLOSED STATE
    * ==========================================================
    */
 
@@ -2320,7 +2900,7 @@ const AIFilters = ({
     engineState === "loading"
   ) {
     status = {
-      label: "Starting AI engine",
+      label: "Starting camera",
       icon: Loader2,
       className:
         "text-cyan-300"
@@ -2341,7 +2921,7 @@ const AIFilters = ({
     engineState === "error"
   ) {
     status = {
-      label: "AI engine error",
+      label: "AI camera error",
       icon: CircleAlert,
       className:
         "text-red-300"
