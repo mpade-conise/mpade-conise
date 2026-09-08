@@ -1,3 +1,4 @@
+```jsx
 import React, {
   useCallback,
   useEffect,
@@ -5,6 +6,7 @@ import React, {
   useRef,
   useState
 } from "react";
+
 import {
   ArrowLeft,
   Sparkles,
@@ -20,6 +22,12 @@ import {
   Wand2,
   X
 } from "lucide-react";
+
+/*
+ * ============================================================
+ * EFFECTS
+ * ============================================================
+ */
 
 const EFFECTS = [
   {
@@ -141,6 +149,12 @@ const CATEGORIES = [
   "Creative"
 ];
 
+/*
+ * ============================================================
+ * HELPERS
+ * ============================================================
+ */
+
 function cx() {
   return Array.prototype.slice
     .call(arguments)
@@ -156,9 +170,17 @@ function isUsableStream(source) {
   return (
     source &&
     typeof source.getVideoTracks === "function" &&
-    source.getVideoTracks().length > 0
+    source.getVideoTracks().some(
+      (track) => track && track.readyState !== "ended"
+    )
   );
 }
+
+/*
+ * ============================================================
+ * COMPONENT
+ * ============================================================
+ */
 
 const AIEffects = ({
   stream = null,
@@ -170,23 +192,12 @@ const AIEffects = ({
   defaultOpen = false
 }) => {
   /*
-   * ============================================================
-   * INDEPENDENT AI EFFECTS UI
-   * ============================================================
-   *
-   * This component no longer depends on StreamDashboard state
-   * to open or close itself.
-   *
-   * It owns:
-   * - open / closed state
-   * - Back button
-   * - floating launcher
-   * - processing cleanup
-   * - processed-track reset
+   * ==========================================================
+   * UI STATE
+   * ==========================================================
    */
 
   const [open, setOpen] = useState(defaultOpen);
-
   const [enabled, setEnabled] = useState(true);
   const [effect, setEffect] = useState("none");
   const [intensity, setIntensity] = useState(55);
@@ -197,30 +208,84 @@ const AIEffects = ({
   const [previewOpen, setPreviewOpen] = useState(true);
   const [fps, setFps] = useState(0);
 
+  /*
+   * ==========================================================
+   * LIFECYCLE REFS
+   * ==========================================================
+   */
+
   const mountedRef = useRef(false);
   const startingRef = useRef(false);
+
+  /*
+   * ==========================================================
+   * CAMERA REFS
+   * ==========================================================
+   */
 
   const sourceStreamRef = useRef(null);
   const sourceVideoRef = useRef(null);
 
+  /*
+   * ==========================================================
+   * CANVAS REFS
+   * ==========================================================
+   */
+
   const canvasRef = useRef(null);
   const canvasContextRef = useRef(null);
 
+  /*
+   * ==========================================================
+   * OUTPUT REFS
+   * ==========================================================
+   */
+
   const outputStreamRef = useRef(null);
   const outputTrackRef = useRef(null);
+
+  /*
+   * ==========================================================
+   * PROCESSING REFS
+   * ==========================================================
+   */
 
   const animationFrameRef = useRef(null);
   const processingRef = useRef(false);
   const processedSourceRef = useRef(null);
 
+  /*
+   * ==========================================================
+   * VALUE REFS
+   * ==========================================================
+   */
+
   const effectRef = useRef(effect);
   const intensityRef = useRef(intensity);
   const enabledRef = useRef(enabled);
 
+  /*
+   * ==========================================================
+   * CALLBACK REFS
+   * ==========================================================
+   */
+
   const onProcessedStreamRef = useRef(onProcessedStream);
   const onProcessedTrackRef = useRef(onProcessedTrack);
 
+  /*
+   * ==========================================================
+   * PREVIEW
+   * ==========================================================
+   */
+
   const previewVideoRef = useRef(null);
+
+  /*
+   * ==========================================================
+   * FPS
+   * ==========================================================
+   */
 
   const fpsCounterRef = useRef({
     frames: 0,
@@ -228,9 +293,11 @@ const AIEffects = ({
   });
 
   /*
-   * Keep callback refs current without forcing the processing
-   * loop to restart every time the parent recreates a callback.
+   * ==========================================================
+   * KEEP CALLBACKS CURRENT
+   * ==========================================================
    */
+
   useEffect(() => {
     onProcessedStreamRef.current = onProcessedStream;
   }, [onProcessedStream]);
@@ -252,9 +319,9 @@ const AIEffects = ({
   }, [enabled]);
 
   /*
-   * ============================================================
-   * SOURCE
-   * ============================================================
+   * ==========================================================
+   * SOURCE STREAM
+   * ==========================================================
    */
 
   const getSourceStream = useCallback(() => {
@@ -270,13 +337,17 @@ const AIEffects = ({
       return videoRef.current.srcObject;
     }
 
+    if (isUsableStream(sourceStreamRef.current)) {
+      return sourceStreamRef.current;
+    }
+
     return null;
   }, [stream, videoRef]);
 
   /*
-   * ============================================================
-   * ANIMATION
-   * ============================================================
+   * ==========================================================
+   * STOP ANIMATION
+   * ==========================================================
    */
 
   const stopAnimation = useCallback(() => {
@@ -287,22 +358,29 @@ const AIEffects = ({
   }, []);
 
   /*
-   * ============================================================
-   * OUTPUT CLEANUP
-   * ============================================================
+   * ==========================================================
+   * CLEAN PROCESSED OUTPUT
+   *
+   * IMPORTANT:
+   * This ONLY stops the canvas-created video track.
+   *
+   * It NEVER stops the real camera track.
+   * ==========================================================
    */
 
   const cleanupOutput = useCallback(() => {
-    if (outputStreamRef.current) {
-      outputStreamRef.current
-        .getVideoTracks()
-        .forEach((track) => {
-          try {
-            track.stop();
-          } catch (err) {
-            // Ignore cleanup errors.
-          }
-        });
+    const output = outputStreamRef.current;
+
+    if (output) {
+      const tracks = output.getVideoTracks();
+
+      tracks.forEach((track) => {
+        try {
+          track.stop();
+        } catch (err) {
+          // Ignore cleanup errors.
+        }
+      });
     }
 
     outputStreamRef.current = null;
@@ -310,56 +388,104 @@ const AIEffects = ({
   }, []);
 
   /*
-   * ============================================================
-   * SOURCE VIDEO CLEANUP
-   * ============================================================
+   * ==========================================================
+   * CLEAN HIDDEN SOURCE VIDEO
+   *
+   * This does NOT stop camera tracks.
+   * ==========================================================
    */
 
   const cleanupSourceVideo = useCallback(() => {
     const video = sourceVideoRef.current;
 
-    if (video) {
-      try {
-        video.pause();
-      } catch (err) {
-        // Ignore cleanup errors.
-      }
+    if (!video) {
+      return;
+    }
 
-      try {
-        video.srcObject = null;
-      } catch (err) {
-        // Ignore cleanup errors.
-      }
+    try {
+      video.pause();
+    } catch (err) {
+      // Ignore.
+    }
+
+    try {
+      video.srcObject = null;
+    } catch (err) {
+      // Ignore.
     }
 
     sourceVideoRef.current = null;
   }, []);
 
   /*
-   * ============================================================
-   * RESET PROCESSED OUTPUT
-   * ============================================================
+   * ==========================================================
+   * RESTORE ORIGINAL CAMERA TRACK
    *
-   * This is critical.
+   * THIS IS THE IMPORTANT FIX.
    *
-   * When AI Effects closes, the parent must receive null so the
-   * WebRTC layer can fall back to the original camera track.
+   * The original camera track is restored BEFORE the processed
+   * canvas track is stopped.
+   *
+   * We intentionally do NOT send the original stream through
+   * onProcessedStream because the parent may have cleanup logic
+   * that stops tracks belonging to that stream.
+   * ==========================================================
    */
 
-  const resetProcessedOutput = useCallback(() => {
+  const restoreOriginalCamera = useCallback(() => {
+    const source =
+      sourceStreamRef.current ||
+      getSourceStream();
+
+    if (!source) {
+      if (onProcessedTrackRef.current) {
+        onProcessedTrackRef.current(null);
+      }
+
+      if (onProcessedStreamRef.current) {
+        onProcessedStreamRef.current(null);
+      }
+
+      return null;
+    }
+
+    const originalVideoTracks =
+      typeof source.getVideoTracks === "function"
+        ? source.getVideoTracks()
+        : [];
+
+    const originalTrack =
+      originalVideoTracks.find(
+        (track) =>
+          track &&
+          track.readyState !== "ended"
+      ) || null;
+
+    /*
+     * First restore the original video track.
+     */
+    if (onProcessedTrackRef.current) {
+      onProcessedTrackRef.current(
+        originalTrack
+      );
+    }
+
+    /*
+     * Clear processed stream reference.
+     *
+     * DO NOT send source here.
+     */
     if (onProcessedStreamRef.current) {
       onProcessedStreamRef.current(null);
     }
 
-    if (onProcessedTrackRef.current) {
-      onProcessedTrackRef.current(null);
-    }
-  }, []);
+    return originalTrack;
+  }, [getSourceStream]);
 
   /*
-   * ============================================================
-   * COMPLETE PROCESSING CLEANUP
-   * ============================================================
+   * ==========================================================
+   * FULL PROCESSING CLEANUP
+   * ==========================================================
    */
 
   const cleanupProcessing = useCallback(() => {
@@ -368,11 +494,27 @@ const AIEffects = ({
 
     stopAnimation();
 
-    cleanupOutput();
-    cleanupSourceVideo();
+    /*
+     * MOST IMPORTANT ORDER:
+     *
+     * 1. Restore original camera track.
+     * 2. Give React/WebRTC a frame to switch tracks.
+     * 3. Stop processed canvas track.
+     */
+
+    restoreOriginalCamera();
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        cleanupOutput();
+        cleanupSourceVideo();
+      });
+    } else {
+      cleanupOutput();
+      cleanupSourceVideo();
+    }
 
     processedSourceRef.current = null;
-    sourceStreamRef.current = null;
 
     fpsCounterRef.current = {
       frames: 0,
@@ -383,31 +525,37 @@ const AIEffects = ({
       setEngineState("idle");
       setFps(0);
     }
-
-    resetProcessedOutput();
   }, [
     cleanupOutput,
     cleanupSourceVideo,
-    resetProcessedOutput,
+    restoreOriginalCamera,
     stopAnimation
   ]);
 
   /*
-   * ============================================================
-   * INDEPENDENT BACK / CLOSE
-   * ============================================================
+   * ==========================================================
+   * INDEPENDENT BACK BUTTON
+   * ==========================================================
    */
 
   const handleBack = useCallback(() => {
-    cleanupProcessing();
     setError("");
+
+    /*
+     * Restore camera before visually closing.
+     */
+    cleanupProcessing();
+
+    /*
+     * UI closes independently.
+     */
     setOpen(false);
   }, [cleanupProcessing]);
 
   /*
-   * ============================================================
+   * ==========================================================
    * OPEN
-   * ============================================================
+   * ==========================================================
    */
 
   const handleOpen = useCallback(() => {
@@ -416,139 +564,171 @@ const AIEffects = ({
   }, []);
 
   /*
-   * ============================================================
-   * SOURCE VIDEO CREATION
-   * ============================================================
+   * ==========================================================
+   * CREATE HIDDEN SOURCE VIDEO
+   * ==========================================================
    */
 
-  const createSourceVideo = useCallback(async (source) => {
-    if (!isUsableStream(source)) {
-      throw new Error("No usable camera stream was found.");
-    }
+  const createSourceVideo = useCallback(
+    async (source) => {
+      if (!isUsableStream(source)) {
+        throw new Error(
+          "No usable camera stream was found."
+        );
+      }
 
-    const video = document.createElement("video");
+      const video =
+        document.createElement("video");
 
-    video.autoplay = true;
-    video.muted = true;
-    video.playsInline = true;
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
 
-    video.setAttribute("playsinline", "true");
-
-    video.srcObject = source;
-
-    await new Promise((resolve, reject) => {
-      let finished = false;
-
-      const finish = (callback) => {
-        if (finished) {
-          return;
-        }
-
-        finished = true;
-
-        video.onloadedmetadata = null;
-        video.onerror = null;
-
-        callback();
-      };
-
-      const timeout = window.setTimeout(() => {
-        if (video.readyState >= 1) {
-          finish(resolve);
-        } else {
-          finish(() => {
-            reject(
-              new Error(
-                "Camera video metadata could not be loaded."
-              )
-            );
-          });
-        }
-      }, 5000);
-
-      video.onloadedmetadata = () => {
-        window.clearTimeout(timeout);
-        finish(resolve);
-      };
-
-      video.onerror = () => {
-        window.clearTimeout(timeout);
-
-        finish(() => {
-          reject(
-            new Error(
-              "Unable to read the camera video."
-            )
-          );
-        });
-      };
-    });
-
-    try {
-      await video.play();
-    } catch (err) {
-      // Browser autoplay may already be permitted.
-    }
-
-    return video;
-  }, []);
-
-  /*
-   * ============================================================
-   * CANVAS
-   * ============================================================
-   */
-
-  const prepareCanvas = useCallback((width, height) => {
-    let canvas = canvasRef.current;
-
-    if (!canvas) {
-      canvas = document.createElement("canvas");
-      canvasRef.current = canvas;
-    }
-
-    canvas.width = width;
-    canvas.height = height;
-
-    const context = canvas.getContext("2d", {
-      alpha: false,
-      desynchronized: true
-    });
-
-    if (!context) {
-      throw new Error(
-        "Your browser does not support the required canvas engine."
+      video.setAttribute(
+        "playsinline",
+        "true"
       );
-    }
 
-    canvasContextRef.current = context;
+      video.srcObject = source;
 
-    return {
-      canvas,
-      context
-    };
-  }, []);
+      await new Promise(
+        (resolve, reject) => {
+          let finished = false;
+
+          const finish = (callback) => {
+            if (finished) {
+              return;
+            }
+
+            finished = true;
+
+            video.onloadedmetadata =
+              null;
+            video.onerror = null;
+
+            callback();
+          };
+
+          const timeout =
+            window.setTimeout(() => {
+              if (video.readyState >= 1) {
+                finish(resolve);
+              } else {
+                finish(() => {
+                  reject(
+                    new Error(
+                      "Camera video metadata could not be loaded."
+                    )
+                  );
+                });
+              }
+            }, 5000);
+
+          video.onloadedmetadata = () => {
+            window.clearTimeout(
+              timeout
+            );
+
+            finish(resolve);
+          };
+
+          video.onerror = () => {
+            window.clearTimeout(
+              timeout
+            );
+
+            finish(() => {
+              reject(
+                new Error(
+                  "Unable to read the camera video."
+                )
+              );
+            });
+          };
+        }
+      );
+
+      try {
+        await video.play();
+      } catch (err) {
+        /*
+         * Autoplay may already be allowed.
+         */
+      }
+
+      return video;
+    },
+    []
+  );
 
   /*
-   * ============================================================
-   * OUTPUT STREAM
-   * ============================================================
+   * ==========================================================
+   * PREPARE CANVAS
+   * ==========================================================
    */
 
-  const createOutputStream = useCallback(
-    (source, canvas) => {
+  const prepareCanvas = useCallback(
+    (width, height) => {
+      let canvas = canvasRef.current;
+
+      if (!canvas) {
+        canvas =
+          document.createElement(
+            "canvas"
+          );
+
+        canvasRef.current = canvas;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const context =
+        canvas.getContext("2d", {
+          alpha: false,
+          desynchronized: true
+        });
+
+      if (!context) {
+        throw new Error(
+          "Your browser does not support the required canvas engine."
+        );
+      }
+
+      canvasContextRef.current =
+        context;
+
+      return {
+        canvas,
+        context
+      };
+    },
+    []
+  );
+
+  /*
+   * ==========================================================
+   * CREATE OUTPUT STREAM
+   * ==========================================================
+   */
+
+  const createOutputStream =
+    useCallback((source, canvas) => {
       if (
         !canvas ||
-        typeof canvas.captureStream !== "function"
+        typeof canvas.captureStream !==
+          "function"
       ) {
         throw new Error(
           "Canvas streaming is not supported by this browser."
         );
       }
 
-      const output = canvas.captureStream(30);
+      const output =
+        canvas.captureStream(30);
 
-      const videoTracks = output.getVideoTracks();
+      const videoTracks =
+        output.getVideoTracks();
 
       if (!videoTracks.length) {
         throw new Error(
@@ -556,39 +736,61 @@ const AIEffects = ({
         );
       }
 
+      /*
+       * Preserve original camera audio.
+       *
+       * The audio tracks are NOT stopped by
+       * cleanupOutput().
+       */
       const sourceAudioTracks =
-        typeof source.getAudioTracks === "function"
+        typeof source.getAudioTracks ===
+        "function"
           ? source.getAudioTracks()
           : [];
 
-      sourceAudioTracks.forEach((track) => {
-        try {
-          output.addTrack(track);
-        } catch (err) {
-          // Ignore duplicate audio-track errors.
+      sourceAudioTracks.forEach(
+        (track) => {
+          try {
+            output.addTrack(track);
+          } catch (err) {
+            /*
+             * Ignore duplicate audio errors.
+             */
+          }
         }
-      });
+      );
 
-      outputStreamRef.current = output;
-      outputTrackRef.current = videoTracks[0];
+      outputStreamRef.current =
+        output;
+
+      outputTrackRef.current =
+        videoTracks[0];
 
       return output;
-    },
-    []
-  );
+    }, []);
 
   /*
-   * ============================================================
-   * DRAW HELPERS
-   * ============================================================
+   * ==========================================================
+   * DRAW BASE
+   * ==========================================================
    */
 
   const drawBase = useCallback(
-    (video, context, width, height, filter) => {
+    (
+      video,
+      context,
+      width,
+      height,
+      filter
+    ) => {
       context.save();
 
-      context.filter = filter || "none";
-      context.globalCompositeOperation = "source-over";
+      context.filter =
+        filter || "none";
+
+      context.globalCompositeOperation =
+        "source-over";
+
       context.globalAlpha = 1;
 
       context.drawImage(
@@ -603,6 +805,12 @@ const AIEffects = ({
     },
     []
   );
+
+  /*
+   * ==========================================================
+   * DRAW OVERLAY
+   * ==========================================================
+   */
 
   const drawOverlay = useCallback(
     (
@@ -633,16 +841,33 @@ const AIEffects = ({
     []
   );
 
+  /*
+   * ==========================================================
+   * VIGNETTE
+   * ==========================================================
+   */
+
   const drawVignette = useCallback(
-    (context, width, height, strength) => {
+    (
+      context,
+      width,
+      height,
+      strength
+    ) => {
       const gradient =
         context.createRadialGradient(
           width / 2,
           height / 2,
-          Math.min(width, height) * 0.18,
+          Math.min(
+            width,
+            height
+          ) * 0.18,
           width / 2,
           height / 2,
-          Math.max(width, height) * 0.72
+          Math.max(
+            width,
+            height
+          ) * 0.72
         );
 
       gradient.addColorStop(
@@ -653,7 +878,11 @@ const AIEffects = ({
       gradient.addColorStop(
         1,
         "rgba(0,0,0," +
-          clamp(strength, 0, 1) +
+          clamp(
+            strength,
+            0,
+            1
+          ) +
           ")"
       );
 
@@ -676,115 +905,173 @@ const AIEffects = ({
     []
   );
 
-  const drawFaceLight = useCallback(
-    (context, width, height, strength) => {
-      const gradient =
-        context.createRadialGradient(
-          width * 0.5,
-          height * 0.38,
-          Math.min(width, height) * 0.05,
-          width * 0.5,
-          height * 0.4,
-          Math.min(width, height) * 0.7
+  /*
+   * ==========================================================
+   * FACE LIGHT
+   * ==========================================================
+   */
+
+  const drawFaceLight =
+    useCallback(
+      (
+        context,
+        width,
+        height,
+        strength
+      ) => {
+        const gradient =
+          context.createRadialGradient(
+            width * 0.5,
+            height * 0.38,
+            Math.min(
+              width,
+              height
+            ) * 0.05,
+            width * 0.5,
+            height * 0.4,
+            Math.min(
+              width,
+              height
+            ) * 0.7
+          );
+
+        gradient.addColorStop(
+          0,
+          "rgba(255,255,255," +
+            clamp(
+              strength,
+              0,
+              0.35
+            ) +
+            ")"
         );
 
-      gradient.addColorStop(
-        0,
-        "rgba(255,255,255," +
-          clamp(strength, 0, 0.35) +
-          ")"
-      );
+        gradient.addColorStop(
+          0.45,
+          "rgba(255,225,205," +
+            clamp(
+              strength * 0.35,
+              0,
+              0.2
+            ) +
+            ")"
+        );
 
-      gradient.addColorStop(
-        0.45,
-        "rgba(255,225,205," +
-          clamp(strength * 0.35, 0, 0.2) +
-          ")"
-      );
+        gradient.addColorStop(
+          1,
+          "rgba(255,255,255,0)"
+        );
 
-      gradient.addColorStop(
-        1,
-        "rgba(255,255,255,0)"
-      );
+        context.save();
 
-      context.save();
+        context.globalCompositeOperation =
+          "screen";
 
-      context.globalCompositeOperation =
-        "screen";
+        context.fillStyle =
+          gradient;
 
-      context.fillStyle = gradient;
-
-      context.fillRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      context.restore();
-    },
-    []
-  );
-
-  const drawDuoTone = useCallback(
-    (context, width, height, strength) => {
-      const gradient =
-        context.createLinearGradient(
+        context.fillRect(
           0,
           0,
           width,
           height
         );
 
-      gradient.addColorStop(
-        0,
-        "rgba(48,90,255," +
-          clamp(strength, 0, 0.45) +
-          ")"
-      );
-
-      gradient.addColorStop(
-        0.5,
-        "rgba(140,65,255," +
-          clamp(strength, 0, 0.35) +
-          ")"
-      );
-
-      gradient.addColorStop(
-        1,
-        "rgba(255,105,55," +
-          clamp(strength, 0, 0.4) +
-          ")"
-      );
-
-      context.save();
-
-      context.globalCompositeOperation =
-        "soft-light";
-
-      context.fillStyle = gradient;
-
-      context.fillRect(
-        0,
-        0,
-        width,
-        height
-      );
-
-      context.restore();
-    },
-    []
-  );
+        context.restore();
+      },
+      []
+    );
 
   /*
-   * ============================================================
+   * ==========================================================
+   * DUO TONE
+   * ==========================================================
+   */
+
+  const drawDuoTone =
+    useCallback(
+      (
+        context,
+        width,
+        height,
+        strength
+      ) => {
+        const gradient =
+          context.createLinearGradient(
+            0,
+            0,
+            width,
+            height
+          );
+
+        gradient.addColorStop(
+          0,
+          "rgba(48,90,255," +
+            clamp(
+              strength,
+              0,
+              0.45
+            ) +
+            ")"
+        );
+
+        gradient.addColorStop(
+          0.5,
+          "rgba(140,65,255," +
+            clamp(
+              strength,
+              0,
+              0.35
+            ) +
+            ")"
+        );
+
+        gradient.addColorStop(
+          1,
+          "rgba(255,105,55," +
+            clamp(
+              strength,
+              0,
+              0.4
+            ) +
+            ")"
+        );
+
+        context.save();
+
+        context.globalCompositeOperation =
+          "soft-light";
+
+        context.fillStyle =
+          gradient;
+
+        context.fillRect(
+          0,
+          0,
+          width,
+          height
+        );
+
+        context.restore();
+      },
+      []
+    );
+
+  /*
+   * ==========================================================
    * EFFECT ENGINE
-   * ============================================================
+   * ==========================================================
    */
 
   const drawEffect = useCallback(
-    (video, context, width, height) => {
-      const selected = effectRef.current;
+    (
+      video,
+      context,
+      width,
+      height
+    ) => {
+      const selected =
+        effectRef.current;
 
       const amount = clamp(
         intensityRef.current / 100,
@@ -1408,7 +1695,6 @@ const AIEffects = ({
             height,
             "none"
           );
-          break;
       }
     },
     [
@@ -1421,9 +1707,9 @@ const AIEffects = ({
   );
 
   /*
-   * ============================================================
+   * ==========================================================
    * FRAME PROCESSOR
-   * ============================================================
+   * ==========================================================
    */
 
   const processFrame = useCallback(() => {
@@ -1432,24 +1718,39 @@ const AIEffects = ({
       !mountedRef.current ||
       !open
     ) {
-      animationFrameRef.current = null;
+      animationFrameRef.current =
+        null;
+
       return;
     }
 
-    const video = sourceVideoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvasContextRef.current;
+    const video =
+      sourceVideoRef.current;
 
-    if (!video || !canvas || !context) {
+    const canvas =
+      canvasRef.current;
+
+    const context =
+      canvasContextRef.current;
+
+    if (
+      !video ||
+      !canvas ||
+      !context
+    ) {
       animationFrameRef.current =
-        requestAnimationFrame(processFrame);
+        requestAnimationFrame(
+          processFrame
+        );
 
       return;
     }
 
     if (video.readyState < 2) {
       animationFrameRef.current =
-        requestAnimationFrame(processFrame);
+        requestAnimationFrame(
+          processFrame
+        );
 
       return;
     }
@@ -1475,290 +1776,343 @@ const AIEffects = ({
       height
     );
 
-    const now = performance.now();
+    const now =
+      performance.now();
 
-    if (!fpsCounterRef.current.time) {
-      fpsCounterRef.current.time = now;
+    if (
+      !fpsCounterRef.current.time
+    ) {
+      fpsCounterRef.current.time =
+        now;
     }
 
-    fpsCounterRef.current.frames += 1;
+    fpsCounterRef.current.frames +=
+      1;
 
     if (
       now -
         fpsCounterRef.current.time >=
       1000
     ) {
-      setFps(
-        fpsCounterRef.current.frames
-      );
+      if (mountedRef.current) {
+        setFps(
+          fpsCounterRef.current.frames
+        );
+      }
 
-      fpsCounterRef.current.frames = 0;
-      fpsCounterRef.current.time = now;
+      fpsCounterRef.current.frames =
+        0;
+
+      fpsCounterRef.current.time =
+        now;
     }
 
     animationFrameRef.current =
-      requestAnimationFrame(processFrame);
+      requestAnimationFrame(
+        processFrame
+      );
   }, [drawEffect, open]);
 
   /*
-   * ============================================================
+   * ==========================================================
    * START PROCESSING
-   * ============================================================
+   * ==========================================================
    */
 
-  const startProcessing = useCallback(
-    async (source) => {
-      if (
-        !mountedRef.current ||
-        !open ||
-        !isUsableStream(source)
-      ) {
-        return null;
-      }
-
-      if (
-        processingRef.current &&
-        processedSourceRef.current === source &&
-        outputStreamRef.current
-      ) {
-        return outputStreamRef.current;
-      }
-
-      if (startingRef.current) {
-        return outputStreamRef.current;
-      }
-
-      startingRef.current = true;
-
-      setError("");
-      setEngineState("loading");
-
-      try {
-        stopAnimation();
-
-        cleanupOutput();
-        cleanupSourceVideo();
-
-        processedSourceRef.current = source;
-        sourceStreamRef.current = source;
-
-        const video =
-          await createSourceVideo(source);
-
+  const startProcessing =
+    useCallback(
+      async (source) => {
         if (
           !mountedRef.current ||
-          !open
+          !open ||
+          !isUsableStream(source)
         ) {
-          try {
-            video.pause();
-            video.srcObject = null;
-          } catch (err) {
-            // Ignore cleanup errors.
+          return null;
+        }
+
+        if (
+          processingRef.current &&
+          processedSourceRef.current ===
+            source &&
+          outputStreamRef.current
+        ) {
+          return outputStreamRef.current;
+        }
+
+        if (startingRef.current) {
+          return outputStreamRef.current;
+        }
+
+        startingRef.current = true;
+
+        setError("");
+        setEngineState("loading");
+
+        try {
+          stopAnimation();
+
+          /*
+           * We are replacing an old processed output.
+           * The source camera is never stopped.
+           */
+          cleanupOutput();
+          cleanupSourceVideo();
+
+          processedSourceRef.current =
+            source;
+
+          sourceStreamRef.current =
+            source;
+
+          const video =
+            await createSourceVideo(
+              source
+            );
+
+          if (
+            !mountedRef.current ||
+            !open
+          ) {
+            try {
+              video.pause();
+              video.srcObject = null;
+            } catch (err) {
+              // Ignore.
+            }
+
+            return null;
+          }
+
+          sourceVideoRef.current =
+            video;
+
+          const width =
+            video.videoWidth || 1280;
+
+          const height =
+            video.videoHeight || 720;
+
+          const prepared =
+            prepareCanvas(
+              width,
+              height
+            );
+
+          const output =
+            createOutputStream(
+              source,
+              prepared.canvas
+            );
+
+          if (
+            !mountedRef.current ||
+            !open
+          ) {
+            cleanupOutput();
+            cleanupSourceVideo();
+
+            return null;
+          }
+
+          processingRef.current =
+            true;
+
+          fpsCounterRef.current = {
+            frames: 0,
+            time: performance.now()
+          };
+
+          setEngineState(
+            "processing"
+          );
+
+          animationFrameRef.current =
+            requestAnimationFrame(
+              processFrame
+            );
+
+          if (
+            onProcessedStreamRef.current
+          ) {
+            onProcessedStreamRef.current(
+              output
+            );
+          }
+
+          if (
+            onProcessedTrackRef.current &&
+            outputTrackRef.current
+          ) {
+            onProcessedTrackRef.current(
+              outputTrackRef.current
+            );
+          }
+
+          return output;
+        } catch (err) {
+          if (mountedRef.current) {
+            setEngineState("error");
+
+            setError(
+              err &&
+                err.message
+                ? err.message
+                : "Unable to start AI Effects."
+            );
           }
 
           return null;
+        } finally {
+          startingRef.current =
+            false;
         }
+      },
+      [
+        cleanupOutput,
+        cleanupSourceVideo,
+        createOutputStream,
+        createSourceVideo,
+        open,
+        prepareCanvas,
+        processFrame,
+        stopAnimation
+      ]
+    );
 
-        sourceVideoRef.current = video;
+  /*
+   * ==========================================================
+   * STOP PROCESSING WITHOUT CLOSING UI
+   * ==========================================================
+   */
 
-        const width =
-          video.videoWidth || 1280;
+  const stopProcessing =
+    useCallback(() => {
+      processingRef.current =
+        false;
 
-        const height =
-          video.videoHeight || 720;
+      stopAnimation();
 
-        const prepared =
-          prepareCanvas(
-            width,
-            height
-          );
+      if (mountedRef.current) {
+        setEngineState("idle");
+        setFps(0);
+      }
+    }, [stopAnimation]);
 
-        const output =
-          createOutputStream(
-            source,
-            prepared.canvas
-          );
+  /*
+   * ==========================================================
+   * ATTACH CAMERA
+   * ==========================================================
+   */
 
+  const attachStream =
+    useCallback(
+      async (source) => {
         if (
-          !mountedRef.current ||
-          !open
+          !open ||
+          !isUsableStream(source)
         ) {
-          return null;
+          return;
         }
 
-        processingRef.current = true;
-
-        fpsCounterRef.current = {
-          frames: 0,
-          time: performance.now()
-        };
-
-        setEngineState("processing");
-
-        animationFrameRef.current =
-          requestAnimationFrame(
-            processFrame
+        try {
+          await startProcessing(
+            source
           );
+        } catch (err) {
+          if (mountedRef.current) {
+            setEngineState("error");
 
-        if (
-          onProcessedStreamRef.current
-        ) {
-          onProcessedStreamRef.current(
-            output
-          );
+            setError(
+              err &&
+                err.message
+                ? err.message
+                : "Unable to attach camera stream."
+            );
+          }
         }
+      },
+      [open, startProcessing]
+    );
 
-        if (
-          onProcessedTrackRef.current &&
-          outputTrackRef.current
-        ) {
-          onProcessedTrackRef.current(
-            outputTrackRef.current
-          );
-        }
+  /*
+   * ==========================================================
+   * RESTART ENGINE
+   * ==========================================================
+   */
 
-        return output;
-      } catch (err) {
-        if (mountedRef.current) {
-          setEngineState("error");
+  const restart = useCallback(
+    async () => {
+      if (!open) {
+        return;
+      }
 
-          setError(
-            err && err.message
-              ? err.message
-              : "Unable to start AI Effects."
-          );
-        }
+      const source =
+        getSourceStream();
 
-        return null;
-      } finally {
-        startingRef.current = false;
+      /*
+       * Restore the real camera first.
+       */
+      restoreOriginalCamera();
+
+      stopProcessing();
+
+      cleanupOutput();
+      cleanupSourceVideo();
+
+      processedSourceRef.current =
+        null;
+
+      sourceStreamRef.current =
+        source;
+
+      setError("");
+      setEngineState("idle");
+
+      if (source) {
+        await attachStream(source);
       }
     },
     [
+      attachStream,
       cleanupOutput,
       cleanupSourceVideo,
-      createOutputStream,
-      createSourceVideo,
+      getSourceStream,
       open,
-      prepareCanvas,
-      processFrame,
-      stopAnimation
+      restoreOriginalCamera,
+      stopProcessing
     ]
   );
 
   /*
-   * ============================================================
-   * STOP PROCESSING
-   * ============================================================
-   */
-
-  const stopProcessing = useCallback(() => {
-    processingRef.current = false;
-
-    stopAnimation();
-
-    if (mountedRef.current) {
-      setEngineState("idle");
-      setFps(0);
-    }
-  }, [stopAnimation]);
-
-  /*
-   * ============================================================
-   * ATTACH CAMERA
-   * ============================================================
-   */
-
-  const attachStream = useCallback(
-    async (source) => {
-      if (
-        !open ||
-        !isUsableStream(source)
-      ) {
-        return;
-      }
-
-      try {
-        await startProcessing(source);
-      } catch (err) {
-        if (mountedRef.current) {
-          setEngineState("error");
-
-          setError(
-            err && err.message
-              ? err.message
-              : "Unable to attach camera stream."
-          );
-        }
-      }
-    },
-    [open, startProcessing]
-  );
-
-  /*
-   * ============================================================
-   * RESTART
-   * ============================================================
-   */
-
-  const restart = useCallback(async () => {
-    if (!open) {
-      return;
-    }
-
-    const source =
-      getSourceStream();
-
-    stopProcessing();
-
-    cleanupOutput();
-    cleanupSourceVideo();
-
-    processedSourceRef.current = null;
-    sourceStreamRef.current = null;
-
-    resetProcessedOutput();
-
-    setError("");
-    setEngineState("idle");
-
-    if (source) {
-      await attachStream(source);
-    }
-  }, [
-    attachStream,
-    cleanupOutput,
-    cleanupSourceVideo,
-    getSourceStream,
-    open,
-    resetProcessedOutput,
-    stopProcessing
-  ]);
-
-  /*
-   * ============================================================
+   * ==========================================================
    * EFFECT CONTROLS
-   * ============================================================
+   * ==========================================================
    */
 
   const handleEffectChange =
-    useCallback((nextEffect) => {
-      setEffect(nextEffect);
-      effectRef.current =
-        nextEffect;
-    }, []);
+    useCallback(
+      (nextEffect) => {
+        setEffect(nextEffect);
+        effectRef.current =
+          nextEffect;
+      },
+      []
+    );
 
   const handleEnabledChange =
-    useCallback((nextEnabled) => {
-      setEnabled(nextEnabled);
-      enabledRef.current =
-        nextEnabled;
-    }, []);
+    useCallback(
+      (nextEnabled) => {
+        setEnabled(nextEnabled);
+        enabledRef.current =
+          nextEnabled;
+      },
+      []
+    );
 
   /*
-   * ============================================================
-   * MOUNT / UNMOUNT
-   * ============================================================
+   * ==========================================================
+   * MOUNT
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -1770,9 +2124,9 @@ const AIEffects = ({
   }, []);
 
   /*
-   * ============================================================
+   * ==========================================================
    * CAMERA WATCHER
-   * ============================================================
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -1783,30 +2137,35 @@ const AIEffects = ({
     let cancelled = false;
     let timer = null;
 
-    const checkSource = async () => {
-      if (
-        cancelled ||
-        !mountedRef.current ||
-        !open
-      ) {
-        return;
-      }
+    const checkSource =
+      async () => {
+        if (
+          cancelled ||
+          !mountedRef.current ||
+          !open
+        ) {
+          return;
+        }
 
-      const source =
-        getSourceStream();
+        const source =
+          getSourceStream();
 
-      if (
-        isUsableStream(source)
-      ) {
-        await attachStream(source);
-        return;
-      }
+        if (
+          isUsableStream(source)
+        ) {
+          await attachStream(
+            source
+          );
 
-      timer = window.setTimeout(
-        checkSource,
-        250
-      );
-    };
+          return;
+        }
+
+        timer =
+          window.setTimeout(
+            checkSource,
+            250
+          );
+      };
 
     checkSource();
 
@@ -1814,7 +2173,9 @@ const AIEffects = ({
       cancelled = true;
 
       if (timer) {
-        window.clearTimeout(timer);
+        window.clearTimeout(
+          timer
+        );
       }
     };
   }, [
@@ -1824,9 +2185,9 @@ const AIEffects = ({
   ]);
 
   /*
-   * ============================================================
+   * ==========================================================
    * SOURCE CHANGES
-   * ============================================================
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -1856,9 +2217,9 @@ const AIEffects = ({
   ]);
 
   /*
-   * ============================================================
-   * PREVIEW OUTPUT
-   * ============================================================
+   * ==========================================================
+   * PREVIEW
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -1881,7 +2242,7 @@ const AIEffects = ({
           try {
             await preview.play();
           } catch (err) {
-            // Browser autoplay policy may block preview.
+            // Autoplay may be blocked.
           }
         };
 
@@ -1906,257 +2267,12 @@ const AIEffects = ({
   ]);
 
   /*
-   * ============================================================
-   * CLOSE CLEANUP
-   * ============================================================
-   */
-
-  useEffect(() => {
-    if (open) {
-      return;
-    }
-
-    /*
-     * When the independent studio closes,
-     * immediately remove the processed track.
-     */
-    processingRef.current = false;
-
-    stopAnimation();
-
-    cleanupOutput();
-    cleanupSourceVideo();
-
-    processedSourceRef.current = null;
-    sourceStreamRef.current = null;
-
-    resetProcessedOutput();
-
-    if (previewVideoRef.current) {
-      try {
-        previewVideoRef.current.pause();
-      } catch (err) {
-        // Ignore cleanup errors.
-      }
-
-      try {
-        previewVideoRef.current.srcObject =
-          null;
-      } catch (err) {
-        // Ignore cleanup errors.
-      }
-    }
-
-    if (mountedRef.current) {
-      setEngineState("idle");
-      setFps(0);
-    }
-  }, [
-    cleanupOutput,
-    cleanupSourceVideo,
-    open,
-    resetProcessedOutput,
-    stopAnimation
-  ]);
-
-  /*
-   * ============================================================
-   * FINAL UNMOUNT CLEANUP
-   * ============================================================
-   */
-
-  useEffect(() => {
-    return () => {
-      processingRef.current = false;
-
-      if (
-        animationFrameRef.current !== null
-      ) {
-        cancelAnimationFrame(
-          animationFrameRef.current
-        );
-
-        animationFrameRef.current =
-          null;
-      }
-
-      if (
-        outputStreamRef.current
-      ) {
-        outputStreamRef.current
-          .getVideoTracks()
-          .forEach((track) => {
-            try {
-              track.stop();
-            } catch (err) {
-              // Ignore cleanup errors.
-            }
-          });
-      }
-
-      outputStreamRef.current =
-        null;
-
-      outputTrackRef.current =
-        null;
-
-      const sourceVideo =
-        sourceVideoRef.current;
-
-      if (sourceVideo) {
-        try {
-          sourceVideo.pause();
-        } catch (err) {
-          // Ignore cleanup errors.
-        }
-
-        try {
-          sourceVideo.srcObject =
-            null;
-        } catch (err) {
-          // Ignore cleanup errors.
-        }
-      }
-
-      sourceVideoRef.current =
-        null;
-
-      canvasRef.current = null;
-      canvasContextRef.current =
-        null;
-
-      if (
-        previewVideoRef.current
-      ) {
-        try {
-          previewVideoRef.current.pause();
-        } catch (err) {
-          // Ignore cleanup errors.
-        }
-
-        try {
-          previewVideoRef.current.srcObject =
-            null;
-        } catch (err) {
-          // Ignore cleanup errors.
-        }
-      }
-
-      if (
-        onProcessedStreamRef.current
-      ) {
-        onProcessedStreamRef.current(
-          null
-        );
-      }
-
-      if (
-        onProcessedTrackRef.current
-      ) {
-        onProcessedTrackRef.current(
-          null
-        );
-      }
-    };
-  }, []);
-
-  /*
-   * ============================================================
-   * FILTERED EFFECT LIST
-   * ============================================================
-   */
-
-  const visibleEffects =
-    useMemo(() => {
-      if (category === "All") {
-        return EFFECTS;
-      }
-
-      return EFFECTS.filter(
-        (item) =>
-          item.category ===
-          category
-      );
-    }, [category]);
-
-  const selectedEffect =
-    useMemo(() => {
-      return (
-        EFFECTS.find(
-          (item) =>
-            item.id === effect
-        ) ||
-        EFFECTS[0]
-      );
-    }, [effect]);
-
-  /*
-   * ============================================================
-   * STATUS
-   * ============================================================
-   */
-
-  const status =
-    useMemo(() => {
-      if (
-        engineState ===
-        "loading"
-      ) {
-        return {
-          label: "Starting AI engine",
-          icon: Loader2,
-          className:
-            "text-cyan-300"
-        };
-      }
-
-      if (
-        engineState ===
-        "processing"
-      ) {
-        return {
-          label: enabled
-            ? "AI effects active"
-            : "Camera processing",
-          icon: CircleCheck,
-          className:
-            "text-emerald-300"
-        };
-      }
-
-      if (
-        engineState ===
-        "error"
-      ) {
-        return {
-          label: "AI engine error",
-          icon: CircleAlert,
-          className:
-            "text-red-300"
-        };
-      }
-
-      return {
-        label: "Ready",
-        icon: Sparkles,
-        className:
-          "text-slate-300"
-      };
-    }, [
-      enabled,
-      engineState
-    ]);
-
-  const StatusIcon =
-    status.icon;
-
-  /*
-   * ============================================================
-   * INDEPENDENT LAUNCHER
-   * ============================================================
+   * ==========================================================
+   * CLOSED STATE
+   * ==========================================================
    *
-   * When the studio is closed, this is the only thing rendered.
-   * It is completely independent from StreamDashboard panels.
+   * When closed, only the independent launcher is rendered.
+   * ==========================================================
    */
 
   if (!open) {
@@ -2170,14 +2286,12 @@ const AIEffects = ({
         <button
           type="button"
           onClick={handleOpen}
-          className="group flex items-center gap-2 rounded-2xl border border-cyan-400/30 bg-slate-950/90 px-4 py-3 text-sm font-bold text-white shadow-2xl shadow-cyan-950/40 backdrop-blur-xl transition-all hover:border-cyan-300/60 hover:bg-cyan-500/10 hover:text-cyan-200"
+          className="group flex items-center gap-2 rounded-2xl border border-cyan-400/30 bg-slate-950/95 px-4 py-3 text-sm font-bold text-white shadow-2xl shadow-cyan-950/40 backdrop-blur-xl transition-all hover:border-cyan-300/60 hover:bg-cyan-500/10 hover:text-cyan-200"
           aria-label="Open AI Effects"
           title="AI Effects"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300 transition group-hover:bg-cyan-400/20">
-            <Sparkles
-              size={17}
-            />
+            <Sparkles size={17} />
           </span>
 
           <span>
@@ -2189,9 +2303,78 @@ const AIEffects = ({
   }
 
   /*
-   * ============================================================
-   * INDEPENDENT AI EFFECTS STUDIO
-   * ============================================================
+   * ==========================================================
+   * FILTERED EFFECTS
+   * ==========================================================
+   */
+
+  const visibleEffects =
+    category === "All"
+      ? EFFECTS
+      : EFFECTS.filter(
+          (item) =>
+            item.category ===
+            category
+        );
+
+  const selectedEffect =
+    EFFECTS.find(
+      (item) =>
+        item.id === effect
+    ) || EFFECTS[0];
+
+  /*
+   * ==========================================================
+   * STATUS
+   * ==========================================================
+   */
+
+  let status = {
+    label: "Ready",
+    icon: Sparkles,
+    className:
+      "text-slate-300"
+  };
+
+  if (
+    engineState === "loading"
+  ) {
+    status = {
+      label: "Starting AI engine",
+      icon: Loader2,
+      className:
+        "text-cyan-300"
+    };
+  } else if (
+    engineState ===
+    "processing"
+  ) {
+    status = {
+      label: enabled
+        ? "AI effects active"
+        : "Camera processing",
+      icon: CircleCheck,
+      className:
+        "text-emerald-300"
+    };
+  } else if (
+    engineState === "error"
+  ) {
+    status = {
+      label: "AI engine error",
+      icon: CircleAlert,
+      className:
+        "text-red-300"
+    };
+  }
+
+  const StatusIcon =
+    status.icon;
+
+  /*
+   * ==========================================================
+   * OPEN STUDIO
+   * ==========================================================
    */
 
   return (
@@ -2209,9 +2392,7 @@ const AIEffects = ({
             : "sm:max-w-5xl"
         )}
       >
-        {/* =====================================================
-            TOP BAR
-            ===================================================== */}
+        {/* TOP BAR */}
 
         <div className="absolute left-0 right-0 top-0 z-50 flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3 backdrop-blur-xl">
           <button
@@ -2253,9 +2434,7 @@ const AIEffects = ({
           </div>
         </div>
 
-        {/* =====================================================
-            SCROLLABLE CONTENT
-            ===================================================== */}
+        {/* CONTENT */}
 
         <div className="h-full overflow-y-auto pt-16">
           {/* HEADER */}
@@ -2366,16 +2545,12 @@ const AIEffects = ({
               </span>
 
               <span className="text-slate-400">
-                {
-                  selectedEffect.name
-                }
+                {selectedEffect.name}
               </span>
             </div>
           </div>
 
-          {/* ===================================================
-              PREVIEW
-              =================================================== */}
+          {/* PREVIEW */}
 
           {!compact &&
             previewOpen && (
@@ -2420,9 +2595,7 @@ const AIEffects = ({
                     className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/45 text-white backdrop-blur-md transition hover:bg-black/70"
                     aria-label="Hide preview"
                   >
-                    <EyeOff
-                      size={16}
-                    />
+                    <EyeOff size={16} />
                   </button>
                 </div>
               </div>
@@ -2446,9 +2619,7 @@ const AIEffects = ({
               </div>
             )}
 
-          {/* ===================================================
-              EFFECTS
-              =================================================== */}
+          {/* EFFECTS */}
 
           <div className="px-4 py-5 sm:px-6">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -2592,9 +2763,7 @@ const AIEffects = ({
               )}
             </div>
 
-            {/* =================================================
-                INTENSITY
-                ================================================= */}
+            {/* INTENSITY */}
 
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
               <div className="mb-3 flex items-center justify-between">
@@ -2610,10 +2779,7 @@ const AIEffects = ({
                 </div>
 
                 <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-xs font-semibold text-cyan-300">
-                  {
-                    intensity
-                  }
-                  %
+                  {intensity}%
                 </span>
               </div>
 
@@ -2621,9 +2787,7 @@ const AIEffects = ({
                 type="range"
                 min="0"
                 max="100"
-                value={
-                  intensity
-                }
+                value={intensity}
                 onChange={(
                   event
                 ) =>
@@ -2649,9 +2813,7 @@ const AIEffects = ({
               </div>
             </div>
 
-            {/* =================================================
-                ADVANCED
-                ================================================= */}
+            {/* ADVANCED */}
 
             <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
               <button
@@ -2695,7 +2857,7 @@ const AIEffects = ({
                 <div className="border-t border-white/10 px-4 pb-4 pt-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-xs leading-relaxed text-slate-500">
-                      AI Effects runs locally on the camera feed. Your original camera audio is preserved in the processed stream.
+                      AI Effects runs locally on the camera feed. Original camera audio is preserved.
                     </div>
 
                     <button
@@ -2716,9 +2878,7 @@ const AIEffects = ({
               )}
             </div>
 
-            {/* =================================================
-                ERROR
-                ================================================= */}
+            {/* ERROR */}
 
             {error && (
               <div className="mt-4 flex gap-3 rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4">
@@ -2754,9 +2914,7 @@ const AIEffects = ({
             )}
           </div>
 
-          {/* ===================================================
-              FOOTER
-              =================================================== */}
+          {/* FOOTER */}
 
           <div className="border-t border-white/10 bg-white/[0.02] px-5 py-3.5 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-3 text-[10px] text-slate-600">
@@ -2786,3 +2944,4 @@ const AIEffects = ({
 };
 
 export default AIEffects;
+```
