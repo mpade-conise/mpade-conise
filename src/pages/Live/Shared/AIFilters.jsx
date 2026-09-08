@@ -17,7 +17,8 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  Wand2
+  Wand2,
+  X
 } from "lucide-react";
 
 const EFFECTS = [
@@ -164,10 +165,28 @@ const AIEffects = ({
   videoRef = null,
   onProcessedStream = null,
   onProcessedTrack = null,
-  onBack = null,
   className = "",
-  compact = false
+  compact = false,
+  defaultOpen = false
 }) => {
+  /*
+   * ============================================================
+   * INDEPENDENT AI EFFECTS UI
+   * ============================================================
+   *
+   * This component no longer depends on StreamDashboard state
+   * to open or close itself.
+   *
+   * It owns:
+   * - open / closed state
+   * - Back button
+   * - floating launcher
+   * - processing cleanup
+   * - processed-track reset
+   */
+
+  const [open, setOpen] = useState(defaultOpen);
+
   const [enabled, setEnabled] = useState(true);
   const [effect, setEffect] = useState("none");
   const [intensity, setIntensity] = useState(55);
@@ -208,6 +227,10 @@ const AIEffects = ({
     time: 0
   });
 
+  /*
+   * Keep callback refs current without forcing the processing
+   * loop to restart every time the parent recreates a callback.
+   */
   useEffect(() => {
     onProcessedStreamRef.current = onProcessedStream;
   }, [onProcessedStream]);
@@ -228,6 +251,12 @@ const AIEffects = ({
     enabledRef.current = enabled;
   }, [enabled]);
 
+  /*
+   * ============================================================
+   * SOURCE
+   * ============================================================
+   */
+
   const getSourceStream = useCallback(() => {
     if (isUsableStream(stream)) {
       return stream;
@@ -244,6 +273,12 @@ const AIEffects = ({
     return null;
   }, [stream, videoRef]);
 
+  /*
+   * ============================================================
+   * ANIMATION
+   * ============================================================
+   */
+
   const stopAnimation = useCallback(() => {
     if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -251,20 +286,34 @@ const AIEffects = ({
     }
   }, []);
 
+  /*
+   * ============================================================
+   * OUTPUT CLEANUP
+   * ============================================================
+   */
+
   const cleanupOutput = useCallback(() => {
     if (outputStreamRef.current) {
-      outputStreamRef.current.getVideoTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch (err) {
-          // Ignore cleanup errors.
-        }
-      });
+      outputStreamRef.current
+        .getVideoTracks()
+        .forEach((track) => {
+          try {
+            track.stop();
+          } catch (err) {
+            // Ignore cleanup errors.
+          }
+        });
     }
 
     outputStreamRef.current = null;
     outputTrackRef.current = null;
   }, []);
+
+  /*
+   * ============================================================
+   * SOURCE VIDEO CLEANUP
+   * ============================================================
+   */
 
   const cleanupSourceVideo = useCallback(() => {
     const video = sourceVideoRef.current;
@@ -286,6 +335,92 @@ const AIEffects = ({
     sourceVideoRef.current = null;
   }, []);
 
+  /*
+   * ============================================================
+   * RESET PROCESSED OUTPUT
+   * ============================================================
+   *
+   * This is critical.
+   *
+   * When AI Effects closes, the parent must receive null so the
+   * WebRTC layer can fall back to the original camera track.
+   */
+
+  const resetProcessedOutput = useCallback(() => {
+    if (onProcessedStreamRef.current) {
+      onProcessedStreamRef.current(null);
+    }
+
+    if (onProcessedTrackRef.current) {
+      onProcessedTrackRef.current(null);
+    }
+  }, []);
+
+  /*
+   * ============================================================
+   * COMPLETE PROCESSING CLEANUP
+   * ============================================================
+   */
+
+  const cleanupProcessing = useCallback(() => {
+    processingRef.current = false;
+    startingRef.current = false;
+
+    stopAnimation();
+
+    cleanupOutput();
+    cleanupSourceVideo();
+
+    processedSourceRef.current = null;
+    sourceStreamRef.current = null;
+
+    fpsCounterRef.current = {
+      frames: 0,
+      time: 0
+    };
+
+    if (mountedRef.current) {
+      setEngineState("idle");
+      setFps(0);
+    }
+
+    resetProcessedOutput();
+  }, [
+    cleanupOutput,
+    cleanupSourceVideo,
+    resetProcessedOutput,
+    stopAnimation
+  ]);
+
+  /*
+   * ============================================================
+   * INDEPENDENT BACK / CLOSE
+   * ============================================================
+   */
+
+  const handleBack = useCallback(() => {
+    cleanupProcessing();
+    setError("");
+    setOpen(false);
+  }, [cleanupProcessing]);
+
+  /*
+   * ============================================================
+   * OPEN
+   * ============================================================
+   */
+
+  const handleOpen = useCallback(() => {
+    setError("");
+    setOpen(true);
+  }, []);
+
+  /*
+   * ============================================================
+   * SOURCE VIDEO CREATION
+   * ============================================================
+   */
+
   const createSourceVideo = useCallback(async (source) => {
     if (!isUsableStream(source)) {
       throw new Error("No usable camera stream was found.");
@@ -296,7 +431,9 @@ const AIEffects = ({
     video.autoplay = true;
     video.muted = true;
     video.playsInline = true;
+
     video.setAttribute("playsinline", "true");
+
     video.srcObject = source;
 
     await new Promise((resolve, reject) => {
@@ -308,8 +445,10 @@ const AIEffects = ({
         }
 
         finished = true;
+
         video.onloadedmetadata = null;
         video.onerror = null;
+
         callback();
       };
 
@@ -318,7 +457,11 @@ const AIEffects = ({
           finish(resolve);
         } else {
           finish(() => {
-            reject(new Error("Camera video metadata could not be loaded."));
+            reject(
+              new Error(
+                "Camera video metadata could not be loaded."
+              )
+            );
           });
         }
       }, 5000);
@@ -330,8 +473,13 @@ const AIEffects = ({
 
       video.onerror = () => {
         window.clearTimeout(timeout);
+
         finish(() => {
-          reject(new Error("Unable to read the camera video."));
+          reject(
+            new Error(
+              "Unable to read the camera video."
+            )
+          );
         });
       };
     });
@@ -339,12 +487,17 @@ const AIEffects = ({
     try {
       await video.play();
     } catch (err) {
-      // Some browsers may already have autoplay permission.
-      // The processing loop can still continue if the video is ready.
+      // Browser autoplay may already be permitted.
     }
 
     return video;
   }, []);
+
+  /*
+   * ============================================================
+   * CANVAS
+   * ============================================================
+   */
 
   const prepareCanvas = useCallback((width, height) => {
     let canvas = canvasRef.current;
@@ -363,7 +516,9 @@ const AIEffects = ({
     });
 
     if (!context) {
-      throw new Error("Your browser does not support the required canvas engine.");
+      throw new Error(
+        "Your browser does not support the required canvas engine."
+      );
     }
 
     canvasContextRef.current = context;
@@ -374,146 +529,281 @@ const AIEffects = ({
     };
   }, []);
 
-  const createOutputStream = useCallback((source, canvas) => {
-    if (!canvas || typeof canvas.captureStream !== "function") {
-      throw new Error("Canvas streaming is not supported by this browser.");
-    }
+  /*
+   * ============================================================
+   * OUTPUT STREAM
+   * ============================================================
+   */
 
-    const output = canvas.captureStream(30);
-
-    const videoTracks = output.getVideoTracks();
-
-    if (!videoTracks.length) {
-      throw new Error("Unable to create the processed camera track.");
-    }
-
-    const sourceAudioTracks =
-      typeof source.getAudioTracks === "function"
-        ? source.getAudioTracks()
-        : [];
-
-    sourceAudioTracks.forEach((track) => {
-      try {
-        output.addTrack(track);
-      } catch (err) {
-        // Ignore duplicate audio-track errors.
+  const createOutputStream = useCallback(
+    (source, canvas) => {
+      if (
+        !canvas ||
+        typeof canvas.captureStream !== "function"
+      ) {
+        throw new Error(
+          "Canvas streaming is not supported by this browser."
+        );
       }
-    });
 
-    outputStreamRef.current = output;
-    outputTrackRef.current = videoTracks[0];
+      const output = canvas.captureStream(30);
 
-    return output;
-  }, []);
+      const videoTracks = output.getVideoTracks();
 
-  const drawBase = useCallback((video, context, width, height, filter) => {
-    context.save();
-    context.filter = filter || "none";
-    context.globalCompositeOperation = "source-over";
-    context.globalAlpha = 1;
-    context.drawImage(video, 0, 0, width, height);
-    context.restore();
-  }, []);
+      if (!videoTracks.length) {
+        throw new Error(
+          "Unable to create the processed camera track."
+        );
+      }
 
-  const drawOverlay = useCallback(
-    (context, width, height, color, alpha, composite) => {
+      const sourceAudioTracks =
+        typeof source.getAudioTracks === "function"
+          ? source.getAudioTracks()
+          : [];
+
+      sourceAudioTracks.forEach((track) => {
+        try {
+          output.addTrack(track);
+        } catch (err) {
+          // Ignore duplicate audio-track errors.
+        }
+      });
+
+      outputStreamRef.current = output;
+      outputTrackRef.current = videoTracks[0];
+
+      return output;
+    },
+    []
+  );
+
+  /*
+   * ============================================================
+   * DRAW HELPERS
+   * ============================================================
+   */
+
+  const drawBase = useCallback(
+    (video, context, width, height, filter) => {
       context.save();
-      context.globalCompositeOperation = composite || "screen";
-      context.globalAlpha = alpha;
-      context.fillStyle = color;
-      context.fillRect(0, 0, width, height);
+
+      context.filter = filter || "none";
+      context.globalCompositeOperation = "source-over";
+      context.globalAlpha = 1;
+
+      context.drawImage(
+        video,
+        0,
+        0,
+        width,
+        height
+      );
+
       context.restore();
     },
     []
   );
 
-  const drawVignette = useCallback((context, width, height, strength) => {
-    const gradient = context.createRadialGradient(
-      width / 2,
-      height / 2,
-      Math.min(width, height) * 0.18,
-      width / 2,
-      height / 2,
-      Math.max(width, height) * 0.72
-    );
+  const drawOverlay = useCallback(
+    (
+      context,
+      width,
+      height,
+      color,
+      alpha,
+      composite
+    ) => {
+      context.save();
 
-    gradient.addColorStop(0, "rgba(0,0,0,0)");
-    gradient.addColorStop(
-      1,
-      "rgba(0,0,0," + clamp(strength, 0, 1) + ")"
-    );
+      context.globalCompositeOperation =
+        composite || "screen";
 
-    context.save();
-    context.globalCompositeOperation = "multiply";
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, width, height);
-    context.restore();
-  }, []);
+      context.globalAlpha = alpha;
+      context.fillStyle = color;
 
-  const drawFaceLight = useCallback(
-    (context, width, height, strength) => {
-      const gradient = context.createRadialGradient(
-        width * 0.5,
-        height * 0.38,
-        Math.min(width, height) * 0.05,
-        width * 0.5,
-        height * 0.4,
-        Math.min(width, height) * 0.7
+      context.fillRect(
+        0,
+        0,
+        width,
+        height
       );
+
+      context.restore();
+    },
+    []
+  );
+
+  const drawVignette = useCallback(
+    (context, width, height, strength) => {
+      const gradient =
+        context.createRadialGradient(
+          width / 2,
+          height / 2,
+          Math.min(width, height) * 0.18,
+          width / 2,
+          height / 2,
+          Math.max(width, height) * 0.72
+        );
 
       gradient.addColorStop(
         0,
-        "rgba(255,255,255," + clamp(strength, 0, 0.35) + ")"
+        "rgba(0,0,0,0)"
+      );
+
+      gradient.addColorStop(
+        1,
+        "rgba(0,0,0," +
+          clamp(strength, 0, 1) +
+          ")"
+      );
+
+      context.save();
+
+      context.globalCompositeOperation =
+        "multiply";
+
+      context.fillStyle = gradient;
+
+      context.fillRect(
+        0,
+        0,
+        width,
+        height
+      );
+
+      context.restore();
+    },
+    []
+  );
+
+  const drawFaceLight = useCallback(
+    (context, width, height, strength) => {
+      const gradient =
+        context.createRadialGradient(
+          width * 0.5,
+          height * 0.38,
+          Math.min(width, height) * 0.05,
+          width * 0.5,
+          height * 0.4,
+          Math.min(width, height) * 0.7
+        );
+
+      gradient.addColorStop(
+        0,
+        "rgba(255,255,255," +
+          clamp(strength, 0, 0.35) +
+          ")"
       );
 
       gradient.addColorStop(
         0.45,
-        "rgba(255,225,205," + clamp(strength * 0.35, 0, 0.2) + ")"
+        "rgba(255,225,205," +
+          clamp(strength * 0.35, 0, 0.2) +
+          ")"
       );
 
-      gradient.addColorStop(1, "rgba(255,255,255,0)");
+      gradient.addColorStop(
+        1,
+        "rgba(255,255,255,0)"
+      );
 
       context.save();
-      context.globalCompositeOperation = "screen";
+
+      context.globalCompositeOperation =
+        "screen";
+
       context.fillStyle = gradient;
-      context.fillRect(0, 0, width, height);
+
+      context.fillRect(
+        0,
+        0,
+        width,
+        height
+      );
+
       context.restore();
     },
     []
   );
 
-  const drawDuoTone = useCallback((context, width, height, strength) => {
-    const gradient = context.createLinearGradient(0, 0, width, height);
+  const drawDuoTone = useCallback(
+    (context, width, height, strength) => {
+      const gradient =
+        context.createLinearGradient(
+          0,
+          0,
+          width,
+          height
+        );
 
-    gradient.addColorStop(
-      0,
-      "rgba(48,90,255," + clamp(strength, 0, 0.45) + ")"
-    );
+      gradient.addColorStop(
+        0,
+        "rgba(48,90,255," +
+          clamp(strength, 0, 0.45) +
+          ")"
+      );
 
-    gradient.addColorStop(
-      0.5,
-      "rgba(140,65,255," + clamp(strength, 0, 0.35) + ")"
-    );
+      gradient.addColorStop(
+        0.5,
+        "rgba(140,65,255," +
+          clamp(strength, 0, 0.35) +
+          ")"
+      );
 
-    gradient.addColorStop(
-      1,
-      "rgba(255,105,55," + clamp(strength, 0, 0.4) + ")"
-    );
+      gradient.addColorStop(
+        1,
+        "rgba(255,105,55," +
+          clamp(strength, 0, 0.4) +
+          ")"
+      );
 
-    context.save();
-    context.globalCompositeOperation = "soft-light";
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, width, height);
-    context.restore();
-  }, []);
+      context.save();
+
+      context.globalCompositeOperation =
+        "soft-light";
+
+      context.fillStyle = gradient;
+
+      context.fillRect(
+        0,
+        0,
+        width,
+        height
+      );
+
+      context.restore();
+    },
+    []
+  );
+
+  /*
+   * ============================================================
+   * EFFECT ENGINE
+   * ============================================================
+   */
 
   const drawEffect = useCallback(
     (video, context, width, height) => {
       const selected = effectRef.current;
-      const amount = clamp(intensityRef.current / 100, 0, 1);
 
-      if (!enabledRef.current || selected === "none") {
-        drawBase(video, context, width, height, "none");
+      const amount = clamp(
+        intensityRef.current / 100,
+        0,
+        1
+      );
+
+      if (
+        !enabledRef.current ||
+        selected === "none"
+      ) {
+        drawBase(
+          video,
+          context,
+          width,
+          height,
+          "none"
+        );
+
         return;
       }
 
@@ -525,13 +815,23 @@ const AIEffects = ({
             width,
             height,
             "blur(" +
-              (0.25 + amount * 0.9).toFixed(2) +
+              (
+                0.25 +
+                amount * 0.9
+              ).toFixed(2) +
               "px) brightness(" +
-              (1 + amount * 0.08).toFixed(2) +
+              (
+                1 +
+                amount * 0.08
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.12).toFixed(2) +
+              (
+                1 +
+                amount * 0.12
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -549,14 +849,29 @@ const AIEffects = ({
             width,
             height,
             "brightness(" +
-              (1 + amount * 0.16).toFixed(2) +
+              (
+                1 +
+                amount * 0.16
+              ).toFixed(2) +
               ") contrast(" +
-              (1 + amount * 0.06).toFixed(2) +
+              (
+                1 +
+                amount * 0.06
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.08).toFixed(2) +
+              (
+                1 +
+                amount * 0.08
+              ).toFixed(2) +
               ")"
           );
-          drawFaceLight(context, width, height, amount);
+
+          drawFaceLight(
+            context,
+            width,
+            height,
+            amount
+          );
           break;
 
         case "cinematic":
@@ -566,13 +881,23 @@ const AIEffects = ({
             width,
             height,
             "contrast(" +
-              (1 + amount * 0.2).toFixed(2) +
+              (
+                1 +
+                amount * 0.2
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.1).toFixed(2) +
+              (
+                1 +
+                amount * 0.1
+              ).toFixed(2) +
               ") brightness(" +
-              (1 - amount * 0.04).toFixed(2) +
+              (
+                1 -
+                amount * 0.04
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -581,6 +906,7 @@ const AIEffects = ({
             amount * 0.11,
             "soft-light"
           );
+
           drawOverlay(
             context,
             width,
@@ -589,7 +915,13 @@ const AIEffects = ({
             amount * 0.07,
             "screen"
           );
-          drawVignette(context, width, height, amount * 0.32);
+
+          drawVignette(
+            context,
+            width,
+            height,
+            amount * 0.32
+          );
           break;
 
         case "vivid":
@@ -599,11 +931,20 @@ const AIEffects = ({
             width,
             height,
             "saturate(" +
-              (1 + amount * 0.75).toFixed(2) +
+              (
+                1 +
+                amount * 0.75
+              ).toFixed(2) +
               ") contrast(" +
-              (1 + amount * 0.16).toFixed(2) +
+              (
+                1 +
+                amount * 0.16
+              ).toFixed(2) +
               ") brightness(" +
-              (1 + amount * 0.04).toFixed(2) +
+              (
+                1 +
+                amount * 0.04
+              ).toFixed(2) +
               ")"
           );
           break;
@@ -615,13 +956,22 @@ const AIEffects = ({
             width,
             height,
             "sepia(" +
-              (amount * 0.3).toFixed(2) +
+              (
+                amount * 0.3
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.3).toFixed(2) +
+              (
+                1 +
+                amount * 0.3
+              ).toFixed(2) +
               ") brightness(" +
-              (1 + amount * 0.04).toFixed(2) +
+              (
+                1 +
+                amount * 0.04
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -639,13 +989,22 @@ const AIEffects = ({
             width,
             height,
             "hue-rotate(" +
-              (-amount * 12).toFixed(1) +
+              (
+                -amount * 12
+              ).toFixed(1) +
               "deg) saturate(" +
-              (1 + amount * 0.18).toFixed(2) +
+              (
+                1 +
+                amount * 0.18
+              ).toFixed(2) +
               ") brightness(" +
-              (1 + amount * 0.03).toFixed(2) +
+              (
+                1 +
+                amount * 0.03
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -663,12 +1022,24 @@ const AIEffects = ({
             width,
             height,
             "grayscale(1) contrast(" +
-              (1 + amount * 0.45).toFixed(2) +
+              (
+                1 +
+                amount * 0.45
+              ).toFixed(2) +
               ") brightness(" +
-              (1 - amount * 0.06).toFixed(2) +
+              (
+                1 -
+                amount * 0.06
+              ).toFixed(2) +
               ")"
           );
-          drawVignette(context, width, height, amount * 0.5);
+
+          drawVignette(
+            context,
+            width,
+            height,
+            amount * 0.5
+          );
           break;
 
         case "vintage":
@@ -678,15 +1049,27 @@ const AIEffects = ({
             width,
             height,
             "sepia(" +
-              (amount * 0.48).toFixed(2) +
+              (
+                amount * 0.48
+              ).toFixed(2) +
               ") saturate(" +
-              (1 - amount * 0.1).toFixed(2) +
+              (
+                1 -
+                amount * 0.1
+              ).toFixed(2) +
               ") contrast(" +
-              (1 + amount * 0.1).toFixed(2) +
+              (
+                1 +
+                amount * 0.1
+              ).toFixed(2) +
               ") brightness(" +
-              (1 + amount * 0.03).toFixed(2) +
+              (
+                1 +
+                amount * 0.03
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -695,7 +1078,13 @@ const AIEffects = ({
             amount * 0.08,
             "multiply"
           );
-          drawVignette(context, width, height, amount * 0.25);
+
+          drawVignette(
+            context,
+            width,
+            height,
+            amount * 0.25
+          );
           break;
 
         case "dream":
@@ -705,15 +1094,28 @@ const AIEffects = ({
             width,
             height,
             "blur(" +
-              (0.25 + amount * 1.2).toFixed(2) +
+              (
+                0.25 +
+                amount * 1.2
+              ).toFixed(2) +
               "px) brightness(" +
-              (1 + amount * 0.08).toFixed(2) +
+              (
+                1 +
+                amount * 0.08
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.1).toFixed(2) +
+              (
+                1 +
+                amount * 0.1
+              ).toFixed(2) +
               ") contrast(" +
-              (1 - amount * 0.04).toFixed(2) +
+              (
+                1 -
+                amount * 0.04
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -731,11 +1133,18 @@ const AIEffects = ({
             width,
             height,
             "saturate(" +
-              (1 + amount * 0.2).toFixed(2) +
+              (
+                1 +
+                amount * 0.2
+              ).toFixed(2) +
               ") contrast(" +
-              (1 + amount * 0.1).toFixed(2) +
+              (
+                1 +
+                amount * 0.1
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -744,7 +1153,13 @@ const AIEffects = ({
             amount * 0.15,
             "soft-light"
           );
-          drawVignette(context, width, height, amount * 0.28);
+
+          drawVignette(
+            context,
+            width,
+            height,
+            amount * 0.28
+          );
           break;
 
         case "neon":
@@ -754,15 +1169,27 @@ const AIEffects = ({
             width,
             height,
             "saturate(" +
-              (1 + amount * 0.8).toFixed(2) +
+              (
+                1 +
+                amount * 0.8
+              ).toFixed(2) +
               ") contrast(" +
-              (1 + amount * 0.2).toFixed(2) +
+              (
+                1 +
+                amount * 0.2
+              ).toFixed(2) +
               ") brightness(" +
-              (1 + amount * 0.05).toFixed(2) +
+              (
+                1 +
+                amount * 0.05
+              ).toFixed(2) +
               ") hue-rotate(" +
-              (amount * 12).toFixed(1) +
+              (
+                amount * 12
+              ).toFixed(1) +
               "deg)"
           );
+
           drawOverlay(
             context,
             width,
@@ -771,6 +1198,7 @@ const AIEffects = ({
             amount * 0.08,
             "screen"
           );
+
           drawOverlay(
             context,
             width,
@@ -788,14 +1216,29 @@ const AIEffects = ({
             width,
             height,
             "contrast(" +
-              (1 + amount * 0.5).toFixed(2) +
+              (
+                1 +
+                amount * 0.5
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.12).toFixed(2) +
+              (
+                1 +
+                amount * 0.12
+              ).toFixed(2) +
               ") brightness(" +
-              (1 - amount * 0.08).toFixed(2) +
+              (
+                1 -
+                amount * 0.08
+              ).toFixed(2) +
               ")"
           );
-          drawVignette(context, width, height, amount * 0.55);
+
+          drawVignette(
+            context,
+            width,
+            height,
+            amount * 0.55
+          );
           break;
 
         case "film":
@@ -805,15 +1248,27 @@ const AIEffects = ({
             width,
             height,
             "contrast(" +
-              (1 + amount * 0.16).toFixed(2) +
+              (
+                1 +
+                amount * 0.16
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.04).toFixed(2) +
+              (
+                1 +
+                amount * 0.04
+              ).toFixed(2) +
               ") brightness(" +
-              (1 - amount * 0.02).toFixed(2) +
+              (
+                1 -
+                amount * 0.02
+              ).toFixed(2) +
               ") sepia(" +
-              (amount * 0.16).toFixed(2) +
+              (
+                amount * 0.16
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -822,7 +1277,13 @@ const AIEffects = ({
             amount * 0.06,
             "soft-light"
           );
-          drawVignette(context, width, height, amount * 0.2);
+
+          drawVignette(
+            context,
+            width,
+            height,
+            amount * 0.2
+          );
           break;
 
         case "soft-focus":
@@ -832,13 +1293,23 @@ const AIEffects = ({
             width,
             height,
             "blur(" +
-              (0.2 + amount * 1.25).toFixed(2) +
+              (
+                0.2 +
+                amount * 1.25
+              ).toFixed(2) +
               "px) brightness(" +
-              (1 + amount * 0.07).toFixed(2) +
+              (
+                1 +
+                amount * 0.07
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.08).toFixed(2) +
+              (
+                1 +
+                amount * 0.08
+              ).toFixed(2) +
               ")"
           );
+
           drawOverlay(
             context,
             width,
@@ -856,12 +1327,25 @@ const AIEffects = ({
             width,
             height,
             "contrast(" +
-              (1 + amount * 0.14).toFixed(2) +
+              (
+                1 +
+                amount * 0.14
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.1).toFixed(2) +
+              (
+                1 +
+                amount * 0.1
+              ).toFixed(2) +
               ")"
           );
-          drawVignette(context, width, height, 0.18 + amount * 0.38);
+
+          drawVignette(
+            context,
+            width,
+            height,
+            0.18 +
+              amount * 0.38
+          );
           break;
 
         case "hdr":
@@ -871,11 +1355,20 @@ const AIEffects = ({
             width,
             height,
             "contrast(" +
-              (1 + amount * 0.38).toFixed(2) +
+              (
+                1 +
+                amount * 0.38
+              ).toFixed(2) +
               ") saturate(" +
-              (1 + amount * 0.25).toFixed(2) +
+              (
+                1 +
+                amount * 0.25
+              ).toFixed(2) +
               ") brightness(" +
-              (1 + amount * 0.03).toFixed(2) +
+              (
+                1 +
+                amount * 0.03
+              ).toFixed(2) +
               ")"
           );
           break;
@@ -887,16 +1380,34 @@ const AIEffects = ({
             width,
             height,
             "saturate(" +
-              (1 + amount * 0.18).toFixed(2) +
+              (
+                1 +
+                amount * 0.18
+              ).toFixed(2) +
               ") contrast(" +
-              (1 + amount * 0.12).toFixed(2) +
+              (
+                1 +
+                amount * 0.12
+              ).toFixed(2) +
               ")"
           );
-          drawDuoTone(context, width, height, amount);
+
+          drawDuoTone(
+            context,
+            width,
+            height,
+            amount
+          );
           break;
 
         default:
-          drawBase(video, context, width, height, "none");
+          drawBase(
+            video,
+            context,
+            width,
+            height,
+            "none"
+          );
           break;
       }
     },
@@ -909,8 +1420,18 @@ const AIEffects = ({
     ]
   );
 
+  /*
+   * ============================================================
+   * FRAME PROCESSOR
+   * ============================================================
+   */
+
   const processFrame = useCallback(() => {
-    if (!processingRef.current || !mountedRef.current) {
+    if (
+      !processingRef.current ||
+      !mountedRef.current ||
+      !open
+    ) {
       animationFrameRef.current = null;
       return;
     }
@@ -920,24 +1441,39 @@ const AIEffects = ({
     const context = canvasContextRef.current;
 
     if (!video || !canvas || !context) {
-      animationFrameRef.current = requestAnimationFrame(processFrame);
+      animationFrameRef.current =
+        requestAnimationFrame(processFrame);
+
       return;
     }
 
     if (video.readyState < 2) {
-      animationFrameRef.current = requestAnimationFrame(processFrame);
+      animationFrameRef.current =
+        requestAnimationFrame(processFrame);
+
       return;
     }
 
-    const width = video.videoWidth || 1280;
-    const height = video.videoHeight || 720;
+    const width =
+      video.videoWidth || 1280;
 
-    if (canvas.width !== width || canvas.height !== height) {
+    const height =
+      video.videoHeight || 720;
+
+    if (
+      canvas.width !== width ||
+      canvas.height !== height
+    ) {
       canvas.width = width;
       canvas.height = height;
     }
 
-    drawEffect(video, context, width, height);
+    drawEffect(
+      video,
+      context,
+      width,
+      height
+    );
 
     const now = performance.now();
 
@@ -947,19 +1483,36 @@ const AIEffects = ({
 
     fpsCounterRef.current.frames += 1;
 
-    if (now - fpsCounterRef.current.time >= 1000) {
-      setFps(fpsCounterRef.current.frames);
+    if (
+      now -
+        fpsCounterRef.current.time >=
+      1000
+    ) {
+      setFps(
+        fpsCounterRef.current.frames
+      );
 
       fpsCounterRef.current.frames = 0;
       fpsCounterRef.current.time = now;
     }
 
-    animationFrameRef.current = requestAnimationFrame(processFrame);
-  }, [drawEffect]);
+    animationFrameRef.current =
+      requestAnimationFrame(processFrame);
+  }, [drawEffect, open]);
+
+  /*
+   * ============================================================
+   * START PROCESSING
+   * ============================================================
+   */
 
   const startProcessing = useCallback(
     async (source) => {
-      if (!mountedRef.current || !isUsableStream(source)) {
+      if (
+        !mountedRef.current ||
+        !open ||
+        !isUsableStream(source)
+      ) {
         return null;
       }
 
@@ -976,6 +1529,7 @@ const AIEffects = ({
       }
 
       startingRef.current = true;
+
       setError("");
       setEngineState("loading");
 
@@ -988,9 +1542,13 @@ const AIEffects = ({
         processedSourceRef.current = source;
         sourceStreamRef.current = source;
 
-        const video = await createSourceVideo(source);
+        const video =
+          await createSourceVideo(source);
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current ||
+          !open
+        ) {
           try {
             video.pause();
             video.srcObject = null;
@@ -1003,18 +1561,33 @@ const AIEffects = ({
 
         sourceVideoRef.current = video;
 
-        const width = video.videoWidth || 1280;
-        const height = video.videoHeight || 720;
+        const width =
+          video.videoWidth || 1280;
 
-        const prepared = prepareCanvas(width, height);
+        const height =
+          video.videoHeight || 720;
 
-        const output = createOutputStream(source, prepared.canvas);
+        const prepared =
+          prepareCanvas(
+            width,
+            height
+          );
 
-        if (!mountedRef.current) {
+        const output =
+          createOutputStream(
+            source,
+            prepared.canvas
+          );
+
+        if (
+          !mountedRef.current ||
+          !open
+        ) {
           return null;
         }
 
         processingRef.current = true;
+
         fpsCounterRef.current = {
           frames: 0,
           time: performance.now()
@@ -1022,20 +1595,33 @@ const AIEffects = ({
 
         setEngineState("processing");
 
-        animationFrameRef.current = requestAnimationFrame(processFrame);
+        animationFrameRef.current =
+          requestAnimationFrame(
+            processFrame
+          );
 
-        if (onProcessedStreamRef.current) {
-          onProcessedStreamRef.current(output);
+        if (
+          onProcessedStreamRef.current
+        ) {
+          onProcessedStreamRef.current(
+            output
+          );
         }
 
-        if (onProcessedTrackRef.current && outputTrackRef.current) {
-          onProcessedTrackRef.current(outputTrackRef.current);
+        if (
+          onProcessedTrackRef.current &&
+          outputTrackRef.current
+        ) {
+          onProcessedTrackRef.current(
+            outputTrackRef.current
+          );
         }
 
         return output;
       } catch (err) {
         if (mountedRef.current) {
           setEngineState("error");
+
           setError(
             err && err.message
               ? err.message
@@ -1053,14 +1639,22 @@ const AIEffects = ({
       cleanupSourceVideo,
       createOutputStream,
       createSourceVideo,
+      open,
       prepareCanvas,
       processFrame,
       stopAnimation
     ]
   );
 
+  /*
+   * ============================================================
+   * STOP PROCESSING
+   * ============================================================
+   */
+
   const stopProcessing = useCallback(() => {
     processingRef.current = false;
+
     stopAnimation();
 
     if (mountedRef.current) {
@@ -1069,9 +1663,18 @@ const AIEffects = ({
     }
   }, [stopAnimation]);
 
+  /*
+   * ============================================================
+   * ATTACH CAMERA
+   * ============================================================
+   */
+
   const attachStream = useCallback(
     async (source) => {
-      if (!isUsableStream(source)) {
+      if (
+        !open ||
+        !isUsableStream(source)
+      ) {
         return;
       }
 
@@ -1080,6 +1683,7 @@ const AIEffects = ({
       } catch (err) {
         if (mountedRef.current) {
           setEngineState("error");
+
           setError(
             err && err.message
               ? err.message
@@ -1088,11 +1692,22 @@ const AIEffects = ({
         }
       }
     },
-    [startProcessing]
+    [open, startProcessing]
   );
 
+  /*
+   * ============================================================
+   * RESTART
+   * ============================================================
+   */
+
   const restart = useCallback(async () => {
-    const source = getSourceStream();
+    if (!open) {
+      return;
+    }
+
+    const source =
+      getSourceStream();
 
     stopProcessing();
 
@@ -1101,6 +1716,8 @@ const AIEffects = ({
 
     processedSourceRef.current = null;
     sourceStreamRef.current = null;
+
+    resetProcessedOutput();
 
     setError("");
     setEngineState("idle");
@@ -1113,18 +1730,36 @@ const AIEffects = ({
     cleanupOutput,
     cleanupSourceVideo,
     getSourceStream,
+    open,
+    resetProcessedOutput,
     stopProcessing
   ]);
 
-  const handleEffectChange = useCallback((nextEffect) => {
-    setEffect(nextEffect);
-    effectRef.current = nextEffect;
-  }, []);
+  /*
+   * ============================================================
+   * EFFECT CONTROLS
+   * ============================================================
+   */
 
-  const handleEnabledChange = useCallback((nextEnabled) => {
-    setEnabled(nextEnabled);
-    enabledRef.current = nextEnabled;
-  }, []);
+  const handleEffectChange =
+    useCallback((nextEffect) => {
+      setEffect(nextEffect);
+      effectRef.current =
+        nextEffect;
+    }, []);
+
+  const handleEnabledChange =
+    useCallback((nextEnabled) => {
+      setEnabled(nextEnabled);
+      enabledRef.current =
+        nextEnabled;
+    }, []);
+
+  /*
+   * ============================================================
+   * MOUNT / UNMOUNT
+   * ============================================================
+   */
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1134,23 +1769,43 @@ const AIEffects = ({
     };
   }, []);
 
+  /*
+   * ============================================================
+   * CAMERA WATCHER
+   * ============================================================
+   */
+
   useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
     let cancelled = false;
     let timer = null;
 
     const checkSource = async () => {
-      if (cancelled || !mountedRef.current) {
+      if (
+        cancelled ||
+        !mountedRef.current ||
+        !open
+      ) {
         return;
       }
 
-      const source = getSourceStream();
+      const source =
+        getSourceStream();
 
-      if (isUsableStream(source)) {
+      if (
+        isUsableStream(source)
+      ) {
         await attachStream(source);
         return;
       }
 
-      timer = window.setTimeout(checkSource, 250);
+      timer = window.setTimeout(
+        checkSource,
+        250
+      );
     };
 
     checkSource();
@@ -1162,76 +1817,191 @@ const AIEffects = ({
         window.clearTimeout(timer);
       }
     };
-  }, [attachStream, getSourceStream]);
+  }, [
+    attachStream,
+    getSourceStream,
+    open
+  ]);
+
+  /*
+   * ============================================================
+   * SOURCE CHANGES
+   * ============================================================
+   */
 
   useEffect(() => {
-    const source = getSourceStream();
+    if (!open) {
+      return;
+    }
+
+    const source =
+      getSourceStream();
 
     if (!source) {
       return;
     }
 
     if (
-      source !== processedSourceRef.current &&
+      source !==
+        processedSourceRef.current &&
       !startingRef.current
     ) {
       attachStream(source);
     }
-  }, [attachStream, getSourceStream, stream]);
+  }, [
+    attachStream,
+    getSourceStream,
+    open,
+    stream
+  ]);
+
+  /*
+   * ============================================================
+   * PREVIEW OUTPUT
+   * ============================================================
+   */
 
   useEffect(() => {
-    const preview = previewVideoRef.current;
+    const preview =
+      previewVideoRef.current;
 
-    if (!preview) {
+    if (!preview || !open) {
       return;
     }
 
-    const output = outputStreamRef.current;
+    const output =
+      outputStreamRef.current;
 
     if (output) {
-      preview.srcObject = output;
+      preview.srcObject =
+        output;
 
-      const playPreview = async () => {
-        try {
-          await preview.play();
-        } catch (err) {
-          // Browser autoplay policy may block preview playback.
-        }
-      };
+      const playPreview =
+        async () => {
+          try {
+            await preview.play();
+          } catch (err) {
+            // Browser autoplay policy may block preview.
+          }
+        };
 
       playPreview();
     }
 
     return () => {
-      if (preview && preview.srcObject === output) {
+      if (
+        preview &&
+        preview.srcObject ===
+          output
+      ) {
         preview.srcObject = null;
       }
     };
-  }, [engineState, effect, enabled, previewOpen]);
+  }, [
+    engineState,
+    effect,
+    enabled,
+    open,
+    previewOpen
+  ]);
+
+  /*
+   * ============================================================
+   * CLOSE CLEANUP
+   * ============================================================
+   */
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    /*
+     * When the independent studio closes,
+     * immediately remove the processed track.
+     */
+    processingRef.current = false;
+
+    stopAnimation();
+
+    cleanupOutput();
+    cleanupSourceVideo();
+
+    processedSourceRef.current = null;
+    sourceStreamRef.current = null;
+
+    resetProcessedOutput();
+
+    if (previewVideoRef.current) {
+      try {
+        previewVideoRef.current.pause();
+      } catch (err) {
+        // Ignore cleanup errors.
+      }
+
+      try {
+        previewVideoRef.current.srcObject =
+          null;
+      } catch (err) {
+        // Ignore cleanup errors.
+      }
+    }
+
+    if (mountedRef.current) {
+      setEngineState("idle");
+      setFps(0);
+    }
+  }, [
+    cleanupOutput,
+    cleanupSourceVideo,
+    open,
+    resetProcessedOutput,
+    stopAnimation
+  ]);
+
+  /*
+   * ============================================================
+   * FINAL UNMOUNT CLEANUP
+   * ============================================================
+   */
 
   useEffect(() => {
     return () => {
       processingRef.current = false;
 
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+      if (
+        animationFrameRef.current !== null
+      ) {
+        cancelAnimationFrame(
+          animationFrameRef.current
+        );
+
+        animationFrameRef.current =
+          null;
       }
 
-      if (outputStreamRef.current) {
-        outputStreamRef.current.getVideoTracks().forEach((track) => {
-          try {
-            track.stop();
-          } catch (err) {
-            // Ignore cleanup errors.
-          }
-        });
+      if (
+        outputStreamRef.current
+      ) {
+        outputStreamRef.current
+          .getVideoTracks()
+          .forEach((track) => {
+            try {
+              track.stop();
+            } catch (err) {
+              // Ignore cleanup errors.
+            }
+          });
       }
 
-      outputStreamRef.current = null;
-      outputTrackRef.current = null;
+      outputStreamRef.current =
+        null;
 
-      const sourceVideo = sourceVideoRef.current;
+      outputTrackRef.current =
+        null;
+
+      const sourceVideo =
+        sourceVideoRef.current;
 
       if (sourceVideo) {
         try {
@@ -1241,17 +2011,23 @@ const AIEffects = ({
         }
 
         try {
-          sourceVideo.srcObject = null;
+          sourceVideo.srcObject =
+            null;
         } catch (err) {
           // Ignore cleanup errors.
         }
       }
 
-      sourceVideoRef.current = null;
-      canvasRef.current = null;
-      canvasContextRef.current = null;
+      sourceVideoRef.current =
+        null;
 
-      if (previewVideoRef.current) {
+      canvasRef.current = null;
+      canvasContextRef.current =
+        null;
+
+      if (
+        previewVideoRef.current
+      ) {
         try {
           previewVideoRef.current.pause();
         } catch (err) {
@@ -1259,464 +2035,749 @@ const AIEffects = ({
         }
 
         try {
-          previewVideoRef.current.srcObject = null;
+          previewVideoRef.current.srcObject =
+            null;
         } catch (err) {
           // Ignore cleanup errors.
         }
       }
+
+      if (
+        onProcessedStreamRef.current
+      ) {
+        onProcessedStreamRef.current(
+          null
+        );
+      }
+
+      if (
+        onProcessedTrackRef.current
+      ) {
+        onProcessedTrackRef.current(
+          null
+        );
+      }
     };
   }, []);
 
-  const visibleEffects = useMemo(() => {
-    if (category === "All") {
-      return EFFECTS;
-    }
+  /*
+   * ============================================================
+   * FILTERED EFFECT LIST
+   * ============================================================
+   */
 
-    return EFFECTS.filter((item) => item.category === category);
-  }, [category]);
+  const visibleEffects =
+    useMemo(() => {
+      if (category === "All") {
+        return EFFECTS;
+      }
 
-  const selectedEffect = useMemo(() => {
+      return EFFECTS.filter(
+        (item) =>
+          item.category ===
+          category
+      );
+    }, [category]);
+
+  const selectedEffect =
+    useMemo(() => {
+      return (
+        EFFECTS.find(
+          (item) =>
+            item.id === effect
+        ) ||
+        EFFECTS[0]
+      );
+    }, [effect]);
+
+  /*
+   * ============================================================
+   * STATUS
+   * ============================================================
+   */
+
+  const status =
+    useMemo(() => {
+      if (
+        engineState ===
+        "loading"
+      ) {
+        return {
+          label: "Starting AI engine",
+          icon: Loader2,
+          className:
+            "text-cyan-300"
+        };
+      }
+
+      if (
+        engineState ===
+        "processing"
+      ) {
+        return {
+          label: enabled
+            ? "AI effects active"
+            : "Camera processing",
+          icon: CircleCheck,
+          className:
+            "text-emerald-300"
+        };
+      }
+
+      if (
+        engineState ===
+        "error"
+      ) {
+        return {
+          label: "AI engine error",
+          icon: CircleAlert,
+          className:
+            "text-red-300"
+        };
+      }
+
+      return {
+        label: "Ready",
+        icon: Sparkles,
+        className:
+          "text-slate-300"
+      };
+    }, [
+      enabled,
+      engineState
+    ]);
+
+  const StatusIcon =
+    status.icon;
+
+  /*
+   * ============================================================
+   * INDEPENDENT LAUNCHER
+   * ============================================================
+   *
+   * When the studio is closed, this is the only thing rendered.
+   * It is completely independent from StreamDashboard panels.
+   */
+
+  if (!open) {
     return (
-      EFFECTS.find((item) => item.id === effect) ||
-      EFFECTS[0]
+      <div
+        className={cx(
+          "fixed bottom-24 right-4 z-[220]",
+          className
+        )}
+      >
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="group flex items-center gap-2 rounded-2xl border border-cyan-400/30 bg-slate-950/90 px-4 py-3 text-sm font-bold text-white shadow-2xl shadow-cyan-950/40 backdrop-blur-xl transition-all hover:border-cyan-300/60 hover:bg-cyan-500/10 hover:text-cyan-200"
+          aria-label="Open AI Effects"
+          title="AI Effects"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300 transition group-hover:bg-cyan-400/20">
+            <Sparkles
+              size={17}
+            />
+          </span>
+
+          <span>
+            AI Effects
+          </span>
+        </button>
+      </div>
     );
-  }, [effect]);
+  }
 
-  const status = useMemo(() => {
-    if (engineState === "loading") {
-      return {
-        label: "Starting AI engine",
-        icon: Loader2,
-        className: "text-cyan-300"
-      };
-    }
-
-    if (engineState === "processing") {
-      return {
-        label: enabled ? "AI effects active" : "Camera processing",
-        icon: CircleCheck,
-        className: "text-emerald-300"
-      };
-    }
-
-    if (engineState === "error") {
-      return {
-        label: "AI engine error",
-        icon: CircleAlert,
-        className: "text-red-300"
-      };
-    }
-
-    return {
-      label: "Ready",
-      icon: Sparkles,
-      className: "text-slate-300"
-    };
-  }, [enabled, engineState]);
-
-  const StatusIcon = status.icon;
+  /*
+   * ============================================================
+   * INDEPENDENT AI EFFECTS STUDIO
+   * ============================================================
+   */
 
   return (
     <div
       className={cx(
-        "relative w-full overflow-hidden rounded-3xl border border-cyan-400/20 bg-slate-950/95 text-white shadow-2xl shadow-cyan-950/30 backdrop-blur-xl",
-        compact ? "max-w-xl" : "max-w-5xl",
+        "fixed inset-0 z-[220] flex items-start justify-end bg-black/45 backdrop-blur-[2px]",
         className
       )}
     >
-      {/* BACK BUTTON */}
-      <div className="absolute left-4 top-4 z-50">
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={!onBack}
-          className={cx(
-            "group flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold backdrop-blur-xl transition-all",
-            onBack
-              ? "border-white/15 bg-black/45 text-white hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200"
-              : "cursor-not-allowed border-white/5 bg-black/20 text-slate-600"
-          )}
-          aria-label="Go back"
-        >
-          <ArrowLeft
-            size={17}
-            className="transition-transform group-hover:-translate-x-0.5"
-          />
-          <span>Back</span>
-        </button>
-      </div>
+      <div
+        className={cx(
+          "relative flex h-full w-full flex-col overflow-hidden border-l border-cyan-400/20 bg-slate-950/98 text-white shadow-2xl shadow-cyan-950/40 backdrop-blur-xl",
+          compact
+            ? "max-w-xl"
+            : "sm:max-w-5xl"
+        )}
+      >
+        {/* =====================================================
+            TOP BAR
+            ===================================================== */}
 
-      {/* HEADER */}
-      <div className="border-b border-white/10 bg-white/[0.025] px-5 pb-4 pt-16 sm:px-6">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-500/10">
-              <Wand2 size={21} className="text-cyan-300" />
+        <div className="absolute left-0 right-0 top-0 z-50 flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3 backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white transition-all hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-200"
+            aria-label="Go back"
+          >
+            <ArrowLeft
+              size={17}
+              className="transition-transform group-hover:-translate-x-0.5"
+            />
+
+            <span>
+              Back
+            </span>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <div className="hidden text-right sm:block">
+              <div className="text-[10px] font-black uppercase tracking-widest text-cyan-300">
+                MPade AI
+              </div>
+
+              <div className="text-[9px] text-slate-500">
+                Live camera effects
+              </div>
             </div>
 
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-lg font-bold sm:text-xl">
-                  AI Effects Studio
-                </h2>
+            <button
+              type="button"
+              onClick={handleBack}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-400 transition hover:border-red-400/30 hover:bg-red-400/10 hover:text-red-300"
+              aria-label="Close AI Effects"
+              title="Close"
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
 
-                <span className="rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-300">
-                  LIVE
+        {/* =====================================================
+            SCROLLABLE CONTENT
+            ===================================================== */}
+
+        <div className="h-full overflow-y-auto pt-16">
+          {/* HEADER */}
+
+          <div className="border-b border-white/10 bg-white/[0.025] px-5 pb-4 pt-4 sm:px-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/25 bg-cyan-400/10 shadow-lg shadow-cyan-500/10">
+                  <Wand2
+                    size={21}
+                    className="text-cyan-300"
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="truncate text-lg font-bold sm:text-xl">
+                      AI Effects Studio
+                    </h2>
+
+                    <span className="rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-300">
+                      LIVE
+                    </span>
+                  </div>
+
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Real-time camera visual effects
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleEnabledChange(
+                    !enabled
+                  )
+                }
+                className={cx(
+                  "relative flex h-9 w-16 shrink-0 items-center rounded-full border p-1 transition-all",
+                  enabled
+                    ? "border-cyan-400/40 bg-cyan-500/20"
+                    : "border-white/10 bg-white/5"
+                )}
+                aria-label={
+                  enabled
+                    ? "Disable AI effects"
+                    : "Enable AI effects"
+                }
+              >
+                <span
+                  className={cx(
+                    "flex h-7 w-7 items-center justify-center rounded-full transition-all",
+                    enabled
+                      ? "translate-x-7 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-400/30"
+                      : "translate-x-0 bg-slate-600 text-slate-300"
+                  )}
+                >
+                  {enabled ? (
+                    <Eye size={15} />
+                  ) : (
+                    <EyeOff size={15} />
+                  )}
+                </span>
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
+              <div
+                className={cx(
+                  "flex items-center gap-1.5",
+                  status.className
+                )}
+              >
+                <StatusIcon
+                  size={14}
+                  className={
+                    engineState ===
+                    "loading"
+                      ? "animate-spin"
+                      : ""
+                  }
+                />
+
+                <span>
+                  {status.label}
                 </span>
               </div>
 
-              <p className="mt-0.5 text-xs text-slate-400">
-                Real-time camera visual effects
-              </p>
-            </div>
-          </div>
+              {engineState ===
+                "processing" && (
+                <>
+                  <span className="text-slate-700">
+                    •
+                  </span>
 
-          <button
-            type="button"
-            onClick={() => handleEnabledChange(!enabled)}
-            className={cx(
-              "relative flex h-9 w-16 shrink-0 items-center rounded-full border p-1 transition-all",
-              enabled
-                ? "border-cyan-400/40 bg-cyan-500/20"
-                : "border-white/10 bg-white/5"
-            )}
-            aria-label={enabled ? "Disable AI effects" : "Enable AI effects"}
-          >
-            <span
-              className={cx(
-                "flex h-7 w-7 items-center justify-center rounded-full transition-all",
-                enabled
-                  ? "translate-x-7 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-400/30"
-                  : "translate-x-0 bg-slate-600 text-slate-300"
+                  <span className="text-slate-400">
+                    {fps > 0
+                      ? fps +
+                        " FPS"
+                      : "Live"}
+                  </span>
+                </>
               )}
-            >
-              {enabled ? (
-                <Eye size={15} />
-              ) : (
-                <EyeOff size={15} />
-              )}
-            </span>
-          </button>
-        </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-          <div
-            className={cx(
-              "flex items-center gap-1.5",
-              status.className
-            )}
-          >
-            <StatusIcon
-              size={14}
-              className={
-                engineState === "loading"
-                  ? "animate-spin"
-                  : ""
-              }
-            />
-            <span>{status.label}</span>
-          </div>
+              <span className="text-slate-700">
+                •
+              </span>
 
-          {engineState === "processing" && (
-            <>
-              <span className="text-slate-700">•</span>
               <span className="text-slate-400">
-                {fps > 0 ? fps + " FPS" : "Live"}
-              </span>
-            </>
-          )}
-
-          <span className="text-slate-700">•</span>
-
-          <span className="text-slate-400">
-            {selectedEffect.name}
-          </span>
-        </div>
-      </div>
-
-      {/* PREVIEW */}
-      {!compact && previewOpen && (
-        <div className="px-4 pt-4 sm:px-6">
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
-            <video
-              ref={previewVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="h-full w-full object-cover"
-            />
-
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20" />
-
-            <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs backdrop-blur-md">
-              <span
-                className={cx(
-                  "h-2 w-2 rounded-full",
-                  enabled
-                    ? "animate-pulse bg-emerald-400"
-                    : "bg-slate-500"
-                )}
-              />
-              <span className="text-slate-200">
-                {enabled ? "Effect preview" : "Original camera"}
+                {
+                  selectedEffect.name
+                }
               </span>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setPreviewOpen(false)}
-              className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/45 text-white backdrop-blur-md transition hover:bg-black/70"
-              aria-label="Hide preview"
-            >
-              <EyeOff size={16} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!compact && !previewOpen && (
-        <div className="px-4 pt-4 sm:px-6">
-          <button
-            type="button"
-            onClick={() => setPreviewOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] py-3 text-sm text-slate-300 transition hover:bg-white/[0.06]"
-          >
-            <Eye size={16} />
-            Show preview
-          </button>
-        </div>
-      )}
-
-      {/* EFFECTS */}
-      <div className="px-4 py-5 sm:px-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Sparkles size={17} className="text-cyan-300" />
-              <h3 className="font-semibold">Effects</h3>
-            </div>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Choose a visual style for your live camera
-            </p>
           </div>
 
-          <div className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-400 sm:flex">
-            <Zap size={13} className="text-yellow-300" />
-            Real-time
-          </div>
-        </div>
+          {/* ===================================================
+              PREVIEW
+              =================================================== */}
 
-        {/* CATEGORIES */}
-        <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {CATEGORIES.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setCategory(item)}
-              className={cx(
-                "shrink-0 rounded-xl border px-3 py-2 text-xs font-medium transition-all",
-                category === item
-                  ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-200 shadow-lg shadow-cyan-500/10"
-                  : "border-white/10 bg-white/[0.025] text-slate-400 hover:border-white/20 hover:bg-white/[0.05] hover:text-white"
-              )}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
+          {!compact &&
+            previewOpen && (
+              <div className="px-4 pt-4 sm:px-6">
+                <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
+                  <video
+                    ref={
+                      previewVideoRef
+                    }
+                    autoPlay
+                    muted
+                    playsInline
+                    className="h-full w-full object-cover"
+                  />
 
-        {/* EFFECT GRID */}
-        <div
-          className={cx(
-            "grid gap-3",
-            compact
-              ? "grid-cols-2"
-              : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
-          )}
-        >
-          {visibleEffects.map((item) => {
-            const selected = effect === item.id;
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20" />
 
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleEffectChange(item.id)}
-                className={cx(
-                  "group relative overflow-hidden rounded-2xl border p-3 text-left transition-all",
-                  selected
-                    ? "border-cyan-400/50 bg-cyan-400/[0.09] shadow-lg shadow-cyan-500/10"
-                    : "border-white/10 bg-white/[0.025] hover:border-cyan-400/25 hover:bg-white/[0.05]"
-                )}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div
-                    className={cx(
-                      "flex h-9 w-9 items-center justify-center rounded-xl border transition-all",
-                      selected
-                        ? "border-cyan-300/30 bg-cyan-400/15 text-cyan-200"
-                        : "border-white/10 bg-white/5 text-slate-400 group-hover:text-cyan-300"
-                    )}
-                  >
-                    {item.id === "none" ? (
-                      <Eye size={16} />
-                    ) : (
-                      <Sparkles size={16} />
-                    )}
-                  </div>
-
-                  {selected && (
-                    <CircleCheck
-                      size={17}
-                      className="shrink-0 text-cyan-300"
+                  <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-3 py-1.5 text-xs backdrop-blur-md">
+                    <span
+                      className={cx(
+                        "h-2 w-2 rounded-full",
+                        enabled
+                          ? "animate-pulse bg-emerald-400"
+                          : "bg-slate-500"
+                      )}
                     />
-                  )}
-                </div>
 
-                <div className="mt-3">
-                  <div className="text-sm font-semibold">
-                    {item.name}
+                    <span className="text-slate-200">
+                      {enabled
+                        ? "Effect preview"
+                        : "Original camera"}
+                    </span>
                   </div>
 
-                  <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
-                    {item.description}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* INTENSITY */}
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <SlidersHorizontal
-                size={16}
-                className="text-cyan-300"
-              />
-              <span className="text-sm font-semibold">
-                Intensity
-              </span>
-            </div>
-
-            <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-xs font-semibold text-cyan-300">
-              {intensity}%
-            </span>
-          </div>
-
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={intensity}
-            onChange={(event) =>
-              setIntensity(Number(event.target.value))
-            }
-            className="w-full accent-cyan-400"
-            aria-label="Effect intensity"
-          />
-
-          <div className="mt-2 flex justify-between text-[10px] text-slate-600">
-            <span>Subtle</span>
-            <span>Strong</span>
-          </div>
-        </div>
-
-        {/* ADVANCED */}
-        <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-white/[0.03]"
-          >
-            <div className="flex items-center gap-2">
-              <Zap size={16} className="text-purple-300" />
-
-              <div>
-                <div className="text-sm font-semibold">
-                  Advanced processing
-                </div>
-
-                <div className="text-[11px] text-slate-500">
-                  Camera processing and performance
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPreviewOpen(
+                        false
+                      )
+                    }
+                    className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-black/45 text-white backdrop-blur-md transition hover:bg-black/70"
+                    aria-label="Hide preview"
+                  >
+                    <EyeOff
+                      size={16}
+                    />
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
 
-            <ChevronDown
-              size={17}
-              className={cx(
-                "text-slate-500 transition-transform",
-                showAdvanced ? "rotate-180" : ""
-              )}
-            />
-          </button>
-
-          {showAdvanced && (
-            <div className="border-t border-white/10 px-4 pb-4 pt-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-xs leading-relaxed text-slate-500">
-                  AI Effects runs locally on the camera feed. Your
-                  original camera audio is preserved in the processed
-                  stream.
-                </div>
-
+          {!compact &&
+            !previewOpen && (
+              <div className="px-4 pt-4 sm:px-6">
                 <button
                   type="button"
-                  onClick={restart}
-                  className="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200"
+                  onClick={() =>
+                    setPreviewOpen(
+                      true
+                    )
+                  }
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] py-3 text-sm text-slate-300 transition hover:bg-white/[0.06]"
                 >
-                  <RefreshCw size={14} />
-                  Restart engine
+                  <Eye size={16} />
+                  Show preview
                 </button>
               </div>
+            )}
+
+          {/* ===================================================
+              EFFECTS
+              =================================================== */}
+
+          <div className="px-4 py-5 sm:px-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles
+                    size={17}
+                    className="text-cyan-300"
+                  />
+
+                  <h3 className="font-semibold">
+                    Effects
+                  </h3>
+                </div>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Choose a visual style for your live camera
+                </p>
+              </div>
+
+              <div className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-400 sm:flex">
+                <Zap
+                  size={13}
+                  className="text-yellow-300"
+                />
+
+                Real-time
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* ERROR */}
-        {error && (
-          <div className="mt-4 flex gap-3 rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4">
-            <CircleAlert
-              size={18}
-              className="mt-0.5 shrink-0 text-red-300"
-            />
+            {/* CATEGORIES */}
 
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-red-200">
-                AI Effects unavailable
+            <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {CATEGORIES.map(
+                (item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() =>
+                      setCategory(
+                        item
+                      )
+                    }
+                    className={cx(
+                      "shrink-0 rounded-xl border px-3 py-2 text-xs font-medium transition-all",
+                      category ===
+                        item
+                        ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-200 shadow-lg shadow-cyan-500/10"
+                        : "border-white/10 bg-white/[0.025] text-slate-400 hover:border-white/20 hover:bg-white/[0.05] hover:text-white"
+                    )}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+            </div>
+
+            {/* EFFECT GRID */}
+
+            <div
+              className={cx(
+                "grid gap-3",
+                compact
+                  ? "grid-cols-2"
+                  : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
+              )}
+            >
+              {visibleEffects.map(
+                (item) => {
+                  const selected =
+                    effect ===
+                    item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        handleEffectChange(
+                          item.id
+                        )
+                      }
+                      className={cx(
+                        "group relative overflow-hidden rounded-2xl border p-3 text-left transition-all",
+                        selected
+                          ? "border-cyan-400/50 bg-cyan-400/[0.09] shadow-lg shadow-cyan-500/10"
+                          : "border-white/10 bg-white/[0.025] hover:border-cyan-400/25 hover:bg-white/[0.05]"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div
+                          className={cx(
+                            "flex h-9 w-9 items-center justify-center rounded-xl border transition-all",
+                            selected
+                              ? "border-cyan-300/30 bg-cyan-400/15 text-cyan-200"
+                              : "border-white/10 bg-white/5 text-slate-400 group-hover:text-cyan-300"
+                          )}
+                        >
+                          {item.id ===
+                          "none" ? (
+                            <Eye
+                              size={
+                                16
+                              }
+                            />
+                          ) : (
+                            <Sparkles
+                              size={
+                                16
+                              }
+                            />
+                          )}
+                        </div>
+
+                        {selected && (
+                          <CircleCheck
+                            size={
+                              17
+                            }
+                            className="shrink-0 text-cyan-300"
+                          />
+                        )}
+                      </div>
+
+                      <div className="mt-3">
+                        <div className="text-sm font-semibold">
+                          {
+                            item.name
+                          }
+                        </div>
+
+                        <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                          {
+                            item.description
+                          }
+                        </div>
+                      </div>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+
+            {/* =================================================
+                INTENSITY
+                ================================================= */}
+
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal
+                    size={16}
+                    className="text-cyan-300"
+                  />
+
+                  <span className="text-sm font-semibold">
+                    Intensity
+                  </span>
+                </div>
+
+                <span className="rounded-lg bg-cyan-400/10 px-2 py-1 text-xs font-semibold text-cyan-300">
+                  {
+                    intensity
+                  }
+                  %
+                </span>
               </div>
 
-              <div className="mt-1 text-xs leading-relaxed text-red-300/70">
-                {error}
-              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={
+                  intensity
+                }
+                onChange={(
+                  event
+                ) =>
+                  setIntensity(
+                    Number(
+                      event.target
+                        .value
+                    )
+                  )
+                }
+                className="w-full accent-cyan-400"
+                aria-label="Effect intensity"
+              />
 
+              <div className="mt-2 flex justify-between text-[10px] text-slate-600">
+                <span>
+                  Subtle
+                </span>
+
+                <span>
+                  Strong
+                </span>
+              </div>
+            </div>
+
+            {/* =================================================
+                ADVANCED
+                ================================================= */}
+
+            <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
               <button
                 type="button"
-                onClick={restart}
-                className="mt-3 flex items-center gap-2 rounded-lg border border-red-300/20 bg-red-400/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-400/15"
+                onClick={() =>
+                  setShowAdvanced(
+                    !showAdvanced
+                  )
+                }
+                className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-white/[0.03]"
               >
-                <RefreshCw size={13} />
-                Try again
+                <div className="flex items-center gap-2">
+                  <Zap
+                    size={16}
+                    className="text-purple-300"
+                  />
+
+                  <div>
+                    <div className="text-sm font-semibold">
+                      Advanced processing
+                    </div>
+
+                    <div className="text-[11px] text-slate-500">
+                      Camera processing and performance
+                    </div>
+                  </div>
+                </div>
+
+                <ChevronDown
+                  size={17}
+                  className={cx(
+                    "text-slate-500 transition-transform",
+                    showAdvanced
+                      ? "rotate-180"
+                      : ""
+                  )}
+                />
               </button>
+
+              {showAdvanced && (
+                <div className="border-t border-white/10 px-4 pb-4 pt-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-xs leading-relaxed text-slate-500">
+                      AI Effects runs locally on the camera feed. Your original camera audio is preserved in the processed stream.
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={
+                        restart
+                      }
+                      className="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200"
+                    >
+                      <RefreshCw
+                        size={14}
+                      />
+
+                      Restart engine
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* FOOTER */}
-      <div className="border-t border-white/10 bg-white/[0.02] px-5 py-3.5 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 text-[10px] text-slate-600">
-          <div className="flex items-center gap-2">
-            <CircleCheck size={12} className="text-emerald-400/70" />
-            Camera protected
+            {/* =================================================
+                ERROR
+                ================================================= */}
+
+            {error && (
+              <div className="mt-4 flex gap-3 rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4">
+                <CircleAlert
+                  size={18}
+                  className="mt-0.5 shrink-0 text-red-300"
+                />
+
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-red-200">
+                    AI Effects unavailable
+                  </div>
+
+                  <div className="mt-1 text-xs leading-relaxed text-red-300/70">
+                    {error}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      restart
+                    }
+                    className="mt-3 flex items-center gap-2 rounded-lg border border-red-300/20 bg-red-400/10 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-400/15"
+                  >
+                    <RefreshCw
+                      size={13}
+                    />
+
+                    Try again
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <Sparkles size={12} className="text-cyan-400/70" />
-            MPade AI Studio
+          {/* ===================================================
+              FOOTER
+              =================================================== */}
+
+          <div className="border-t border-white/10 bg-white/[0.02] px-5 py-3.5 sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-[10px] text-slate-600">
+              <div className="flex items-center gap-2">
+                <CircleCheck
+                  size={12}
+                  className="text-emerald-400/70"
+                />
+
+                Camera protected
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Sparkles
+                  size={12}
+                  className="text-cyan-400/70"
+                />
+
+                MPade AI Studio
+              </div>
+            </div>
           </div>
         </div>
       </div>
