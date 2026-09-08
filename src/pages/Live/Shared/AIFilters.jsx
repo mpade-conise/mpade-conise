@@ -1,8 +1,6 @@
-```jsx
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState
 } from "react";
@@ -182,7 +180,7 @@ function isUsableStream(source) {
  * ============================================================
  */
 
-const AIEffects = ({
+const AIFilters = ({
   stream = null,
   videoRef = null,
   onProcessedStream = null,
@@ -602,8 +600,7 @@ const AIEffects = ({
 
             finished = true;
 
-            video.onloadedmetadata =
-              null;
+            video.onloadedmetadata = null;
             video.onerror = null;
 
             callback();
@@ -625,17 +622,12 @@ const AIEffects = ({
             }, 5000);
 
           video.onloadedmetadata = () => {
-            window.clearTimeout(
-              timeout
-            );
-
+            window.clearTimeout(timeout);
             finish(resolve);
           };
 
           video.onerror = () => {
-            window.clearTimeout(
-              timeout
-            );
+            window.clearTimeout(timeout);
 
             finish(() => {
               reject(
@@ -695,8 +687,7 @@ const AIEffects = ({
         );
       }
 
-      canvasContextRef.current =
-        context;
+      canvasContextRef.current = context;
 
       return {
         canvas,
@@ -760,9 +751,7 @@ const AIEffects = ({
         }
       );
 
-      outputStreamRef.current =
-        output;
-
+      outputStreamRef.current = output;
       outputTrackRef.current =
         videoTracks[0];
 
@@ -1718,9 +1707,7 @@ const AIEffects = ({
       !mountedRef.current ||
       !open
     ) {
-      animationFrameRef.current =
-        null;
-
+      animationFrameRef.current = null;
       return;
     }
 
@@ -1786,8 +1773,7 @@ const AIEffects = ({
         now;
     }
 
-    fpsCounterRef.current.frames +=
-      1;
+    fpsCounterRef.current.frames += 1;
 
     if (
       now -
@@ -1800,11 +1786,8 @@ const AIEffects = ({
         );
       }
 
-      fpsCounterRef.current.frames =
-        0;
-
-      fpsCounterRef.current.time =
-        now;
+      fpsCounterRef.current.frames = 0;
+      fpsCounterRef.current.time = now;
     }
 
     animationFrameRef.current =
@@ -1832,8 +1815,7 @@ const AIEffects = ({
 
         if (
           processingRef.current &&
-          processedSourceRef.current ===
-            source &&
+          processedSourceRef.current === source &&
           outputStreamRef.current
         ) {
           return outputStreamRef.current;
@@ -1963,8 +1945,7 @@ const AIEffects = ({
 
           return null;
         } finally {
-          startingRef.current =
-            false;
+          startingRef.current = false;
         }
       },
       [
@@ -1987,8 +1968,7 @@ const AIEffects = ({
 
   const stopProcessing =
     useCallback(() => {
-      processingRef.current =
-        false;
+      processingRef.current = false;
 
       stopAnimation();
 
@@ -2943,5 +2923,4 @@ const AIEffects = ({
   );
 };
 
-export default AIEffects;
-```
+export default AIFilters;
