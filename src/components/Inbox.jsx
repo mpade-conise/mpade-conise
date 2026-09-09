@@ -1,9 +1,11 @@
+// src/components/Inbox.jsx
+
 import React, {
-  useState,
-  useEffect,
-  useRef,
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
 } from "react";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -39,10 +41,15 @@ import {
   ChevronRight,
   MoreHorizontal,
   UserCheck,
+  UserX,
   Clock3,
   Inbox as InboxIcon,
   Zap,
   CircleDot,
+  Eye,
+  ExternalLink,
+  CircleAlert,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { supabase } from "../supabaseClient";
@@ -54,31 +61,34 @@ import { useNavigate } from "react-router-dom";
  * INBOX
  * ============================================================
  *
- * IMPORTANT ARCHITECTURE
- * ------------------------------------------------------------
- * Inbox is an overview/notification center.
+ * Inbox is an overview / notification center.
  *
- * The actual conversation UI remains on:
+ * Actual conversations remain on:
  *
  *     /messaging?userId=<USER_ID>
  *
- * Inbox therefore only displays:
+ * Inbox only displays:
  * - sender
  * - avatar
- * - last message preview
+ * - message preview
  * - timestamp
- * - unread count
+ * - unread state
  *
- * Existing Supabase fetching/realtime architecture is preserved.
+ * IMPORTANT:
+ * - Read state is persisted directly to Supabase.
+ * - Mark-all-read verifies the database update.
+ * - Realtime listeners are protected against duplicate channels.
+ * - The entire page has a real scroll container and visible
+ *   scrollbar.
  * ============================================================
  */
 
 const Inbox = () => {
   const navigate = useNavigate();
 
-  // =========================================================
-  // DATA STATES
-  // =========================================================
+  // ============================================================
+  // DATA
+  // ============================================================
 
   const [liveStreams, setLiveStreams] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -87,41 +97,39 @@ const Inbox = () => {
   const [myFollows, setMyFollows] = useState(new Set());
   const [suggestedUsers, setSuggestedUsers] = useState([]);
 
-  // =========================================================
-  // CONTROL STATES
-  // =========================================================
+  // ============================================================
+  // USER / LOADING
+  // ============================================================
 
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastFetchedAt, setLastFetchedAt] = useState(null);
-  const [currentUserId, setCurrentUserId] = useState(null);
 
-  // =========================================================
+  // ============================================================
   // FILTER / SEARCH
-  // =========================================================
+  // ============================================================
 
   const [activeFilter, setActiveFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
-  const [showNewChatModal, setShowNewChatModal] =
-    useState(false);
+  // ============================================================
+  // ACTION STATES
+  // ============================================================
 
-  const [newChatSearch, setNewChatSearch] =
-    useState("");
+  const [markingAllRead, setMarkingAllRead] = useState(false);
+  const [markingCategory, setMarkingCategory] = useState(null);
+  const [markingActivityId, setMarkingActivityId] = useState(null);
+  const [acceptingInviteId, setAcceptingInviteId] = useState(null);
+  const [followingId, setFollowingId] = useState(null);
 
-  const [acceptingInviteId, setAcceptingInviteId] =
-    useState(null);
+  // ============================================================
+  // MODALS / DRAWERS
+  // ============================================================
 
-  const [markingAllRead, setMarkingAllRead] =
-    useState(false);
-
-  const [showMoreMenu, setShowMoreMenu] =
-    useState(false);
-
-  // =========================================================
-  // DRAWERS
-  // =========================================================
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [newChatSearch, setNewChatSearch] = useState("");
 
   const [isFollowerPanelOpen, setIsFollowerPanelOpen] =
     useState(false);
@@ -135,24 +143,33 @@ const Inbox = () => {
   const [isActivityPanelOpen, setIsActivityPanelOpen] =
     useState(false);
 
-  // =========================================================
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  // ============================================================
+  // ERROR / NOTICE
+  // ============================================================
+
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  // ============================================================
   // REFS
-  // =========================================================
+  // ============================================================
 
   const channelRef = useRef(null);
-
   const mountedRef = useRef(false);
-
   const fetchInProgressRef = useRef(false);
+  const refreshTimerRef = useRef(null);
 
-  // =========================================================
-  // HELPERS
-  // =========================================================
+  // ============================================================
+  // TYPE HELPERS
+  // ============================================================
 
   const isFollowerType = useCallback((type) => {
     return (
       type === "follow" ||
-      type === "user_follow"
+      type === "user_follow" ||
+      type === "new_follower"
     );
   }, []);
 
@@ -160,7 +177,8 @@ const Inbox = () => {
     return (
       type === "like" ||
       type === "video_likes" ||
-      type === "video_like"
+      type === "video_like" ||
+      type === "video_liked"
     );
   }, []);
 
@@ -168,24 +186,19 @@ const Inbox = () => {
     return (
       type === "comment" ||
       type === "video_comments" ||
-      type === "video_comment"
+      type === "video_comment" ||
+      type === "video_commented"
     );
   }, []);
 
   const isUnreadMessage = useCallback((message) => {
-    if (!message) {
-      return false;
+    if (!message) return false;
+
+    if (typeof message.unread === "boolean") {
+      return message.unread;
     }
 
-    if (
-      typeof message.unread === "boolean"
-    ) {
-      return message.unread === true;
-    }
-
-    if (
-      typeof message.unread === "string"
-    ) {
+    if (typeof message.unread === "string") {
       return message.unread.toLowerCase() === "true";
     }
 
@@ -195,28 +208,185 @@ const Inbox = () => {
     );
   }, []);
 
-  // =========================================================
-  // FETCH PROFILES
-  // =========================================================
+  const isUnreadActivity = useCallback((activity) => {
+    if (!activity) return false;
+
+    if (typeof activity.read === "boolean") {
+      return !activity.read;
+    }
+
+    if (typeof activity.read === "string") {
+      return activity.read.toLowerCase() !== "true";
+    }
+
+    return false;
+  }, []);
+
+  // ============================================================
+  // FORMATTERS
+  // ============================================================
+
+  const getDisplayName = useCallback((profile, fallback = "User") => {
+    if (!profile) return fallback;
+
+    return (
+      profile.display_name ||
+      profile.full_name ||
+      profile.username ||
+      fallback
+    );
+  }, []);
+
+  const getUsername = useCallback((profile) => {
+    if (!profile) return "";
+
+    return profile.username
+      ? `@${profile.username}`
+      : "";
+  }, []);
+
+  const getTime = useCallback((date) => {
+    if (!date) return "";
+
+    try {
+      return formatDistanceToNow(new Date(date), {
+        addSuffix: true,
+      });
+    } catch {
+      return "";
+    }
+  }, []);
+
+  const getActivityIcon = useCallback(
+    (type) => {
+      if (isFollowerType(type)) {
+        return UserPlus;
+      }
+
+      if (isLikeType(type)) {
+        return Heart;
+      }
+
+      if (isCommentType(type)) {
+        return MessageCircle;
+      }
+
+      if (type === "share" || type === "video_share") {
+        return Share2;
+      }
+
+      if (type === "save" || type === "video_save") {
+        return Bookmark;
+      }
+
+      if (
+        type === "repost" ||
+        type === "video_repost"
+      ) {
+        return RefreshCw;
+      }
+
+      if (
+        type === "mention" ||
+        type === "tag"
+      ) {
+        return AtSign;
+      }
+
+      if (
+        type === "gift" ||
+        type === "video_gift"
+      ) {
+        return Gift;
+      }
+
+      return Bell;
+    },
+    [isFollowerType, isLikeType, isCommentType]
+  );
+
+  const getActivityText = useCallback(
+    (activity) => {
+      const type = activity?.type || "";
+
+      const actor =
+        getDisplayName(
+          activity?.actor,
+          "Someone"
+        );
+
+      if (isFollowerType(type)) {
+        return `${actor} started following you`;
+      }
+
+      if (isLikeType(type)) {
+        return `${actor} liked your video`;
+      }
+
+      if (isCommentType(type)) {
+        return `${actor} commented on your video`;
+      }
+
+      if (
+        type === "share" ||
+        type === "video_share"
+      ) {
+        return `${actor} shared your video`;
+      }
+
+      if (
+        type === "save" ||
+        type === "video_save"
+      ) {
+        return `${actor} saved your video`;
+      }
+
+      if (
+        type === "repost" ||
+        type === "video_repost"
+      ) {
+        return `${actor} reposted your video`;
+      }
+
+      if (
+        type === "mention" ||
+        type === "tag"
+      ) {
+        return `${actor} mentioned you`;
+      }
+
+      if (
+        type === "gift" ||
+        type === "video_gift"
+      ) {
+        return `${actor} sent you a gift`;
+      }
+
+      return activity?.message ||
+        activity?.text ||
+        `${actor} interacted with you`;
+    },
+    [
+      getDisplayName,
+      isFollowerType,
+      isLikeType,
+      isCommentType,
+    ]
+  );
+
+  // ============================================================
+  // PROFILE FETCH
+  // ============================================================
 
   const fetchProfilesBatch = useCallback(
     async (userIds) => {
-      if (
-        !userIds ||
-        userIds.length === 0
-      ) {
-        return new Map();
-      }
-
       const uniqueIds = [
         ...new Set(
-          userIds.filter(Boolean)
+          (userIds || []).filter(Boolean)
         ),
       ];
 
-      if (
-        uniqueIds.length === 0
-      ) {
+      if (!uniqueIds.length) {
         return new Map();
       }
 
@@ -227,13 +397,13 @@ const Inbox = () => {
         } = await supabase
           .from("profiles")
           .select(
-            "id, username, avatar_url, full_name, is_verified, online"
+            "id, username, display_name, full_name, avatar_url, is_verified, verified_status, online, is_online, creator_level, creator_xp"
           )
           .in("id", uniqueIds);
 
         if (error) {
           console.warn(
-            "Profiles batch fetch error:",
+            "Profiles fetch:",
             error.message
           );
 
@@ -241,16 +411,14 @@ const Inbox = () => {
         }
 
         return new Map(
-          (data || []).map(
-            (profile) => [
-              profile.id,
-              profile,
-            ]
-          )
+          (data || []).map((profile) => [
+            profile.id,
+            profile,
+          ])
         );
       } catch (error) {
         console.warn(
-          "Fallback profiles fetch error:",
+          "Profiles fetch exception:",
           error
         );
 
@@ -260,28 +428,19 @@ const Inbox = () => {
     []
   );
 
-  // =========================================================
-  // FETCH VIDEOS
-  // =========================================================
+  // ============================================================
+  // VIDEO FETCH
+  // ============================================================
 
   const fetchVideosBatch = useCallback(
     async (videoIds) => {
-      if (
-        !videoIds ||
-        videoIds.length === 0
-      ) {
-        return new Map();
-      }
-
       const uniqueIds = [
         ...new Set(
-          videoIds.filter(Boolean)
+          (videoIds || []).filter(Boolean)
         ),
       ];
 
-      if (
-        uniqueIds.length === 0
-      ) {
+      if (!uniqueIds.length) {
         return new Map();
       }
 
@@ -298,7 +457,7 @@ const Inbox = () => {
 
         if (error) {
           console.warn(
-            "Videos batch fetch error:",
+            "Videos fetch:",
             error.message
           );
 
@@ -306,73 +465,62 @@ const Inbox = () => {
         }
 
         return new Map(
-          (data || []).map(
-            (video) => [
-              video.id,
-              video,
-            ]
-          )
+          (data || []).map((video) => [
+            video.id,
+            video,
+          ])
         );
-      } catch (error) {
-        console.warn(
-          "Fallback videos fetch error:",
-          error
-        );
-
+      } catch {
         return new Map();
       }
     },
     []
   );
 
-  // =========================================================
-  // FETCH MAIN DATA
-  // =========================================================
+  // ============================================================
+  // FETCH INBOX
+  // ============================================================
 
   const fetchData = useCallback(
     async (
       uid,
-      isManual = false
+      manual = false
     ) => {
-      if (
-        !uid ||
-        !mountedRef.current
-      ) {
+      if (!uid || !mountedRef.current) {
         return;
       }
 
-      if (
-        fetchInProgressRef.current
-      ) {
+      if (fetchInProgressRef.current) {
         return;
       }
 
-      fetchInProgressRef.current =
-        true;
+      fetchInProgressRef.current = true;
 
-      if (isManual) {
+      if (manual) {
         setIsRefreshing(true);
       }
 
       try {
-        // -----------------------------------------------------
+        setErrorMessage("");
+
+        // ------------------------------------------------------
         // LIVE STREAMS
-        // -----------------------------------------------------
+        // ------------------------------------------------------
 
         const streamsPromise =
           supabase
             .from("live_streams")
             .select(
-              "*, profiles:host_id(avatar_url, username)"
+              "*, profiles:host_id(id, username, display_name, avatar_url, is_verified)"
             )
-            .eq(
-              "status",
-              "live"
-            );
+            .eq("status", "live")
+            .order("created_at", {
+              ascending: false,
+            });
 
-        // -----------------------------------------------------
+        // ------------------------------------------------------
         // ACTIVITIES
-        // -----------------------------------------------------
+        // ------------------------------------------------------
 
         const activitiesPromise =
           supabase
@@ -381,10 +529,12 @@ const Inbox = () => {
               *,
               actor:profiles!actor_id(
                 id,
-                avatar_url,
                 username,
+                display_name,
                 full_name,
-                is_verified
+                avatar_url,
+                is_verified,
+                verified_status
               ),
               videos:video_id(
                 id,
@@ -393,22 +543,15 @@ const Inbox = () => {
                 caption
               )
             `)
-            .eq(
-              "user_id",
-              uid
-            )
-            .order(
-              "created_at",
-              {
-                ascending:
-                  false,
-              }
-            )
+            .eq("user_id", uid)
+            .order("created_at", {
+              ascending: false,
+            })
             .limit(100);
 
-        // -----------------------------------------------------
+        // ------------------------------------------------------
         // MESSAGES
-        // -----------------------------------------------------
+        // ------------------------------------------------------
 
         const messagesPromise =
           supabase
@@ -417,71 +560,47 @@ const Inbox = () => {
             .or(
               `receiver_id.eq.${uid},sender_id.eq.${uid}`
             )
-            .order(
-              "updated_at",
-              {
-                ascending:
-                  false,
-              }
-            )
+            .order("updated_at", {
+              ascending: false,
+            })
             .limit(300);
 
-        // -----------------------------------------------------
+        // ------------------------------------------------------
         // FOLLOWS
-        // -----------------------------------------------------
+        // ------------------------------------------------------
 
         const followsPromise =
           supabase
             .from("follows")
-            .select(
-              "following_id"
-            )
-            .eq(
-              "follower_id",
-              uid
-            );
+            .select("following_id")
+            .eq("follower_id", uid);
 
-        // -----------------------------------------------------
-        // LIVE INVITES
-        // -----------------------------------------------------
+        // ------------------------------------------------------
+        // INVITES
+        // ------------------------------------------------------
 
         const invitesPromise =
           supabase
-            .from(
-              "live_guest_requests"
-            )
+            .from("live_guest_requests")
             .select("*")
-            .eq(
-              "user_id",
-              uid
-            )
-            .eq(
-              "status",
-              "invited"
-            )
-            .order(
-              "created_at",
-              {
-                ascending:
-                  false,
-              }
-            );
+            .eq("user_id", uid)
+            .eq("status", "invited")
+            .order("created_at", {
+              ascending: false,
+            });
 
-        // -----------------------------------------------------
-        // SUGGESTED USERS
-        // -----------------------------------------------------
+        // ------------------------------------------------------
+        // SUGGESTIONS
+        // ------------------------------------------------------
 
-        const suggestedUsersPromise =
+        const suggestedPromise =
           supabase
             .from("profiles")
             .select(
-              "id, username, avatar_url, full_name, is_verified"
+              "id, username, display_name, full_name, avatar_url, is_verified, verified_status"
             )
-            .neq(
-              "id",
-              uid
-            )
-            .limit(25);
+            .neq("id", uid)
+            .limit(30);
 
         const [
           streamsRes,
@@ -496,260 +615,237 @@ const Inbox = () => {
           messagesPromise,
           followsPromise,
           invitesPromise,
-          suggestedUsersPromise,
+          suggestedPromise,
         ]);
 
-        if (
-          !mountedRef.current
-        ) {
+        if (!mountedRef.current) {
           return;
         }
 
-        // =====================================================
-        // LIVE STREAMS
-        // =====================================================
+        // ------------------------------------------------------
+        // STREAMS
+        // ------------------------------------------------------
 
-        if (
-          !streamsRes.error
-        ) {
+        if (!streamsRes.error) {
           setLiveStreams(
-            streamsRes.data ||
-              []
+            streamsRes.data || []
           );
         } else {
-          console.error(
-            "Live streams error:",
+          console.warn(
+            "Live streams:",
             streamsRes.error.message
           );
         }
 
-        // =====================================================
+        // ------------------------------------------------------
         // FOLLOWS
-        // =====================================================
+        // ------------------------------------------------------
 
-        if (
-          !followsRes.error
-        ) {
+        if (!followsRes.error) {
           setMyFollows(
             new Set(
-              (
-                followsRes.data ||
-                []
-              ).map(
-                (follow) =>
-                  follow.following_id
+              (followsRes.data || []).map(
+                (item) =>
+                  item.following_id
               )
             )
           );
-        } else {
-          console.error(
-            "Follows error:",
-            followsRes.error.message
-          );
         }
 
-        // =====================================================
-        // SUGGESTED USERS
-        // =====================================================
+        // ------------------------------------------------------
+        // SUGGESTIONS
+        // ------------------------------------------------------
 
-        if (
-          !suggestedRes.error
-        ) {
+        if (!suggestedRes.error) {
           setSuggestedUsers(
-            suggestedRes.data ||
-              []
-          );
-        } else {
-          console.error(
-            "Suggested users error:",
-            suggestedRes.error.message
+            suggestedRes.data || []
           );
         }
 
-        // =====================================================
+        // ------------------------------------------------------
         // ACTIVITIES
-        // =====================================================
+        // ------------------------------------------------------
 
         let processedActivities =
-          activitiesRes.data ||
-          [];
+          activitiesRes.data || [];
 
         if (
           activitiesRes.error ||
           !activitiesRes.data
         ) {
-          console.warn(
-            "Activity relation query failed. Using fallback."
-          );
-
           const {
-            data: rawActivities,
-            error: rawActivitiesError,
+            data,
+            error,
           } = await supabase
             .from("activities")
             .select("*")
-            .eq(
-              "user_id",
-              uid
-            )
-            .order(
-              "created_at",
-              {
-                ascending:
-                  false,
-              }
-            )
+            .eq("user_id", uid)
+            .order("created_at", {
+              ascending: false,
+            })
             .limit(100);
 
-          if (
-            rawActivitiesError
-          ) {
-            console.error(
-              "Raw activities error:",
-              rawActivitiesError.message
-            );
+          if (!error && data) {
+            const actorIds = data
+              .map(
+                (item) =>
+                  item.actor_id
+              )
+              .filter(Boolean);
 
-            processedActivities =
-              [];
-          } else if (
-            rawActivities &&
-            rawActivities.length >
-              0
-          ) {
-            const actorIds = [
-              ...new Set(
-                rawActivities
-                  .map(
-                    (activity) =>
-                      activity.actor_id
-                  )
-                  .filter(Boolean)
-              ),
-            ];
-
-            const videoIds = [
-              ...new Set(
-                rawActivities
-                  .map(
-                    (activity) =>
-                      activity.video_id
-                  )
-                  .filter(Boolean)
-              ),
-            ];
+            const videoIds = data
+              .map(
+                (item) =>
+                  item.video_id
+              )
+              .filter(Boolean);
 
             const [
-              profilesMap,
-              videosMap,
-            ] =
-              await Promise.all([
-                fetchProfilesBatch(
-                  actorIds
-                ),
-                fetchVideosBatch(
-                  videoIds
-                ),
-              ]);
+              profiles,
+              videos,
+            ] = await Promise.all([
+              fetchProfilesBatch(
+                actorIds
+              ),
+              fetchVideosBatch(
+                videoIds
+              ),
+            ]);
 
             processedActivities =
-              rawActivities.map(
-                (activity) => ({
-                  ...activity,
-                  actor:
-                    profilesMap.get(
-                      activity.actor_id
-                    ) || null,
-                  videos:
-                    videosMap.get(
-                      activity.video_id
-                    ) || null,
-                })
-              );
-          }
-        } else {
-          const missingActorIds =
-            processedActivities
-              .filter(
-                (activity) =>
-                  activity.actor_id &&
-                  !activity.actor
-              )
-              .map(
-                (activity) =>
-                  activity.actor_id
-              );
-
-          const missingVideoIds =
-            processedActivities
-              .filter(
-                (activity) =>
-                  activity.video_id &&
-                  !activity.videos
-              )
-              .map(
-                (activity) =>
-                  activity.video_id
-              );
-
-          if (
-            missingActorIds.length >
-              0 ||
-            missingVideoIds.length >
-              0
-          ) {
-            const [
-              profilesMap,
-              videosMap,
-            ] =
-              await Promise.all([
-                fetchProfilesBatch(
-                  missingActorIds
-                ),
-                fetchVideosBatch(
-                  missingVideoIds
-                ),
-              ]);
-
-            processedActivities =
-              processedActivities.map(
-                (activity) => ({
-                  ...activity,
-
-                  actor:
-                    activity.actor ||
-                    profilesMap.get(
-                      activity.actor_id
-                    ) ||
-                    null,
-
-                  videos:
-                    activity.videos ||
-                    videosMap.get(
-                      activity.video_id
-                    ) ||
-                    null,
-                })
-              );
+              data.map((item) => ({
+                ...item,
+                actor:
+                  profiles.get(
+                    item.actor_id
+                  ) || null,
+                videos:
+                  videos.get(
+                    item.video_id
+                  ) || null,
+              }));
           }
         }
+
+        setActivities(
+          processedActivities
+        );
+
+        // ------------------------------------------------------
+        // MESSAGES
+        // ------------------------------------------------------
+
+        let rawMessages =
+          messagesRes.data || [];
 
         if (
-          mountedRef.current
+          messagesRes.error ||
+          !messagesRes.data
         ) {
-          setActivities(
-            processedActivities
-          );
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("messages")
+            .select("*")
+            .or(
+              `receiver_id.eq.${uid},sender_id.eq.${uid}`
+            )
+            .order("updated_at", {
+              ascending: false,
+            })
+            .limit(300);
+
+          if (!error) {
+            rawMessages = data || [];
+          }
         }
 
-        // =====================================================
+        // ------------------------------------------------------
+        // MESSAGE PROFILE DATA
+        // ------------------------------------------------------
+
+        const messageUserIds = [
+          ...new Set(
+            rawMessages
+              .map((message) =>
+                message.sender_id === uid
+                  ? message.receiver_id
+                  : message.sender_id
+              )
+              .filter(Boolean)
+          ),
+        ];
+
+        const messageProfiles =
+          await fetchProfilesBatch(
+            messageUserIds
+          );
+
+        // ------------------------------------------------------
+        // BUILD ONE PREVIEW PER CONVERSATION
+        // ------------------------------------------------------
+
+        const conversationMap =
+          new Map();
+
+        [...rawMessages]
+          .sort((a, b) => {
+            const aDate = new Date(
+              a.updated_at ||
+                a.created_at ||
+                0
+            ).getTime();
+
+            const bDate = new Date(
+              b.updated_at ||
+                b.created_at ||
+                0
+            ).getTime();
+
+            return bDate - aDate;
+          })
+          .forEach((message) => {
+            const otherUserId =
+              message.sender_id === uid
+                ? message.receiver_id
+                : message.sender_id;
+
+            if (!otherUserId) return;
+
+            if (
+              !conversationMap.has(
+                otherUserId
+              )
+            ) {
+              conversationMap.set(
+                otherUserId,
+                {
+                  ...message,
+                  other_user_id:
+                    otherUserId,
+                  profile:
+                    messageProfiles.get(
+                      otherUserId
+                    ) || null,
+                }
+              );
+            }
+          });
+
+        setMessages(
+          Array.from(
+            conversationMap.values()
+          )
+        );
+
+        // ------------------------------------------------------
         // LIVE INVITES
-        // =====================================================
+        // ------------------------------------------------------
 
         if (
           !invitesRes.error &&
-          invitesRes.data &&
-          invitesRes.data.length >
-            0
+          invitesRes.data?.length
         ) {
           const streamIds = [
             ...new Set(
@@ -762,25 +858,15 @@ const Inbox = () => {
             ),
           ];
 
-          if (
-            streamIds.length >
-            0
-          ) {
+          if (streamIds.length) {
             const {
-              data: activeStreamsData,
-              error: activeStreamsError,
+              data,
+              error,
             } = await supabase
-              .from(
-                "live_streams"
+              .from("live_streams")
+              .select(
+                "*, host:profiles!host_id(id, username, display_name, avatar_url, is_verified)"
               )
-              .select(`
-                *,
-                host:profiles!host_id(
-                  id,
-                  username,
-                  avatar_url
-                )
-              `)
               .in(
                 "id",
                 streamIds
@@ -790,24 +876,10 @@ const Inbox = () => {
                 "live"
               );
 
-            if (
-              activeStreamsError
-            ) {
-              console.error(
-                "Active invite streams error:",
-                activeStreamsError.message
-              );
-
-              setLiveInvites(
-                []
-              );
-            } else {
-              const streamsMap =
+            if (!error) {
+              const streamMap =
                 new Map(
-                  (
-                    activeStreamsData ||
-                    []
-                  ).map(
+                  (data || []).map(
                     (stream) => [
                       stream.id,
                       stream,
@@ -815,1722 +887,325 @@ const Inbox = () => {
                   )
                 );
 
-              const validInvites =
+              setLiveInvites(
                 invitesRes.data
-                  .filter(
-                    (invite) =>
-                      streamsMap.has(
+                  .filter((invite) =>
+                    streamMap.has(
+                      invite.stream_id
+                    )
+                  )
+                  .map((invite) => ({
+                    ...invite,
+                    stream:
+                      streamMap.get(
                         invite.stream_id
-                      )
-                  )
-                  .map(
-                    (invite) => ({
-                      ...invite,
-                      stream:
-                        streamsMap.get(
-                          invite.stream_id
-                        ),
-                    })
-                  );
-
-              if (
-                mountedRef.current
-              ) {
-                setLiveInvites(
-                  validInvites
-                );
-              }
+                      ),
+                  }))
+              );
+            } else {
+              setLiveInvites([]);
             }
           } else {
-            setLiveInvites(
-              []
-            );
+            setLiveInvites([]);
           }
         } else {
-          setLiveInvites(
-            []
-          );
+          setLiveInvites([]);
         }
 
-        // =====================================================
-        // MESSAGES
-        // =====================================================
-
-        let rawMsgs = [];
-
-        if (
-          messagesRes.error ||
-          !messagesRes.data
-        ) {
-          console.warn(
-            "Messages query failed. Using fallback."
-          );
-
-          const {
-            data: plainMsgs,
-            error: plainMsgsError,
-          } = await supabase
-            .from("messages")
-            .select("*")
-            .or(
-              `receiver_id.eq.${uid},sender_id.eq.${uid}`
-            );
-
-          if (
-            plainMsgsError
-          ) {
-            console.error(
-              "Fallback messages error:",
-              plainMsgsError.message
-            );
-          } else {
-            rawMsgs =
-              plainMsgs ||
-              [];
-          }
-        } else {
-          rawMsgs =
-            messagesRes.data ||
-            [];
-        }
-
-        // =====================================================
-        // PROCESS MESSAGE THREADS
-        // =====================================================
-
-        if (
-          rawMsgs.length >
-          0
-        ) {
-          rawMsgs.sort(
-            (a, b) => {
-              const timeA =
-                new Date(
-                  a.updated_at ||
-                    a.created_at ||
-                    0
-                ).getTime();
-
-              const timeB =
-                new Date(
-                  b.updated_at ||
-                    b.created_at ||
-                    0
-                ).getTime();
-
-              return (
-                timeB -
-                timeA
-              );
-            }
-          );
-
-          const peerUserIds =
-            [
-              ...new Set(
-                rawMsgs
-                  .map(
-                    (message) =>
-                      message.sender_id ===
-                      uid
-                        ? message.receiver_id
-                        : message.sender_id
-                  )
-                  .filter(Boolean)
-              ),
-            ];
-
-          const profilesMap =
-            await fetchProfilesBatch(
-              peerUserIds
-            );
-
-          const unreadCountPerPeer =
-            {};
-
-          rawMsgs.forEach(
-            (message) => {
-              const isForMe =
-                message.receiver_id ===
-                uid;
-
-              if (
-                isForMe &&
-                isUnreadMessage(
-                  message
-                ) &&
-                message.sender_id
-              ) {
-                const peerId =
-                  message.sender_id;
-
-                unreadCountPerPeer[
-                  peerId
-                ] =
-                  (
-                    unreadCountPerPeer[
-                      peerId
-                    ] || 0
-                  ) + 1;
-              }
-            }
-          );
-
-          const uniqueThreads =
-            [];
-
-          const seenPeerIds =
-            new Set();
-
-          rawMsgs.forEach(
-            (message) => {
-              const isFromMe =
-                message.sender_id ===
-                uid;
-
-              const peerId =
-                isFromMe
-                  ? message.receiver_id
-                  : message.sender_id;
-
-              if (
-                !peerId ||
-                seenPeerIds.has(
-                  peerId
-                )
-              ) {
-                return;
-              }
-
-              seenPeerIds.add(
-                peerId
-              );
-
-              const profile =
-                profilesMap.get(
-                  peerId
-                );
-
-              const fallbackUsername =
-                !isFromMe &&
-                message.user_name
-                  ? message.user_name
-                  : `user_${peerId.substring(
-                      0,
-                      5
-                    )}`;
-
-              const displayProfile =
-                {
-                  id: peerId,
-
-                  username:
-                    profile?.username ||
-                    fallbackUsername,
-
-                  full_name:
-                    profile?.full_name ||
-                    "",
-
-                  avatar_url:
-                    profile?.avatar_url ||
-                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId}`,
-
-                  is_verified:
-                    profile?.is_verified ||
-                    false,
-
-                  online:
-                    profile?.online ??
-                    message.online ??
-                    false,
-                };
-
-              uniqueThreads.push(
-                {
-                  ...message,
-
-                  displayProfile,
-
-                  unreadCount:
-                    unreadCountPerPeer[
-                      peerId
-                    ] || 0,
-
-                  isFromMe,
-
-                  last_msg:
-                    message.last_msg ||
-                    message.content ||
-                    "",
-
-                  updated_at:
-                    message.updated_at ||
-                    message.created_at,
-                }
-              );
-            }
-          );
-
-          if (
-            mountedRef.current
-          ) {
-            setMessages(
-              uniqueThreads
-            );
-          }
-        } else {
-          setMessages(
-            []
-          );
-        }
-
-        if (
-          mountedRef.current
-        ) {
-          setLastFetchedAt(
-            new Date()
-          );
-        }
+        setLastFetchedAt(
+          new Date()
+        );
       } catch (error) {
         console.error(
-          "Inbox Fetch Error:",
+          "Inbox fetch error:",
           error
         );
+
+        if (mountedRef.current) {
+          setErrorMessage(
+            "Unable to refresh your inbox. Please try again."
+          );
+        }
       } finally {
         fetchInProgressRef.current =
           false;
 
-        if (
-          mountedRef.current
-        ) {
+        if (mountedRef.current) {
           setLoading(false);
-          setIsRefreshing(
-            false
-          );
+          setIsRefreshing(false);
         }
       }
     },
     [
       fetchProfilesBatch,
       fetchVideosBatch,
-      isUnreadMessage,
     ]
   );
 
-  // =========================================================
-  // MESSAGE PREVIEW
-  // =========================================================
-
-  const getMessagePreviewText =
-    useCallback((message) => {
-      if (
-        message.type ===
-          "voice" ||
-        message.media_type ===
-          "voice" ||
-        message.audio_url ||
-        message.metadata?.type ===
-          "voice"
-      ) {
-        return "🎙️ Voice message";
-      }
-
-      if (
-        message.type ===
-          "image" ||
-        message.media_type ===
-          "image" ||
-        (
-          message.media_url &&
-          !message.last_msg
-        )
-      ) {
-        return "📷 Photo";
-      }
-
-      if (
-        message.type ===
-          "video" ||
-        message.media_type ===
-          "video"
-      ) {
-        return "🎬 Video attachment";
-      }
-
-      if (
-        message.type ===
-          "file" ||
-        message.media_type ===
-          "file"
-      ) {
-        return "📁 Document attached";
-      }
-
-      if (
-        message.type ===
-          "call" ||
-        (
-          message.call_duration &&
-          message.call_duration > 0
-        ) ||
-        message.metadata?.call_type
-      ) {
-        return message.metadata
-          ?.call_type ===
-          "video"
-          ? "📹 Video Call"
-          : "📞 Voice Call";
-      }
-
-      if (
-        message.last_msg
-      ) {
-        return message.last_msg;
-      }
-
-      if (
-        message.content
-      ) {
-        return message.content;
-      }
-
-      return "Sent a message";
-    }, []);
-
-  // =========================================================
-  // FOLLOW BACK
-  // =========================================================
-
-  const handleFollowBack =
-    async (
-      targetId,
-      event
-    ) => {
-      if (event) {
-        event.stopPropagation();
-      }
-
-      if (
-        !currentUserId ||
-        !targetId ||
-        currentUserId ===
-          targetId
-      ) {
-        return;
-      }
-
-      const wasFollowing =
-        myFollows.has(
-          targetId
-        );
-
-      setMyFollows(
-        (previous) => {
-          const updated =
-            new Set(previous);
-
-          updated.add(
-            targetId
-          );
-
-          return updated;
-        }
-      );
-
-      try {
-        const {
-          error,
-        } = await supabase
-          .from("follows")
-          .upsert(
-            {
-              follower_id:
-                currentUserId,
-
-              following_id:
-                targetId,
-            },
-            {
-              onConflict:
-                "follower_id,following_id",
-            }
-          );
-
-        if (error) {
-          throw error;
-        }
-      } catch (error) {
-        console.error(
-          "Follow operation failed:",
-          error
-        );
-
-        if (!wasFollowing) {
-          setMyFollows(
-            (previous) => {
-              const updated =
-                new Set(
-                  previous
-                );
-
-              updated.delete(
-                targetId
-              );
-
-              return updated;
-            }
-          );
-        }
-      }
-    };
-
-  // =========================================================
-  // MARK ALL AS READ
-  // =========================================================
-  //
-  // IMPORTANT:
-  // Do not only modify React state.
-  // The database is the source of truth.
-  // =========================================================
-
-  const handleMarkAllRead =
-    async () => {
-      if (
-        !currentUserId ||
-        markingAllRead
-      ) {
-        return;
-      }
-
-      setMarkingAllRead(
-        true
-      );
-
-      try {
-        const [
-          activityResult,
-          messageResult,
-        ] = await Promise.all([
-          supabase
-            .from("activities")
-            .update({
-              is_read: true,
-            })
-            .eq(
-              "user_id",
-              currentUserId
-            )
-            .eq(
-              "is_read",
-              false
-            ),
-
-          supabase
-            .from("messages")
-            .update({
-              unread: false,
-              status: "read",
-            })
-            .eq(
-              "receiver_id",
-              currentUserId
-            )
-            .eq(
-              "unread",
-              true
-            ),
-        ]);
-
-        if (
-          activityResult.error
-        ) {
-          console.error(
-            "Mark activities read error:",
-            activityResult.error
-          );
-        }
-
-        if (
-          messageResult.error
-        ) {
-          console.error(
-            "Mark messages read error:",
-            messageResult.error
-          );
-        }
-
-        /*
-         * Update local state only after the database operation
-         * has been attempted.
-         */
-        setActivities(
-          (previous) =>
-            previous.map(
-              (activity) => ({
-                ...activity,
-                is_read: true,
-              })
-            )
-        );
-
-        setMessages(
-          (previous) =>
-            previous.map(
-              (message) => ({
-                ...message,
-                unreadCount: 0,
-                unread: false,
-                status: "read",
-              })
-            )
-        );
-
-        /*
-         * Re-fetch from Supabase so a refresh/realtime cycle
-         * cannot leave the UI displaying stale counts.
-         */
-        await fetchData(
-          currentUserId,
-          false
-        );
-      } catch (error) {
-        console.error(
-          "Mark all read failed:",
-          error
-        );
-      } finally {
-        if (
-          mountedRef.current
-        ) {
-          setMarkingAllRead(
-            false
-          );
-        }
-      }
-    };
-
-  // =========================================================
-  // MARK CATEGORY AS READ
-  // =========================================================
-
-  const markCategoryAsRead =
-    async (
-      typeGroup
-    ) => {
-      if (
-        !currentUserId
-      ) {
-        return;
-      }
-
-      const shouldMark =
-        (activity) => {
-          if (
-            typeGroup ===
-            "all"
-          ) {
-            return true;
-          }
-
-          if (
-            typeGroup ===
-            "followers"
-          ) {
-            return isFollowerType(
-              activity.type
-            );
-          }
-
-          if (
-            typeGroup ===
-            "likes"
-          ) {
-            return isLikeType(
-              activity.type
-            );
-          }
-
-          if (
-            typeGroup ===
-            "comments"
-          ) {
-            return isCommentType(
-              activity.type
-            );
-          }
-
-          if (
-            typeGroup ===
-            "activity"
-          ) {
-            return (
-              !isFollowerType(
-                activity.type
-              ) &&
-              !isLikeType(
-                activity.type
-              ) &&
-              !isCommentType(
-                activity.type
-              )
-            );
-          }
-
-          return false;
-        };
-
-      setActivities(
-        (previous) =>
-          previous.map(
-            (activity) =>
-              shouldMark(
-                activity
-              )
-                ? {
-                    ...activity,
-                    is_read:
-                      true,
-                  }
-                : activity
-          )
-      );
-
-      try {
-        let query =
-          supabase
-            .from("activities")
-            .update({
-              is_read: true,
-            })
-            .eq(
-              "user_id",
-              currentUserId
-            )
-            .eq(
-              "is_read",
-              false
-            );
-
-        if (
-          typeGroup ===
-          "followers"
-        ) {
-          query =
-            query.in(
-              "type",
-              [
-                "follow",
-                "user_follow",
-              ]
-            );
-        } else if (
-          typeGroup ===
-          "likes"
-        ) {
-          query =
-            query.in(
-              "type",
-              [
-                "like",
-                "video_likes",
-                "video_like",
-              ]
-            );
-        } else if (
-          typeGroup ===
-          "comments"
-        ) {
-          query =
-            query.in(
-              "type",
-              [
-                "comment",
-                "video_comments",
-                "video_comment",
-              ]
-            );
-        }
-
-        const {
-          error,
-        } = await query;
-
-        if (error) {
-          console.error(
-            "Mark category read error:",
-            error
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Mark category read failed:",
-          error
-        );
-      }
-    };
-
-  // =========================================================
-  // ACTIVITY CLICK
-  // =========================================================
-
-  const handleActivityItemClick =
-    async (
-      item,
-      event
-    ) => {
-      if (event) {
-        event.stopPropagation();
-      }
-
-      if (
-        !item?.id
-      ) {
-        return;
-      }
-
-      if (
-        !item.is_read
-      ) {
-        setActivities(
-          (previous) =>
-            previous.map(
-              (activity) =>
-                activity.id ===
-                item.id
-                  ? {
-                      ...activity,
-                      is_read:
-                        true,
-                    }
-                  : activity
-            )
-        );
-
-        const {
-          error,
-        } = await supabase
-          .from("activities")
-          .update({
-            is_read: true,
-          })
-          .eq(
-            "id",
-            item.id
-          );
-
-        if (error) {
-          console.error(
-            "Mark activity read error:",
-            error
-          );
-        }
-      }
-
-      const targetVideoId =
-        item.video_id ||
-        item.videos?.id ||
-        item.video?.id ||
-        item.data?.video_id;
-
-      if (
-        targetVideoId
-      ) {
-        const isComment =
-          isCommentType(
-            item.type
-          );
-
-        navigate(
-          `/?videoId=${targetVideoId}`,
-          {
-            state: {
-              scrollToId:
-                targetVideoId,
-
-              openComments:
-                isComment,
-            },
-          }
-        );
-
-        return;
-      }
-
-      const targetActorId =
-        item.actor_id ||
-        item.actor?.id ||
-        item.data?.actor_id;
-
-      if (
-        targetActorId
-      ) {
-        navigate(
-          `/profile/${targetActorId}`
-        );
-      }
-    };
-
-  // =========================================================
-  // ACTOR PROFILE
-  // =========================================================
-
-  const handleActorProfileClick =
-    async (
-      actorId,
-      itemId,
-      event
-    ) => {
-      if (event) {
-        event.stopPropagation();
-      }
-
-      if (
-        !actorId
-      ) {
-        return;
-      }
-
-      if (
-        itemId
-      ) {
-        setActivities(
-          (previous) =>
-            previous.map(
-              (activity) =>
-                activity.id ===
-                itemId
-                  ? {
-                      ...activity,
-                      is_read:
-                        true,
-                    }
-                  : activity
-            )
-        );
-
-        const {
-          error,
-        } = await supabase
-          .from("activities")
-          .update({
-            is_read: true,
-          })
-          .eq(
-            "id",
-            itemId
-          );
-
-        if (error) {
-          console.error(
-            "Actor profile mark read error:",
-            error
-          );
-        }
-      }
-
-      navigate(
-        `/profile/${actorId}`
-      );
-    };
-
-  // =========================================================
-  // VIDEO THUMBNAIL
-  // =========================================================
-
-  const handleVideoThumbnailClick =
-    async (
-      videoId,
-      itemId,
-      isComment,
-      event
-    ) => {
-      if (event) {
-        event.stopPropagation();
-      }
-
-      if (
-        !videoId
-      ) {
-        return;
-      }
-
-      if (
-        itemId
-      ) {
-        setActivities(
-          (previous) =>
-            previous.map(
-              (activity) =>
-                activity.id ===
-                itemId
-                  ? {
-                      ...activity,
-                      is_read:
-                        true,
-                    }
-                  : activity
-            )
-        );
-
-        const {
-          error,
-        } = await supabase
-          .from("activities")
-          .update({
-            is_read: true,
-          })
-          .eq(
-            "id",
-            itemId
-          );
-
-        if (error) {
-          console.error(
-            "Video activity read error:",
-            error
-          );
-        }
-      }
-
-      navigate(
-        `/?videoId=${videoId}`,
-        {
-          state: {
-            scrollToId:
-              videoId,
-
-            openComments:
-              isComment,
-          },
-        }
-      );
-    };
-
-  // =========================================================
-  // OPEN MESSAGE THREAD
-  // =========================================================
-
-  const handleOpenThread =
-    async (
-      peerId
-    ) => {
-      if (
-        !peerId ||
-        !currentUserId
-      ) {
-        return;
-      }
-
-      /*
-       * Immediately update the Inbox UI.
-       */
-      setMessages(
-        (previous) =>
-          previous.map(
-            (message) =>
-              message
-                .displayProfile
-                ?.id ===
-              peerId
-                ? {
-                    ...message,
-                    unreadCount: 0,
-                    unread: false,
-                    status: "read",
-                  }
-                : message
-          )
-      );
-
-      /*
-       * Persist read state in Supabase.
-       */
-      try {
-        const {
-          error,
-        } = await supabase
-          .from("messages")
-          .update({
-            unread: false,
-            status: "read",
-          })
-          .eq(
-            "sender_id",
-            peerId
-          )
-          .eq(
-            "receiver_id",
-            currentUserId
-          )
-          .eq(
-            "unread",
-            true
-          );
-
-        if (error) {
-          console.error(
-            "Failed to mark messages as read:",
-            error
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Message read operation failed:",
-          error
-        );
-      }
-
-      /*
-       * Full messaging remains on the dedicated Messages page.
-       */
-      navigate(
-        `/messaging?userId=${peerId}`
-      );
-    };
-
-  // =========================================================
-  // ACCEPT LIVE INVITE
-  // =========================================================
-
-  const handleAcceptLiveInvite =
-    async (
-      invite
-    ) => {
-      if (
-        !invite?.id
-      ) {
-        return;
-      }
-
-      setAcceptingInviteId(
-        invite.id
-      );
-
-      try {
-        const {
-          data: streamData,
-          error: streamError,
-        } = await supabase
-          .from("live_streams")
-          .select(
-            "status"
-          )
-          .eq(
-            "id",
-            invite.stream_id
-          )
-          .single();
-
-        if (
-          streamError
-        ) {
-          console.error(
-            "Stream check error:",
-            streamError
-          );
-
-          alert(
-            "Unable to check the live room right now."
-          );
-
-          return;
-        }
-
-        if (
-          !streamData ||
-          streamData.status !==
-            "live"
-        ) {
-          alert(
-            "This live stream session has ended or is no longer live."
-          );
-
-          setLiveInvites(
-            (previous) =>
-              previous.filter(
-                (item) =>
-                  item.id !==
-                  invite.id
-              )
-          );
-
-          return;
-        }
-
-        const {
-          count,
-          error:
-            countError,
-        } = await supabase
-          .from(
-            "live_guest_requests"
-          )
-          .select(
-            "id",
-            {
-              count:
-                "exact",
-              head: true,
-            }
-          )
-          .eq(
-            "stream_id",
-            invite.stream_id
-          )
-          .eq(
-            "status",
-            "approved"
-          );
-
-        const MAX_GUEST_SLOTS =
-          7;
-
-        if (
-          countError
-        ) {
-          console.error(
-            "Guest slot check error:",
-            countError
-          );
-        }
-
-        if (
-          !countError &&
-          count >=
-            MAX_GUEST_SLOTS
-        ) {
-          alert(
-            "Sorry, all co-host slots in this live room are currently taken!"
-          );
-
-          await supabase
-            .from(
-              "live_guest_requests"
-            )
-            .update({
-              status:
-                "full",
-            })
-            .eq(
-              "id",
-              invite.id
-            );
-
-          setLiveInvites(
-            (previous) =>
-              previous.filter(
-                (item) =>
-                  item.id !==
-                  invite.id
-              )
-          );
-
-          return;
-        }
-
-        const {
-          error:
-            updateError,
-        } = await supabase
-          .from(
-            "live_guest_requests"
-          )
-          .update({
-            status:
-              "approved",
-          })
-          .eq(
-            "id",
-            invite.id
-          );
-
-        if (
-          updateError
-        ) {
-          console.error(
-            "Accept invite update error:",
-            updateError
-          );
-
-          alert(
-            "Unable to join panel at this moment. Please try again."
-          );
-
-          return;
-        }
-
-        setLiveInvites(
-          (previous) =>
-            previous.filter(
-              (item) =>
-                item.id !==
-                invite.id
-            )
-        );
-
-        navigate(
-          `/live/watch/${invite.stream_id}/join-guest`
-        );
-      } catch (error) {
-        console.error(
-          "Accept invite error:",
-          error
-        );
-
-        alert(
-          "Something went wrong while accepting the invitation."
-        );
-      } finally {
-        setAcceptingInviteId(
-          null
-        );
-      }
-    };
-
-  // =========================================================
-  // DECLINE LIVE INVITE
-  // =========================================================
-
-  const handleDeclineLiveInvite =
-    async (
-      invite
-    ) => {
-      if (
-        !invite?.id
-      ) {
-        return;
-      }
-
-      try {
-        const {
-          error,
-        } = await supabase
-          .from(
-            "live_guest_requests"
-          )
-          .update({
-            status:
-              "rejected",
-          })
-          .eq(
-            "id",
-            invite.id
-          );
-
-        if (error) {
-          console.error(
-            "Decline invite error:",
-            error
-          );
-
-          alert(
-            "Unable to decline the invitation."
-          );
-
-          return;
-        }
-
-        setLiveInvites(
-          (previous) =>
-            previous.filter(
-              (item) =>
-                item.id !==
-                invite.id
-            )
-        );
-      } catch (error) {
-        console.error(
-          "Decline invite failed:",
-          error
-        );
-      }
-    };
-
-  // =========================================================
-  // INITIALIZE INBOX
-  // =========================================================
+  // ============================================================
+  // AUTH + INITIAL LOAD
+  // ============================================================
 
   useEffect(() => {
-    mountedRef.current =
-      true;
+    mountedRef.current = true;
 
-    let localChannel =
-      null;
+    let authSubscription;
 
-    const initInbox =
-      async () => {
-        try {
-          const {
-            data: {
-              user,
-            },
-          } =
-            await supabase.auth.getUser();
+    const initialize = async () => {
+      const {
+        data,
+        error,
+      } =
+        await supabase.auth.getUser();
 
-          if (
-            !user ||
-            !mountedRef.current
-          ) {
-            setLoading(
-              false
-            );
+      if (error) {
+        console.error(
+          "Inbox auth:",
+          error
+        );
 
-            return;
-          }
+        if (mountedRef.current) {
+          setLoading(false);
+        }
 
-          setCurrentUserId(
-            user.id
-          );
+        return;
+      }
 
-          await fetchData(
-            user.id
-          );
+      const uid =
+        data?.user?.id;
 
-          if (
-            !mountedRef.current
-          ) {
-            return;
-          }
+      if (!uid) {
+        if (mountedRef.current) {
+          setLoading(false);
+        }
 
-          // ---------------------------------------------------
-          // REMOVE OLD CHANNEL
-          // ---------------------------------------------------
+        return;
+      }
 
-          if (
-            channelRef.current
-          ) {
-            await supabase.removeChannel(
-              channelRef.current
-            );
+      if (mountedRef.current) {
+        setCurrentUserId(uid);
+      }
 
-            channelRef.current =
-              null;
-          }
+      await fetchData(uid);
 
-          // ---------------------------------------------------
-          // REALTIME
-          // ---------------------------------------------------
+      if (!mountedRef.current) {
+        return;
+      }
 
-          const channelName =
-            `inbox-realtime-${user.id}`;
+      // ========================================================
+      // REALTIME
+      // ========================================================
 
-          localChannel =
-            supabase
-              .channel(
-                channelName
-              )
+      if (channelRef.current) {
+        await supabase.removeChannel(
+          channelRef.current
+        );
 
-              // -----------------------------------------------
-              // ACTIVITIES INSERT
-              // -----------------------------------------------
+        channelRef.current = null;
+      }
 
-              .on(
-                "postgres_changes",
-                {
-                  event:
-                    "INSERT",
-                  schema:
-                    "public",
-                  table:
-                    "activities",
-                  filter:
-                    `user_id=eq.${user.id}`,
-                },
-                async (
-                  payload
-                ) => {
-                  if (
-                    !mountedRef.current ||
-                    !payload.new
-                  ) {
-                    return;
-                  }
+      const channel =
+        supabase.channel(
+          `inbox-${uid}-${Date.now()}`
+        );
 
-                  const actorId =
-                    payload.new
-                      .actor_id;
+      channel
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "messages",
+          },
+          (payload) => {
+            const newRecord =
+              payload?.new;
 
-                  let profileData =
-                    null;
+            const oldRecord =
+              payload?.old;
 
-                  if (
-                    actorId
-                  ) {
-                    const {
-                      data,
-                    } =
-                      await supabase
-                        .from(
-                          "profiles"
-                        )
-                        .select(
-                          "id, avatar_url, username, full_name, is_verified"
-                        )
-                        .eq(
-                          "id",
-                          actorId
-                        )
-                        .maybeSingle();
+            const belongsToUser =
+              newRecord?.receiver_id ===
+                uid ||
+              newRecord?.sender_id ===
+                uid ||
+              oldRecord?.receiver_id ===
+                uid ||
+              oldRecord?.sender_id ===
+                uid;
 
-                    profileData =
-                      data ||
-                      null;
-                  }
+            if (!belongsToUser) {
+              return;
+            }
 
-                  const newActivity =
-                    {
-                      ...payload.new,
-                      actor:
-                        profileData,
-                    };
-
-                  setActivities(
-                    (previous) => {
-                      const exists =
-                        previous.some(
-                          (
-                            activity
-                          ) =>
-                            activity.id ===
-                            newActivity.id
-                        );
-
-                      if (
-                        exists
-                      ) {
-                        return previous;
-                      }
-
-                      return [
-                        newActivity,
-                        ...previous,
-                      ];
-                    }
-                  );
-                }
-              )
-
-              // -----------------------------------------------
-              // ACTIVITIES UPDATE
-              // -----------------------------------------------
-
-              .on(
-                "postgres_changes",
-                {
-                  event:
-                    "UPDATE",
-                  schema:
-                    "public",
-                  table:
-                    "activities",
-                  filter:
-                    `user_id=eq.${user.id}`,
-                },
-                (
-                  payload
-                ) => {
-                  if (
-                    !mountedRef.current ||
-                    !payload.new
-                  ) {
-                    return;
-                  }
-
-                  setActivities(
-                    (previous) =>
-                      previous.map(
-                        (
-                          activity
-                        ) =>
-                          activity.id ===
-                          payload.new.id
-                            ? {
-                                ...activity,
-                                ...payload.new,
-                              }
-                            : activity
-                      )
-                  );
-                }
-              )
-
-              // -----------------------------------------------
-              // LIVE INVITES
-              // -----------------------------------------------
-
-              .on(
-                "postgres_changes",
-                {
-                  event:
-                    "*",
-                  schema:
-                    "public",
-                  table:
-                    "live_guest_requests",
-                  filter:
-                    `user_id=eq.${user.id}`,
-                },
-                () => {
-                  if (
-                    mountedRef.current
-                  ) {
-                    fetchData(
-                      user.id
-                    );
-                  }
-                }
-              )
-
-              // -----------------------------------------------
-              // MESSAGES
-              // -----------------------------------------------
-
-              .on(
-                "postgres_changes",
-                {
-                  event:
-                    "*",
-                  schema:
-                    "public",
-                  table:
-                    "messages",
-                },
-                (
-                  payload
-                ) => {
-                  if (
-                    !mountedRef.current
-                  ) {
-                    return;
-                  }
-
-                  const newRow =
-                    payload.new;
-
-                  const oldRow =
-                    payload.old;
-
-                  const belongsToUser =
-                    newRow?.sender_id ===
-                      user.id ||
-                    newRow?.receiver_id ===
-                      user.id ||
-                    oldRow?.sender_id ===
-                      user.id ||
-                    oldRow?.receiver_id ===
-                      user.id;
-
-                  if (
-                    belongsToUser
-                  ) {
-                    fetchData(
-                      user.id
-                    );
-                  }
-                }
-              )
-
-              // -----------------------------------------------
-              // LIVE STREAMS
-              // -----------------------------------------------
-
-              .on(
-                "postgres_changes",
-                {
-                  event:
-                    "*",
-                  schema:
-                    "public",
-                  table:
-                    "live_streams",
-                },
-                () => {
-                  if (
-                    mountedRef.current
-                  ) {
-                    fetchData(
-                      user.id
-                    );
-                  }
-                }
-              )
-
-              .subscribe(
-                (
-                  status
-                ) => {
-                  console.log(
-                    "Inbox realtime status:",
-                    status
-                  );
-                }
+            if (refreshTimerRef.current) {
+              clearTimeout(
+                refreshTimerRef.current
               );
+            }
 
-          channelRef.current =
-            localChannel;
-        } catch (error) {
-          console.error(
-            "Inbox initialization error:",
-            error
-          );
+            refreshTimerRef.current =
+              setTimeout(() => {
+                if (
+                  mountedRef.current
+                ) {
+                  fetchData(uid);
+                }
+              }, 250);
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "activities",
+            filter: `user_id=eq.${uid}`,
+          },
+          () => {
+            if (refreshTimerRef.current) {
+              clearTimeout(
+                refreshTimerRef.current
+              );
+            }
 
-          if (
-            mountedRef.current
-          ) {
-            setLoading(
-              false
-            );
+            refreshTimerRef.current =
+              setTimeout(() => {
+                if (
+                  mountedRef.current
+                ) {
+                  fetchData(uid);
+                }
+              }, 250);
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "live_guest_requests",
+          },
+          () => {
+            if (refreshTimerRef.current) {
+              clearTimeout(
+                refreshTimerRef.current
+              );
+            }
+
+            refreshTimerRef.current =
+              setTimeout(() => {
+                if (
+                  mountedRef.current
+                ) {
+                  fetchData(uid);
+                }
+              }, 300);
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "live_streams",
+          },
+          () => {
+            if (refreshTimerRef.current) {
+              clearTimeout(
+                refreshTimerRef.current
+              );
+            }
+
+            refreshTimerRef.current =
+              setTimeout(() => {
+                if (
+                  mountedRef.current
+                ) {
+                  fetchData(uid);
+                }
+              }, 300);
+          }
+        );
+
+      await channel.subscribe();
+
+      if (mountedRef.current) {
+        channelRef.current =
+          channel;
+      }
+    };
+
+    initialize();
+
+    const {
+      data: authData,
+    } =
+      supabase.auth.onAuthStateChange(
+        async (
+          _event,
+          session
+        ) => {
+          const uid =
+            session?.user?.id ||
+            null;
+
+          if (!mountedRef.current) {
+            return;
+          }
+
+          setCurrentUserId(uid);
+
+          if (uid) {
+            await fetchData(uid);
           }
         }
-      };
+      );
 
-    initInbox();
+    authSubscription =
+      authData?.subscription;
 
     return () => {
       mountedRef.current =
         false;
 
-      if (
-        localChannel
-      ) {
-        supabase.removeChannel(
-          localChannel
+      if (refreshTimerRef.current) {
+        clearTimeout(
+          refreshTimerRef.current
         );
-
-        localChannel =
-          null;
       }
 
-      if (
-        channelRef.current
-      ) {
+      if (channelRef.current) {
         supabase.removeChannel(
           channelRef.current
         );
 
-        channelRef.current =
-          null;
+        channelRef.current = null;
       }
+
+      authSubscription?.unsubscribe();
     };
   }, [fetchData]);
 
-  // =========================================================
-  // UNREAD COUNTS
-  // =========================================================
+  // ============================================================
+  // COUNTS
+  // ============================================================
 
   const unreadFollowers =
     useMemo(
       () =>
         activities.filter(
           (activity) =>
+            isUnreadActivity(
+              activity
+            ) &&
             isFollowerType(
               activity.type
-            ) &&
-            !activity.is_read
-        ),
+            )
+        ).length,
       [
         activities,
+        isUnreadActivity,
         isFollowerType,
       ]
     );
@@ -2540,13 +1215,16 @@ const Inbox = () => {
       () =>
         activities.filter(
           (activity) =>
+            isUnreadActivity(
+              activity
+            ) &&
             isLikeType(
               activity.type
-            ) &&
-            !activity.is_read
-        ),
+            )
+        ).length,
       [
         activities,
+        isUnreadActivity,
         isLikeType,
       ]
     );
@@ -2556,1122 +1234,2476 @@ const Inbox = () => {
       () =>
         activities.filter(
           (activity) =>
+            isUnreadActivity(
+              activity
+            ) &&
             isCommentType(
               activity.type
-            ) &&
-            !activity.is_read
-        ),
+            )
+        ).length,
       [
         activities,
+        isUnreadActivity,
         isCommentType,
       ]
     );
 
-  const unreadOtherActivity =
-    useMemo(
-      () =>
-        activities.filter(
-          (activity) =>
-            !isFollowerType(
-              activity.type
-            ) &&
-            !isLikeType(
-              activity.type
-            ) &&
-            !isCommentType(
-              activity.type
-            ) &&
-            !activity.is_read
-        ),
-      [
-        activities,
-        isFollowerType,
-        isLikeType,
-        isCommentType,
-      ]
-    );
-
-  const unreadMessagesTotal =
-    useMemo(
-      () =>
-        messages.reduce(
-          (
-            total,
-            message
-          ) =>
-            total +
-            (
-              Number(
-                message.unreadCount
-              ) || 0
-            ),
-          0
-        ),
-      [messages]
-    );
-
-  const totalUnreadCount =
-    unreadFollowers.length +
-    unreadLikes.length +
-    unreadComments.length +
-    unreadOtherActivity.length +
-    unreadMessagesTotal +
-    liveInvites.length;
-
-  // =========================================================
-  // FILTER ACTIVITIES
-  // =========================================================
-
-  const filteredActivities =
-    useMemo(
-      () =>
-        activities
-          .filter(
-            (item) => {
-              if (
-                activeFilter ===
-                "followers"
-              ) {
-                return isFollowerType(
-                  item.type
-                );
-              }
-
-              if (
-                activeFilter ===
-                "likes"
-              ) {
-                return isLikeType(
-                  item.type
-                );
-              }
-
-              if (
-                activeFilter ===
-                "comments"
-              ) {
-                return isCommentType(
-                  item.type
-                );
-              }
-
-              if (
-                activeFilter ===
-                "messages"
-              ) {
-                return false;
-              }
-
-              if (
-                activeFilter ===
-                "live"
-              ) {
-                return false;
-              }
-
-              return true;
-            }
-          )
-          .filter(
-            (item) => {
-              if (
-                !searchQuery.trim()
-              ) {
-                return true;
-              }
-
-              const query =
-                searchQuery
-                  .toLowerCase();
-
-              return (
-                item.actor?.username
-                  ?.toLowerCase()
-                  .includes(
-                    query
-                  ) ||
-                item.actor?.full_name
-                  ?.toLowerCase()
-                  .includes(
-                    query
-                  ) ||
-                item.videos?.caption
-                  ?.toLowerCase()
-                  .includes(
-                    query
-                  )
-              );
-            }
-          ),
-      [
-        activities,
-        activeFilter,
-        searchQuery,
-        isFollowerType,
-        isLikeType,
-        isCommentType,
-      ]
-    );
-
-  // =========================================================
-  // FILTER MESSAGES
-  // =========================================================
-
-  const filteredMessages =
+  const unreadMessages =
     useMemo(
       () =>
         messages.filter(
-          (message) => {
-            if (
-              !searchQuery.trim()
-            ) {
-              return true;
-            }
-
-            const query =
-              searchQuery
-                .toLowerCase();
-
-            return (
-              message.displayProfile
-                ?.username
-                ?.toLowerCase()
-                .includes(
-                  query
-                ) ||
-              message.displayProfile
-                ?.full_name
-                ?.toLowerCase()
-                .includes(
-                  query
-                ) ||
-              message.user_name
-                ?.toLowerCase()
-                .includes(
-                  query
-                ) ||
-              message.last_msg
-                ?.toLowerCase()
-                .includes(
-                  query
-                ) ||
-              message.content
-                ?.toLowerCase()
-                .includes(
-                  query
-                )
-            );
-          }
-        ),
+          (message) =>
+            message.receiver_id ===
+              currentUserId &&
+            isUnreadMessage(
+              message
+            )
+        ).length,
       [
         messages,
-        searchQuery,
+        currentUserId,
+        isUnreadMessage,
       ]
     );
 
-  // =========================================================
-  // FILTER SUGGESTED USERS
-  // =========================================================
+  const unreadActivityTotal =
+    unreadFollowers +
+    unreadLikes +
+    unreadComments;
 
-  const filteredSuggestedUsers =
-    useMemo(
-      () =>
-        suggestedUsers.filter(
-          (user) => {
-            if (
-              !newChatSearch.trim()
-            ) {
-              return true;
+  const totalUnread =
+    unreadActivityTotal +
+    unreadMessages;
+
+  // ============================================================
+  // SEARCH
+  // ============================================================
+
+  const normalizedSearch =
+    searchQuery
+      .trim()
+      .toLowerCase();
+
+  const filteredActivities =
+    useMemo(() => {
+      let result =
+        [...activities];
+
+      if (
+        activeFilter ===
+        "followers"
+      ) {
+        result =
+          result.filter(
+            (activity) =>
+              isFollowerType(
+                activity.type
+              )
+          );
+      }
+
+      if (
+        activeFilter ===
+        "likes"
+      ) {
+        result =
+          result.filter(
+            (activity) =>
+              isLikeType(
+                activity.type
+              )
+          );
+      }
+
+      if (
+        activeFilter ===
+        "comments"
+      ) {
+        result =
+          result.filter(
+            (activity) =>
+              isCommentType(
+                activity.type
+              )
+          );
+      }
+
+      if (
+        activeFilter ===
+        "messages"
+      ) {
+        return [];
+      }
+
+      if (normalizedSearch) {
+        result =
+          result.filter(
+            (activity) => {
+              const text =
+                [
+                  getActivityText(
+                    activity
+                  ),
+                  activity?.actor
+                    ?.username,
+                  activity?.actor
+                    ?.full_name,
+                  activity?.message,
+                  activity?.text,
+                  activity?.videos
+                    ?.caption,
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+                  .toLowerCase();
+
+              return text.includes(
+                normalizedSearch
+              );
             }
+          );
+      }
 
-            const query =
-              newChatSearch
-                .toLowerCase();
+      return result;
+    }, [
+      activities,
+      activeFilter,
+      normalizedSearch,
+      getActivityText,
+      isFollowerType,
+      isLikeType,
+      isCommentType,
+    ]);
 
-            return (
-              user.username
-                ?.toLowerCase()
-                .includes(
-                  query
-                ) ||
-              user.full_name
-                ?.toLowerCase()
-                .includes(
-                  query
-                )
+  const filteredMessages =
+    useMemo(() => {
+      if (
+        activeFilter !==
+          "all" &&
+        activeFilter !==
+          "messages"
+      ) {
+        return [];
+      }
+
+      if (!normalizedSearch) {
+        return messages;
+      }
+
+      return messages.filter(
+        (message) => {
+          const text =
+            [
+              getDisplayName(
+                message.profile
+              ),
+              message.profile
+                ?.username,
+              message.content,
+              message.message,
+              message.text,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase();
+
+          return text.includes(
+            normalizedSearch
+          );
+        }
+      );
+    }, [
+      messages,
+      activeFilter,
+      normalizedSearch,
+      getDisplayName,
+    ]);
+
+  // ============================================================
+  // DATABASE READ HELPERS
+  // ============================================================
+
+  const updateMessagesReadInDatabase =
+    useCallback(
+      async (
+        uid,
+        messageIds = null
+      ) => {
+        if (!uid) {
+          return {
+            success: false,
+            count: 0,
+            error:
+              "No authenticated user.",
+          };
+        }
+
+        let query =
+          supabase
+            .from("messages")
+            .update({
+              unread: false,
+              status: "read",
+            })
+            .eq(
+              "receiver_id",
+              uid
+            )
+            .eq(
+              "unread",
+              true
+            );
+
+        if (
+          Array.isArray(
+            messageIds
+          ) &&
+          messageIds.length
+        ) {
+          query =
+            query.in(
+              "id",
+              messageIds
+            );
+        }
+
+        const {
+          data,
+          error,
+        } = await query.select(
+          "id, unread, status"
+        );
+
+        if (error) {
+          return {
+            success: false,
+            count: 0,
+            error,
+          };
+        }
+
+        return {
+          success: true,
+          count:
+            data?.length || 0,
+          data:
+            data || [],
+        };
+      },
+      []
+    );
+
+  const updateActivitiesReadInDatabase =
+    useCallback(
+      async (
+        uid,
+        activityIds = null
+      ) => {
+        if (!uid) {
+          return {
+            success: false,
+            count: 0,
+            error:
+              "No authenticated user.",
+          };
+        }
+
+        let query =
+          supabase
+            .from("activities")
+            .update({
+              read: true,
+            })
+            .eq(
+              "user_id",
+              uid
+            )
+            .eq(
+              "read",
+              false
+            );
+
+        if (
+          Array.isArray(
+            activityIds
+          ) &&
+          activityIds.length
+        ) {
+          query =
+            query.in(
+              "id",
+              activityIds
+            );
+        }
+
+        const {
+          data,
+          error,
+        } = await query.select(
+          "id, read"
+        );
+
+        if (error) {
+          return {
+            success: false,
+            count: 0,
+            error,
+          };
+        }
+
+        return {
+          success: true,
+          count:
+            data?.length || 0,
+          data:
+            data || [],
+        };
+      },
+      []
+    );
+
+  // ============================================================
+  // MARK ALL READ
+  // ============================================================
+
+  const handleMarkAllRead =
+    useCallback(
+      async () => {
+        if (
+          !currentUserId ||
+          markingAllRead
+        ) {
+          return;
+        }
+
+        setMarkingAllRead(true);
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+          /*
+           * IMPORTANT:
+           *
+           * Database is updated FIRST.
+           *
+           * We do NOT immediately pretend the operation succeeded.
+           * We wait for Supabase and inspect its response.
+           */
+
+          const [
+            messageResult,
+            activityResult,
+          ] = await Promise.all([
+            updateMessagesReadInDatabase(
+              currentUserId
+            ),
+            updateActivitiesReadInDatabase(
+              currentUserId
+            ),
+          ]);
+
+          if (
+            !messageResult.success
+          ) {
+            console.error(
+              "Mark messages read failed:",
+              messageResult.error
+            );
+
+            throw new Error(
+              messageResult.error?.message ||
+                "Messages could not be marked as read."
             );
           }
-        ),
+
+          if (
+            !activityResult.success
+          ) {
+            console.error(
+              "Mark activities read failed:",
+              activityResult.error
+            );
+
+            throw new Error(
+              activityResult.error?.message ||
+                "Activities could not be marked as read."
+            );
+          }
+
+          /*
+           * Only after the database accepted the update do we
+           * update local state.
+           */
+
+          setMessages(
+            (previous) =>
+              previous.map(
+                (message) => {
+                  if (
+                    message.receiver_id ===
+                    currentUserId
+                  ) {
+                    return {
+                      ...message,
+                      unread: false,
+                      status: "read",
+                    };
+                  }
+
+                  return message;
+                }
+              )
+          );
+
+          setActivities(
+            (previous) =>
+              previous.map(
+                (activity) => ({
+                  ...activity,
+                  read: true,
+                })
+              )
+          );
+
+          /*
+           * Refetch AFTER the UPDATE.
+           *
+           * This is important because the old implementation could
+           * visually change the UI and then immediately fetch the
+           * same unread rows again.
+           */
+
+          await fetchData(
+            currentUserId
+          );
+
+          setSuccessMessage(
+            "Everything is marked as read."
+          );
+
+          setTimeout(() => {
+            if (mountedRef.current) {
+              setSuccessMessage("");
+            }
+          }, 2500);
+        } catch (error) {
+          console.error(
+            "Mark all read error:",
+            error
+          );
+
+          setErrorMessage(
+            error?.message ||
+              "Mark all as read failed. Check your Supabase update policy."
+          );
+        } finally {
+          if (
+            mountedRef.current
+          ) {
+            setMarkingAllRead(false);
+          }
+        }
+      },
       [
-        suggestedUsers,
-        newChatSearch,
+        currentUserId,
+        markingAllRead,
+        updateMessagesReadInDatabase,
+        updateActivitiesReadInDatabase,
+        fetchData,
       ]
     );
 
-  // =========================================================
-  // ACTIVITY ICON
-  // =========================================================
+  // ============================================================
+  // MARK MESSAGE READ
+  // ============================================================
 
-  const getActivityIcon =
-    (type) => {
-      if (
-        isCommentType(
-          type
-        )
-      ) {
-        return (
-          <MessageCircle
-            size={13}
-            className="text-cyan-400 fill-cyan-400"
-          />
+  const handleMarkMessageRead =
+    useCallback(
+      async (message) => {
+        if (
+          !currentUserId ||
+          !message?.id ||
+          message.receiver_id !==
+            currentUserId
+        ) {
+          return;
+        }
+
+        const result =
+          await updateMessagesReadInDatabase(
+            currentUserId,
+            [message.id]
+          );
+
+        if (!result.success) {
+          setErrorMessage(
+            result.error?.message ||
+              "Unable to mark message as read."
+          );
+
+          return;
+        }
+
+        setMessages(
+          (previous) =>
+            previous.map(
+              (item) =>
+                item.id ===
+                message.id
+                  ? {
+                      ...item,
+                      unread: false,
+                      status: "read",
+                    }
+                  : item
+            )
         );
+      },
+      [
+        currentUserId,
+        updateMessagesReadInDatabase,
+      ]
+    );
+
+  // ============================================================
+  // MARK ACTIVITY READ
+  // ============================================================
+
+  const handleMarkActivityRead =
+    useCallback(
+      async (activity) => {
+        if (
+          !currentUserId ||
+          !activity?.id
+        ) {
+          return;
+        }
+
+        setMarkingActivityId(
+          activity.id
+        );
+
+        try {
+          const result =
+            await updateActivitiesReadInDatabase(
+              currentUserId,
+              [activity.id]
+            );
+
+          if (!result.success) {
+            throw result.error;
+          }
+
+          setActivities(
+            (previous) =>
+              previous.map(
+                (item) =>
+                  item.id ===
+                  activity.id
+                    ? {
+                        ...item,
+                        read: true,
+                      }
+                    : item
+              )
+          );
+        } catch (error) {
+          console.error(
+            "Mark activity read:",
+            error
+          );
+
+          setErrorMessage(
+            error?.message ||
+              "Unable to mark activity as read."
+          );
+        } finally {
+          setMarkingActivityId(
+            null
+          );
+        }
+      },
+      [
+        currentUserId,
+        updateActivitiesReadInDatabase,
+      ]
+    );
+
+  // ============================================================
+  // MARK CATEGORY READ
+  // ============================================================
+
+  const handleMarkCategoryRead =
+    useCallback(
+      async (category) => {
+        if (
+          !currentUserId ||
+          markingCategory
+        ) {
+          return;
+        }
+
+        setMarkingCategory(
+          category
+        );
+
+        try {
+          let activityIds = null;
+
+          if (
+            category ===
+            "followers"
+          ) {
+            activityIds =
+              activities
+                .filter(
+                  (item) =>
+                    isFollowerType(
+                      item.type
+                    ) &&
+                    isUnreadActivity(
+                      item
+                    )
+                )
+                .map(
+                  (item) =>
+                    item.id
+                );
+          }
+
+          if (
+            category === "likes"
+          ) {
+            activityIds =
+              activities
+                .filter(
+                  (item) =>
+                    isLikeType(
+                      item.type
+                    ) &&
+                    isUnreadActivity(
+                      item
+                    )
+                )
+                .map(
+                  (item) =>
+                    item.id
+                );
+          }
+
+          if (
+            category === "comments"
+          ) {
+            activityIds =
+              activities
+                .filter(
+                  (item) =>
+                    isCommentType(
+                      item.type
+                    ) &&
+                    isUnreadActivity(
+                      item
+                    )
+                )
+                .map(
+                  (item) =>
+                    item.id
+                );
+          }
+
+          if (
+            category ===
+            "messages"
+          ) {
+            const messageIds =
+              messages
+                .filter(
+                  (item) =>
+                    item.receiver_id ===
+                      currentUserId &&
+                    isUnreadMessage(
+                      item
+                    )
+                )
+                .map(
+                  (item) =>
+                    item.id
+                );
+
+            const result =
+              await updateMessagesReadInDatabase(
+                currentUserId,
+                messageIds
+              );
+
+            if (
+              !result.success
+            ) {
+              throw result.error;
+            }
+
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) =>
+                    messageIds.includes(
+                      item.id
+                    )
+                      ? {
+                          ...item,
+                          unread:
+                            false,
+                          status:
+                            "read",
+                        }
+                      : item
+                )
+            );
+
+            return;
+          }
+
+          if (
+            !activityIds?.length
+          ) {
+            return;
+          }
+
+          const result =
+            await updateActivitiesReadInDatabase(
+              currentUserId,
+              activityIds
+            );
+
+          if (!result.success) {
+            throw result.error;
+          }
+
+          setActivities(
+            (previous) =>
+              previous.map(
+                (item) =>
+                  activityIds.includes(
+                    item.id
+                  )
+                    ? {
+                        ...item,
+                        read: true,
+                      }
+                    : item
+              )
+          );
+        } catch (error) {
+          console.error(
+            "Mark category read:",
+            error
+          );
+
+          setErrorMessage(
+            error?.message ||
+              "Unable to update read status."
+          );
+        } finally {
+          setMarkingCategory(
+            null
+          );
+        }
+      },
+      [
+        currentUserId,
+        markingCategory,
+        activities,
+        messages,
+        isFollowerType,
+        isLikeType,
+        isCommentType,
+        isUnreadActivity,
+        isUnreadMessage,
+        updateMessagesReadInDatabase,
+        updateActivitiesReadInDatabase,
+      ]
+    );
+
+  // ============================================================
+  // FOLLOW BACK
+  // ============================================================
+
+  const handleFollowBack =
+    useCallback(
+      async (userId) => {
+        if (
+          !currentUserId ||
+          !userId ||
+          followingId
+        ) {
+          return;
+        }
+
+        setFollowingId(userId);
+
+        try {
+          const {
+            error,
+          } = await supabase
+            .from("follows")
+            .insert({
+              follower_id:
+                currentUserId,
+              following_id:
+                userId,
+            });
+
+          if (error) {
+            if (
+              error.code ===
+              "23505"
+            ) {
+              setMyFollows(
+                (previous) =>
+                  new Set([
+                    ...previous,
+                    userId,
+                  ])
+              );
+
+              return;
+            }
+
+            throw error;
+          }
+
+          setMyFollows(
+            (previous) =>
+              new Set([
+                ...previous,
+                userId,
+              ])
+          );
+
+          setSuggestedUsers(
+            (previous) =>
+              previous.filter(
+                (user) =>
+                  user.id !==
+                  userId
+              )
+          );
+        } catch (error) {
+          console.error(
+            "Follow back:",
+            error
+          );
+
+          setErrorMessage(
+            error?.message ||
+              "Unable to follow this user."
+          );
+        } finally {
+          setFollowingId(null);
+        }
+      },
+      [currentUserId, followingId]
+    );
+
+  // ============================================================
+  // LIVE INVITE ACTIONS
+  // ============================================================
+
+  const handleInviteAction =
+    useCallback(
+      async (
+        invite,
+        status
+      ) => {
+        if (
+          !invite?.id ||
+          acceptingInviteId
+        ) {
+          return;
+        }
+
+        setAcceptingInviteId(
+          invite.id
+        );
+
+        try {
+          const {
+            error,
+          } = await supabase
+            .from(
+              "live_guest_requests"
+            )
+            .update({
+              status,
+            })
+            .eq(
+              "id",
+              invite.id
+            );
+
+          if (error) {
+            throw error;
+          }
+
+          setLiveInvites(
+            (previous) =>
+              previous.filter(
+                (item) =>
+                  item.id !==
+                  invite.id
+              )
+          );
+
+          if (
+            status ===
+            "approved"
+          ) {
+            if (
+              invite.stream?.id
+            ) {
+              navigate(
+                `/live/${invite.stream.id}`
+              );
+            }
+          }
+        } catch (error) {
+          console.error(
+            "Live invite:",
+            error
+          );
+
+          setErrorMessage(
+            error?.message ||
+              "Unable to update the live invite."
+          );
+        } finally {
+          setAcceptingInviteId(
+            null
+          );
+        }
+      },
+      [
+        acceptingInviteId,
+        navigate,
+      ]
+    );
+
+  // ============================================================
+  // NAVIGATION
+  // ============================================================
+
+  const openMessages =
+    useCallback(
+      (userId) => {
+        if (!userId) return;
+
+        navigate(
+          `/messaging?userId=${encodeURIComponent(
+            userId
+          )}`
+        );
+      },
+      [navigate]
+    );
+
+  const openLive =
+    useCallback(
+      (streamId) => {
+        if (!streamId) return;
+
+        navigate(
+          `/live/${streamId}`
+        );
+      },
+      [navigate]
+    );
+
+  const openProfile =
+    useCallback(
+      (userId) => {
+        if (!userId) return;
+
+        navigate(
+          `/profile/${userId}`
+        );
+      },
+      [navigate]
+    );
+
+  const openVideo =
+    useCallback(
+      (videoId) => {
+        if (!videoId) return;
+
+        navigate(
+          `/video/${videoId}`
+        );
+      },
+      [navigate]
+    );
+
+  // ============================================================
+  // FILTERS
+  // ============================================================
+
+  const filters = [
+    {
+      id: "all",
+      label: "All",
+      icon: InboxIcon,
+      count: totalUnread,
+    },
+    {
+      id: "likes",
+      label: "Likes",
+      icon: Heart,
+      count: unreadLikes,
+    },
+    {
+      id: "comments",
+      label: "Comments",
+      icon: MessageCircle,
+      count: unreadComments,
+    },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: MessageSquare,
+      count: unreadMessages,
+    },
+    {
+      id: "followers",
+      label: "Followers",
+      icon: UserPlus,
+      count: unreadFollowers,
+    },
+  ];
+
+  // ============================================================
+  // NEW CHAT RESULTS
+  // ============================================================
+
+  const filteredSuggestedUsers =
+    useMemo(() => {
+      const query =
+        newChatSearch
+          .trim()
+          .toLowerCase();
+
+      if (!query) {
+        return suggestedUsers;
       }
 
-      if (
-        isLikeType(
-          type
-        )
-      ) {
-        return (
-          <Heart
-            size={13}
-            className="text-pink-500 fill-pink-500"
-          />
-        );
-      }
+      return suggestedUsers.filter(
+        (user) => {
+          const text =
+            [
+              user.username,
+              user.display_name,
+              user.full_name,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase();
 
-      if (
-        isFollowerType(
-          type
-        )
-      ) {
-        return (
-          <UserPlus
-            size={13}
-            className="text-blue-400"
-          />
-        );
-      }
-
-      if (
-        type ===
-        "mention"
-      ) {
-        return (
-          <AtSign
-            size={13}
-            className="text-purple-400"
-          />
-        );
-      }
-
-      if (
-        type ===
-          "share" ||
-        type ===
-          "repost"
-      ) {
-        return (
-          <Share2
-            size={13}
-            className="text-emerald-400"
-          />
-        );
-      }
-
-      if (
-        type ===
-        "save"
-      ) {
-        return (
-          <Bookmark
-            size={13}
-            className="text-yellow-400"
-          />
-        );
-      }
-
-      if (
-        type ===
-        "gift"
-      ) {
-        return (
-          <Gift
-            size={13}
-            className="text-pink-400"
-          />
-        );
-      }
-
-      if (
-        type ===
-        "live"
-      ) {
-        return (
-          <Radio
-            size={13}
-            className="text-rose-400"
-          />
-        );
-      }
-
-      return (
-        <Bell
-          size={13}
-          className="text-yellow-400"
-        />
+          return text.includes(
+            query
+          );
+        }
       );
+    }, [
+      suggestedUsers,
+      newChatSearch,
+    ]);
+
+  // ============================================================
+  // REFRESH
+  // ============================================================
+
+  const handleRefresh =
+    useCallback(
+      async () => {
+        if (!currentUserId) return;
+
+        await fetchData(
+          currentUserId,
+          true
+        );
+      },
+      [currentUserId, fetchData]
+    );
+
+  // ============================================================
+  // UI COMPONENTS
+  // ============================================================
+
+  const Avatar = ({
+    profile,
+    size = "md",
+    online = false,
+  }) => {
+    const sizes = {
+      xs: "h-8 w-8",
+      sm: "h-10 w-10",
+      md: "h-12 w-12",
+      lg: "h-14 w-14",
+      xl: "h-16 w-16",
     };
 
-  // =========================================================
-  // ACTIVITY TEXT
-  // =========================================================
+    return (
+      <div
+        className={`relative shrink-0 ${sizes[size]}`}
+      >
+        {profile?.avatar_url ? (
+          <img
+            src={profile.avatar_url}
+            alt=""
+            className="h-full w-full rounded-full object-cover ring-1 ring-white/10"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500/30 to-cyan-500/30 text-sm font-bold text-white ring-1 ring-white/10">
+            {(
+              profile?.username ||
+              profile?.full_name ||
+              "U"
+            )
+              .charAt(0)
+              .toUpperCase()}
+          </div>
+        )}
 
-  const getActivityText =
-    (item) => {
-      if (
-        isFollowerType(
-          item.type
-        )
-      ) {
-        return "started following you";
-      }
+        {online && (
+          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[#08080c] bg-emerald-400" />
+        )}
+      </div>
+    );
+  };
 
-      if (
-        isLikeType(
-          item.type
-        )
-      ) {
-        return "liked your video";
-      }
+  const VerifiedBadge = ({
+    profile,
+  }) => {
+    if (
+      !profile?.is_verified &&
+      profile?.verified_status !==
+        "verified"
+    ) {
+      return null;
+    }
 
-      if (
-        isCommentType(
-          item.type
-        )
-      ) {
-        return "commented on your video";
-      }
+    return (
+      <span className="inline-flex items-center justify-center rounded-full bg-cyan-400/15 p-0.5 text-cyan-300">
+        <Check className="h-3 w-3" />
+      </span>
+    );
+  };
 
-      switch (
-        item.type
-      ) {
-        case "mention":
-          return "mentioned you";
-
-        case "share":
-          return "shared your content";
-
-        case "repost":
-          return "reposted your content";
-
-        case "save":
-          return "saved your video";
-
-        case "gift":
-          return "sent you a gift";
-
-        case "live":
-          return "started a live stream";
-
-        default:
-          return "interacted with your profile";
-      }
-    };
-
-  // =========================================================
-  // CATEGORY CARD
-  // =========================================================
-
-  const CategoryCard = ({
-    icon,
-    title,
-    subtitle,
+  const StatCard = ({
+    icon: Icon,
+    label,
     count,
     accent,
     onClick,
-  }) => (
-    <motion.button
-      whileTap={{
-        scale: 0.97,
-      }}
-      onClick={
-        onClick
-      }
-      className={`relative overflow-hidden text-left p-4 rounded-2xl bg-gradient-to-br ${accent} border border-white/10 hover:border-white/20 transition-all group`}
-    >
-      <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full bg-white/[0.03] blur-2xl" />
-
-      <div className="flex items-start justify-between gap-3">
-        <div className="w-10 h-10 rounded-xl bg-black/40 border border-white/10 flex items-center justify-center group-hover:scale-105 transition-transform">
-          {icon}
-        </div>
-
-        {count > 0 ? (
-          <span className="min-w-6 h-6 px-1.5 rounded-full bg-white text-black text-[10px] font-black flex items-center justify-center shadow-lg">
-            {count > 99
-              ? "99+"
-              : count}
-          </span>
-        ) : (
-          <span className="text-[9px] uppercase font-black text-zinc-600">
-            Clear
-          </span>
-        )}
-      </div>
-
-      <div className="mt-4">
-        <p className="text-xs font-black text-white">
-          {title}
-        </p>
-
-        <p className="text-[10px] text-zinc-500 mt-1">
-          {subtitle}
-        </p>
-      </div>
-    </motion.button>
-  );
-
-  // =========================================================
-  // ACTIVITY DRAWER
-  // =========================================================
-
-  const ActivityDrawer =
-    ({
-      isOpen,
-      onClose,
-      title,
-      data,
-      categoryKey,
-    }) => (
-      <AnimatePresence>
-        {isOpen && (
-          <>
-            <motion.div
-              initial={{
-                opacity: 0,
-              }}
-              animate={{
-                opacity: 1,
-              }}
-              exit={{
-                opacity: 0,
-              }}
-              onClick={
-                onClose
-              }
-              className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110]"
-            />
-
-            <motion.div
-              initial={{
-                x: "100%",
-              }}
-              animate={{
-                x: 0,
-              }}
-              exit={{
-                x: "100%",
-              }}
-              transition={{
-                type: "spring",
-                damping: 25,
-                stiffness: 200,
-              }}
-              className="fixed inset-y-0 right-0 w-full max-w-md bg-[#09090e] border-l border-cyan-500/20 z-[111] flex flex-col shadow-2xl"
-            >
-              <div className="p-4 flex items-center justify-between border-b border-white/10 bg-black/70 backdrop-blur-xl">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={
-                      onClose
-                    }
-                    className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                  >
-                    <ArrowLeft
-                      size={21}
-                      className="text-cyan-400"
-                    />
-                  </button>
-
-                  <div>
-                    <h2 className="text-sm font-black uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500">
-                      {title}
-                    </h2>
-
-                    <p className="text-[9px] text-zinc-600 uppercase tracking-wider mt-0.5">
-                      {data.length}{" "}
-                      items
-                    </p>
-                  </div>
-                </div>
-
-                {data.some(
-                  (item) =>
-                    !item.is_read
-                ) && (
-                  <button
-                    onClick={() =>
-                      markCategoryAsRead(
-                        categoryKey
-                      )
-                    }
-                    className="text-[10px] font-black text-cyan-400 hover:text-cyan-300 flex items-center gap-1 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1.5 rounded-lg transition-colors"
-                  >
-                    <CheckCheck
-                      size={13}
-                    />
-                    Mark Read
-                  </button>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-y-auto inbox-scrollbar p-3 space-y-2">
-                {data.length ===
-                0 ? (
-                  <EmptyState
-                    icon={
-                      <Bell
-                        size={30}
-                      />
-                    }
-                    title="Nothing here yet"
-                    description="New activity will appear here."
-                  />
-                ) : (
-                  data.map(
-                    (item) => {
-                      const isUnread =
-                        !item.is_read;
-
-                      const actorId =
-                        item.actor_id ||
-                        item.actor?.id;
-
-                      const isFollowingBack =
-                        myFollows.has(
-                          actorId
-                        );
-
-                      const isComment =
-                        isCommentType(
-                          item.type
-                        );
-
-                      return (
-                        <motion.div
-                          layout
-                          key={
-                            item.id
-                          }
-                          onClick={(
-                            event
-                          ) => {
-                            handleActivityItemClick(
-                              item,
-                              event
-                            );
-
-                            onClose();
-                          }}
-                          className={`flex items-center justify-between p-3.5 rounded-2xl transition-all cursor-pointer border ${
-                            isUnread
-                              ? "bg-cyan-950/20 border-cyan-500/30 shadow-[0_0_18px_rgba(6,182,212,0.12)]"
-                              : "bg-white/[0.025] border-white/5 hover:bg-white/[0.06]"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div
-                              className="relative shrink-0"
-                              onClick={(
-                                event
-                              ) =>
-                                handleActorProfileClick(
-                                  actorId,
-                                  item.id,
-                                  event
-                                )
-                              }
-                            >
-                              {item.actor
-                                ?.avatar_url ? (
-                                <img
-                                  src={
-                                    item.actor
-                                      .avatar_url
-                                  }
-                                  crossOrigin="anonymous"
-                                  referrerPolicy="no-referrer"
-                                  className="w-12 h-12 rounded-full object-cover border border-cyan-400/40 p-0.5"
-                                  alt=""
-                                />
-                              ) : (
-                                <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center border border-white/10 text-cyan-400 uppercase font-black text-xs">
-                                  {item.actor?.username?.substring(
-                                    0,
-                                    2
-                                  ) ||
-                                    "??"}
-                                </div>
-                              )}
-
-                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/20">
-                                {getActivityIcon(
-                                  item.type
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-[13px] font-black text-white truncate">
-                                  @
-                                  {item.actor
-                                    ?.username ||
-                                    "user"}
-                                </p>
-
-                                {isUnread && (
-                                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,1)] shrink-0" />
-                                )}
-                              </div>
-
-                              <p className="text-[12px] text-zinc-400 truncate mt-0.5">
-                                {getActivityText(
-                                  item
-                                )}
-                              </p>
-
-                              <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-wider mt-1">
-                                {item.created_at
-                                  ? formatDistanceToNow(
-                                      new Date(
-                                        item.created_at
-                                      ),
-                                      {
-                                        addSuffix:
-                                          true,
-                                      }
-                                    )
-                                  : ""}
-                              </p>
-                            </div>
-                          </div>
-
-                          {isFollowerType(
-                            item.type
-                          ) ? (
-                            <button
-                              onClick={(
-                                event
-                              ) =>
-                                handleFollowBack(
-                                  actorId,
-                                  event
-                                )
-                              }
-                              disabled={
-                                isFollowingBack
-                              }
-                              className={`text-[10px] font-black px-3 py-1.5 rounded-xl shrink-0 ${
-                                isFollowingBack
-                                  ? "bg-zinc-800 text-zinc-500 border border-white/10"
-                                  : "bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-lg shadow-pink-500/20"
-                              }`}
-                            >
-                              {isFollowingBack
-                                ? "Friends"
-                                : "Follow Back"}
-                            </button>
-                          ) : (
-                            (
-                              item.video_id ||
-                              item.videos
-                                ?.id
-                            ) && (
-                              <div
-                                onClick={(
-                                  event
-                                ) =>
-                                  handleVideoThumbnailClick(
-                                    item.video_id ||
-                                      item.videos
-                                        ?.id,
-                                    item.id,
-                                    isComment,
-                                    event
-                                  )
-                                }
-                                className="w-11 h-14 rounded-xl overflow-hidden border border-cyan-500/30 shrink-0 bg-zinc-900"
-                              >
-                                {item.videos
-                                  ?.thumbnail_url ? (
-                                  <img
-                                    src={
-                                      item
-                                        .videos
-                                        .thumbnail_url
-                                    }
-                                    crossOrigin="anonymous"
-                                    referrerPolicy="no-referrer"
-                                    className="w-full h-full object-cover"
-                                    alt=""
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <Play
-                                      size={
-                                        14
-                                      }
-                                      className="text-cyan-400"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          )}
-                        </motion.div>
-                      );
-                    }
-                  )
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    );
-
-  // =========================================================
-  // EMPTY STATE
-  // =========================================================
-
-  const EmptyState = ({
-    icon,
-    title,
-    description,
-    action,
-  }) => (
-    <div className="py-12 px-5 flex flex-col items-center justify-center text-center rounded-3xl bg-white/[0.02] border border-white/5">
-      <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-zinc-600 mb-3">
-        {icon}
-      </div>
-
-      <p className="text-sm font-black text-white">
-        {title}
-      </p>
-
-      <p className="text-xs text-zinc-500 mt-1 max-w-xs leading-relaxed">
-        {description}
-      </p>
-
-      {action}
-    </div>
-  );
-
-  // =========================================================
-  // LOADING
-  // =========================================================
-
-  if (loading) {
+  }) => {
     return (
-      <div className="min-h-screen bg-[#050507] text-white flex items-center justify-center">
-        <div className="flex flex-col items-center">
-          <div className="relative">
-            <div className="absolute inset-0 rounded-full bg-cyan-500/20 blur-xl" />
+      <motion.button
+        whileHover={{
+          y: -2,
+        }}
+        whileTap={{
+          scale: 0.98,
+        }}
+        onClick={onClick}
+        className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-left backdrop-blur-xl transition hover:border-white/20 ${accent}`}
+      >
+        <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/[0.025] blur-2xl transition group-hover:bg-white/[0.06]" />
 
-            <Loader2
-              className="relative animate-spin text-cyan-400"
-              size={42}
-            />
+        <div className="relative flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/45">
+              {label}
+            </p>
+
+            <p className="mt-1 text-2xl font-black text-white">
+              {count}
+            </p>
           </div>
 
-          <p className="mt-4 text-[10px] uppercase font-black tracking-[3px] text-zinc-500">
-            Loading Inbox
-          </p>
+          <div className="rounded-xl border border-white/10 bg-black/20 p-2.5">
+            <Icon className="h-5 w-5 text-white/75" />
+          </div>
         </div>
+      </motion.button>
+    );
+  };
+
+  const SectionHeader = ({
+    icon: Icon,
+    title,
+    count,
+    action,
+    actionLabel,
+  }) => {
+    return (
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2">
+            <Icon className="h-4 w-4 text-white/70" />
+          </div>
+
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-bold text-white">
+              {title}
+            </h2>
+
+            {count !== undefined && (
+              <p className="text-[11px] text-white/35">
+                {count} unread
+              </p>
+            )}
+          </div>
+        </div>
+
+        {action && (
+          <button
+            onClick={action}
+            className="shrink-0 text-xs font-semibold text-cyan-300 transition hover:text-cyan-200"
+          >
+            {actionLabel || "View all"}
+          </button>
+        )}
       </div>
     );
-  }
+  };
 
-  // =========================================================
-  // MAIN UI
-  // =========================================================
+  const ActivityRow = ({
+    activity,
+  }) => {
+    const Icon =
+      getActivityIcon(
+        activity?.type
+      );
 
-  return (
-    <div className="inbox-page min-h-screen bg-[#050507] text-white font-sans selection:bg-cyan-500/30">
+    const unread =
+      isUnreadActivity(
+        activity
+      );
 
-      {/* =====================================================
-          SCROLLBAR
-      ===================================================== */}
+    const actor =
+      activity?.actor;
 
-      <style>{`
-        .inbox-scrollbar::-webkit-scrollbar {
-          width: 7px;
-          height: 7px;
-        }
+    return (
+      <motion.div
+        layout
+        initial={{
+          opacity: 0,
+          y: 8,
+        }}
+        animate={{
+          opacity: 1,
+          y: 0,
+        }}
+        className={`group relative rounded-2xl border p-3 transition ${
+          unread
+            ? "border-fuchsia-400/20 bg-fuchsia-400/[0.045]"
+            : "border-white/[0.07] bg-white/[0.025]"
+        }`}
+      >
+        <div className="flex gap-3">
+          <button
+            onClick={() =>
+              openProfile(
+                actor?.id
+              )
+            }
+            className="shrink-0"
+            aria-label="Open profile"
+          >
+            <Avatar
+              profile={actor}
+              size="md"
+              online={
+                actor?.online ||
+                actor?.is_online
+              }
+            />
+          </button>
 
-        .inbox-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255,255,255,0.025);
-          border-radius: 999px;
-        }
-
-        .inbox-scrollbar::-webkit-scrollbar-thumb {
-          background: linear-gradient(
-            180deg,
-            rgba(6,182,212,0.65),
-            rgba(236,72,153,0.65)
-          );
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.08);
-        }
-
-        .inbox-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(
-            180deg,
-            rgba(6,182,212,0.9),
-            rgba(236,72,153,0.9)
-          );
-        }
-
-        .inbox-scrollbar {
-          scrollbar-width: thin;
-          scrollbar-color:
-            rgba(6,182,212,0.65)
-            rgba(255,255,255,0.025);
-        }
-
-        .inbox-hide-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-
-        .inbox-hide-scrollbar {
-          scrollbar-width: none;
-        }
-      `}</style>
-
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
-
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#050507]/85 backdrop-blur-2xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
-          <div className="flex items-center justify-between gap-3">
-
-            <div className="flex items-center gap-3 min-w-0">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
               <button
                 onClick={() =>
-                  navigate(-1)
+                  openProfile(
+                    actor?.id
+                  )
                 }
-                className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-all shrink-0"
-                title="Go back"
+                className="min-w-0 text-left"
               >
-                <ArrowLeft
-                  size={18}
-                />
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-sm font-bold text-white">
+                    {getDisplayName(
+                      actor,
+                      "Someone"
+                    )}
+                  </span>
+
+                  <VerifiedBadge
+                    profile={actor}
+                  />
+                </div>
+
+                {getUsername(actor) && (
+                  <span className="block truncate text-[11px] text-white/35">
+                    {getUsername(
+                      actor
+                    )}
+                  </span>
+                )}
               </button>
 
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-pink-500/20 border border-cyan-500/20 flex items-center justify-center shrink-0">
-                <InboxIcon
-                  size={19}
-                  className="text-cyan-400"
-                />
+              <span className="shrink-0 text-[10px] text-white/30">
+                {getTime(
+                  activity?.created_at
+                )}
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-start gap-2">
+              <div className="rounded-lg border border-white/10 bg-black/20 p-1.5">
+                <Icon className="h-3.5 w-3.5 text-fuchsia-300" />
               </div>
 
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg sm:text-xl font-black tracking-tight">
-                    Inbox
-                  </h1>
+              <p className="min-w-0 flex-1 text-sm leading-5 text-white/70">
+                {getActivityText(
+                  activity
+                )}
+              </p>
+            </div>
 
-                  {totalUnreadCount >
-                    0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-600 text-white text-[9px] font-black uppercase shadow-lg shadow-pink-500/20">
-                      {totalUnreadCount >
-                      99
-                        ? "99+"
-                        : totalUnreadCount}{" "}
-                      New
-                    </span>
+            {activity?.videos && (
+              <button
+                onClick={() =>
+                  openVideo(
+                    activity
+                      .videos.id
+                  )
+                }
+                className="mt-3 flex w-full items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-2 text-left transition hover:bg-white/[0.04]"
+              >
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-white/5">
+                  {activity.videos
+                    .thumbnail_url ? (
+                    <img
+                      src={
+                        activity
+                          .videos
+                          .thumbnail_url
+                      }
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <Play className="h-4 w-4 text-white/50" />
+                    </div>
                   )}
                 </div>
 
-                <p className="text-[9px] sm:text-[10px] text-zinc-600 font-bold uppercase tracking-[1.5px] truncate">
-                  Activity • Updates • Messages
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-white/60">
+                    {activity
+                      .videos
+                      .caption ||
+                      "Your video"}
+                  </p>
+
+                  <span className="text-[10px] text-white/30">
+                    Open video
+                  </span>
+                </div>
+
+                <ChevronRight className="h-4 w-4 shrink-0 text-white/30" />
+              </button>
+            )}
+
+            <div className="mt-3 flex items-center gap-2">
+              {isFollowerType(
+                activity?.type
+              ) &&
+                actor?.id &&
+                !myFollows.has(
+                  actor.id
+                ) && (
+                  <button
+                    onClick={() =>
+                      handleFollowBack(
+                        actor.id
+                      )
+                    }
+                    disabled={
+                      followingId ===
+                      actor.id
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1.5 text-[11px] font-bold text-cyan-300 transition hover:bg-cyan-400/15 disabled:opacity-50"
+                  >
+                    {followingId ===
+                    actor.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <UserPlus className="h-3 w-3" />
+                    )}
+                    Follow back
+                  </button>
+                )}
+
+              {unread && (
+                <button
+                  onClick={() =>
+                    handleMarkActivityRead(
+                      activity
+                    )
+                  }
+                  disabled={
+                    markingActivityId ===
+                    activity.id
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold text-white/60 transition hover:bg-white/[0.08] disabled:opacity-50"
+                >
+                  {markingActivityId ===
+                  activity.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Check className="h-3 w-3" />
+                  )}
+                  Mark read
+                </button>
+              )}
+
+              {unread && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-fuchsia-400 shadow-[0_0_12px_rgba(232,121,249,0.9)]" />
+              )}
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
+  const MessagePreview = ({
+    message,
+  }) => {
+    const unread =
+      message.receiver_id ===
+        currentUserId &&
+      isUnreadMessage(
+        message
+      );
+
+    const profile =
+      message.profile;
+
+    const preview =
+      message.content ||
+      message.message ||
+      message.text ||
+      "New message";
+
+    return (
+      <motion.button
+        layout
+        whileTap={{
+          scale: 0.99,
+        }}
+        onClick={async () => {
+          if (unread) {
+            await handleMarkMessageRead(
+              message
+            );
+          }
+
+          openMessages(
+            message.other_user_id
+          );
+        }}
+        className={`w-full rounded-2xl border p-3 text-left transition ${
+          unread
+            ? "border-cyan-400/20 bg-cyan-400/[0.045] hover:bg-cyan-400/[0.07]"
+            : "border-white/[0.07] bg-white/[0.025] hover:bg-white/[0.045]"
+        }`}
+      >
+        <div className="flex gap-3">
+          <Avatar
+            profile={profile}
+            size="md"
+            online={
+              profile?.online ||
+              profile?.is_online
+            }
+          />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="truncate text-sm font-bold text-white">
+                    {getDisplayName(
+                      profile
+                    )}
+                  </h3>
+
+                  <VerifiedBadge
+                    profile={
+                      profile
+                    }
+                  />
+                </div>
+
+                {getUsername(
+                  profile
+                ) && (
+                  <p className="truncate text-[11px] text-white/35">
+                    {getUsername(
+                      profile
+                    )}
+                  </p>
+                )}
+              </div>
+
+              <span className="shrink-0 text-[10px] text-white/30">
+                {getTime(
+                  message.updated_at ||
+                    message.created_at
+                )}
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-center gap-2">
+              <p
+                className={`min-w-0 flex-1 truncate text-sm ${
+                  unread
+                    ? "font-semibold text-white/85"
+                    : "text-white/50"
+                }`}
+              >
+                {preview}
+              </p>
+
+              {unread && (
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.8)]" />
+              )}
+            </div>
+
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[10px] text-white/25">
+                Open conversation
+              </span>
+
+              <ChevronRight className="h-4 w-4 text-white/25" />
+            </div>
+          </div>
+        </div>
+      </motion.button>
+    );
+  };
+
+  const LiveCard = ({
+    stream,
+  }) => {
+    const host =
+      stream?.profiles ||
+      stream?.host;
+
+    return (
+      <motion.button
+        whileHover={{
+          y: -2,
+        }}
+        whileTap={{
+          scale: 0.98,
+        }}
+        onClick={() =>
+          openLive(stream?.id)
+        }
+        className="group relative w-48 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] text-left"
+      >
+        <div className="relative aspect-[4/5] overflow-hidden bg-black">
+          {stream?.thumbnail_url ? (
+            <img
+              src={
+                stream.thumbnail_url
+              }
+              alt=""
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-fuchsia-500/20 via-black to-cyan-500/20">
+              <Radio className="h-8 w-8 text-white/30" />
+            </div>
+          )}
+
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
+
+          <div className="absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-red-500/90 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white">
+            <span className="h-1.5 w-1.5 rounded-full bg-white" />
+            Live
+          </div>
+
+          <div className="absolute bottom-3 left-3 right-3">
+            <p className="truncate text-sm font-bold text-white">
+              {stream?.title ||
+                "Live stream"}
+            </p>
+
+            <div className="mt-2 flex items-center gap-2">
+              <Avatar
+                profile={host}
+                size="xs"
+              />
+
+              <div className="min-w-0">
+                <p className="truncate text-[10px] font-semibold text-white/80">
+                  {getDisplayName(
+                    host
+                  )}
+                </p>
+
+                <p className="flex items-center gap-1 text-[9px] text-white/40">
+                  <Eye className="h-2.5 w-2.5" />
+                  {stream?.viewer_count ||
+                    0}{" "}
+                  watching
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+      </motion.button>
+    );
+  };
 
-            <div className="flex items-center gap-1.5 shrink-0">
+  const InviteCard = ({
+    invite,
+  }) => {
+    const stream =
+      invite?.stream;
 
+    const host =
+      stream?.host ||
+      stream?.profiles;
+
+    const busy =
+      acceptingInviteId ===
+      invite?.id;
+
+    return (
+      <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-400/[0.035] p-3">
+        <div className="flex gap-3">
+          <Avatar
+            profile={host}
+            size="md"
+          />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-white">
+                  {getDisplayName(
+                    host
+                  )}
+                </p>
+
+                <p className="text-[11px] text-white/40">
+                  invited you to join
+                  a live stream
+                </p>
+              </div>
+
+              <Radio className="h-4 w-4 shrink-0 text-fuchsia-300" />
+            </div>
+
+            <p className="mt-2 truncate text-xs font-semibold text-white/65">
+              {stream?.title ||
+                "Live stream"}
+            </p>
+
+            <div className="mt-3 flex gap-2">
               <button
+                disabled={busy}
                 onClick={() =>
-                  setShowSearch(
-                    (value) =>
-                      !value
+                  handleInviteAction(
+                    invite,
+                    "approved"
                   )
                 }
-                className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${
-                  showSearch
-                    ? "bg-pink-500 text-white border-pink-400"
-                    : "bg-white/[0.04] border-white/10 text-zinc-400 hover:text-white"
-                }`}
-                title="Search"
+                className="flex-1 rounded-xl bg-fuchsia-500 px-3 py-2 text-xs font-black text-white transition hover:bg-fuchsia-400 disabled:opacity-50"
               >
-                <Search
-                  size={16}
-                />
+                {busy ? (
+                  <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                ) : (
+                  "Join"
+                )}
               </button>
 
               <button
+                disabled={busy}
                 onClick={() =>
-                  fetchData(
-                    currentUserId,
-                    true
+                  handleInviteAction(
+                    invite,
+                    "declined"
                   )
                 }
-                disabled={
-                  isRefreshing
-                }
-                className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/10 text-cyan-400 flex items-center justify-center hover:bg-cyan-500/10 transition-all"
-                title="Refresh"
+                className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/60 transition hover:bg-white/[0.08] disabled:opacity-50"
               >
-                <RefreshCw
-                  size={16}
-                  className={
-                    isRefreshing
-                      ? "animate-spin"
-                      : ""
-                  }
-                />
+                Decline
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const SuggestedUserCard = ({
+    user,
+  }) => {
+    const alreadyFollowing =
+      myFollows.has(user.id);
+
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3">
+        <button
+          onClick={() =>
+            openProfile(user.id)
+          }
+        >
+          <Avatar
+            profile={user}
+            size="sm"
+          />
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <p className="truncate text-sm font-bold text-white">
+              {getDisplayName(
+                user
+              )}
+            </p>
+
+            <VerifiedBadge
+              profile={user}
+            />
+          </div>
+
+          <p className="truncate text-[11px] text-white/35">
+            {getUsername(user)}
+          </p>
+        </div>
+
+        <button
+          disabled={
+            alreadyFollowing ||
+            followingId ===
+              user.id
+          }
+          onClick={() =>
+            handleFollowBack(
+              user.id
+            )
+          }
+          className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-black transition ${
+            alreadyFollowing
+              ? "border border-white/10 bg-white/[0.04] text-white/35"
+              : "bg-white text-black hover:bg-white/90"
+          } disabled:opacity-60`}
+        >
+          {followingId ===
+          user.id ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : alreadyFollowing ? (
+            "Following"
+          ) : (
+            "Follow"
+          )}
+        </button>
+      </div>
+    );
+  };
+
+  // ============================================================
+  // DRAWER
+  // ============================================================
+
+  const ActivityDrawer = ({
+    open,
+    title,
+    icon: Icon,
+    activities: drawerActivities,
+    onClose,
+  }) => {
+    if (!open) {
+      return null;
+    }
+
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{
+            opacity: 0,
+          }}
+          animate={{
+            opacity: 1,
+          }}
+          exit={{
+            opacity: 0,
+          }}
+          className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{
+              x: "100%",
+            }}
+            animate={{
+              x: 0,
+            }}
+            exit={{
+              x: "100%",
+            }}
+            transition={{
+              type: "spring",
+              damping: 30,
+              stiffness: 300,
+            }}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+            className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-white/10 bg-[#09090e]"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-2">
+                  <Icon className="h-5 w-5 text-fuchsia-300" />
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-white">
+                    {title}
+                  </h3>
+
+                  <p className="text-xs text-white/35">
+                    {drawerActivities.length}{" "}
+                    activities
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={onClose}
+                className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-white/60 hover:bg-white/[0.08]"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="inbox-scroll-area flex-1 p-4">
+              <div className="space-y-3">
+                {drawerActivities.length ? (
+                  drawerActivities.map(
+                    (activity) => (
+                      <ActivityRow
+                        key={
+                          activity.id
+                        }
+                        activity={
+                          activity
+                        }
+                      />
+                    )
+                  )
+                ) : (
+                  <EmptyState
+                    icon={Icon}
+                    title="Nothing here"
+                    text="There are no activities in this category yet."
+                  />
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  };
+
+  // ============================================================
+  // EMPTY STATE
+  // ============================================================
+
+  const EmptyState = ({
+    icon: Icon = InboxIcon,
+    title,
+    text,
+    action,
+    actionLabel,
+  }) => {
+    return (
+      <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-12 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+          <Icon className="h-6 w-6 text-white/25" />
+        </div>
+
+        <h3 className="mt-4 text-sm font-bold text-white/80">
+          {title}
+        </h3>
+
+        <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-white/35">
+          {text}
+        </p>
+
+        {action && (
+          <button
+            onClick={action}
+            className="mt-4 rounded-xl bg-white px-4 py-2 text-xs font-black text-black transition hover:bg-white/90"
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  // ============================================================
+  // NEW CHAT MODAL
+  // ============================================================
+
+  const NewChatModal = () => {
+    if (!showNewChatModal) {
+      return null;
+    }
+
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{
+            opacity: 0,
+          }}
+          animate={{
+            opacity: 1,
+          }}
+          exit={{
+            opacity: 0,
+          }}
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md"
+          onClick={() =>
+            setShowNewChatModal(false)
+          }
+        >
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 20,
+              scale: 0.97,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: 1,
+            }}
+            exit={{
+              opacity: 0,
+              y: 20,
+              scale: 0.97,
+            }}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0b0b11] shadow-2xl"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <h3 className="font-bold text-white">
+                  New message
+                </h3>
+
+                <p className="mt-0.5 text-xs text-white/35">
+                  Choose someone to message
+                </p>
+              </div>
 
               <button
                 onClick={() =>
                   setShowNewChatModal(
-                    true
+                    false
                   )
                 }
-                className="hidden sm:flex items-center gap-1.5 h-9 px-3 rounded-xl bg-gradient-to-r from-cyan-500/15 to-purple-500/15 border border-cyan-500/20 text-cyan-300 hover:border-cyan-400/40 transition-all"
+                className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-white/60 hover:bg-white/[0.08]"
               >
-                <Plus
-                  size={15}
-                />
-
-                <span className="text-[10px] font-black uppercase tracking-wider">
-                  New
-                </span>
+                <X className="h-5 w-5" />
               </button>
+            </div>
 
-              <div className="relative">
-                <button
-                  onClick={() =>
-                    setShowMoreMenu(
-                      (value) =>
-                        !value
+            <div className="border-b border-white/10 p-4">
+              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3">
+                <Search className="h-4 w-4 text-white/30" />
+
+                <input
+                  value={
+                    newChatSearch
+                  }
+                  onChange={(event) =>
+                    setNewChatSearch(
+                      event.target
+                        .value
                     )
                   }
-                  className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/10 text-zinc-400 flex items-center justify-center hover:text-white transition-all"
-                >
-                  <MoreHorizontal
-                    size={17}
-                  />
-                </button>
-
-                <AnimatePresence>
-                  {showMoreMenu && (
-                    <motion.div
-                      initial={{
-                        opacity: 0,
-                        y: -5,
-                        scale: 0.96,
-                      }}
-                      animate={{
-                        opacity: 1,
-                        y: 0,
-                        scale: 1,
-                      }}
-                      exit={{
-                        opacity: 0,
-                        y: -5,
-                        scale: 0.96,
-                      }}
-                      className="absolute right-0 top-11 w-52 rounded-2xl bg-[#101017] border border-white/10 shadow-2xl p-1.5 overflow-hidden"
-                    >
-                      <button
-                        onClick={() => {
-                          handleMarkAllRead();
-                          setShowMoreMenu(
-                            false
-                          );
-                        }}
-                        disabled={
-                          totalUnreadCount ===
-                          0
-                        }
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 disabled:opacity-40 text-left"
-                      >
-                        <CheckCheck
-                          size={15}
-                          className="text-cyan-400"
-                        />
-
-                        <span className="text-[11px] font-bold">
-                          Mark all as read
-                        </span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setShowNewChatModal(
-                            true
-                          );
-                          setShowMoreMenu(
-                            false
-                          );
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left"
-                      >
-                        <MessageSquare
-                          size={15}
-                          className="text-purple-400"
-                        />
-
-                        <span className="text-[11px] font-bold">
-                          New conversation
-                        </span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                  placeholder="Search people..."
+                  autoFocus
+                  className="w-full bg-transparent py-3 text-sm text-white outline-none placeholder:text-white/25"
+                />
               </div>
             </div>
+
+            <div className="inbox-scroll-area flex-1 p-4">
+              <div className="space-y-2">
+                {filteredSuggestedUsers.length ? (
+                  filteredSuggestedUsers.map(
+                    (user) => (
+                      <button
+                        key={user.id}
+                        onClick={() =>
+                          openMessages(
+                            user.id
+                          )
+                        }
+                        className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3 text-left transition hover:bg-white/[0.06]"
+                      >
+                        <Avatar
+                          profile={
+                            user
+                          }
+                          size="md"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate text-sm font-bold text-white">
+                              {getDisplayName(
+                                user
+                              )}
+                            </p>
+
+                            <VerifiedBadge
+                              profile={
+                                user
+                              }
+                            />
+                          </div>
+
+                          <p className="truncate text-xs text-white/35">
+                            {getUsername(
+                              user
+                            )}
+                          </p>
+                        </div>
+
+                        <MessageCircle className="h-4 w-4 text-white/30" />
+                      </button>
+                    )
+                  )
+                ) : (
+                  <EmptyState
+                    icon={Search}
+                    title="No people found"
+                    text="Try another username or display name."
+                  />
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  };
+
+  // ============================================================
+  // LOADING
+  // ============================================================
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#07070b] text-white">
+        <div className="text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+            <Loader2 className="h-6 w-6 animate-spin text-fuchsia-300" />
           </div>
 
-          {/* SEARCH */}
+          <p className="mt-4 text-sm font-semibold text-white/70">
+            Loading inbox...
+          </p>
+
+          <p className="mt-1 text-xs text-white/30">
+            Syncing notifications and messages
+          </p>
+        </div>
+
+        <style>{`
+          html,
+          body,
+          #root {
+            min-height: 100%;
+          }
+
+          body {
+            overflow: hidden;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // MAIN
+  // ============================================================
+
+  return (
+    <div className="inbox-page min-h-screen bg-[#07070b] text-white">
+      <style>{`
+        html,
+        body,
+        #root {
+          min-height: 100%;
+        }
+
+        .inbox-page {
+          height: 100dvh;
+          min-height: 100dvh;
+          overflow: hidden;
+        }
+
+        .inbox-scroll-area {
+          overflow-y: auto;
+          overflow-x: hidden;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(217, 70, 239, 0.85) rgba(255, 255, 255, 0.045);
+        }
+
+        .inbox-scroll-area::-webkit-scrollbar {
+          width: 9px;
+          height: 9px;
+        }
+
+        .inbox-scroll-area::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.035);
+          border-radius: 999px;
+        }
+
+        .inbox-scroll-area::-webkit-scrollbar-thumb {
+          background: linear-gradient(
+            180deg,
+            rgba(217, 70, 239, 0.95),
+            rgba(34, 211, 238, 0.8)
+          );
+          border-radius: 999px;
+          border: 2px solid rgba(7, 7, 11, 0.8);
+        }
+
+        .inbox-scroll-area::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(
+            180deg,
+            rgba(232, 121, 249, 1),
+            rgba(103, 232, 249, 1)
+          );
+        }
+
+        .inbox-glow {
+          position: fixed;
+          pointer-events: none;
+          border-radius: 9999px;
+          filter: blur(90px);
+          opacity: 0.12;
+        }
+
+        .inbox-no-select {
+          user-select: none;
+        }
+      `}</style>
+
+      {/* ======================================================
+          BACKGROUND GLOW
+          ====================================================== */}
+
+      <div className="inbox-glow left-[-10%] top-[10%] h-72 w-72 bg-fuchsia-500" />
+      <div className="inbox-glow right-[-10%] top-[40%] h-80 w-80 bg-cyan-500" />
+
+      {/* ======================================================
+          HEADER
+          ====================================================== */}
+
+      <header className="relative z-30 flex h-[72px] shrink-0 items-center border-b border-white/10 bg-[#07070b]/90 px-4 backdrop-blur-2xl sm:px-6">
+        <div className="mx-auto flex w-full max-w-7xl items-center gap-3">
+          <button
+            onClick={() =>
+              navigate(-1)
+            }
+            className="rounded-xl border border-white/10 bg-white/[0.035] p-2 text-white/70 transition hover:bg-white/[0.08] hover:text-white"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-black tracking-tight text-white sm:text-xl">
+                Inbox
+              </h1>
+
+              {totalUnread > 0 && (
+                <span className="rounded-full bg-fuchsia-500 px-2 py-0.5 text-[10px] font-black text-white shadow-[0_0_15px_rgba(217,70,239,0.35)]">
+                  {totalUnread > 99
+                    ? "99+"
+                    : totalUnread}
+                </span>
+              )}
+            </div>
+
+            <p className="hidden text-[10px] text-white/30 sm:block">
+              Notifications, messages and live activity
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() =>
+                setShowSearch(
+                  (value) =>
+                    !value
+                )
+              }
+              className={`rounded-xl border p-2 transition ${
+                showSearch
+                  ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-300"
+                  : "border-white/10 bg-white/[0.035] text-white/60 hover:bg-white/[0.08]"
+              }`}
+              aria-label="Search inbox"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+
+            <button
+              onClick={() =>
+                setShowNewChatModal(
+                  true
+                )
+              }
+              className="rounded-xl border border-white/10 bg-white/[0.035] p-2 text-white/60 transition hover:bg-white/[0.08] hover:text-white"
+              aria-label="New message"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+
+            <button
+              onClick={
+                handleRefresh
+              }
+              disabled={
+                isRefreshing
+              }
+              className="rounded-xl border border-white/10 bg-white/[0.035] p-2 text-white/60 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
+              aria-label="Refresh inbox"
+            >
+              <RefreshCw
+                className={`h-5 w-5 ${
+                  isRefreshing
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />
+            </button>
+
+            <div className="relative">
+              <button
+                onClick={() =>
+                  setShowMoreMenu(
+                    (value) =>
+                      !value
+                  )
+                }
+                className="rounded-xl border border-white/10 bg-white/[0.035] p-2 text-white/60 transition hover:bg-white/[0.08] hover:text-white"
+                aria-label="More inbox options"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </button>
+
+              <AnimatePresence>
+                {showMoreMenu && (
+                  <motion.div
+                    initial={{
+                      opacity: 0,
+                      y: -4,
+                      scale: 0.97,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                      scale: 1,
+                    }}
+                    exit={{
+                      opacity: 0,
+                      y: -4,
+                      scale: 0.97,
+                    }}
+                    className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#101016] p-1.5 shadow-2xl"
+                  >
+                    <button
+                      onClick={() => {
+                        setShowMoreMenu(
+                          false
+                        );
+                        handleMarkAllRead();
+                      }}
+                      disabled={
+                        markingAllRead ||
+                        totalUnread ===
+                          0
+                      }
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-white/70 transition hover:bg-white/[0.06] disabled:opacity-40"
+                    >
+                      {markingAllRead ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCheck className="h-4 w-4 text-cyan-300" />
+                      )}
+                      Mark everything as read
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowMoreMenu(
+                          false
+                        );
+                        setActiveFilter(
+                          "all"
+                        );
+                        setSearchQuery(
+                          ""
+                        );
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-white/70 transition hover:bg-white/[0.06]"
+                    >
+                      <SlidersHorizontal className="h-4 w-4 text-white/40" />
+                      Reset filters
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ======================================================
+          SCROLLING CONTENT
+          ====================================================== */}
+
+      <main className="inbox-scroll-area h-[calc(100dvh-72px)]">
+        <div className="mx-auto w-full max-w-7xl px-4 py-5 pb-16 sm:px-6 lg:px-8">
+          {/* ==================================================
+              NOTICES
+              ================================================== */}
+
+          <AnimatePresence>
+            {errorMessage && (
+              <motion.div
+                initial={{
+                  opacity: 0,
+                  y: -8,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  y: -8,
+                }}
+                className="mb-4 flex items-start gap-3 rounded-2xl border border-red-400/20 bg-red-400/[0.06] p-3"
+              >
+                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-red-200">
+                    Inbox update failed
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-red-200/60">
+                    {errorMessage}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() =>
+                    setErrorMessage(
+                      ""
+                    )
+                  }
+                  className="text-red-200/50 hover:text-red-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </motion.div>
+            )}
+
+            {successMessage && (
+              <motion.div
+                initial={{
+                  opacity: 0,
+                  y: -8,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  y: -8,
+                }}
+                className="mb-4 flex items-center gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3"
+              >
+                <CheckCheck className="h-5 w-5 text-emerald-300" />
+
+                <p className="text-xs font-semibold text-emerald-200">
+                  {successMessage}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ==================================================
+              SEARCH
+              ================================================== */}
+
           <AnimatePresence>
             {showSearch && (
               <motion.div
                 initial={{
-                  height: 0,
                   opacity: 0,
+                  height: 0,
                 }}
                 animate={{
-                  height: "auto",
                   opacity: 1,
+                  height: "auto",
                 }}
                 exit={{
-                  height: 0,
                   opacity: 0,
+                  height: 0,
                 }}
                 className="overflow-hidden"
               >
-                <div className="pt-3">
-                  <div className="relative">
-                    <Search
-                      size={15}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
-                    />
+                <div className="mb-5 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+                  <div className="flex items-center gap-3">
+                    <Search className="h-5 w-5 shrink-0 text-white/30" />
 
                     <input
                       value={
@@ -3681,14 +3713,13 @@ const Inbox = () => {
                         event
                       ) =>
                         setSearchQuery(
-                          event
-                            .target
+                          event.target
                             .value
                         )
                       }
-                      placeholder="Search people, activities or messages..."
+                      placeholder="Search activities and messages..."
                       autoFocus
-                      className="w-full h-10 rounded-xl bg-white/[0.04] border border-white/10 pl-9 pr-9 text-xs text-white placeholder-zinc-600 outline-none focus:border-cyan-500/50"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/25"
                     />
 
                     {searchQuery && (
@@ -3698,11 +3729,9 @@ const Inbox = () => {
                             ""
                           )
                         }
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+                        className="rounded-lg p-1 text-white/40 hover:text-white"
                       >
-                        <X
-                          size={14}
-                        />
+                        <X className="h-4 w-4" />
                       </button>
                     )}
                   </div>
@@ -3710,1462 +3739,714 @@ const Inbox = () => {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-      </header>
 
-      {/* =====================================================
-          MAIN
-      ===================================================== */}
+          {/* ==================================================
+              TOP ACTION AREA
+              ================================================== */}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 pb-28">
-
-        {/* ===================================================
-            TOP STATUS
-        =================================================== */}
-
-        <section className="mb-5">
-          <div className="rounded-3xl border border-white/5 bg-gradient-to-br from-white/[0.035] to-white/[0.015] p-5 relative overflow-hidden">
-            <div className="absolute -top-24 -right-24 w-52 h-52 rounded-full bg-cyan-500/10 blur-3xl" />
-
-            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <CircleDot
-                    size={12}
-                    className={
-                      totalUnreadCount >
-                      0
-                        ? "text-pink-400"
-                        : "text-emerald-400"
-                    }
-                  />
-
-                  <span className="text-[9px] uppercase tracking-[2px] font-black text-zinc-500">
-                    Inbox overview
-                  </span>
+          <div className="mb-5 flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.025] p-4 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/10 p-2">
+                  <Sparkles className="h-5 w-5 text-fuchsia-300" />
                 </div>
 
-                <h2 className="text-2xl sm:text-3xl font-black mt-2 tracking-tight">
-                  {totalUnreadCount >
-                  0
-                    ? `${totalUnreadCount} things need your attention`
-                    : "You're all caught up"}
-                </h2>
+                <div>
+                  <h2 className="text-sm font-black text-white">
+                    Your activity
+                  </h2>
 
-                <p className="text-xs text-zinc-500 mt-1">
-                  {lastFetchedAt
-                    ? `Updated ${formatDistanceToNow(
-                        lastFetchedAt,
-                        {
-                          addSuffix:
-                            true,
-                        }
-                      )}`
-                    : "Waiting for updates"}
-                </p>
+                  <p className="text-xs text-white/35">
+                    {totalUnread > 0
+                      ? `${totalUnread} unread item${
+                          totalUnread ===
+                          1
+                            ? ""
+                            : "s"
+                        }`
+                      : "You're all caught up"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={
+                handleMarkAllRead
+              }
+              disabled={
+                markingAllRead ||
+                totalUnread ===
+                  0
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              {markingAllRead ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCheck className="h-4 w-4" />
+              )}
+              {markingAllRead
+                ? "Saving..."
+                : "Mark all as read"}
+            </button>
+          </div>
+
+          {/* ==================================================
+              BENTO STATS
+              ================================================== */}
+
+          <section className="mb-6">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-cyan-300" />
+
+                <h2 className="text-sm font-bold text-white">
+                  Overview
+                </h2>
               </div>
 
-              {totalUnreadCount >
-                0 && (
-                <button
-                  onClick={
-                    handleMarkAllRead
-                  }
-                  disabled={
-                    markingAllRead
-                  }
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-black uppercase tracking-wider hover:bg-cyan-500/20 transition-all disabled:opacity-50"
-                >
-                  {markingAllRead ? (
-                    <Loader2
-                      size={14}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <CheckCheck
-                      size={14}
-                    />
+              {lastFetchedAt && (
+                <span className="text-[10px] text-white/25">
+                  Updated{" "}
+                  {getTime(
+                    lastFetchedAt
                   )}
-
-                  {markingAllRead
-                    ? "Updating..."
-                    : "Mark all read"}
-                </button>
+                </span>
               )}
             </div>
-          </div>
-        </section>
 
-        {/* ===================================================
-            FILTER BAR
-        =================================================== */}
-
-        <section className="mb-5">
-          <div className="flex gap-2 overflow-x-auto inbox-hide-scrollbar pb-1">
-            {[
-              {
-                key: "all",
-                label: "All",
-                icon: (
-                  <Bell
-                    size={13}
-                  />
-                ),
-                count:
-                  totalUnreadCount,
-              },
-              {
-                key: "messages",
-                label: "Messages",
-                icon: (
-                  <MessageSquare
-                    size={13}
-                  />
-                ),
-                count:
-                  unreadMessagesTotal,
-              },
-              {
-                key: "followers",
-                label: "Followers",
-                icon: (
-                  <UserPlus
-                    size={13}
-                  />
-                ),
-                count:
-                  unreadFollowers.length,
-              },
-              {
-                key: "likes",
-                label: "Likes",
-                icon: (
-                  <Heart
-                    size={13}
-                  />
-                ),
-                count:
-                  unreadLikes.length,
-              },
-              {
-                key: "comments",
-                label: "Comments",
-                icon: (
-                  <MessageCircle
-                    size={13}
-                  />
-                ),
-                count:
-                  unreadComments.length,
-              },
-              {
-                key: "live",
-                label: "Live",
-                icon: (
-                  <Radio
-                    size={13}
-                  />
-                ),
-                count:
-                  liveInvites.length,
-              },
-            ].map(
-              (filter) => (
-                <button
-                  key={
-                    filter.key
-                  }
-                  onClick={() => {
-                    setActiveFilter(
-                      filter.key
-                    );
-
-                    if (
-                      [
-                        "followers",
-                        "likes",
-                        "comments",
-                      ].includes(
-                        filter.key
-                      )
-                    ) {
-                      if (
-                        filter.count >
-                        0
-                      ) {
-                        markCategoryAsRead(
-                          filter.key
-                        );
-                      }
-                    }
-                  }}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border shrink-0 text-[10px] font-black uppercase tracking-wider transition-all ${
-                    activeFilter ===
-                    filter.key
-                      ? "bg-white text-black border-white"
-                      : "bg-white/[0.035] text-zinc-500 border-white/10 hover:text-white hover:bg-white/[0.07]"
-                  }`}
-                >
-                  {filter.icon}
-
-                  {filter.label}
-
-                  {filter.count >
-                    0 && (
-                    <span
-                      className={`min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[8px] ${
-                        activeFilter ===
-                        filter.key
-                          ? "bg-black text-white"
-                          : "bg-pink-500 text-white"
-                      }`}
-                    >
-                      {filter.count >
-                      99
-                        ? "99+"
-                        : filter.count}
-                    </span>
-                  )}
-                </button>
-              )
-            )}
-          </div>
-        </section>
-
-        {/* ===================================================
-            CATEGORY DASHBOARD
-        =================================================== */}
-
-        {activeFilter ===
-          "all" && (
-          <section className="mb-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-
-              <CategoryCard
-                title="Messages"
-                subtitle="Direct chat previews"
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <StatCard
+                icon={InboxIcon}
+                label="Unread"
                 count={
-                  unreadMessagesTotal
+                  totalUnread
                 }
-                icon={
-                  <MessageSquare
-                    size={18}
-                    className="text-purple-400"
-                  />
+                accent="hover:border-fuchsia-400/20"
+                onClick={() =>
+                  setActiveFilter(
+                    "all"
+                  )
                 }
-                accent="from-purple-950/50 via-[#111018] to-black"
+              />
+
+              <StatCard
+                icon={Heart}
+                label="Likes"
+                count={
+                  unreadLikes
+                }
+                accent="hover:border-pink-400/20"
+                onClick={() =>
+                  setActiveFilter(
+                    "likes"
+                  )
+                }
+              />
+
+              <StatCard
+                icon={MessageCircle}
+                label="Comments"
+                count={
+                  unreadComments
+                }
+                accent="hover:border-cyan-400/20"
+                onClick={() =>
+                  setActiveFilter(
+                    "comments"
+                  )
+                }
+              />
+
+              <StatCard
+                icon={UserPlus}
+                label="Followers"
+                count={
+                  unreadFollowers
+                }
+                accent="hover:border-emerald-400/20"
+                onClick={() =>
+                  setActiveFilter(
+                    "followers"
+                  )
+                }
+              />
+
+              <StatCard
+                icon={MessageSquare}
+                label="Messages"
+                count={
+                  unreadMessages
+                }
+                accent="hover:border-violet-400/20"
                 onClick={() =>
                   setActiveFilter(
                     "messages"
                   )
                 }
               />
-
-              <CategoryCard
-                title="Followers"
-                subtitle="New connections"
-                count={
-                  unreadFollowers.length
-                }
-                icon={
-                  <UserPlus
-                    size={18}
-                    className="text-blue-400"
-                  />
-                }
-                accent="from-blue-950/50 via-[#111018] to-black"
-                onClick={() => {
-                  setActiveFilter(
-                    "followers"
-                  );
-
-                  if (
-                    unreadFollowers.length >
-                    0
-                  ) {
-                    markCategoryAsRead(
-                      "followers"
-                    );
-                  }
-                }}
-              />
-
-              <CategoryCard
-                title="Likes"
-                subtitle="Video reactions"
-                count={
-                  unreadLikes.length
-                }
-                icon={
-                  <Heart
-                    size={18}
-                    className="text-pink-500 fill-pink-500"
-                  />
-                }
-                accent="from-pink-950/50 via-[#111018] to-black"
-                onClick={() => {
-                  setActiveFilter(
-                    "likes"
-                  );
-
-                  if (
-                    unreadLikes.length >
-                    0
-                  ) {
-                    markCategoryAsRead(
-                      "likes"
-                    );
-                  }
-                }}
-              />
-
-              <CategoryCard
-                title="Comments"
-                subtitle="Video conversations"
-                count={
-                  unreadComments.length
-                }
-                icon={
-                  <MessageCircle
-                    size={18}
-                    className="text-cyan-400"
-                  />
-                }
-                accent="from-cyan-950/50 via-[#111018] to-black"
-                onClick={() => {
-                  setActiveFilter(
-                    "comments"
-                  );
-
-                  if (
-                    unreadComments.length >
-                    0
-                  ) {
-                    markCategoryAsRead(
-                      "comments"
-                    );
-                  }
-                }}
-              />
             </div>
           </section>
-        )}
 
-        {/* ===================================================
-            LIVE STREAMS
-        =================================================== */}
+          {/* ==================================================
+              FILTERS
+              ================================================== */}
 
-        {(
-          activeFilter ===
-            "all" ||
-          activeFilter ===
-            "live"
-        ) &&
-          liveStreams.length >
-            0 && (
-            <section className="mb-6">
-              <div className="flex items-center justify-between mb-2.5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.9)]" />
+          <section className="mb-6">
+            <div className="inbox-scroll-area overflow-x-auto pb-1">
+              <div className="flex min-w-max gap-2">
+                {filters.map(
+                  (filter) => {
+                    const Icon =
+                      filter.icon;
 
-                    <h3 className="text-xs font-black uppercase tracking-[1.5px]">
-                      Live now
-                    </h3>
-                  </div>
-
-                  <p className="text-[10px] text-zinc-600 mt-1">
-                    Creators currently broadcasting
-                  </p>
-                </div>
-
-                <span className="text-[9px] font-black text-rose-400 uppercase">
-                  {liveStreams.length}{" "}
-                  live
-                </span>
-              </div>
-
-              <div className="flex gap-4 overflow-x-auto inbox-hide-scrollbar pb-2">
-                {liveStreams.map(
-                  (live) => (
-                    <motion.button
-                      whileTap={{
-                        scale: 0.95,
-                      }}
-                      key={
-                        live.id
-                      }
-                      onClick={() =>
-                        navigate(
-                          `/live/watch/${live.id}`
-                        )
-                      }
-                      className="flex flex-col items-center min-w-[74px] group"
-                    >
-                      <div className="relative p-[2px] rounded-full bg-gradient-to-tr from-cyan-400 via-pink-500 to-rose-500 shadow-[0_0_14px_rgba(236,72,153,0.4)]">
-                        <img
-                          src={
-                            live
-                              .profiles
-                              ?.avatar_url ||
-                            `https://api.dicebear.com/7.x/avataaars/svg?seed=${live.id}`
-                          }
-                          crossOrigin="anonymous"
-                          referrerPolicy="no-referrer"
-                          className="w-14 h-14 rounded-full object-cover bg-zinc-900"
-                          alt=""
-                        />
-
-                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-rose-600 text-white text-[7px] font-black uppercase">
-                          Live
-                        </span>
-                      </div>
-
-                      <span className="mt-2 text-[10px] font-bold text-zinc-400 group-hover:text-white truncate max-w-[70px]">
-                        @
-                        {live
-                          .profiles
-                          ?.username ||
-                          "creator"}
-                      </span>
-                    </motion.button>
-                  )
-                )}
-              </div>
-            </section>
-          )}
-
-        {/* ===================================================
-            LIVE INVITES
-        =================================================== */}
-
-        {(
-          activeFilter ===
-            "all" ||
-          activeFilter ===
-            "live"
-        ) &&
-          liveInvites.length >
-            0 && (
-            <section className="mb-6">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-
-                  <h3 className="text-xs font-black uppercase tracking-wider text-cyan-300">
-                    Co-host invitations
-                  </h3>
-                </div>
-
-                <span className="text-[9px] font-black text-cyan-400">
-                  {liveInvites.length}{" "}
-                  pending
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {liveInvites.map(
-                  (invite) => {
-                    const hostProfile =
-                      invite.stream
-                        ?.host;
-
-                    const isVideo =
-                      invite.mode ===
-                        "video" ||
-                      !invite.mode;
+                    const active =
+                      activeFilter ===
+                      filter.id;
 
                     return (
-                      <motion.div
-                        layout
-                        key={
-                          invite.id
-                        }
-                        className="rounded-3xl border border-cyan-500/20 bg-gradient-to-r from-cyan-950/30 via-[#0d0d13] to-pink-950/20 p-4"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <img
-                              src={
-                                hostProfile
-                                  ?.avatar_url ||
-                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${invite.id}`
-                              }
-                              className="w-12 h-12 rounded-full object-cover border border-cyan-400/40"
-                              alt=""
-                            />
-
-                            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-rose-500 border-2 border-[#0d0d13] flex items-center justify-center">
-                              <Radio
-                                size={
-                                  9
-                                }
-                                className="text-white"
-                              />
-                            </span>
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-black truncate">
-                                @
-                                {hostProfile
-                                  ?.username ||
-                                  "Host"}
-                              </p>
-
-                              <span className="text-[8px] uppercase font-black px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-400 border border-pink-500/20">
-                                Live
-                              </span>
-                            </div>
-
-                            <p className="text-[11px] text-zinc-500 mt-1">
-                              Invited you to join as{" "}
-                              {isVideo
-                                ? "video"
-                                : "audio"}{" "}
-                              co-host
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2 mt-4">
-                          <button
-                            type="button"
-                            disabled={
-                              acceptingInviteId ===
-                              invite.id
-                            }
-                            onClick={() =>
-                              handleAcceptLiveInvite(
-                                invite
-                              )
-                            }
-                            className="flex-1 h-10 rounded-xl bg-gradient-to-r from-cyan-500 to-pink-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
-                            {acceptingInviteId ===
-                            invite.id ? (
-                              <Loader2
-                                size={
-                                  14
-                                }
-                                className="animate-spin"
-                              />
-                            ) : (
-                              <Sparkles
-                                size={
-                                  14
-                                }
-                              />
-                            )}
-
-                            {acceptingInviteId ===
-                            invite.id
-                              ? "Checking..."
-                              : "Accept & Join"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDeclineLiveInvite(
-                                invite
-                              )
-                            }
-                            className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-[10px] font-black uppercase hover:text-white"
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      </motion.div>
-                    );
-                  }
-                )}
-              </div>
-            </section>
-          )}
-
-        {/* ===================================================
-            ACTIVITY
-        =================================================== */}
-
-        {activeFilter !==
-          "messages" &&
-          activeFilter !==
-            "live" && (
-            <section className="mb-6">
-              <div className="flex items-center justify-between mb-2.5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Flame
-                      size={14}
-                      className="text-pink-500"
-                    />
-
-                    <h3 className="text-xs font-black uppercase tracking-[1.5px]">
-                      {activeFilter ===
-                      "all"
-                        ? "Recent activity"
-                        : `${activeFilter} activity`}
-                    </h3>
-                  </div>
-
-                  <p className="text-[10px] text-zinc-600 mt-1">
-                    Social interactions and updates
-                  </p>
-                </div>
-
-                {filteredActivities.some(
-                  (activity) =>
-                    !activity.is_read
-                ) && (
-                  <button
-                    onClick={() =>
-                      markCategoryAsRead(
-                        activeFilter ===
-                          "all"
-                          ? "all"
-                          : activeFilter
-                      )
-                    }
-                    className="text-[9px] font-black uppercase tracking-wider text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-                  >
-                    <Check
-                      size={12}
-                    />
-                    Mark read
-                  </button>
-                )}
-              </div>
-
-              {filteredActivities.length ===
-              0 ? (
-                <EmptyState
-                  icon={
-                    <Bell
-                      size={28}
-                    />
-                  }
-                  title="No activity"
-                  description="Likes, comments, followers and other interactions will appear here."
-                />
-              ) : (
-                <div className="space-y-2">
-                  {filteredActivities.map(
-                    (item) => {
-                      const isUnread =
-                        !item.is_read;
-
-                      const actorId =
-                        item.actor_id ||
-                        item.actor?.id;
-
-                      const isFollowingBack =
-                        myFollows.has(
-                          actorId
-                        );
-
-                      const isComment =
-                        isCommentType(
-                          item.type
-                        );
-
-                      return (
-                        <motion.div
-                          layout
-                          key={
-                            item.id
-                          }
-                          onClick={(
-                            event
-                          ) =>
-                            handleActivityItemClick(
-                              item,
-                              event
-                            )
-                          }
-                          className={`group flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
-                            isUnread
-                              ? "bg-gradient-to-r from-cyan-950/25 via-white/[0.025] to-pink-950/10 border-cyan-500/25"
-                              : "bg-white/[0.025] border-white/5 hover:bg-white/[0.05]"
-                          }`}
-                        >
-                          <div
-                            className="relative shrink-0"
-                            onClick={(
-                              event
-                            ) =>
-                              handleActorProfileClick(
-                                actorId,
-                                item.id,
-                                event
-                              )
-                            }
-                          >
-                            {item.actor
-                              ?.avatar_url ? (
-                              <img
-                                src={
-                                  item.actor
-                                    .avatar_url
-                                }
-                                crossOrigin="anonymous"
-                                referrerPolicy="no-referrer"
-                                className="w-11 h-11 rounded-full object-cover border border-white/10 group-hover:border-cyan-400/40"
-                                alt=""
-                              />
-                            ) : (
-                              <div className="w-11 h-11 rounded-full bg-zinc-900 border border-white/10 flex items-center justify-center text-cyan-400 text-[10px] font-black">
-                                {item.actor?.username?.substring(
-                                  0,
-                                  2
-                                ) ||
-                                  "??"}
-                              </div>
-                            )}
-
-                            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-black border border-white/10 flex items-center justify-center">
-                              {getActivityIcon(
-                                item.type
-                              )}
-                            </span>
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-[12px] font-black text-white truncate">
-                                @
-                                {item.actor
-                                  ?.username ||
-                                  "user"}
-                              </p>
-
-                              {isUnread && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-pink-500 shrink-0 shadow-[0_0_7px_rgba(236,72,153,1)]" />
-                              )}
-                            </div>
-
-                            <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-                              {getActivityText(
-                                item
-                              )}
-                            </p>
-
-                            <p className="text-[9px] text-zinc-700 font-bold uppercase tracking-wider mt-1">
-                              {item.created_at
-                                ? formatDistanceToNow(
-                                    new Date(
-                                      item.created_at
-                                    ),
-                                    {
-                                      addSuffix:
-                                        true,
-                                    }
-                                  )
-                                : ""}
-                            </p>
-                          </div>
-
-                          {isFollowerType(
-                            item.type
-                          ) ? (
-                            <button
-                              onClick={(
-                                event
-                              ) =>
-                                handleFollowBack(
-                                  actorId,
-                                  event
-                                )
-                              }
-                              disabled={
-                                isFollowingBack
-                              }
-                              className={`px-3 py-1.5 rounded-xl text-[9px] font-black shrink-0 ${
-                                isFollowingBack
-                                  ? "bg-white/5 text-zinc-600 border border-white/5"
-                                  : "bg-pink-500 text-white shadow-lg shadow-pink-500/20"
-                              }`}
-                            >
-                              {isFollowingBack
-                                ? "Friends"
-                                : "Follow Back"}
-                            </button>
-                          ) : (
-                            (
-                              item.video_id ||
-                              item.videos
-                                ?.id
-                            ) && (
-                              <button
-                                onClick={(
-                                  event
-                                ) =>
-                                  handleVideoThumbnailClick(
-                                    item.video_id ||
-                                      item.videos
-                                        ?.id,
-                                    item.id,
-                                    isComment,
-                                    event
-                                  )
-                                }
-                                className="w-10 h-12 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-zinc-900"
-                              >
-                                {item.videos
-                                  ?.thumbnail_url ? (
-                                  <img
-                                    src={
-                                      item
-                                        .videos
-                                        .thumbnail_url
-                                    }
-                                    crossOrigin="anonymous"
-                                    referrerPolicy="no-referrer"
-                                    className="w-full h-full object-cover"
-                                    alt=""
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <Play
-                                      size={
-                                        13
-                                      }
-                                      className="text-cyan-400"
-                                    />
-                                  </div>
-                                )}
-                              </button>
-                            )
-                          )}
-                        </motion.div>
-                      );
-                    }
-                  )}
-                </div>
-              )}
-            </section>
-          )}
-
-        {/* ===================================================
-            MESSAGE PREVIEWS
-        =================================================== */}
-
-        {(
-          activeFilter ===
-            "all" ||
-          activeFilter ===
-            "messages"
-        ) && (
-          <section>
-            <div className="flex items-center justify-between mb-2.5">
-              <div>
-                <div className="flex items-center gap-2">
-                  <MessageSquare
-                    size={14}
-                    className="text-purple-400"
-                  />
-
-                  <h3 className="text-xs font-black uppercase tracking-[1.5px]">
-                    Messages
-                  </h3>
-                </div>
-
-                <p className="text-[10px] text-zinc-600 mt-1">
-                  Conversation previews
-                </p>
-              </div>
-
-              <button
-                onClick={() =>
-                  setShowNewChatModal(
-                    true
-                  )
-                }
-                className="flex items-center gap-1 text-[9px] uppercase font-black tracking-wider text-cyan-400"
-              >
-                <Plus
-                  size={12}
-                />
-                New
-              </button>
-            </div>
-
-            {filteredMessages.length ===
-            0 ? (
-              <EmptyState
-                icon={
-                  <MessageSquare
-                    size={28}
-                  />
-                }
-                title="No conversations yet"
-                description="Start a conversation and your latest messages will appear here."
-                action={
-                  <button
-                    onClick={() =>
-                      setShowNewChatModal(
-                        true
-                      )
-                    }
-                    className="mt-4 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-500 text-black text-[9px] font-black uppercase tracking-wider"
-                  >
-                    Start conversation
-                  </button>
-                }
-              />
-            ) : (
-              <div className="space-y-2">
-                {filteredMessages.map(
-                  (message) => {
-                    const hasUnread =
-                      (
-                        Number(
-                          message.unreadCount
-                        ) || 0
-                      ) > 0;
-
-                    const previewText =
-                      getMessagePreviewText(
-                        message
-                      );
-
-                    const peerId =
-                      message
-                        .displayProfile
-                        ?.id;
-
-                    return (
-                      <motion.button
-                        layout
-                        whileTap={{
-                          scale: 0.99,
-                        }}
-                        key={
-                          message.id ||
-                          peerId
-                        }
-                        onClick={() =>
-                          handleOpenThread(
-                            peerId
-                          )
-                        }
-                        className={`w-full text-left flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
-                          hasUnread
-                            ? "bg-gradient-to-r from-purple-950/30 via-white/[0.025] to-cyan-950/10 border-purple-500/25 shadow-[0_0_18px_rgba(168,85,247,0.08)]"
-                            : "bg-white/[0.025] border-white/5 hover:bg-white/[0.06]"
-                        }`}
-                      >
-                        <div className="relative shrink-0">
-                          <img
-                            src={
-                              message
-                                .displayProfile
-                                ?.avatar_url ||
-                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId}`
-                            }
-                            crossOrigin="anonymous"
-                            referrerPolicy="no-referrer"
-                            className="w-12 h-12 rounded-full object-cover border border-white/10"
-                            alt=""
-                          />
-
-                          {message
-                            .displayProfile
-                            ?.online && (
-                            <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-[#08080b] shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                          )}
-
-                          {hasUnread && (
-                            <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-pink-500 text-white text-[8px] font-black flex items-center justify-center border-2 border-[#08080b]">
-                              {message.unreadCount >
-                              99
-                                ? "99+"
-                                : message.unreadCount}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <p
-                                className={`text-[13px] truncate ${
-                                  hasUnread
-                                    ? "font-black text-white"
-                                    : "font-bold text-zinc-300"
-                                }`}
-                              >
-                                @
-                                {message
-                                  .displayProfile
-                                  ?.username ||
-                                  "user"}
-                              </p>
-
-                              {message
-                                .displayProfile
-                                ?.is_verified && (
-                                <span className="text-cyan-400 text-[10px] shrink-0">
-                                  ✓
-                                </span>
-                              )}
-                            </div>
-
-                            <span className="text-[9px] text-zinc-600 font-bold shrink-0">
-                              {message.updated_at ||
-                              message.created_at
-                                ? formatDistanceToNow(
-                                    new Date(
-                                      message.updated_at ||
-                                        message.created_at
-                                    ),
-                                    {
-                                      addSuffix:
-                                        false,
-                                    }
-                                  )
-                                : ""}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2 mt-1">
-                            <p
-                              className={`text-[11px] truncate flex-1 ${
-                                hasUnread
-                                  ? "text-purple-200 font-bold"
-                                  : "text-zinc-500"
-                              }`}
-                            >
-                              {message.isFromMe && (
-                                <span className="text-zinc-600 mr-1">
-                                  You:
-                                </span>
-                              )}
-
-                              {
-                                previewText
-                              }
-                            </p>
-
-                            <ChevronRight
-                              size={14}
-                              className="text-zinc-700 shrink-0"
-                            />
-                          </div>
-                        </div>
-                      </motion.button>
-                    );
-                  }
-                )}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* ===================================================
-            SUGGESTED PEOPLE
-        =================================================== */}
-
-        {activeFilter ===
-          "all" &&
-          suggestedUsers.length >
-            0 && (
-            <section className="mt-7">
-              <div className="flex items-center justify-between mb-2.5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Users
-                      size={14}
-                      className="text-emerald-400"
-                    />
-
-                    <h3 className="text-xs font-black uppercase tracking-[1.5px]">
-                      People you may know
-                    </h3>
-                  </div>
-
-                  <p className="text-[10px] text-zinc-600 mt-1">
-                    Start a new conversation
-                  </p>
-                </div>
-
-                <button
-                  onClick={() =>
-                    setShowNewChatModal(
-                      true
-                    )
-                  }
-                  className="text-[9px] font-black uppercase text-cyan-400"
-                >
-                  See all
-                </button>
-              </div>
-
-              <div className="flex gap-2 overflow-x-auto inbox-hide-scrollbar">
-                {suggestedUsers
-                  .slice(
-                    0,
-                    8
-                  )
-                  .map(
-                    (user) => (
                       <button
                         key={
-                          user.id
+                          filter.id
                         }
                         onClick={() =>
-                          navigate(
-                            `/messaging?userId=${user.id}`
+                          setActiveFilter(
+                            filter.id
                           )
                         }
-                        className="min-w-[150px] p-3 rounded-2xl bg-white/[0.025] border border-white/5 hover:border-cyan-500/20 transition-all text-left"
+                        className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs font-bold transition ${
+                          active
+                            ? "border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-200"
+                            : "border-white/10 bg-white/[0.025] text-white/45 hover:bg-white/[0.06] hover:text-white/70"
+                        }`}
                       >
-                        <img
-                          src={
-                            user.avatar_url ||
-                            `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`
-                          }
-                          crossOrigin="anonymous"
-                          referrerPolicy="no-referrer"
-                          className="w-10 h-10 rounded-full object-cover border border-white/10"
-                          alt=""
-                        />
+                        <Icon className="h-4 w-4" />
 
-                        <div className="mt-2">
-                          <div className="flex items-center gap-1">
-                            <p className="text-[11px] font-black text-white truncate">
-                              @
-                              {user.username ||
-                                "user"}
-                            </p>
+                        {filter.label}
 
-                            {user.is_verified && (
-                              <span className="text-cyan-400 text-[9px]">
-                                ✓
-                              </span>
-                            )}
-                          </div>
-
-                          {user.full_name && (
-                            <p className="text-[9px] text-zinc-600 truncate mt-0.5">
-                              {
-                                user.full_name
-                              }
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="mt-2 flex items-center gap-1 text-[8px] uppercase font-black text-cyan-400">
-                          <MessageSquare
-                            size={
-                              10
-                            }
-                          />
-                          Message
-                        </div>
+                        {filter.count >
+                          0 && (
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                              active
+                                ? "bg-fuchsia-400/20 text-fuchsia-200"
+                                : "bg-white/10 text-white/50"
+                            }`}
+                          >
+                            {filter.count >
+                            99
+                              ? "99+"
+                              : filter.count}
+                          </span>
+                        )}
                       </button>
-                    )
-                  )}
-              </div>
-            </section>
-          )}
-      </main>
-
-      {/* =====================================================
-          NEW CHAT MODAL
-      ===================================================== */}
-
-      <AnimatePresence>
-        {showNewChatModal && (
-          <>
-            <motion.div
-              initial={{
-                opacity: 0,
-              }}
-              animate={{
-                opacity: 1,
-              }}
-              exit={{
-                opacity: 0,
-              }}
-              onClick={() =>
-                setShowNewChatModal(
-                  false
-                )
-              }
-              className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120]"
-            />
-
-            <motion.div
-              initial={{
-                opacity: 0,
-                scale: 0.95,
-                y: 20,
-              }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                y: 0,
-              }}
-              exit={{
-                opacity: 0,
-                scale: 0.95,
-                y: 20,
-              }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94%] max-w-md max-h-[85vh] bg-[#0c0c12] border border-cyan-500/20 rounded-3xl z-[121] flex flex-col shadow-2xl overflow-hidden"
-            >
-              <div className="p-4 border-b border-white/10 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-                    <MessageSquare
-                      size={16}
-                      className="text-purple-400"
-                    />
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-black">
-                      New conversation
-                    </h3>
-
-                    <p className="text-[9px] text-zinc-600 uppercase tracking-wider">
-                      Choose someone to message
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() =>
-                    setShowNewChatModal(
-                      false
-                    )
+                    );
                   }
-                  className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-zinc-500 hover:text-white"
-                >
-                  <X
-                    size={16}
-                  />
-                </button>
-              </div>
-
-              <div className="p-3 border-b border-white/10">
-                <div className="relative">
-                  <Search
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
-                  />
-
-                  <input
-                    value={
-                      newChatSearch
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setNewChatSearch(
-                        event
-                          .target
-                          .value
-                      )
-                    }
-                    placeholder="Search username or name..."
-                    autoFocus
-                    className="w-full h-10 rounded-xl bg-white/[0.04] border border-white/10 pl-9 pr-4 text-xs outline-none focus:border-cyan-500/40"
-                  />
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto inbox-scrollbar p-3 space-y-1.5">
-                <p className="text-[9px] uppercase font-black tracking-[2px] text-zinc-600 px-2 py-1">
-                  {newChatSearch
-                    ? "Search results"
-                    : "Suggested people"}
-                </p>
-
-                {filteredSuggestedUsers.length ===
-                0 ? (
-                  <EmptyState
-                    icon={
-                      <Users
-                        size={26}
-                      />
-                    }
-                    title="No people found"
-                    description="Try another username or name."
-                  />
-                ) : (
-                  filteredSuggestedUsers.map(
-                    (user) => {
-                      const isFollowed =
-                        myFollows.has(
-                          user.id
-                        );
-
-                      return (
-                        <button
-                          key={
-                            user.id
-                          }
-                          onClick={() => {
-                            setShowNewChatModal(
-                              false
-                            );
-
-                            setNewChatSearch(
-                              ""
-                            );
-
-                            navigate(
-                              `/messaging?userId=${user.id}`
-                            );
-                          }}
-                          className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 border border-transparent hover:border-cyan-500/15 transition-all text-left"
-                        >
-                          <img
-                            src={
-                              user.avatar_url ||
-                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`
-                            }
-                            crossOrigin="anonymous"
-                            referrerPolicy="no-referrer"
-                            className="w-10 h-10 rounded-full object-cover border border-white/10"
-                            alt=""
-                          />
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-xs font-black text-white truncate">
-                                @
-                                {user.username ||
-                                  "user"}
-                              </p>
-
-                              {user.is_verified && (
-                                <span className="text-cyan-400 text-[9px]">
-                                  ✓
-                                </span>
-                              )}
-                            </div>
-
-                            {user.full_name && (
-                              <p className="text-[10px] text-zinc-500 truncate">
-                                {
-                                  user.full_name
-                                }
-                              </p>
-                            )}
-                          </div>
-
-                          {isFollowed && (
-                            <span className="text-[8px] font-black uppercase px-2 py-1 rounded-md bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                              Friend
-                            </span>
-                          )}
-
-                          <div className="w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
-                            <Send
-                              size={
-                                13
-                              }
-                            />
-                          </div>
-                        </button>
-                      );
-                    }
-                  )
                 )}
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+            </div>
+          </section>
 
-      {/* =====================================================
-          ACTIVITY DRAWERS
-      ===================================================== */}
+          {/* ==================================================
+              LIVE AREA
+              ================================================== */}
+
+          {activeFilter ===
+            "all" &&
+            !normalizedSearch && (
+              <>
+                {liveInvites.length >
+                  0 && (
+                  <section className="mb-7">
+                    <SectionHeader
+                      icon={Radio}
+                      title="Live invitations"
+                      count={
+                        liveInvites.length
+                      }
+                    />
+
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {liveInvites.map(
+                        (invite) => (
+                          <InviteCard
+                            key={
+                              invite.id
+                            }
+                            invite={
+                              invite
+                            }
+                          />
+                        )
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                {liveStreams.length >
+                  0 && (
+                  <section className="mb-7">
+                    <SectionHeader
+                      icon={Radio}
+                      title="Live now"
+                      action={() =>
+                        navigate(
+                          "/live"
+                        )
+                      }
+                      actionLabel="See all"
+                    />
+
+                    <div className="inbox-scroll-area flex gap-3 overflow-x-auto pb-2">
+                      {liveStreams.map(
+                        (
+                          stream
+                        ) => (
+                          <LiveCard
+                            key={
+                              stream.id
+                            }
+                            stream={
+                              stream
+                            }
+                          />
+                        )
+                      )}
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
+
+          {/* ==================================================
+              MAIN CONTENT GRID
+              ================================================== */}
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+            {/* =================================================
+                ACTIVITIES
+                ================================================= */}
+
+            <section>
+              <SectionHeader
+                icon={Bell}
+                title={
+                  activeFilter ===
+                  "messages"
+                    ? "Messages"
+                    : "Activity"
+                }
+                count={
+                  activeFilter ===
+                  "messages"
+                    ? unreadMessages
+                    : unreadActivityTotal
+                }
+                action={
+                  activeFilter ===
+                    "all" &&
+                  activities.length >
+                    0
+                    ? () =>
+                        setIsActivityPanelOpen(
+                          true
+                        )
+                    : undefined
+                }
+                actionLabel="View all"
+              />
+
+              {activeFilter ===
+                "messages" ? (
+                <div className="space-y-3">
+                  {filteredMessages.length ? (
+                    filteredMessages.map(
+                      (message) => (
+                        <MessagePreview
+                          key={
+                            message.id
+                          }
+                          message={
+                            message
+                          }
+                        />
+                      )
+                    )
+                  ) : (
+                    <EmptyState
+                      icon={
+                        MessageSquare
+                      }
+                      title="No messages"
+                      text="You don't have any message previews matching this search."
+                      action={() =>
+                        setShowNewChatModal(
+                          true
+                        )
+                      }
+                      actionLabel="Start a message"
+                    />
+                  )}
+                </div>
+              ) : filteredActivities.length ? (
+                <div className="space-y-3">
+                  {filteredActivities.map(
+                    (
+                      activity
+                    ) => (
+                      <ActivityRow
+                        key={
+                          activity.id
+                        }
+                        activity={
+                          activity
+                        }
+                      />
+                    )
+                  )}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={
+                    activeFilter ===
+                    "followers"
+                      ? UserPlus
+                      : activeFilter ===
+                        "likes"
+                      ? Heart
+                      : activeFilter ===
+                        "comments"
+                      ? MessageCircle
+                      : InboxIcon
+                  }
+                  title={
+                    normalizedSearch
+                      ? "No matching activity"
+                      : activeFilter ===
+                        "all"
+                      ? "You're all caught up"
+                      : `No ${activeFilter} yet`
+                  }
+                  text={
+                    normalizedSearch
+                      ? "Try another search term."
+                      : "New activity will appear here when people interact with you."
+                  }
+                />
+              )}
+            </section>
+
+            {/* =================================================
+                SIDEBAR
+                ================================================= */}
+
+            <aside className="space-y-6">
+              {/* =================================================
+                  MESSAGE PREVIEWS
+                  ================================================= */}
+
+              {activeFilter ===
+                "all" && (
+                <section>
+                  <SectionHeader
+                    icon={
+                      MessageSquare
+                    }
+                    title="Messages"
+                    count={
+                      unreadMessages
+                    }
+                    action={() =>
+                      setActiveFilter(
+                        "messages"
+                      )
+                    }
+                    actionLabel="Open"
+                  />
+
+                  <div className="space-y-3">
+                    {messages.length ? (
+                      messages
+                        .slice(0, 5)
+                        .map(
+                          (
+                            message
+                          ) => (
+                            <MessagePreview
+                              key={
+                                message.id
+                              }
+                              message={
+                                message
+                              }
+                            />
+                          )
+                        )
+                    ) : (
+                      <EmptyState
+                        icon={
+                          MessageSquare
+                        }
+                        title="No messages"
+                        text="Message previews will appear here."
+                        action={() =>
+                          setShowNewChatModal(
+                            true
+                          )
+                        }
+                        actionLabel="New message"
+                      />
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* =================================================
+                  SUGGESTIONS
+                  ================================================= */}
+
+              {activeFilter ===
+                "all" && (
+                <section>
+                  <SectionHeader
+                    icon={
+                      UserPlus
+                    }
+                    title="People you may know"
+                  />
+
+                  <div className="space-y-2">
+                    {suggestedUsers
+                      .filter(
+                        (user) =>
+                          !myFollows.has(
+                            user.id
+                          )
+                      )
+                      .slice(0, 5)
+                      .map(
+                        (user) => (
+                          <SuggestedUserCard
+                            key={
+                              user.id
+                            }
+                            user={
+                              user
+                            }
+                          />
+                        )
+                      )}
+
+                    {!suggestedUsers.length && (
+                      <EmptyState
+                        icon={
+                          Users
+                        }
+                        title="No suggestions"
+                        text="New people to connect with will appear here."
+                      />
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* =================================================
+                  QUICK ACTIONS
+                  ================================================= */}
+
+              {activeFilter ===
+                "all" && (
+                <section>
+                  <SectionHeader
+                    icon={Zap}
+                    title="Quick actions"
+                  />
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() =>
+                        setActiveFilter(
+                          "messages"
+                        )
+                      }
+                      className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition hover:bg-white/[0.06]"
+                    >
+                      <MessageCircle className="h-5 w-5 text-cyan-300" />
+
+                      <p className="mt-3 text-xs font-bold text-white">
+                        Messages
+                      </p>
+
+                      <p className="mt-1 text-[10px] text-white/30">
+                        View conversations
+                      </p>
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        setShowNewChatModal(
+                          true
+                        )
+                      }
+                      className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition hover:bg-white/[0.06]"
+                    >
+                      <Send className="h-5 w-5 text-fuchsia-300" />
+
+                      <p className="mt-3 text-xs font-bold text-white">
+                        New message
+                      </p>
+
+                      <p className="mt-1 text-[10px] text-white/30">
+                        Start a conversation
+                      </p>
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        setIsFollowerPanelOpen(
+                          true
+                        )
+                      }
+                      className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition hover:bg-white/[0.06]"
+                    >
+                      <UserPlus className="h-5 w-5 text-emerald-300" />
+
+                      <p className="mt-3 text-xs font-bold text-white">
+                        Followers
+                      </p>
+
+                      <p className="mt-1 text-[10px] text-white/30">
+                        Recent followers
+                      </p>
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        setIsLikesPanelOpen(
+                          true
+                        )
+                      }
+                      className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition hover:bg-white/[0.06]"
+                    >
+                      <Heart className="h-5 w-5 text-pink-300" />
+
+                      <p className="mt-3 text-xs font-bold text-white">
+                        Likes
+                      </p>
+
+                      <p className="mt-1 text-[10px] text-white/30">
+                        Video reactions
+                      </p>
+                    </button>
+                  </div>
+                </section>
+              )}
+            </aside>
+          </div>
+
+          {/* ==================================================
+              FOOTER
+              ================================================== */}
+
+          <div className="mt-10 flex flex-col items-center justify-center gap-2 border-t border-white/[0.06] pt-6 text-center">
+            <div className="flex items-center gap-2 text-white/20">
+              <CircleDot className="h-3 w-3" />
+
+              <span className="text-[10px] font-semibold uppercase tracking-[0.2em]">
+                Inbox synced
+              </span>
+
+              <CircleDot className="h-3 w-3" />
+            </div>
+
+            <p className="text-[10px] text-white/15">
+              Read status is synchronized with your account.
+            </p>
+          </div>
+        </div>
+      </main>
+
+      {/* ======================================================
+          DRAWERS
+          ====================================================== */}
 
       <ActivityDrawer
-        isOpen={
+        open={
           isFollowerPanelOpen
         }
-        onClose={() =>
-          setIsFollowerPanelOpen(
-            false
-          )
-        }
         title="Followers"
-        categoryKey="followers"
-        data={activities.filter(
+        icon={UserPlus}
+        activities={activities.filter(
           (activity) =>
             isFollowerType(
               activity.type
             )
         )}
-      />
-
-      <ActivityDrawer
-        isOpen={
-          isLikesPanelOpen
-        }
         onClose={() =>
-          setIsLikesPanelOpen(
+          setIsFollowerPanelOpen(
             false
           )
         }
+      />
+
+      <ActivityDrawer
+        open={
+          isLikesPanelOpen
+        }
         title="Likes"
-        categoryKey="likes"
-        data={activities.filter(
+        icon={Heart}
+        activities={activities.filter(
           (activity) =>
             isLikeType(
               activity.type
             )
         )}
-      />
-
-      <ActivityDrawer
-        isOpen={
-          isCommentsPanelOpen
-        }
         onClose={() =>
-          setIsCommentsPanelOpen(
+          setIsLikesPanelOpen(
             false
           )
         }
+      />
+
+      <ActivityDrawer
+        open={
+          isCommentsPanelOpen
+        }
         title="Comments"
-        categoryKey="comments"
-        data={activities.filter(
+        icon={MessageCircle}
+        activities={activities.filter(
           (activity) =>
             isCommentType(
               activity.type
             )
         )}
+        onClose={() =>
+          setIsCommentsPanelOpen(
+            false
+          )
+        }
       />
 
       <ActivityDrawer
-        isOpen={
+        open={
           isActivityPanelOpen
         }
+        title="All activity"
+        icon={Bell}
+        activities={activities}
         onClose={() =>
           setIsActivityPanelOpen(
             false
           )
         }
-        title="Activity"
-        categoryKey="activity"
-        data={activities.filter(
-          (activity) =>
-            !isFollowerType(
-              activity.type
-            ) &&
-            !isLikeType(
-              activity.type
-            ) &&
-            !isCommentType(
-              activity.type
-            )
-        )}
       />
+
+      {/* ======================================================
+          NEW CHAT
+          ====================================================== */}
+
+      <NewChatModal />
     </div>
   );
 };
