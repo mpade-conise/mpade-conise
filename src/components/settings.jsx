@@ -1,28 +1,15 @@
-// src/pages/SettingsPage.jsx
-
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState
-} from "react";
-
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import {
-  motion,
-  AnimatePresence
-} from "framer-motion";
-
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Search,
   X,
   ChevronRight,
   ChevronDown,
-  Check,
   User,
   ShieldCheck,
+  Shield,
   Lock,
   KeyRound,
   Smartphone,
@@ -34,181 +21,121 @@ import {
   Palette,
   Database,
   HardDrive,
-  Download,
-  Upload,
   Wallet,
   CreditCard,
   Banknote,
   Coins,
-  Gift,
   BarChart3,
-  Radio,
   Video,
+  Radio,
   CalendarClock,
   FolderOpen,
   Trophy,
   Sparkles,
-  BriefcaseBusiness,
-  FileText,
-  ShieldAlert,
+  Bot,
+  Copyright,
   MessageCircle,
+  MessagesSquare,
   Users,
   UserPlus,
   Heart,
-  MessageSquare,
-  SlidersHorizontal,
+  Download,
+  FileDown,
+  Link2,
+  Plug,
   Accessibility,
   LifeBuoy,
-  CircleHelp,
-  Flag,
+  AlertTriangle,
+  FileText,
   Settings2,
+  Activity,
   Server,
   RefreshCw,
   Wifi,
   Trash2,
   LogOut,
-  AlertTriangle,
-  Info,
-  ExternalLink,
-  Copy,
+  UserX,
+  UserRoundCog,
   CheckCircle2,
   CircleAlert,
-  Activity,
-  Fingerprint,
-  Mail,
-  Phone,
-  MapPin,
-  Calendar,
-  BadgeCheck,
-  UserCog,
-  UserRoundX,
-  FileDown,
-  History,
-  Link2,
-  Ban,
+  Info,
+  Share2,
+  SlidersHorizontal,
   Volume2,
-  VolumeX,
+  Zap,
+  MousePointer2,
+  Moon,
+  Sun,
+  Monitor,
+  Fingerprint,
+  History,
+  BadgeCheck,
+  ShieldAlert,
+  Ban,
+  MessageSquareWarning,
+  Upload,
   Image,
   Music,
-  FileArchive,
-  Tag,
-  Target,
-  Medal,
+  Archive,
+  Clock3,
+  Flag,
+  BriefcaseBusiness,
   Megaphone,
-  Newspaper,
-  FileBarChart,
-  Shield,
-  DatabaseBackup,
-  MonitorSmartphone
+  Target,
+  Gift,
+  CreditCard as PaymentCard,
+  FileSpreadsheet,
+  FileJson,
+  FileType2,
+  CloudDownload,
+  HardDriveDownload,
+  MoreHorizontal
 } from "lucide-react";
 
 import { supabase } from "../supabaseClient";
 
-/* ============================================================
-   CONSTANTS
-============================================================ */
+/*
+|--------------------------------------------------------------------------
+| APPLICATION CONFIG
+|--------------------------------------------------------------------------
+*/
 
 const APP_VERSION = "2.4.0-Beta";
+const APP_NAME = "Mpade Universe";
 
-const STORAGE_KEYS = {
-  dataSaver: "mpade_settings_data_saver",
-  theme: "mpade_settings_theme",
-  accent: "mpade_settings_accent",
-  language: "mpade_settings_language",
-  density: "mpade_settings_density",
-  reduceMotion: "mpade_settings_reduce_motion",
-  autoplay: "mpade_settings_autoplay",
-  highContrast: "mpade_settings_high_contrast"
-};
+/*
+|--------------------------------------------------------------------------
+| SETTINGS CATEGORIES
+|--------------------------------------------------------------------------
+*/
 
-/* ============================================================
-   HELPERS
-============================================================ */
-
-const readStorage = (key, fallback) => {
-  try {
-    const value = localStorage.getItem(key);
-
-    if (value === null) {
-      return fallback;
-    }
-
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-};
-
-const writeStorage = (key, value) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Storage may be unavailable.
-  }
-};
-
-const formatNumber = (value) => {
-  const number = Number(value);
-
-  if (!Number.isFinite(number)) {
-    return "0";
-  }
-
-  return number.toLocaleString();
-};
-
-const formatCurrency = (value, currency = "MWK") => {
-  const number = Number(value);
-
-  if (!Number.isFinite(number)) {
-    return `${currency} 0`;
-  }
-
-  return `${currency} ${number.toLocaleString()}`;
-};
-
-const getInitials = (name = "Mpade Universe") => {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase())
-    .join("");
-};
-
-/* ============================================================
-   SETTING CONFIGURATION
-============================================================ */
-
-const SETTINGS_GROUPS = [
+const SETTINGS_CATEGORIES = [
   {
     id: "account",
     title: "Account",
-    description: "Manage your identity, account type and account lifecycle.",
+    description: "Manage your profile, account type and account lifecycle.",
     icon: User,
-    color: "cyan",
+    color: "text-cyan-400",
     items: [
       {
         id: "account-information",
         title: "Account Information",
-        description: "Username, profile, email, phone, location and account ID.",
+        description: "Username, name, profile, email, phone and account status.",
         icon: User,
-        route: "/edit-profile",
-        badge: "Profile"
+        route: "/edit-profile"
       },
       {
         id: "account-type",
         title: "Account Type",
-        description: "Personal, creator, professional or business account.",
-        icon: UserCog,
-        badge: "Account"
+        description: "Personal, creator, professional and business account modes.",
+        icon: UserRoundCog
       },
       {
         id: "account-management",
         title: "Account Management",
-        description: "Recovery, deactivation, deletion and account data.",
+        description: "Deactivate, delete, recover or download your account data.",
         icon: Settings2,
-        badge: "Manage"
+        danger: true
       }
     ]
   },
@@ -216,24 +143,22 @@ const SETTINGS_GROUPS = [
   {
     id: "security",
     title: "Security & Privacy",
-    description: "Protect your account and control your privacy.",
+    description: "Protect your account and control who can access you.",
     icon: ShieldCheck,
-    color: "purple",
+    color: "text-emerald-400",
     items: [
       {
         id: "security",
         title: "Security",
-        description: "Password, 2FA, passkeys, sessions and login protection.",
-        icon: Lock,
-        route: "/settings/security",
-        badge: "Secure"
+        description: "Password, 2FA, passkeys, login alerts and active sessions.",
+        icon: Shield,
+        route: "/settings/security"
       },
       {
         id: "privacy",
         title: "Privacy",
-        description: "Control who can see, follow, message and interact with you.",
-        icon: Eye,
-        route: "/settings/privacy"
+        description: "Control profile visibility, activity and discoverability.",
+        icon: Eye
       },
       {
         id: "blocked",
@@ -244,8 +169,8 @@ const SETTINGS_GROUPS = [
       {
         id: "connected-apps",
         title: "Connected Apps",
-        description: "OAuth apps, authorized devices and third-party permissions.",
-        icon: Link2,
+        description: "OAuth applications, API access and permissions.",
+        icon: Plug,
         route: "/settings/apps"
       }
     ]
@@ -254,44 +179,43 @@ const SETTINGS_GROUPS = [
   {
     id: "social",
     title: "Content & Social",
-    description: "Control notifications, comments, messages and audience interactions.",
+    description: "Control notifications, messages, comments and your audience.",
     icon: MessageCircle,
-    color: "pink",
+    color: "text-pink-400",
     items: [
       {
         id: "notifications",
         title: "Notifications",
-        description: "Push, email, SMS, sounds, quiet hours and notification categories.",
+        description: "Push, email, SMS, sounds, quiet hours and notification history.",
         icon: Bell,
         route: "/settings/notifications"
       },
       {
         id: "content",
         title: "Content Preferences",
-        description: "Video privacy, downloads, comments, reposts and content warnings.",
+        description: "Default privacy, downloads, comments, uploads and content warnings.",
         icon: Video,
         route: "/settings/content"
       },
       {
         id: "comments",
         title: "Comments",
-        description: "Moderation, offensive comments, spam and hidden words.",
-        icon: MessageSquare,
+        description: "Comment permissions, filters and moderation.",
+        icon: MessageSquareWarning,
         route: "/settings/comments"
       },
       {
         id: "messages",
         title: "Messages",
-        description: "Message requests, groups, read receipts and typing indicators.",
-        icon: MessageCircle,
+        description: "Message requests, groups, read receipts and privacy.",
+        icon: MessagesSquare,
         route: "/settings/messages"
       },
       {
         id: "followers",
         title: "Followers & Audience",
-        description: "Follow requests, follower management and discoverability.",
-        icon: Users,
-        route: "/settings/followers"
+        description: "Follower requests, suggestions and discoverability.",
+        icon: Users
       }
     ]
   },
@@ -299,35 +223,35 @@ const SETTINGS_GROUPS = [
   {
     id: "experience",
     title: "Experience",
-    description: "Customize data usage, language, appearance and accessibility.",
+    description: "Customize performance, language, appearance and accessibility.",
     icon: SlidersHorizontal,
-    color: "orange",
+    color: "text-violet-400",
     items: [
       {
         id: "data",
         title: "Data & Storage",
-        description: "Data saver, autoplay, uploads, downloads, cache and storage.",
+        description: "Data saver, autoplay, cache, downloads and storage usage.",
         icon: Database,
         route: "/settings/data"
       },
       {
         id: "language",
         title: "Language & Region",
-        description: "Language, translation, timezone, country and currency.",
+        description: "Language, translation, timezone, currency and regional formats.",
         icon: Languages,
         route: "/settings/language"
       },
       {
         id: "appearance",
         title: "Appearance",
-        description: "Theme, neon mode, accent, density, animation and contrast.",
+        description: "Theme, neon mode, density, animation and visual effects.",
         icon: Palette,
         route: "/settings/appearance"
       },
       {
         id: "accessibility",
         title: "Accessibility",
-        description: "Font size, captions, motion, contrast and assistive features.",
+        description: "Font size, contrast, captions, motion and touch controls.",
         icon: Accessibility,
         route: "/settings/accessibility"
       }
@@ -337,84 +261,84 @@ const SETTINGS_GROUPS = [
   {
     id: "creator",
     title: "Creator",
-    description: "Creator tools, analytics, monetization, livestreaming and growth.",
+    description: "Creator tools, analytics, monetization and publishing.",
     icon: Sparkles,
-    color: "cyan",
+    color: "text-cyan-300",
     items: [
       {
-        id: "creator-dashboard",
+        id: "creator-studio",
         title: "Creator Studio",
-        description: "Professional dashboard, creator mode and creator profile.",
+        description: "Manage your creator dashboard and professional profile.",
         icon: BarChart3,
         route: "/universe-tools"
       },
       {
         id: "creator-analytics",
         title: "Analytics",
-        description: "Audience, content performance, growth and earnings.",
-        icon: BarChart3,
+        description: "Audience, growth, content performance and earnings analytics.",
+        icon: Activity,
         route: "/universe-tools"
       },
       {
         id: "creator-monetization",
         title: "Monetization",
-        description: "Creator fund, earnings, gifts and monetization programs.",
+        description: "Creator fund, earnings, subscriptions, gifts and paid content.",
         icon: Coins,
         route: "/settings/creator/monetization"
       },
       {
         id: "creator-gifts",
         title: "Gifts",
-        description: "Virtual gifts, tokens and creator gift earnings.",
+        description: "Gift earnings, received gifts and virtual items.",
         icon: Gift,
         route: "/settings/creator/gifts"
       },
       {
         id: "creator-subscriptions",
         title: "Subscriptions",
-        description: "Subscribers, subscription payments and benefits.",
-        icon: Users,
+        description: "Subscriber settings, payments and subscriber benefits.",
+        icon: BadgeCheck,
         route: "/settings/creator/subscriptions"
       },
       {
-        id: "creator-livestream",
+        id: "creator-live",
         title: "Livestream",
-        description: "Live settings, gifts, moderation and live permissions.",
+        description: "Live settings, moderation, gifts and live preferences.",
         icon: Radio,
         route: "/settings/creator/livestream"
       },
       {
         id: "creator-scheduling",
         title: "Scheduling",
-        description: "Schedule videos and livestreams for automatic publishing.",
+        description: "Schedule videos, lives and automatic publishing.",
         icon: CalendarClock,
         route: "/settings/creator/scheduling"
       },
       {
         id: "creator-library",
         title: "Content Library",
-        description: "Videos, drafts, images, audio, recordings and archives.",
+        description: "Videos, drafts, thumbnails, audio and live recordings.",
         icon: FolderOpen,
         route: "/settings/creator/library"
       },
       {
         id: "creator-progress",
-        title: "Progress & Achievements",
-        description: "Level, XP, streaks, milestones, badges and rewards.",
+        title: "Goals & Achievements",
+        description: "Level, XP, badges, streaks, milestones and rewards.",
         icon: Trophy,
         route: "/settings/creator/progress"
       },
       {
         id: "creator-ai",
         title: "Creator AI",
-        description: "Captions, hashtags, scripts, thumbnails and AI tools.",
-        icon: Sparkles,
+        description: "AI assistant, captions, scripts, hashtags and analysis.",
+        icon: Bot,
         route: "/settings/ai"
       },
       {
         id: "creator-brand",
         title: "Brand & Collaborations",
-        description: "Campaigns, media kit, portfolio, rates and partnerships.",
+        description: "Campaigns, partnerships, media kit and sponsored content.",
         icon: BriefcaseBusiness,
         route: "/settings/creator/brand"
       }
@@ -424,36 +348,35 @@ const SETTINGS_GROUPS = [
   {
     id: "payments",
     title: "Payments & Monetization",
-    description: "Wallet, payment methods, payouts and financial history.",
+    description: "Wallet, payment methods, payouts and transactions.",
     icon: Wallet,
-    color: "emerald",
+    color: "text-green-400",
     items: [
       {
         id: "wallet",
         title: "Wallet",
-        description: "Balance, coins, tokens, pending and lifetime earnings.",
+        description: "Balance, coins, tokens, earnings and pending funds.",
         icon: Wallet,
         route: "/payouts"
       },
       {
         id: "payment-methods",
         title: "Payment Methods",
-        description: "TNM Mpamba, Airtel Money, bank and verification.",
-        icon: CreditCard
+        description: "TNM Mpamba, Airtel Money, bank and payout verification.",
+        icon: PaymentCard
       },
       {
         id: "payouts",
         title: "Payouts",
-        description: "Request payouts, limits, status and payout schedule.",
+        description: "Request payouts, limits, status and payout history.",
         icon: Banknote,
         route: "/payouts"
       },
       {
         id: "transactions",
         title: "Transactions",
-        description: "Purchases, gifts, subscriptions, earnings and refunds.",
-        icon: History,
-        route: "/settings/transactions"
+        description: "Purchases, gifts, coins, subscriptions and refunds.",
+        icon: CreditCard
       }
     ]
   },
@@ -461,41 +384,82 @@ const SETTINGS_GROUPS = [
   {
     id: "safety",
     title: "Safety & Legal",
-    description: "Copyright, content safety, policies and platform rules.",
+    description: "Copyright, content safety, rules and legal information.",
     icon: ShieldAlert,
-    color: "red",
+    color: "text-red-400",
     items: [
       {
         id: "copyright",
         title: "Copyright",
         description: "Claims, strikes, disputes, appeals and music rights.",
-        icon: ShieldCheck,
+        icon: Copyright,
         route: "/settings/copyright"
       },
       {
-        id: "content-safety",
+        id: "safety",
         title: "Content Safety",
-        description: "Warnings, violations, restrictions and removed content.",
+        description: "Warnings, violations, removed and restricted content.",
         icon: ShieldAlert
       },
       {
-        id: "community-guidelines",
+        id: "guidelines",
         title: "Community Guidelines",
-        description: "Rules for safe and responsible participation.",
+        description: "Rules for keeping Mpade Universe safe.",
         icon: FileText
       },
       {
         id: "privacy-policy",
         title: "Privacy Policy",
-        description: "Learn how Mpade Universe handles your information.",
+        description: "How Mpade Universe handles information.",
         icon: Eye,
         route: "/privacy"
       },
       {
         id: "terms",
         title: "Terms of Service",
-        description: "Platform terms and conditions.",
+        description: "Terms and conditions for using the platform.",
         icon: FileText
+      }
+    ]
+  },
+
+  {
+    id: "ai",
+    title: "AI & Personalization",
+    description: "Manage AI features, recommendations and AI data usage.",
+    icon: Bot,
+    color: "text-fuchsia-400",
+    items: [
+      {
+        id: "ai-settings",
+        title: "AI Assistant",
+        description: "Assistant, recommendations and personalization.",
+        icon: Bot,
+        route: "/settings/ai"
+      },
+      {
+        id: "ai-content",
+        title: "AI Content Tools",
+        description: "Captions, scripts, hashtags, thumbnails and video analysis.",
+        icon: Sparkles
+      },
+      {
+        id: "ai-moderation",
+        title: "AI Moderation",
+        description: "Automated moderation and safety assistance.",
+        icon: ShieldCheck
+      },
+      {
+        id: "ai-data",
+        title: "AI Data Usage",
+        description: "Control how your activity is used for AI personalization.",
+        icon: Database
+      },
+      {
+        id: "ai-history",
+        title: "AI History",
+        description: "View or clear previous AI interactions.",
+        icon: History
       }
     ]
   },
@@ -503,37 +467,34 @@ const SETTINGS_GROUPS = [
   {
     id: "data-reports",
     title: "Data & Reports",
-    description: "Download your personal data and creator reports.",
-    icon: FileBarChart,
-    color: "blue",
+    description: "Export personal data, analytics and financial reports.",
+    icon: FileDown,
+    color: "text-blue-400",
     items: [
       {
         id: "personal-data",
         title: "Download My Data",
-        description: "Request a copy of your account information.",
-        icon: Download,
+        description: "Request an archive of your personal account data.",
+        icon: CloudDownload,
         route: "/settings/reports"
       },
       {
         id: "analytics-export",
         title: "Export Analytics",
-        description: "Export creator analytics and performance data.",
-        icon: BarChart3,
-        route: "/settings/reports"
+        description: "Export creator analytics in supported formats.",
+        icon: BarChart3
       },
       {
         id: "earnings-reports",
         title: "Earnings Reports",
         description: "Creator earnings and financial reports.",
-        icon: Banknote,
-        route: "/settings/reports"
+        icon: FileSpreadsheet
       },
       {
         id: "creator-reports",
         title: "Creator Reports",
-        description: "Monthly creator, audience and content reports.",
-        icon: Newspaper,
-        route: "/settings/reports"
+        description: "Monthly creator performance reports.",
+        icon: FileText
       }
     ]
   },
@@ -541,40 +502,28 @@ const SETTINGS_GROUPS = [
   {
     id: "support",
     title: "Support",
-    description: "Get help, report problems and manage support requests.",
+    description: "Get help, report issues and contact Mpade Universe.",
     icon: LifeBuoy,
-    color: "zinc",
+    color: "text-zinc-300",
     items: [
       {
         id: "help",
         title: "Help Center",
-        description: "Guides and answers to common questions.",
-        icon: CircleHelp,
+        description: "Find answers and guides.",
+        icon: LifeBuoy,
         route: "/support"
       },
       {
-        id: "report-problem",
+        id: "report",
         title: "Report a Problem",
-        description: "Report technical issues or inappropriate content.",
+        description: "Report account, content or technical problems.",
         icon: Flag
       },
       {
-        id: "copyright-support",
-        title: "Copyright Support",
-        description: "Get help with copyright claims and disputes.",
-        icon: ShieldCheck
-      },
-      {
-        id: "payments-support",
-        title: "Payments Support",
-        description: "Get help with payments and payouts.",
-        icon: Banknote
-      },
-      {
-        id: "creator-support",
-        title: "Creator Support",
-        description: "Support for creators and monetization.",
-        icon: Sparkles
+        id: "tickets",
+        title: "Support Tickets",
+        description: "View your previous support requests.",
+        icon: MessageCircle
       },
       {
         id: "account-recovery",
@@ -583,16 +532,16 @@ const SETTINGS_GROUPS = [
         icon: KeyRound
       },
       {
-        id: "support-tickets",
-        title: "Support Tickets",
-        description: "View your submitted support requests.",
-        icon: FileText
+        id: "safety-center",
+        title: "Safety Center",
+        description: "Safety resources and account protection.",
+        icon: ShieldCheck
       },
       {
         id: "about",
-        title: "About Mpade Universe",
-        description: "Application information and platform details.",
-        icon: Info,
+        title: `About ${APP_NAME}`,
+        description: "Application information and version details.",
+        icon: Smartphone,
         route: "/about"
       }
     ]
@@ -601,288 +550,280 @@ const SETTINGS_GROUPS = [
   {
     id: "system",
     title: "System",
-    description: "Application status, synchronization, diagnostics and storage.",
+    description: "Diagnostics, connectivity, synchronization and application status.",
     icon: Server,
-    color: "zinc",
+    color: "text-orange-400",
     items: [
-      {
-        id: "system-status",
-        title: "System Status",
-        description: "Server, database, storage and media-processing status.",
-        icon: Server
-      },
       {
         id: "diagnostics",
         title: "Diagnostics",
-        description: "Network, synchronization and application diagnostics.",
+        description: "Connection, storage, synchronization and system diagnostics.",
         icon: Activity
       },
       {
+        id: "server",
+        title: "Server Status",
+        description: "Database, storage, notifications and media-processing status.",
+        icon: Server
+      },
+      {
+        id: "sync",
+        title: "Sync & Network",
+        description: "Last sync, offline mode and background synchronization.",
+        icon: Wifi
+      },
+      {
         id: "cache",
-        title: "Storage & Cache",
+        title: "Cache & Temporary Data",
         description: "View and clear locally cached application data.",
         icon: HardDrive
       },
       {
-        id: "app-preferences",
-        title: "App Preferences",
-        description: "Background sync, auto refresh and offline behavior.",
-        icon: Settings2
-      }
-    ]
-  },
-
-  {
-    id: "exit",
-    title: "Account Exit",
-    description: "Sign out, deactivate or permanently delete your account.",
-    icon: UserRoundX,
-    color: "red",
-    danger: true,
-    items: [
-      {
-        id: "logout",
-        title: "Log Out",
-        description: "Sign out from this device.",
-        icon: LogOut,
-        danger: true
-      },
-      {
-        id: "logout-all",
-        title: "Log Out All Devices",
-        description: "End all active sessions.",
-        icon: MonitorSmartphone,
-        danger: true
-      },
-      {
-        id: "deactivate",
-        title: "Deactivate Account",
-        description: "Temporarily disable your account.",
-        icon: UserRoundX,
-        danger: true
-      },
-      {
-        id: "delete",
-        title: "Delete Account",
-        description: "Permanently delete your account and data.",
-        icon: Trash2,
-        danger: true
+        id: "about-system",
+        title: "App Information",
+        description: "Version, build and application environment.",
+        icon: Info
       }
     ]
   }
 ];
 
-/* ============================================================
-   SETTINGS PAGE
-============================================================ */
+/*
+|--------------------------------------------------------------------------
+| SMALL HELPERS
+|--------------------------------------------------------------------------
+*/
+
+const safeStorageSize = () => {
+  try {
+    let bytes = 0;
+
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+
+      if (!key) continue;
+
+      const value = localStorage.getItem(key) || "";
+
+      bytes += new Blob([key, value]).size;
+    }
+
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const key = sessionStorage.key(i);
+
+      if (!key) continue;
+
+      const value = sessionStorage.getItem(key) || "";
+
+      bytes += new Blob([key, value]).size;
+    }
+
+    return bytes;
+  } catch {
+    return 0;
+  }
+};
+
+const formatBytes = (bytes) => {
+  if (!bytes || bytes <= 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB"];
+
+  const index = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1
+  );
+
+  return `${(bytes / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+};
+
+const getInitial = (value) => {
+  if (!value) return "U";
+
+  return String(value)
+    .trim()
+    .charAt(0)
+    .toUpperCase();
+};
+
+/*
+|--------------------------------------------------------------------------
+| MAIN PAGE
+|--------------------------------------------------------------------------
+*/
 
 const SettingsPage = () => {
   const navigate = useNavigate();
 
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [activeItem, setActiveItem] = useState(null);
 
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [selectedItem, setSelectedItem] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [userEmail, setUserEmail] = useState("");
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
-  const [toast, setToast] = useState(null);
+  const [cacheSize, setCacheSize] = useState(0);
+  const [clearingCache, setClearingCache] = useState(false);
 
-  const [dataSaver, setDataSaver] = useState(
-    () => readStorage(STORAGE_KEYS.dataSaver, false)
-  );
+  const [dataSaver, setDataSaver] = useState(() => {
+    try {
+      return localStorage.getItem("mpade_data_saver") === "true";
+    } catch {
+      return false;
+    }
+  });
 
-  const [theme, setTheme] = useState(
-    () => readStorage(STORAGE_KEYS.theme, "dark")
-  );
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      return localStorage.getItem("mpade_notifications") !== "false";
+    } catch {
+      return true;
+    }
+  });
 
-  const [accent, setAccent] = useState(
-    () => readStorage(STORAGE_KEYS.accent, "cyan")
-  );
+  const [onlineStatus, setOnlineStatus] = useState(() => {
+    try {
+      return localStorage.getItem("mpade_online_status") !== "false";
+    } catch {
+      return true;
+    }
+  });
 
-  const [language, setLanguage] = useState(
-    () => readStorage(STORAGE_KEYS.language, "English")
-  );
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem("mpade_theme") || "dark";
+    } catch {
+      return "dark";
+    }
+  });
 
-  const [density, setDensity] = useState(
-    () => readStorage(STORAGE_KEYS.density, "comfortable")
-  );
+  /*
+  |--------------------------------------------------------------------------
+  | LOAD USER
+  |--------------------------------------------------------------------------
+  */
 
-  const [reduceMotion, setReduceMotion] = useState(
-    () => readStorage(STORAGE_KEYS.reduceMotion, false)
-  );
+  const loadProfile = useCallback(async () => {
+    setLoadingProfile(true);
 
-  const [autoplay, setAutoplay] = useState(
-    () => readStorage(STORAGE_KEYS.autoplay, true)
-  );
+    try {
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
 
-  const [highContrast, setHighContrast] = useState(
-    () => readStorage(STORAGE_KEYS.highContrast, false)
-  );
+      if (!user) {
+        setProfile(null);
+        setUserEmail("");
+        return;
+      }
 
-  /* ============================================================
-     TOAST
-  ============================================================ */
+      setUserEmail(user.email || "");
 
-  const showToast = useCallback((message, type = "success") => {
-    setToast({
-      id: Date.now(),
-      message,
-      type
-    });
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(`
+          id,
+          username,
+          display_name,
+          full_name,
+          avatar_url,
+          bio,
+          dob,
+          gender,
+          location,
+          district,
+          website,
+          follower_count,
+          following_count,
+          total_likes,
+          balance,
+          coins,
+          total_tokens_earned,
+          subscription_tier,
+          verified_status,
+          is_verified,
+          account_status,
+          currency_preference,
+          online,
+          is_online
+        `)
+        .eq("id", user.id)
+        .maybeSingle();
 
-    window.setTimeout(() => {
-      setToast(null);
-    }, 2800);
+      if (!error) {
+        setProfile(data);
+      }
+    } catch (error) {
+      console.error("Settings profile load error:", error);
+    } finally {
+      setLoadingProfile(false);
+    }
   }, []);
 
-  /* ============================================================
-     LOAD USER + PROFILE
-  ============================================================ */
+  useEffect(() => {
+    loadProfile();
+    setCacheSize(safeStorageSize());
+  }, [loadProfile]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | PERSIST LOCAL PREFERENCES
+  |--------------------------------------------------------------------------
+  */
 
   useEffect(() => {
-    let mounted = true;
-
-    const loadAccount = async () => {
-      setLoading(true);
-
-      try {
-        const {
-          data: { user: currentUser }
-        } = await supabase.auth.getUser();
-
-        if (!mounted) {
-          return;
-        }
-
-        setUser(currentUser || null);
-
-        if (!currentUser) {
-          setProfile(null);
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("profiles")
-          .select(`
-            id,
-            username,
-            display_name,
-            full_name,
-            avatar_url,
-            bio,
-            dob,
-            gender,
-            location,
-            district,
-            website,
-            email,
-            phone,
-            balance,
-            coins,
-            total_tokens_earned,
-            currency_preference,
-            verified_status,
-            is_verified,
-            account_status,
-            subscription_tier,
-            follower_count,
-            following_count,
-            total_likes,
-            created_at
-          `)
-          .eq("id", currentUser.id)
-          .maybeSingle();
-
-        if (!mounted) {
-          return;
-        }
-
-        if (error) {
-          console.warn("Unable to load profile:", error.message);
-          setProfile(null);
-        } else {
-          setProfile(data);
-        }
-      } catch (error) {
-        console.error("Settings account loading error:", error);
-
-        if (mounted) {
-          showToast(
-            "Unable to load account information",
-            "error"
-          );
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadAccount();
-
-    return () => {
-      mounted = false;
-    };
-  }, [showToast]);
-
-  /* ============================================================
-     PERSIST LOCAL SETTINGS
-  ============================================================ */
-
-  useEffect(() => {
-    writeStorage(STORAGE_KEYS.dataSaver, dataSaver);
+    try {
+      localStorage.setItem("mpade_data_saver", String(dataSaver));
+    } catch {
+      // Storage may be unavailable.
+    }
   }, [dataSaver]);
 
   useEffect(() => {
-    writeStorage(STORAGE_KEYS.theme, theme);
-  }, [theme]);
+    try {
+      localStorage.setItem("mpade_notifications", String(notifications));
+    } catch {
+      // Storage may be unavailable.
+    }
+  }, [notifications]);
 
   useEffect(() => {
-    writeStorage(STORAGE_KEYS.accent, accent);
-  }, [accent]);
+    try {
+      localStorage.setItem("mpade_online_status", String(onlineStatus));
+    } catch {
+      // Storage may be unavailable.
+    }
+  }, [onlineStatus]);
 
   useEffect(() => {
-    writeStorage(STORAGE_KEYS.language, language);
-  }, [language]);
+    try {
+      localStorage.setItem("mpade_theme", darkMode);
+    } catch {
+      // Storage may be unavailable.
+    }
+  }, [darkMode]);
 
-  useEffect(() => {
-    writeStorage(STORAGE_KEYS.density, density);
-  }, [density]);
-
-  useEffect(() => {
-    writeStorage(STORAGE_KEYS.reduceMotion, reduceMotion);
-  }, [reduceMotion]);
-
-  useEffect(() => {
-    writeStorage(STORAGE_KEYS.autoplay, autoplay);
-  }, [autoplay]);
-
-  useEffect(() => {
-    writeStorage(STORAGE_KEYS.highContrast, highContrast);
-  }, [highContrast]);
-
-  /* ============================================================
-     SEARCH
-  ============================================================ */
+  /*
+  |--------------------------------------------------------------------------
+  | SEARCH
+  |--------------------------------------------------------------------------
+  */
 
   const searchResults = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    if (!query) {
-      return [];
-    }
+    if (!query) return [];
 
     const results = [];
 
-    SETTINGS_GROUPS.forEach((group) => {
-      group.items.forEach((item) => {
+    SETTINGS_CATEGORIES.forEach((category) => {
+      category.items.forEach((item) => {
         const haystack = [
-          group.title,
-          group.description,
+          category.title,
+          category.description,
           item.title,
           item.description
         ]
@@ -891,8 +832,9 @@ const SettingsPage = () => {
 
         if (haystack.includes(query)) {
           results.push({
-            group,
-            item
+            ...item,
+            categoryId: category.id,
+            categoryTitle: category.title
           });
         }
       });
@@ -901,750 +843,504 @@ const SettingsPage = () => {
     return results;
   }, [search]);
 
-  /* ============================================================
-     NAVIGATION
-  ============================================================ */
+  /*
+  |--------------------------------------------------------------------------
+  | OPEN SETTING
+  |--------------------------------------------------------------------------
+  */
 
-  const openSetting = (group, item) => {
+  const openSetting = (item, category) => {
     if (item.route) {
       navigate(item.route);
       return;
     }
 
-    setSelectedGroup(group);
-    setSelectedItem(item);
+    setActiveCategory(category);
+    setActiveItem(item);
   };
 
-  /* ============================================================
-     LOGOUT
-  ============================================================ */
+  /*
+  |--------------------------------------------------------------------------
+  | CLEAR CACHE
+  |--------------------------------------------------------------------------
+  */
 
-  const handleLogout = async () => {
+  const clearCache = () => {
+    if (clearingCache) return;
+
+    setClearingCache(true);
+
     try {
-      const { error } = await supabase.auth.signOut();
+      const protectedKeys = [
+        "sb-",
+        "supabase",
+        "auth",
+        "mpade_data_saver",
+        "mpade_notifications",
+        "mpade_online_status",
+        "mpade_theme"
+      ];
 
-      if (error) {
-        throw error;
-      }
+      Object.keys(localStorage).forEach((key) => {
+        const shouldKeep = protectedKeys.some((protectedKey) =>
+          key.toLowerCase().startsWith(protectedKey.toLowerCase())
+        );
 
-      navigate("/");
-    } catch (error) {
-      console.error(error);
-
-      showToast(
-        error?.message || "Unable to log out",
-        "error"
-      );
-    }
-  };
-
-  /* ============================================================
-     CLEAR CACHE
-  ============================================================ */
-
-  const handleClearCache = () => {
-    try {
-      const preservedKeys = Object.values(STORAGE_KEYS);
-
-      const keysToDelete = [];
-
-      for (let i = 0; i < localStorage.length; i += 1) {
-        const key = localStorage.key(i);
-
-        if (
-          key &&
-          !preservedKeys.includes(key)
-        ) {
-          keysToDelete.push(key);
+        if (!shouldKeep) {
+          localStorage.removeItem(key);
         }
-      }
-
-      keysToDelete.forEach((key) => {
-        localStorage.removeItem(key);
       });
 
-      if ("caches" in window) {
-        window.caches
-          .keys()
-          .then((names) => {
-            names.forEach((name) => {
-              window.caches.delete(name);
-            });
-          })
-          .catch(() => {});
-      }
+      sessionStorage.clear();
 
-      showToast("Local cache cleared");
+      setCacheSize(safeStorageSize());
     } catch (error) {
-      console.error(error);
-
-      showToast(
-        "Unable to clear local cache",
-        "error"
-      );
+      console.error("Cache clear error:", error);
+    } finally {
+      setTimeout(() => {
+        setClearingCache(false);
+      }, 500);
     }
   };
 
-  /* ============================================================
-     PROFILE DATA
-  ============================================================ */
+  /*
+  |--------------------------------------------------------------------------
+  | LOGOUT
+  |--------------------------------------------------------------------------
+  */
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+
+    if (!error) {
+      navigate("/");
+    } else {
+      console.error("Logout error:", error);
+    }
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | PROFILE DATA
+  |--------------------------------------------------------------------------
+  */
 
   const displayName =
     profile?.display_name ||
     profile?.full_name ||
     profile?.username ||
-    user?.email?.split("@")[0] ||
     "Mpade User";
 
   const username = profile?.username
     ? `@${profile.username}`
-    : user?.email || "Account";
+    : "No username";
 
-  const avatar =
-    profile?.avatar_url ||
-    null;
-
-  const currency =
-    profile?.currency_preference ||
-    "MWK";
-
-  const balance =
-    profile?.balance ?? 0;
+  const avatarLetter = getInitial(displayName);
 
   const verified =
-    Boolean(
-      profile?.is_verified ||
-      profile?.verified_status === true ||
-      profile?.verified_status === "verified"
-    );
+    profile?.is_verified === true ||
+    profile?.verified_status === true ||
+    profile?.verified_status === "verified";
 
-  /* ============================================================
-     RENDER
-  ============================================================ */
+  /*
+  |--------------------------------------------------------------------------
+  | RENDER
+  |--------------------------------------------------------------------------
+  */
 
   return (
-    <div
-      className={[
-        "min-h-screen bg-black text-white",
-        "font-sans pb-20",
-        highContrast ? "contrast-125" : "",
-        density === "compact"
-          ? "settings-density-compact"
-          : ""
-      ].join(" ")}
-    >
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+    <div className="settings-page min-h-screen bg-[#030303] text-white font-sans">
+      {/* ================================================================
+          CUSTOM SCROLLBAR
+      ================================================================= */}
 
-      <header className="sticky top-0 z-[80] border-b border-white/[0.06] bg-black/75 backdrop-blur-2xl">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
+      <style>{`
+        .settings-page {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(34,211,238,.45) rgba(255,255,255,.03);
+        }
+
+        .settings-page::-webkit-scrollbar {
+          width: 7px;
+          height: 7px;
+        }
+
+        .settings-page::-webkit-scrollbar-track {
+          background: rgba(255,255,255,.025);
+        }
+
+        .settings-page::-webkit-scrollbar-thumb {
+          background: linear-gradient(
+            180deg,
+            rgba(34,211,238,.75),
+            rgba(168,85,247,.65)
+          );
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,.08);
+        }
+
+        .settings-page::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(
+            180deg,
+            rgba(34,211,238,1),
+            rgba(168,85,247,.9)
+          );
+        }
+
+        .settings-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(34,211,238,.45) rgba(255,255,255,.03);
+        }
+
+        .settings-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .settings-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .settings-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,.12);
+          border-radius: 999px;
+        }
+
+        .settings-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(34,211,238,.45);
+        }
+      `}</style>
+
+      {/* ================================================================
+          HEADER
+      ================================================================= */}
+
+      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-black/75 backdrop-blur-2xl">
+        <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <button
-            type="button"
             onClick={() => navigate(-1)}
-            className="
-              flex h-10 w-10 shrink-0 items-center justify-center
-              rounded-xl border border-white/[0.06]
-              bg-white/[0.03]
-              text-zinc-300
-              transition
-              hover:border-cyan-400/30
-              hover:bg-cyan-400/[0.06]
-              hover:text-white
-            "
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025] text-zinc-300 transition hover:bg-white/[0.07] hover:text-white"
             aria-label="Go back"
           >
             <ArrowLeft size={19} />
           </button>
 
           <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-black uppercase tracking-[3px] text-cyan-400/80">
-              Mpade Universe
-            </p>
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-sm font-black uppercase tracking-[2px] sm:text-base">
+                Settings & Privacy
+              </h1>
 
-            <h1 className="truncate text-base font-black tracking-tight sm:text-lg">
-              Settings & Privacy
-            </h1>
+              <span className="hidden rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-cyan-300 sm:inline-flex">
+                Control Center
+              </span>
+            </div>
+
+            <p className="mt-0.5 hidden text-[10px] text-zinc-600 sm:block">
+              Manage your Mpade Universe experience
+            </p>
           </div>
 
           <button
-            type="button"
-            onClick={() => {
-              setSelectedGroup(
-                SETTINGS_GROUPS.find(
-                  (group) => group.id === "system"
-                )
-              );
-              setSelectedItem(
-                SETTINGS_GROUPS
-                  .find(
-                    (group) => group.id === "system"
-                  )
-                  ?.items?.[0] || null
-              );
-            }}
-            className="
-              hidden h-10 w-10 items-center justify-center
-              rounded-xl border border-white/[0.06]
-              bg-white/[0.03]
-              text-zinc-400
-              transition
-              hover:text-white
-              sm:flex
-            "
+            onClick={() => setMobileSearchOpen((value) => !value)}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025] text-zinc-400 transition hover:text-white lg:hidden"
           >
-            <Settings2 size={18} />
+            <Search size={18} />
           </button>
         </div>
+
+        <AnimatePresence>
+          {mobileSearchOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-t border-white/[0.04] lg:hidden"
+            >
+              <div className="p-4">
+                <SearchBox
+                  value={search}
+                  onChange={setSearch}
+                  onClear={() => setSearch("")}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
-      {/* ======================================================
+      {/* ================================================================
           MAIN
-      ====================================================== */}
+      ================================================================= */}
 
-      <main className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-5 sm:px-6 lg:px-8">
+        {/* PROFILE HERO */}
 
-        {/* ====================================================
-            PROFILE HERO
-        ==================================================== */}
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-[28px] border border-white/[0.07] bg-gradient-to-br from-white/[0.055] via-white/[0.02] to-cyan-500/[0.025] p-5 shadow-2xl sm:p-6"
+        >
+          <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-cyan-500/10 blur-[80px]" />
+          <div className="pointer-events-none absolute -bottom-28 left-1/3 h-56 w-56 rounded-full bg-purple-500/10 blur-[80px]" />
 
-        <section className="
-          relative overflow-hidden
-          rounded-[28px]
-          border border-white/[0.07]
-          bg-gradient-to-br
-          from-cyan-500/[0.09]
-          via-[#0A0A0A]
-          to-purple-500/[0.07]
-          p-5
-          shadow-2xl shadow-cyan-950/10
-          sm:p-7
-        ">
-          <div className="
-            pointer-events-none absolute
-            -right-24 -top-24
-            h-64 w-64
-            rounded-full
-            bg-cyan-400/[0.07]
-            blur-3xl
-          " />
-
-          <div className="
-            pointer-events-none absolute
-            -bottom-32 -left-20
-            h-72 w-72
-            rounded-full
-            bg-purple-500/[0.06]
-            blur-3xl
-          " />
-
-          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center">
-
-            {/* Avatar */}
-
-            <div className="
-              relative h-20 w-20 shrink-0
-              overflow-hidden rounded-[24px]
-              border border-cyan-400/20
-              bg-zinc-900
-              shadow-xl shadow-cyan-500/10
-              sm:h-24 sm:w-24
-            ">
-              {avatar ? (
-                <img
-                  src={avatar}
-                  alt={displayName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="
-                  flex h-full w-full
-                  items-center justify-center
-                  bg-gradient-to-br
-                  from-cyan-500/20
-                  to-purple-500/20
-                  text-xl font-black text-cyan-300
-                ">
-                  {getInitials(displayName)}
-                </div>
-              )}
-
-              {verified && (
-                <div className="
-                  absolute bottom-1 right-1
-                  flex h-6 w-6 items-center justify-center
-                  rounded-full
-                  border-2 border-black
-                  bg-cyan-400
-                  text-black
-                ">
-                  <Check size={13} strokeWidth={3} />
-                </div>
-              )}
-            </div>
-
-            {/* Identity */}
-
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-xl font-black sm:text-2xl">
-                  {loading ? "Loading account..." : displayName}
-                </h2>
+          <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="relative shrink-0">
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt={displayName}
+                    className="h-16 w-16 rounded-[20px] border border-white/10 object-cover shadow-xl sm:h-20 sm:w-20"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-cyan-400/20 bg-cyan-400/10 text-xl font-black text-cyan-300 shadow-xl sm:h-20 sm:w-20 sm:text-2xl">
+                    {avatarLetter}
+                  </div>
+                )}
 
                 {verified && (
-                  <span className="
-                    inline-flex items-center gap-1
-                    rounded-full
-                    border border-cyan-400/20
-                    bg-cyan-400/[0.08]
-                    px-2 py-1
-                    text-[9px] font-black uppercase tracking-wider
-                    text-cyan-300
-                  ">
-                    <BadgeCheck size={12} />
-                    Verified
+                  <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-4 border-[#080808] bg-cyan-400 text-black">
+                    <CheckCircle2 size={13} strokeWidth={3} />
                   </span>
                 )}
               </div>
 
-              <p className="mt-1 text-sm text-zinc-500">
-                {username}
-              </p>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="truncate text-xl font-black tracking-tight text-white sm:text-2xl">
+                    {loadingProfile ? "Loading..." : displayName}
+                  </h2>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <StatusBadge
-                  icon={<Shield size={12} />}
-                  label={
-                    profile?.account_status ||
-                    "Active"
-                  }
-                />
+                  {verified && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-cyan-300">
+                      <BadgeCheck size={11} />
+                      Verified
+                    </span>
+                  )}
+                </div>
 
-                <StatusBadge
-                  icon={<Globe size={12} />}
-                  label={profile?.district || "Malawi"}
-                />
+                <p className="mt-1 text-xs font-medium text-zinc-500">
+                  {loadingProfile ? "Loading profile..." : username}
+                </p>
 
-                <StatusBadge
-                  icon={<Wallet size={12} />}
-                  label={formatCurrency(balance, currency)}
-                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <MiniStat
+                    label="Followers"
+                    value={profile?.follower_count ?? 0}
+                  />
+                  <MiniStat
+                    label="Following"
+                    value={profile?.following_count ?? 0}
+                  />
+                  <MiniStat
+                    label="Likes"
+                    value={profile?.total_likes ?? 0}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Profile button */}
-
             <button
-              type="button"
               onClick={() => navigate("/edit-profile")}
-              className="
-                flex shrink-0 items-center justify-center gap-2
-                rounded-xl
-                border border-cyan-400/20
-                bg-cyan-400/[0.08]
-                px-4 py-3
-                text-[10px] font-black uppercase tracking-[1.5px]
-                text-cyan-300
-                transition
-                hover:bg-cyan-400/[0.14]
-              "
+              className="flex items-center justify-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-[10px] font-black uppercase tracking-[1.5px] text-cyan-300 transition hover:bg-cyan-400/15"
             >
+              <User size={15} />
               Edit Profile
-              <ChevronRight size={14} />
             </button>
           </div>
+        </motion.section>
 
-          {/* Account statistics */}
+        {/* ================================================================
+            SEARCH DESKTOP
+        ================================================================= */}
 
-          <div className="
-            relative mt-6
-            grid grid-cols-3
-            divide-x divide-white/[0.06]
-            rounded-2xl
-            border border-white/[0.05]
-            bg-black/30
-            py-4
-          ">
-            <Stat
-              label="Followers"
-              value={formatNumber(profile?.follower_count)}
-            />
+        <div className="mt-5 hidden lg:block">
+          <SearchBox
+            value={search}
+            onChange={setSearch}
+            onClear={() => setSearch("")}
+          />
+        </div>
 
-            <Stat
-              label="Following"
-              value={formatNumber(profile?.following_count)}
-            />
-
-            <Stat
-              label="Likes"
-              value={formatNumber(profile?.total_likes)}
-            />
-          </div>
-        </section>
-
-        {/* ====================================================
-            SEARCH
-        ==================================================== */}
-
-        <section className="mt-5">
-          <div className="
-            relative
-            overflow-hidden
-            rounded-2xl
-            border border-white/[0.07]
-            bg-[#090909]
-          ">
-            <Search
-              size={19}
-              className="
-                pointer-events-none
-                absolute left-4 top-1/2
-                -translate-y-1/2
-                text-zinc-600
-              "
-            />
-
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search settings, privacy, security, creator tools..."
-              className="
-                w-full
-                bg-transparent
-                py-4 pl-12 pr-12
-                text-sm
-                text-white
-                outline-none
-                placeholder:text-zinc-600
-              "
-            />
-
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="
-                  absolute right-3 top-1/2
-                  flex h-8 w-8
-                  -translate-y-1/2
-                  items-center justify-center
-                  rounded-lg
-                  text-zinc-500
-                  hover:bg-white/[0.05]
-                  hover:text-white
-                "
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-        </section>
-
-        {/* ====================================================
+        {/* ================================================================
             SEARCH RESULTS
-        ==================================================== */}
+        ================================================================= */}
 
         <AnimatePresence mode="wait">
           {search.trim() ? (
             <motion.section
               key="search"
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
+              exit={{ opacity: 0, y: -10 }}
               className="mt-6"
             >
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <p className="text-[9px] font-black uppercase tracking-[3px] text-cyan-400">
-                    Search
+                  <p className="text-[9px] font-black uppercase tracking-[2px] text-cyan-400">
+                    Search Results
                   </p>
-
-                  <h3 className="mt-1 text-lg font-black">
-                    Settings results
+                  <h3 className="mt-1 text-lg font-black text-white">
+                    {searchResults.length} setting
+                    {searchResults.length === 1 ? "" : "s"} found
                   </h3>
                 </div>
 
-                <span className="rounded-full bg-white/[0.05] px-3 py-1 text-[10px] font-bold text-zinc-500">
-                  {searchResults.length} result
-                  {searchResults.length === 1 ? "" : "s"}
-                </span>
+                <button
+                  onClick={() => setSearch("")}
+                  className="rounded-lg px-3 py-2 text-[10px] font-bold text-zinc-500 hover:bg-white/5 hover:text-white"
+                >
+                  Clear
+                </button>
               </div>
 
               {searchResults.length > 0 ? (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {searchResults.map(({ group, item }) => (
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {searchResults.map((item) => (
                     <SearchResult
-                      key={`${group.id}-${item.id}`}
-                      group={group}
+                      key={`${item.categoryId}-${item.id}`}
                       item={item}
-                      onClick={() => openSetting(group, item)}
+                      onClick={() =>
+                        openSetting(
+                          item,
+                          SETTINGS_CATEGORIES.find(
+                            (category) => category.id === item.categoryId
+                          )
+                        )
+                      }
                     />
                   ))}
                 </div>
               ) : (
                 <EmptyState
-                  icon={<Search size={25} />}
+                  icon={<Search size={24} />}
                   title="No settings found"
-                  description="Try another search term such as security, creator, wallet or privacy."
+                  description="Try another keyword such as security, payout, creator, privacy or notifications."
                 />
               )}
             </motion.section>
           ) : (
-            <motion.section
-              key="groups"
+            <motion.div
+              key="categories"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mt-7"
+              className="mt-6 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"
             >
-              {/* ==================================================
-                  QUICK SETTINGS
-              ================================================== */}
+              {/* ==========================================================
+                  LEFT CATEGORY NAV
+              =========================================================== */}
 
-              <QuickSettings
-                dataSaver={dataSaver}
-                setDataSaver={setDataSaver}
-                autoplay={autoplay}
-                setAutoplay={setAutoplay}
-                reduceMotion={reduceMotion}
-                setReduceMotion={setReduceMotion}
-              />
-
-              {/* ==================================================
-                  SETTINGS GROUPS
-              ================================================== */}
-
-              <div className="mt-8">
-                <div className="mb-4">
-                  <p className="text-[9px] font-black uppercase tracking-[3px] text-zinc-600">
-                    Control center
+              <aside className="hidden lg:block">
+                <div className="sticky top-[90px] rounded-[24px] border border-white/[0.06] bg-white/[0.018] p-2">
+                  <p className="px-3 pb-2 pt-2 text-[9px] font-black uppercase tracking-[2px] text-zinc-600">
+                    Settings
                   </p>
 
-                  <h3 className="mt-1 text-xl font-black">
-                    All settings
-                  </h3>
+                  <div className="settings-scroll max-h-[calc(100vh-150px)] overflow-y-auto pr-1">
+                    {SETTINGS_CATEGORIES.map((category) => (
+                      <CategoryNavItem
+                        key={category.id}
+                        category={category}
+                        active={activeCategory?.id === category.id}
+                        onClick={() => {
+                          const element = document.getElementById(
+                            `settings-${category.id}`
+                          );
 
-                  <p className="mt-1 max-w-xl text-xs leading-relaxed text-zinc-600">
-                    Manage your Mpade Universe account, privacy,
-                    content, creator tools, payments and platform
-                    preferences from one place.
-                  </p>
+                          if (element) {
+                            element.scrollIntoView({
+                              behavior: "smooth",
+                              block: "center"
+                            });
+                          }
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
+              </aside>
 
-                <div className="
-                  grid gap-4
-                  md:grid-cols-2
-                  xl:grid-cols-3
-                ">
-                  {SETTINGS_GROUPS.map((group) => (
-                    <SettingsGroupCard
-                      key={group.id}
-                      group={group}
-                      onClick={(item) =>
-                        openSetting(group, item)
-                      }
-                    />
-                  ))}
-                </div>
+              {/* ==========================================================
+                  CATEGORY CONTENT
+              =========================================================== */}
+
+              <div className="min-w-0 space-y-7">
+                {SETTINGS_CATEGORIES.map((category, categoryIndex) => (
+                  <SettingsCategory
+                    key={category.id}
+                    category={category}
+                    index={categoryIndex}
+                    onOpen={(item) => openSetting(item, category)}
+                  />
+                ))}
+
+                {/* ========================================================
+                    DANGER ZONE
+                ========================================================= */}
+
+                <DangerZone
+                  onLogout={handleLogout}
+                  onDeactivate={() => {
+                    setActiveCategory({
+                      id: "account-management",
+                      title: "Account Management",
+                      description: ""
+                    });
+
+                    setActiveItem({
+                      id: "account-management",
+                      title: "Account Management",
+                      description:
+                        "Deactivate or permanently delete your account.",
+                      icon: UserX,
+                      danger: true
+                    });
+                  }}
+                />
+
+                {/* ========================================================
+                    SYSTEM FOOTER
+                ========================================================= */}
+
+                <SystemFooter
+                  version={APP_VERSION}
+                  cacheSize={cacheSize}
+                  clearingCache={clearingCache}
+                  onClearCache={clearCache}
+                />
               </div>
-            </motion.section>
+            </motion.div>
           )}
         </AnimatePresence>
-
-        {/* ====================================================
-            LOCAL PREFERENCES
-        ==================================================== */}
-
-        {!search.trim() && (
-          <section className="mt-8">
-            <SectionTitle
-              eyebrow="Personalization"
-              title="Quick preferences"
-            />
-
-            <div className="
-              overflow-hidden
-              rounded-3xl
-              border border-white/[0.06]
-              bg-[#090909]
-            ">
-              <SettingToggle
-                icon={<Palette className="text-pink-400" />}
-                title="Neon interface"
-                description="Use the futuristic neon visual style."
-                active={theme === "neon"}
-                onToggle={() =>
-                  setTheme(
-                    theme === "neon"
-                      ? "dark"
-                      : "neon"
-                  )
-                }
-              />
-
-              <SettingToggle
-                icon={<Volume2 className="text-cyan-400" />}
-                title="Video autoplay"
-                description="Automatically play videos when available."
-                active={autoplay}
-                onToggle={() => setAutoplay(!autoplay)}
-              />
-
-              <SettingToggle
-                icon={<Accessibility className="text-blue-400" />}
-                title="Reduce motion"
-                description="Reduce animations and transition effects."
-                active={reduceMotion}
-                onToggle={() =>
-                  setReduceMotion(!reduceMotion)
-                }
-              />
-
-              <SettingToggle
-                icon={<Eye className="text-emerald-400" />}
-                title="High contrast"
-                description="Increase interface contrast for readability."
-                active={highContrast}
-                onToggle={() =>
-                  setHighContrast(!highContrast)
-                }
-                border={false}
-              />
-            </div>
-          </section>
-        )}
-
-        {/* ====================================================
-            CACHE / ACCOUNT ACTIONS
-        ==================================================== */}
-
-        {!search.trim() && (
-          <section className="mt-8">
-            <SectionTitle
-              eyebrow="Device"
-              title="Storage & account"
-            />
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <ActionCard
-                icon={<HardDrive className="text-orange-400" />}
-                title="Clear local cache"
-                description="Remove cached application data from this browser."
-                onClick={handleClearCache}
-              />
-
-              <ActionCard
-                icon={<Download className="text-blue-400" />}
-                title="Download your data"
-                description="Request a copy of your account information."
-                onClick={() =>
-                  navigate("/settings/reports")
-                }
-              />
-            </div>
-          </section>
-        )}
-
-        {/* ====================================================
-            FOOTER
-        ==================================================== */}
-
-        <footer className="mt-12 border-t border-white/[0.05] pt-8">
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="
-              group flex w-full items-center justify-center gap-2
-              rounded-2xl
-              border border-red-500/20
-              bg-red-500/[0.06]
-              py-4
-              text-[10px] font-black uppercase tracking-[2px]
-              text-red-400
-              transition
-              hover:border-red-500/30
-              hover:bg-red-500/[0.1]
-            "
-          >
-            <LogOut
-              size={16}
-              className="transition-transform group-hover:-translate-x-0.5"
-            />
-            Log out
-          </button>
-
-          <div className="
-            mt-6
-            flex flex-col items-center justify-center gap-2
-            text-center
-          ">
-            <div className="
-              flex items-center gap-2
-              text-[9px] font-black uppercase tracking-[2px]
-              text-zinc-700
-            ">
-              <span>Mpade Universe</span>
-              <span>•</span>
-              <span>{APP_VERSION}</span>
-            </div>
-
-            <p className="text-[9px] text-zinc-800">
-              Your account. Your data. Your controls.
-            </p>
-          </div>
-        </footer>
       </main>
 
-      {/* ======================================================
+      {/* ================================================================
           DETAIL DRAWER
-      ====================================================== */}
+      ================================================================= */}
 
       <AnimatePresence>
-        {selectedItem && selectedGroup && (
+        {activeItem && (
           <SettingDrawer
-            group={selectedGroup}
-            item={selectedItem}
+            item={activeItem}
+            category={activeCategory}
             profile={profile}
-            user={user}
+            userEmail={userEmail}
             dataSaver={dataSaver}
             setDataSaver={setDataSaver}
-            theme={theme}
-            setTheme={setTheme}
-            accent={accent}
-            setAccent={setAccent}
-            language={language}
-            setLanguage={setLanguage}
-            density={density}
-            setDensity={setDensity}
-            autoplay={autoplay}
-            setAutoplay={setAutoplay}
-            reduceMotion={reduceMotion}
-            setReduceMotion={setReduceMotion}
-            highContrast={highContrast}
-            setHighContrast={setHighContrast}
+            notifications={notifications}
+            setNotifications={setNotifications}
+            onlineStatus={onlineStatus}
+            setOnlineStatus={setOnlineStatus}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
             onClose={() => {
-              setSelectedItem(null);
-              setSelectedGroup(null);
+              setActiveItem(null);
+              setActiveCategory(null);
             }}
             onNavigate={navigate}
-            onLogout={handleLogout}
-            onClearCache={handleClearCache}
-            showToast={showToast}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* ======================================================
-          TOAST
-      ====================================================== */}
-
-      <AnimatePresence>
-        {toast && (
-          <Toast
-            key={toast.id}
-            message={toast.message}
-            type={toast.type}
+            onClearCache={clearCache}
+            cacheSize={cacheSize}
+            clearingCache={clearingCache}
           />
         )}
       </AnimatePresence>
@@ -1652,175 +1348,200 @@ const SettingsPage = () => {
   );
 };
 
-/* ============================================================
-   SETTINGS GROUP CARD
-============================================================ */
+/*
+|--------------------------------------------------------------------------
+| SEARCH BOX
+|--------------------------------------------------------------------------
+*/
 
-const SettingsGroupCard = ({ group, onClick }) => {
-  const Icon = group.icon;
-
+const SearchBox = ({ value, onChange, onClear }) => {
   return (
-    <motion.div
-      whileHover={{
-        y: -2
-      }}
-      transition={{
-        duration: 0.2
-      }}
-      className={[
-        "overflow-hidden rounded-3xl border",
-        group.danger
-          ? "border-red-500/10 bg-red-500/[0.025]"
-          : "border-white/[0.06] bg-[#090909]"
-      ].join(" ")}
-    >
-      <div className="flex items-start gap-4 p-5">
+    <div className="relative">
+      <Search
+        size={18}
+        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600"
+      />
 
-        <div className="
-          flex h-11 w-11 shrink-0
-          items-center justify-center
-          rounded-2xl
-          border border-white/[0.06]
-          bg-black
-        ">
-          <Icon
-            size={20}
-            className={
-              group.danger
-                ? "text-red-400"
-                : getColorClass(group.color)
-            }
-          />
-        </div>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Search settings..."
+        className="h-12 w-full rounded-2xl border border-white/[0.07] bg-white/[0.025] pl-11 pr-11 text-sm font-medium text-white outline-none placeholder:text-zinc-700 transition focus:border-cyan-400/30 focus:bg-white/[0.04]"
+      />
 
-        <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-black">
-            {group.title}
-          </h4>
-
-          <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
-            {group.description}
-          </p>
-        </div>
-      </div>
-
-      <div className="border-t border-white/[0.05]">
-        {group.items.slice(0, 4).map((item, index) => (
-          <button
-            type="button"
-            key={item.id}
-            onClick={() => onClick(item)}
-            className={[
-              "flex w-full items-center gap-3 px-5 py-3.5 text-left",
-              "transition",
-              "hover:bg-white/[0.035]",
-              index < Math.min(group.items.length, 4) - 1
-                ? "border-b border-white/[0.04]"
-                : ""
-            ].join(" ")}
-          >
-            <item.icon
-              size={15}
-              className={
-                item.danger
-                  ? "text-red-400"
-                  : "text-zinc-500"
-              }
-            />
-
-            <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-zinc-300">
-              {item.title}
-            </span>
-
-            {item.badge && (
-              <span className="
-                hidden rounded-md
-                bg-white/[0.04]
-                px-2 py-1
-                text-[8px] font-black uppercase
-                tracking-wider
-                text-zinc-600
-                sm:block
-              ">
-                {item.badge}
-              </span>
-            )}
-
-            <ChevronRight
-              size={14}
-              className="shrink-0 text-zinc-700"
-            />
-          </button>
-        ))}
-
-        {group.items.length > 4 && (
-          <button
-            type="button"
-            onClick={() => onClick(group.items[0])}
-            className="
-              flex w-full items-center justify-center gap-2
-              px-5 py-3
-              text-[9px] font-black uppercase tracking-[1.5px]
-              text-cyan-400/70
-              transition
-              hover:bg-cyan-400/[0.04]
-              hover:text-cyan-300
-            "
-          >
-            View all {group.items.length} settings
-            <ChevronRight size={13} />
-          </button>
-        )}
-      </div>
-    </motion.div>
+      {value && (
+        <button
+          onClick={onClear}
+          className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-600 hover:bg-white/5 hover:text-white"
+        >
+          <X size={15} />
+        </button>
+      )}
+    </div>
   );
 };
 
-/* ============================================================
-   SEARCH RESULT
-============================================================ */
+/*
+|--------------------------------------------------------------------------
+| MINI STAT
+|--------------------------------------------------------------------------
+*/
 
-const SearchResult = ({
-  group,
-  item,
-  onClick
-}) => {
-  const Icon = item.icon;
+const MiniStat = ({ label, value }) => (
+  <div className="rounded-lg border border-white/[0.05] bg-black/30 px-2.5 py-1.5">
+    <span className="text-[9px] font-black text-zinc-500">
+      {Number(value || 0).toLocaleString()}
+    </span>
+    <span className="ml-1 text-[8px] font-bold uppercase tracking-wide text-zinc-700">
+      {label}
+    </span>
+  </div>
+);
+
+/*
+|--------------------------------------------------------------------------
+| CATEGORY NAV ITEM
+|--------------------------------------------------------------------------
+*/
+
+const CategoryNavItem = ({ category, active, onClick }) => {
+  const Icon = category.icon;
 
   return (
     <button
-      type="button"
       onClick={onClick}
-      className="
-        group flex w-full items-center gap-4
-        rounded-2xl
-        border border-white/[0.06]
-        bg-[#090909]
-        p-4
-        text-left
-        transition
-        hover:border-cyan-400/20
-        hover:bg-cyan-400/[0.025]
-      "
+      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+        active
+          ? "bg-cyan-400/10 text-cyan-300"
+          : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+      }`}
     >
-      <div className="
-        flex h-10 w-10 shrink-0
-        items-center justify-center
-        rounded-xl
-        bg-black
-        text-cyan-400
-      ">
-        <Icon size={18} />
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+          active
+            ? "border-cyan-400/20 bg-cyan-400/10"
+            : "border-white/[0.05] bg-white/[0.02]"
+        }`}
+      >
+        <Icon size={15} className={active ? "text-cyan-300" : category.color} />
+      </span>
+
+      <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-wide">
+        {category.title}
+      </span>
+
+      <span className="text-[8px] font-bold text-zinc-700">
+        {category.items.length}
+      </span>
+    </button>
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
+| SETTINGS CATEGORY
+|--------------------------------------------------------------------------
+*/
+
+const SettingsCategory = ({ category, index, onOpen }) => {
+  const Icon = category.icon;
+
+  return (
+    <motion.section
+      id={`settings-${category.id}`}
+      initial={{ opacity: 0, y: 15 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.05 }}
+      transition={{ delay: Math.min(index * 0.025, 0.2) }}
+    >
+      <div className="mb-3 flex items-end justify-between px-1">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025]">
+            <Icon size={17} className={category.color} />
+          </div>
+
+          <div>
+            <h2 className="text-sm font-black uppercase tracking-[1.5px] text-white">
+              {category.title}
+            </h2>
+
+            <p className="mt-0.5 max-w-xl text-[10px] leading-relaxed text-zinc-600">
+              {category.description}
+            </p>
+          </div>
+        </div>
+
+        <span className="hidden rounded-full border border-white/[0.05] bg-white/[0.02] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-zinc-700 sm:block">
+          {category.items.length} controls
+        </span>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {category.items.map((item, itemIndex) => (
+          <SettingCard
+            key={item.id}
+            item={item}
+            index={itemIndex}
+            onClick={() => onOpen(item)}
+          />
+        ))}
+      </div>
+    </motion.section>
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
+| SETTING CARD
+|--------------------------------------------------------------------------
+*/
+
+const SettingCard = ({ item, index, onClick }) => {
+  const Icon = item.icon;
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 8 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay: Math.min(index * 0.025, 0.15) }}
+      whileTap={{ scale: 0.985 }}
+      onClick={onClick}
+      className={`group relative flex min-h-[104px] w-full items-center gap-3 overflow-hidden rounded-2xl border p-4 text-left transition-all ${
+        item.danger
+          ? "border-red-500/10 bg-red-500/[0.025] hover:border-red-500/25 hover:bg-red-500/[0.05]"
+          : "border-white/[0.055] bg-white/[0.018] hover:border-white/[0.12] hover:bg-white/[0.035]"
+      }`}
+    >
+      <div
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
+          item.danger
+            ? "border-red-500/10 bg-red-500/[0.07]"
+            : "border-white/[0.06] bg-black/40 group-hover:border-cyan-400/15"
+        }`}
+      >
+        <Icon
+          size={18}
+          className={
+            item.danger
+              ? "text-red-400"
+              : "text-zinc-400 transition group-hover:text-cyan-300"
+          }
+        />
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="text-[8px] font-black uppercase tracking-[2px] text-zinc-700">
-          {group.title}
-        </p>
+        <div className="flex items-center gap-2">
+          <h3 className="truncate text-[12px] font-black text-zinc-200">
+            {item.title}
+          </h3>
 
-        <h4 className="mt-1 text-xs font-black text-zinc-200">
-          {item.title}
-        </h4>
+          {item.route && (
+            <span className="rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-cyan-400">
+              Module
+            </span>
+          )}
+        </div>
 
         <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-zinc-600">
           {item.description}
@@ -1829,3905 +1550,2153 @@ const SearchResult = ({
 
       <ChevronRight
         size={16}
-        className="
-          shrink-0
-          text-zinc-700
-          transition
-          group-hover:text-cyan-400
-        "
+        className="shrink-0 text-zinc-700 transition group-hover:translate-x-0.5 group-hover:text-zinc-400"
+      />
+    </motion.button>
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
+| SEARCH RESULT
+|--------------------------------------------------------------------------
+*/
+
+const SearchResult = ({ item, onClick }) => {
+  const Icon = item.icon;
+
+  return (
+    <button
+      onClick={onClick}
+      className="group flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-left transition hover:border-cyan-400/20 hover:bg-cyan-400/[0.025]"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.05] bg-black">
+        <Icon size={17} className="text-cyan-300" />
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12px] font-black text-zinc-200">
+          {item.title}
+        </span>
+
+        <span className="mt-1 block truncate text-[9px] text-zinc-600">
+          {item.categoryTitle}
+        </span>
+      </span>
+
+      <ChevronRight
+        size={15}
+        className="text-zinc-700 group-hover:text-cyan-300"
       />
     </button>
   );
 };
 
-/* ============================================================
-   QUICK SETTINGS
-============================================================ */
-
-const QuickSettings = ({
-  dataSaver,
-  setDataSaver,
-  autoplay,
-  setAutoplay,
-  reduceMotion,
-  setReduceMotion
-}) => {
-  return (
-    <section>
-      <SectionTitle
-        eyebrow="Quick controls"
-        title="Frequently used"
-      />
-
-      <div className="
-        grid gap-3
-        sm:grid-cols-3
-      ">
-        <MiniToggle
-          icon={<Database className="text-orange-400" />}
-          title="Data Saver"
-          description="Reduce media data usage"
-          active={dataSaver}
-          onToggle={() =>
-            setDataSaver(!dataSaver)
-          }
-        />
-
-        <MiniToggle
-          icon={<Video className="text-cyan-400" />}
-          title="Autoplay"
-          description="Play videos automatically"
-          active={autoplay}
-          onToggle={() =>
-            setAutoplay(!autoplay)
-          }
-        />
-
-        <MiniToggle
-          icon={<Activity className="text-purple-400" />}
-          title="Reduce Motion"
-          description="Reduce interface animation"
-          active={reduceMotion}
-          onToggle={() =>
-            setReduceMotion(!reduceMotion)
-          }
-        />
-      </div>
-    </section>
-  );
-};
-
-/* ============================================================
-   SETTING DRAWER
-============================================================ */
+/*
+|--------------------------------------------------------------------------
+| SETTING DRAWER
+|--------------------------------------------------------------------------
+*/
 
 const SettingDrawer = ({
-  group,
   item,
+  category,
   profile,
-  user,
+  userEmail,
   dataSaver,
   setDataSaver,
-  theme,
-  setTheme,
-  accent,
-  setAccent,
-  language,
-  setLanguage,
-  density,
-  setDensity,
-  autoplay,
-  setAutoplay,
-  reduceMotion,
-  setReduceMotion,
-  highContrast,
-  setHighContrast,
+  notifications,
+  setNotifications,
+  onlineStatus,
+  setOnlineStatus,
+  darkMode,
+  setDarkMode,
   onClose,
   onNavigate,
-  onLogout,
   onClearCache,
-  showToast
+  cacheSize,
+  clearingCache
 }) => {
   const Icon = item.icon;
 
-  const isAccount =
-    item.id === "account-information";
-
-  const isAppearance =
-    item.id === "appearance";
-
-  const isData =
-    item.id === "data";
-
-  const isLanguage =
-    item.id === "language";
-
-  const isAccessibility =
-    item.id === "accessibility";
-
-  const isWallet =
-    item.id === "wallet";
-
-  const isPaymentMethods =
-    item.id === "payment-methods";
-
-  const isSecurity =
-    item.id === "security";
-
-  const isPrivacy =
-    item.id === "privacy";
-
-  const isNotifications =
-    item.id === "notifications";
-
-  const isContent =
-    item.id === "content";
-
-  const isComments =
-    item.id === "comments";
-
-  const isMessages =
-    item.id === "messages";
-
-  const isFollowers =
-    item.id === "followers";
-
-  const isAI =
-    item.id === "creator-ai";
-
-  const isSystem =
-    item.id === "system-status" ||
-    item.id === "diagnostics" ||
-    item.id === "app-preferences";
-
-  const isDanger =
-    item.danger ||
-    group.danger;
-
   return (
     <motion.div
-      className="fixed inset-0 z-[100]"
+      className="fixed inset-0 z-[100] flex justify-end"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      {/* Backdrop */}
+      {/* BACKDROP */}
 
       <motion.button
-        type="button"
         aria-label="Close settings"
         onClick={onClose}
-        className="absolute inset-0 h-full w-full bg-black/75 backdrop-blur-sm"
+        className="absolute inset-0 cursor-default bg-black/70 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
       />
 
-      {/* Drawer */}
+      {/* DRAWER */}
 
       <motion.aside
-        initial={{
-          opacity: 0,
-          x: "100%"
-        }}
-        animate={{
-          opacity: 1,
-          x: 0
-        }}
-        exit={{
-          opacity: 0,
-          x: "100%"
-        }}
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
         transition={{
           type: "spring",
           stiffness: 320,
           damping: 32
         }}
-        className="
-          absolute right-0 top-0
-          flex h-full
-          w-full max-w-xl
-          flex-col
-          overflow-hidden
-          border-l border-white/[0.08]
-          bg-[#070707]
-          shadow-2xl shadow-black
-        "
+        className="settings-scroll relative z-10 flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-white/[0.07] bg-[#070707] shadow-2xl"
       >
-        {/* Drawer header */}
+        {/* DRAWER HEADER */}
 
-        <div className="
-          shrink-0
-          border-b border-white/[0.06]
-          bg-black/80
-          p-5
-          backdrop-blur-xl
-        ">
-          <div className="flex items-start gap-3">
-
+        <div className="sticky top-0 z-20 border-b border-white/[0.06] bg-[#070707]/90 p-5 backdrop-blur-xl">
+          <div className="flex items-center gap-3">
             <button
-              type="button"
               onClick={onClose}
-              className="
-                flex h-10 w-10 shrink-0
-                items-center justify-center
-                rounded-xl
-                border border-white/[0.06]
-                bg-white/[0.03]
-                text-zinc-400
-                transition
-                hover:text-white
-              "
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025] text-zinc-400 hover:text-white"
             >
-              <X size={18} />
+              <X size={17} />
             </button>
 
-            <div className="
-              flex h-10 w-10 shrink-0
-              items-center justify-center
-              rounded-xl
-              border border-cyan-400/15
-              bg-cyan-400/[0.06]
-              text-cyan-400
-            ">
-              <Icon size={19} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-400/15 bg-cyan-400/10">
+              <Icon size={18} className="text-cyan-300" />
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="text-[8px] font-black uppercase tracking-[2px] text-cyan-400/70">
-                {group.title}
+              <p className="text-[8px] font-black uppercase tracking-[2px] text-zinc-600">
+                {category?.title || "Settings"}
               </p>
 
-              <h2 className="mt-1 text-base font-black">
+              <h2 className="truncate text-sm font-black text-white">
                 {item.title}
               </h2>
-
-              <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
-                {item.description}
-              </p>
             </div>
           </div>
         </div>
 
-        {/* Drawer content */}
+        {/* DRAWER BODY */}
 
-        <div className="flex-1 overflow-y-auto p-5">
-
-          {/* ================================================
-              ACCOUNT INFORMATION
-          ================================================ */}
-
-          {isAccount && (
-            <AccountInformation
-              profile={profile}
-              user={user}
-              onNavigate={onNavigate}
-            />
-          )}
-
-          {/* ================================================
-              APPEARANCE
-          ================================================ */}
-
-          {isAppearance && (
-            <AppearanceSettings
-              theme={theme}
-              setTheme={setTheme}
-              accent={accent}
-              setAccent={setAccent}
-              density={density}
-              setDensity={setDensity}
-              reduceMotion={reduceMotion}
-              setReduceMotion={setReduceMotion}
-              highContrast={highContrast}
-            />
-          )}
-
-          {/* ================================================
-              DATA
-          ================================================ */}
-
-          {isData && (
-            <DataStorageSettings
-              dataSaver={dataSaver}
-              setDataSaver={setDataSaver}
-              autoplay={autoplay}
-              setAutoplay={setAutoplay}
-              onClearCache={onClearCache}
-            />
-          )}
-
-          {/* ================================================
-              LANGUAGE
-          ================================================ */}
-
-          {isLanguage && (
-            <LanguageSettings
-              language={language}
-              setLanguage={setLanguage}
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              ACCESSIBILITY
-          ================================================ */}
-
-          {isAccessibility && (
-            <AccessibilitySettings
-              reduceMotion={reduceMotion}
-              setReduceMotion={setReduceMotion}
-              highContrast={highContrast}
-            />
-          )}
-
-          {/* ================================================
-              WALLET
-          ================================================ */}
-
-          {isWallet && (
-            <WalletSettings
-              profile={profile}
-              onNavigate={onNavigate}
-            />
-          )}
-
-          {/* ================================================
-              PAYMENT METHODS
-          ================================================ */}
-
-          {isPaymentMethods && (
-            <PaymentMethodsSettings
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              SECURITY
-          ================================================ */}
-
-          {isSecurity && (
-            <SecuritySettings
-              onNavigate={onNavigate}
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              PRIVACY
-          ================================================ */}
-
-          {isPrivacy && (
-            <PrivacySettings
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              NOTIFICATIONS
-          ================================================ */}
-
-          {isNotifications && (
-            <NotificationSettings
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              CONTENT
-          ================================================ */}
-
-          {isContent && (
-            <ContentSettings
-              dataSaver={dataSaver}
-              setDataSaver={setDataSaver}
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              COMMENTS
-          ================================================ */}
-
-          {isComments && (
-            <CommentsSettings
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              MESSAGES
-          ================================================ */}
-
-          {isMessages && (
-            <MessagesSettings
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              FOLLOWERS
-          ================================================ */}
-
-          {isFollowers && (
-            <FollowersSettings
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              CREATOR AI
-          ================================================ */}
-
-          {isAI && (
-            <CreatorAISettings
-              showToast={showToast}
-            />
-          )}
-
-          {/* ================================================
-              SYSTEM
-          ================================================ */}
-
-          {isSystem && (
-            <SystemSettings
-              showToast={showToast}
-              onClearCache={onClearCache}
-            />
-          )}
-
-          {/* ================================================
-              GENERIC MODULE
-          ================================================ */}
-
-          {!isAccount &&
-            !isAppearance &&
-            !isData &&
-            !isLanguage &&
-            !isAccessibility &&
-            !isWallet &&
-            !isPaymentMethods &&
-            !isSecurity &&
-            !isPrivacy &&
-            !isNotifications &&
-            !isContent &&
-            !isComments &&
-            !isMessages &&
-            !isFollowers &&
-            !isAI &&
-            !isSystem && (
-              <GenericSettingModule
-                group={group}
-                item={item}
-                onNavigate={onNavigate}
-                onLogout={onLogout}
-                showToast={showToast}
-              />
-            )}
-
-          {/* Danger warning */}
-
-          {isDanger && (
-            <div className="
-              mt-6
-              rounded-2xl
-              border border-red-500/20
-              bg-red-500/[0.05]
-              p-4
-            ">
-              <div className="flex gap-3">
-                <AlertTriangle
-                  size={18}
-                  className="shrink-0 text-red-400"
-                />
-
-                <div>
-                  <p className="text-xs font-black text-red-300">
-                    Account action
-                  </p>
-
-                  <p className="mt-1 text-[10px] leading-relaxed text-red-300/60">
-                    Account changes can affect your access,
-                    content and personal data. Make sure you
-                    understand the consequences before continuing.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="flex-1 p-5">
+          <SettingPanel
+            item={item}
+            profile={profile}
+            userEmail={userEmail}
+            dataSaver={dataSaver}
+            setDataSaver={setDataSaver}
+            notifications={notifications}
+            setNotifications={setNotifications}
+            onlineStatus={onlineStatus}
+            setOnlineStatus={setOnlineStatus}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            onNavigate={onNavigate}
+            onClearCache={onClearCache}
+            cacheSize={cacheSize}
+            clearingCache={clearingCache}
+          />
         </div>
       </motion.aside>
     </motion.div>
   );
 };
 
-/* ============================================================
-   ACCOUNT INFORMATION
-============================================================ */
+/*
+|--------------------------------------------------------------------------
+| SETTING PANEL
+|--------------------------------------------------------------------------
+*/
 
-const AccountInformation = ({
+const SettingPanel = ({
+  item,
   profile,
-  user,
-  onNavigate
-}) => {
-  const fields = [
-    ["Username", profile?.username || "Not set"],
-    ["Display name", profile?.display_name || "Not set"],
-    ["Full name", profile?.full_name || "Not set"],
-    ["Email", profile?.email || user?.email || "Not set"],
-    ["Phone", profile?.phone || "Not set"],
-    ["Date of birth", profile?.dob || "Not set"],
-    ["Gender", profile?.gender || "Not set"],
-    ["Location", profile?.location || "Not set"],
-    ["District", profile?.district || "Not set"],
-    ["Website", profile?.website || "Not set"],
-    ["Account ID", profile?.id || user?.id || "Unavailable"],
-    [
-      "Account status",
-      profile?.account_status || "Active"
-    ],
-    [
-      "Verification",
-      profile?.is_verified ||
-      profile?.verified_status === "verified"
-        ? "Verified"
-        : "Not verified"
-    ],
-    [
-      "Created",
-      profile?.created_at
-        ? new Date(profile.created_at).toLocaleDateString()
-        : "Unavailable"
-    ]
-  ];
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Your account"
-        description="Review the information associated with your Mpade Universe account."
-      />
-
-      <div className="
-        overflow-hidden
-        rounded-2xl
-        border border-white/[0.06]
-        bg-[#0A0A0A]
-      ">
-        {fields.map(([label, value], index) => (
-          <InfoRow
-            key={label}
-            label={label}
-            value={value}
-            border={index !== fields.length - 1}
-          />
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onNavigate("/edit-profile")}
-        className="
-          mt-4 flex w-full items-center justify-center gap-2
-          rounded-xl
-          bg-cyan-400
-          py-3.5
-          text-[10px] font-black uppercase tracking-[1.5px]
-          text-black
-          transition
-          hover:bg-cyan-300
-        "
-      >
-        Edit account information
-        <ChevronRight size={14} />
-      </button>
-    </div>
-  );
-};
-
-/* ============================================================
-   SECURITY
-============================================================ */
-
-const SecuritySettings = ({
+  userEmail,
+  dataSaver,
+  setDataSaver,
+  notifications,
+  setNotifications,
+  onlineStatus,
+  setOnlineStatus,
+  darkMode,
+  setDarkMode,
   onNavigate,
-  showToast
+  onClearCache,
+  cacheSize,
+  clearingCache
 }) => {
-  const [loginAlerts, setLoginAlerts] = useState(true);
-  const [suspiciousLogin, setSuspiciousLogin] = useState(true);
+  /*
+  |--------------------------------------------------------------------------
+  | ACCOUNT INFORMATION
+  |--------------------------------------------------------------------------
+  */
 
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Account protection"
-        description="Strengthen your account and monitor authentication activity."
-      />
-
-      <div className="space-y-3">
-
-        <SecurityAction
-          icon={<KeyRound />}
-          title="Change password"
-          description="Update your account password."
-          onClick={() =>
-            onNavigate("/settings/security")
-          }
-        />
-
-        <SecurityAction
-          icon={<Fingerprint />}
-          title="Two-factor authentication"
-          description="Authenticator app, SMS verification and recovery options."
-          onClick={() =>
-            onNavigate("/settings/security")
-          }
-          badge="Configure"
-        />
-
-        <SecurityAction
-          icon={<Smartphone />}
-          title="Passkeys"
-          description="Use supported device authentication instead of passwords."
-          badge="Available"
-        />
-
-        <SecurityAction
-          icon={<MonitorSmartphone />}
-          title="Active sessions"
-          description="Review devices currently signed into your account."
-          onClick={() =>
-            onNavigate("/settings/security")
-          }
-        />
-
-        <SecurityAction
-          icon={<History />}
-          title="Login history"
-          description="Review recent account access and security events."
-          onClick={() =>
-            onNavigate("/settings/security")
-          }
-        />
-
-        <SettingToggle
-          icon={<Bell className="text-cyan-400" />}
-          title="Login alerts"
-          description="Notify me when a new device signs in."
-          active={loginAlerts}
-          onToggle={() =>
-            setLoginAlerts(!loginAlerts)
-          }
-        />
-
-        <SettingToggle
-          icon={<ShieldAlert className="text-red-400" />}
-          title="Suspicious login detection"
-          description="Monitor unusual authentication activity."
-          active={suspiciousLogin}
-          onToggle={() =>
-            setSuspiciousLogin(!suspiciousLogin)
-          }
-          border={false}
-        />
-      </div>
-
-      <InfoNotice>
-        Authentication features such as 2FA, passkeys and
-        session management should be connected to your actual
-        Supabase authentication configuration before being
-        treated as active security controls.
-      </InfoNotice>
-
-      <button
-        type="button"
-        onClick={() =>
-          showToast("Security settings are ready for configuration")
-        }
-        className="
-          mt-4 w-full rounded-xl
-          border border-white/[0.06]
-          bg-white/[0.03]
-          py-3
-          text-[9px] font-black uppercase tracking-[1.5px]
-          text-zinc-400
-        "
+  if (item.id === "account-information") {
+    return (
+      <PanelShell
+        title="Account Information"
+        description="Review the information associated with your Mpade Universe account."
       >
-        Security events
-      </button>
-    </div>
-  );
-};
+        <InfoGrid>
+          <InfoField label="Username" value={profile?.username || "Not set"} />
+          <InfoField
+            label="Display Name"
+            value={profile?.display_name || "Not set"}
+          />
+          <InfoField
+            label="Full Name"
+            value={profile?.full_name || "Not set"}
+          />
+          <InfoField label="Email" value={userEmail || "Not available"} />
+          <InfoField
+            label="Phone"
+            value="Configured through account security"
+          />
+          <InfoField
+            label="Date of Birth"
+            value={profile?.dob || "Not set"}
+          />
+          <InfoField label="Gender" value={profile?.gender || "Not set"} />
+          <InfoField
+            label="Location"
+            value={profile?.location || "Not set"}
+          />
+          <InfoField
+            label="District"
+            value={profile?.district || "Not set"}
+          />
+          <InfoField
+            label="Website"
+            value={profile?.website || "Not set"}
+          />
+          <InfoField
+            label="Account Status"
+            value={profile?.account_status || "Active"}
+          />
+          <InfoField
+            label="Verification"
+            value={
+              profile?.is_verified || profile?.verified_status
+                ? "Verified"
+                : "Not verified"
+            }
+          />
+        </InfoGrid>
 
-/* ============================================================
-   PRIVACY
-============================================================ */
-
-const PrivacySettings = ({ showToast }) => {
-  const [privateAccount, setPrivateAccount] = useState(false);
-  const [onlineStatus, setOnlineStatus] = useState(true);
-  const [profileViews, setProfileViews] = useState(true);
-  const [activityVisibility, setActivityVisibility] = useState(true);
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Privacy controls"
-        description="Choose how your profile and activity are visible to other people."
-      />
-
-      <div className="
-        overflow-hidden rounded-2xl
-        border border-white/[0.06]
-        bg-[#0A0A0A]
-      ">
-        <SettingToggle
-          icon={<Eye className="text-cyan-400" />}
-          title="Private account"
-          description="Approve people before they can follow you."
-          active={privateAccount}
-          onToggle={() =>
-            setPrivateAccount(!privateAccount)
-          }
+        <ActionButton
+          icon={<User size={16} />}
+          label="Edit Profile"
+          onClick={() => onNavigate("/edit-profile")}
         />
+      </PanelShell>
+    );
+  }
 
-        <SettingToggle
-          icon={<Activity className="text-emerald-400" />}
-          title="Online status"
-          description="Allow people to see when you are active."
-          active={onlineStatus}
-          onToggle={() =>
-            setOnlineStatus(!onlineStatus)
-          }
-        />
+  /*
+  |--------------------------------------------------------------------------
+  | ACCOUNT TYPE
+  |--------------------------------------------------------------------------
+  */
 
-        <SettingToggle
-          icon={<Eye className="text-purple-400" />}
-          title="Profile views"
-          description="Allow profile-view history to be visible."
-          active={profileViews}
-          onToggle={() =>
-            setProfileViews(!profileViews)
-          }
-        />
-
-        <SettingToggle
-          icon={<Users className="text-orange-400" />}
-          title="Activity visibility"
-          description="Control visibility of likes, follows and activity."
-          active={activityVisibility}
-          onToggle={() =>
-            setActivityVisibility(!activityVisibility)
-          }
-          border={false}
-        />
-      </div>
-
-      <div className="mt-4 grid gap-3">
-        <PrivacyAction
-          icon={<MessageCircle />}
-          title="Who can message you"
-          value="Everyone"
-        />
-
-        <PrivacyAction
-          icon={<UserPlus />}
-          title="Who can follow you"
-          value="Everyone"
-        />
-
-        <PrivacyAction
-          icon={<Tag />}
-          title="Who can mention or tag you"
-          value="Followers"
-        />
-
-        <PrivacyAction
-          icon={<Search />}
-          title="Search visibility"
-          value="Enabled"
-        />
-
-        <PrivacyAction
-          icon={<Ban />}
-          title="Blocked & restricted"
-          value="Manage"
-          onClick={() =>
-            showToast("Blocked and restricted management")
-          }
-        />
-
-        <PrivacyAction
-          icon={<ShieldAlert />}
-          title="Hidden words & filters"
-          value="Manage"
-        />
-      </div>
-    </div>
-  );
-};
-
-/* ============================================================
-   NOTIFICATIONS
-============================================================ */
-
-const NotificationSettings = ({ showToast }) => {
-  const categories = [
-    "Followers",
-    "Likes",
-    "Comments",
-    "Replies",
-    "Mentions",
-    "Shares",
-    "Reposts",
-    "Saves",
-    "Gifts",
-    "Live",
-    "Subscribers",
-    "Subscription payments",
-    "Creator fund",
-    "Earnings",
-    "Payouts",
-    "Video processing",
-    "Publishing",
-    "Scheduled content",
-    "Copyright",
-    "Content warnings",
-    "Account security",
-    "System"
-  ];
-
-  const [push, setPush] = useState(true);
-  const [email, setEmail] = useState(true);
-  const [sms, setSms] = useState(false);
-  const [sounds, setSounds] = useState(true);
-  const [vibration, setVibration] = useState(true);
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Notification center"
-        description="Choose what Mpade Universe can notify you about."
-      />
-
-      <div className="
-        overflow-hidden rounded-2xl
-        border border-white/[0.06]
-        bg-[#0A0A0A]
-      ">
-        <SettingToggle
-          icon={<Bell className="text-cyan-400" />}
-          title="Push notifications"
-          active={push}
-          onToggle={() => setPush(!push)}
-        />
-
-        <SettingToggle
-          icon={<Mail className="text-blue-400" />}
-          title="Email notifications"
-          active={email}
-          onToggle={() => setEmail(!email)}
-        />
-
-        <SettingToggle
-          icon={<Phone className="text-emerald-400" />}
-          title="SMS notifications"
-          active={sms}
-          onToggle={() => setSms(!sms)}
-        />
-
-        <SettingToggle
-          icon={<Volume2 className="text-purple-400" />}
-          title="Notification sounds"
-          active={sounds}
-          onToggle={() => setSounds(!sounds)}
-        />
-
-        <SettingToggle
-          icon={<Smartphone className="text-orange-400" />}
-          title="Vibration"
-          active={vibration}
-          onToggle={() => setVibration(!vibration)}
-          border={false}
-        />
-      </div>
-
-      <div className="mt-5">
-        <SettingSectionHeader
-          title="Notification categories"
-          description="Individual notification types."
-        />
-
-        <div className="
-          overflow-hidden rounded-2xl
-          border border-white/[0.06]
-          bg-[#0A0A0A]
-        ">
-          {categories.map((category, index) => (
-            <NotificationCategory
-              key={category}
-              title={category}
-              border={index !== categories.length - 1}
-            />
-          ))}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() =>
-          showToast("Notification history marked as read")
-        }
-        className="
-          mt-4 w-full rounded-xl
-          border border-white/[0.06]
-          bg-white/[0.03]
-          py-3
-          text-[9px] font-black uppercase tracking-[1.5px]
-          text-zinc-400
-        "
+  if (item.id === "account-type") {
+    return (
+      <PanelShell
+        title="Account Type"
+        description="Choose how you want to use Mpade Universe."
       >
-        Mark all notifications as read
-      </button>
-    </div>
-  );
-};
-
-/* ============================================================
-   CONTENT
-============================================================ */
-
-const ContentSettings = ({
-  dataSaver,
-  setDataSaver,
-  showToast
-}) => {
-  const [downloads, setDownloads] = useState(false);
-  const [duet, setDuet] = useState(true);
-  const [stitch, setStitch] = useState(true);
-  const [repost, setRepost] = useState(true);
-  const [comments, setComments] = useState(true);
-  const [ageRestriction, setAgeRestriction] = useState(false);
-  const [sensitiveContent, setSensitiveContent] = useState(false);
-  const [aiDisclosure, setAiDisclosure] = useState(true);
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Content controls"
-        description="Set default behavior for your videos and content."
-      />
-
-      <div className="space-y-3">
-
-        <SelectRow
-          icon={<Eye />}
-          title="Default video privacy"
-          value="Public"
-        />
-
-        <SelectRow
-          icon={<Video />}
-          title="Upload quality"
-          value="High"
-        />
-
-        <SelectRow
-          icon={<Image />}
-          title="Thumbnail preference"
-          value="Auto"
-        />
-
-        <SelectRow
-          icon={<FileText />}
-          title="Caption preference"
-          value="Auto captions"
-        />
-
-        <SelectRow
-          icon={<Tag />}
-          title="Hashtag suggestions"
-          value="Enabled"
-        />
-
-        <SettingToggle
-          icon={<Database className="text-orange-400" />}
-          title="Data Saver"
-          description="Reduce media quality when using mobile data."
-          active={dataSaver}
-          onToggle={() =>
-            setDataSaver(!dataSaver)
-          }
-        />
-
-        <SettingToggle
-          icon={<Download className="text-blue-400" />}
-          title="Allow downloads"
-          active={downloads}
-          onToggle={() =>
-            setDownloads(!downloads)
-          }
-        />
-
-        <SettingToggle
-          icon={<Sparkles className="text-cyan-400" />}
-          title="Allow AI disclosure"
-          description="Identify content generated or enhanced with AI."
-          active={aiDisclosure}
-          onToggle={() =>
-            setAiDisclosure(!aiDisclosure)
-          }
-        />
-
-        <SettingToggle
-          icon={<Video className="text-purple-400" />}
-          title="Allow Duet"
-          active={duet}
-          onToggle={() => setDuet(!duet)}
-        />
-
-        <SettingToggle
-          icon={<Video className="text-pink-400" />}
-          title="Allow Stitch"
-          active={stitch}
-          onToggle={() => setStitch(!stitch)}
-        />
-
-        <SettingToggle
-          icon={<RefreshCw className="text-emerald-400" />}
-          title="Allow Repost"
-          active={repost}
-          onToggle={() => setRepost(!repost)}
-        />
-
-        <SettingToggle
-          icon={<MessageSquare className="text-yellow-400" />}
-          title="Allow comments"
-          active={comments}
-          onToggle={() => setComments(!comments)}
-        />
-
-        <SettingToggle
-          icon={<ShieldAlert className="text-red-400" />}
-          title="Age restriction"
-          active={ageRestriction}
-          onToggle={() =>
-            setAgeRestriction(!ageRestriction)
-          }
-        />
-
-        <SettingToggle
-          icon={<EyeOff className="text-orange-400" />}
-          title="Sensitive content filter"
-          active={sensitiveContent}
-          onToggle={() =>
-            setSensitiveContent(!sensitiveContent)
-          }
-          border={false}
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={() =>
-          showToast("Content preferences saved locally")
-        }
-        className="
-          mt-5 w-full rounded-xl
-          bg-cyan-400 py-3.5
-          text-[9px] font-black uppercase tracking-[1.5px]
-          text-black
-        "
-      >
-        Save content preferences
-      </button>
-    </div>
-  );
-};
-
-/* ============================================================
-   DATA STORAGE
-============================================================ */
-
-const DataStorageSettings = ({
-  dataSaver,
-  setDataSaver,
-  autoplay,
-  setAutoplay,
-  onClearCache
-}) => {
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Data & storage"
-        description="Control media quality, autoplay and local browser storage."
-      />
-
-      <div className="
-        overflow-hidden rounded-2xl
-        border border-white/[0.06]
-        bg-[#0A0A0A]
-      ">
-        <SettingToggle
-          icon={<Database className="text-orange-400" />}
-          title="Data Saver"
-          description="Reduce video quality to save mobile data."
-          active={dataSaver}
-          onToggle={() =>
-            setDataSaver(!dataSaver)
-          }
-        />
-
-        <SettingToggle
-          icon={<Video className="text-cyan-400" />}
-          title="Autoplay"
-          description="Automatically play videos."
-          active={autoplay}
-          onToggle={() =>
-            setAutoplay(!autoplay)
-          }
-          border={false}
-        />
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <SelectRow
-          icon={<Upload />}
-          title="Upload quality"
-          value={dataSaver ? "Standard" : "High"}
-        />
-
-        <SelectRow
-          icon={<Download />}
-          title="Download quality"
-          value={dataSaver ? "Standard" : "High"}
-        />
-
-        <SelectRow
-          icon={<Wifi />}
-          title="Wi-Fi autoplay"
-          value="Enabled"
-        />
-
-        <SelectRow
-          icon={<Smartphone />}
-          title="Mobile autoplay"
-          value={dataSaver ? "Disabled" : "Enabled"}
-        />
-
-        <SelectRow
-          icon={<HardDrive />}
-          title="Background downloads"
-          value="Ask first"
-        />
-      </div>
-
-      <div className="
-        mt-5 rounded-2xl
-        border border-white/[0.06]
-        bg-[#0A0A0A]
-        p-5
-      ">
-        <div className="flex items-center gap-3">
-          <HardDrive
-            size={18}
-            className="text-orange-400"
+        <div className="space-y-2">
+          <ChoiceCard
+            title="Personal"
+            description="Standard account for everyday social activity."
+            icon={<User size={18} />}
+            active={!profile?.subscription_tier}
           />
 
-          <div className="flex-1">
-            <p className="text-xs font-black">
-              Local browser cache
-            </p>
+          <ChoiceCard
+            title="Creator"
+            description="Unlock creator-focused tools, analytics and monetization."
+            icon={<Sparkles size={18} />}
+          />
 
-            <p className="mt-1 text-[10px] text-zinc-600">
-              Clear locally cached application data.
-            </p>
-          </div>
+          <ChoiceCard
+            title="Professional"
+            description="Advanced professional dashboard and audience tools."
+            icon={<BarChart3 size={18} />}
+          />
+
+          <ChoiceCard
+            title="Business"
+            description="Designed for brands, organizations and campaigns."
+            icon={<BriefcaseBusiness size={18} />}
+          />
         </div>
 
-        <button
-          type="button"
-          onClick={onClearCache}
-          className="
-            mt-4 flex w-full items-center
-            justify-center gap-2
-            rounded-xl
-            border border-orange-400/15
-            bg-orange-400/[0.05]
-            py-3
-            text-[9px] font-black uppercase tracking-[1.5px]
-            text-orange-300
-          "
-        >
-          <Trash2 size={14} />
-          Clear cache
-        </button>
-      </div>
+        <Notice
+          icon={<Info size={16} />}
+          title="Account switching"
+          description="The account-type backend can be connected to your profiles/account-type field when that module is available."
+        />
+      </PanelShell>
+    );
+  }
 
-      <InfoNotice>
-        Storage values should be calculated from actual browser
-        cache, IndexedDB, drafts and downloaded media rather than
-        being hardcoded into the settings interface.
-      </InfoNotice>
-    </div>
-  );
-};
+  /*
+  |--------------------------------------------------------------------------
+  | SECURITY
+  |--------------------------------------------------------------------------
+  */
 
-/* ============================================================
-   LANGUAGE
-============================================================ */
+  if (item.id === "security") {
+    return (
+      <PanelShell
+        title="Security"
+        description="Protect your account with stronger authentication and session controls."
+      >
+        <PanelLink
+          icon={<Lock />}
+          title="Password & Security"
+          description="Change your password and security preferences."
+          onClick={() => onNavigate("/settings/security")}
+        />
 
-const LanguageSettings = ({
-  language,
-  setLanguage,
-  showToast
-}) => {
-  const [translation, setTranslation] = useState(true);
-  const [autoTranslate, setAutoTranslate] = useState(true);
-  const [captions, setCaptions] = useState("English");
+        <PanelLink
+          icon={<Smartphone />}
+          title="Two-Factor Authentication"
+          description="Authenticator and SMS verification can be configured here."
+        />
 
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Language & region"
+        <PanelLink
+          icon={<Fingerprint />}
+          title="Passkeys"
+          description="Use device-based authentication where supported."
+        />
+
+        <PanelLink
+          icon={<ShieldAlert />}
+          title="Login Alerts"
+          description="Get notified about suspicious or new login activity."
+        />
+
+        <PanelLink
+          icon={<History />}
+          title="Login History"
+          description="Review recent authentication activity."
+        />
+
+        <PanelLink
+          icon={<Smartphone />}
+          title="Active Sessions"
+          description="Review devices currently signed in to your account."
+        />
+
+        <PanelLink
+          icon={<LogOut />}
+          title="Log Out All Devices"
+          description="Sign out all active sessions."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | PRIVACY
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "privacy") {
+    return (
+      <PanelShell
+        title="Privacy"
+        description="Control who can see, contact and interact with you."
+      >
+        <PanelToggle
+          icon={<Eye />}
+          title="Public Profile"
+          description="Allow anyone to view your profile."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<UserPlus />}
+          title="Who Can Follow You"
+          description="Control who is allowed to follow your account."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<MessagesSquare />}
+          title="Who Can Message You"
+          description="Control direct-message access."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<AtSignFallback />}
+          title="Mentions & Tags"
+          description="Control who can mention or tag your account."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<Globe />}
+          title="Search Visibility"
+          description="Allow your account to appear in search and recommendations."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<EyeOff />}
+          title="Activity Visibility"
+          description="Control online, last-active and profile-view visibility."
+          active={onlineStatus}
+          onToggle={() => setOnlineStatus(!onlineStatus)}
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | BLOCKED
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "blocked") {
+    return (
+      <PanelShell
+        title="Blocked & Restricted"
+        description="Manage accounts and words you don't want interacting with you."
+      >
+        <PanelLink
+          icon={<Ban />}
+          title="Blocked Accounts"
+          description="Accounts you have blocked."
+        />
+
+        <PanelLink
+          icon={<EyeOff />}
+          title="Muted Accounts"
+          description="Accounts whose content you have muted."
+        />
+
+        <PanelLink
+          icon={<Shield />}
+          title="Restricted Accounts"
+          description="Accounts with limited interaction permissions."
+        />
+
+        <PanelLink
+          icon={<MessageSquareWarning />}
+          title="Hidden Words"
+          description="Filter comments and messages containing selected words."
+        />
+
+        <PanelLink
+          icon={<SlidersHorizontal />}
+          title="Comment Filters"
+          description="Automatically filter offensive or spam comments."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | NOTIFICATIONS
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "notifications") {
+    return (
+      <PanelShell
+        title="Notifications"
+        description="Control what Mpade Universe sends you and how it alerts you."
+      >
+        <PanelToggle
+          icon={<Bell />}
+          title="Notifications"
+          description="Enable or disable general notifications."
+          active={notifications}
+          onToggle={() => setNotifications(!notifications)}
+        />
+
+        <PanelLink
+          icon={<Heart />}
+          title="Social Notifications"
+          description="Followers, likes, comments, replies, shares, reposts and saves."
+        />
+
+        <PanelLink
+          icon={<Gift />}
+          title="Gifts & Earnings"
+          description="Gifts, creator fund, earnings and payout notifications."
+        />
+
+        <PanelLink
+          icon={<Radio />}
+          title="Live Notifications"
+          description="Live sessions, subscribers and live activity."
+        />
+
+        <PanelLink
+          icon={<Video />}
+          title="Content Notifications"
+          description="Video processing, publishing and scheduled content."
+        />
+
+        <PanelLink
+          icon={<ShieldAlert />}
+          title="Security Notifications"
+          description="Account security and suspicious activity alerts."
+        />
+
+        <PanelLink
+          icon={<Volume2 />}
+          title="Sounds & Vibration"
+          description="Notification sound and vibration preferences."
+        />
+
+        <PanelLink
+          icon={<Clock3 />}
+          title="Quiet Hours"
+          description="Silence notifications during selected periods."
+        />
+
+        <PanelLink
+          icon={<History />}
+          title="Notification History"
+          description="Review previous notifications."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | DATA
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "data") {
+    return (
+      <PanelShell
+        title="Data & Storage"
+        description="Reduce data usage and manage locally cached content."
+      >
+        <PanelToggle
+          icon={<Database />}
+          title="Data Saver"
+          description="Reduce video quality and bandwidth usage."
+          active={dataSaver}
+          onToggle={() => setDataSaver(!dataSaver)}
+        />
+
+        <PanelLink
+          icon={<Video />}
+          title="Video Quality"
+          description="Choose upload, playback and download quality."
+        />
+
+        <PanelLink
+          icon={<Zap />}
+          title="Autoplay"
+          description="Control autoplay on Wi-Fi and mobile data."
+        />
+
+        <PanelLink
+          icon={<Download />}
+          title="Background Downloads"
+          description="Manage offline and background downloads."
+        />
+
+        <PanelLink
+          icon={<HardDrive />}
+          title="Storage Usage"
+          description="Videos, drafts, thumbnails, audio, downloads and recordings."
+        />
+
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[1.5px] text-zinc-600">
+                Local cache
+              </p>
+              <p className="mt-1 text-xl font-black text-white">
+                {formatBytes(cacheSize)}
+              </p>
+            </div>
+
+            <HardDrive size={20} className="text-cyan-300" />
+          </div>
+
+          <button
+            onClick={onClearCache}
+            disabled={clearingCache}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:bg-white/[0.06] disabled:opacity-50"
+          >
+            {clearingCache ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" />
+                Clearing...
+              </>
+            ) : (
+              <>
+                <Trash2 size={14} />
+                Clear Cache
+              </>
+            )}
+          </button>
+        </div>
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | LANGUAGE
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "language") {
+    return (
+      <PanelShell
+        title="Language & Region"
         description="Configure language, translation and regional preferences."
-      />
-
-      <div className="space-y-3">
-
+      >
         <SelectRow
           icon={<Languages />}
-          title="App language"
-          value={language}
-          onClick={() =>
-            setLanguage(
-              language === "English"
-                ? "Chichewa"
-                : "English"
-            )
-          }
-        />
-
-        <SelectRow
-          icon={<Languages />}
-          title="Content language"
-          value="English + Chichewa"
-        />
-
-        <SettingToggle
-          icon={<Globe className="text-cyan-400" />}
-          title="Translation"
-          active={translation}
-          onToggle={() =>
-            setTranslation(!translation)
-          }
-        />
-
-        <SettingToggle
-          icon={<Languages className="text-purple-400" />}
-          title="Auto-translate"
-          active={autoTranslate}
-          onToggle={() =>
-            setAutoTranslate(!autoTranslate)
-          }
-        />
-
-        <SelectRow
-          icon={<MessageSquare />}
-          title="Caption language"
-          value={captions}
-          onClick={() =>
-            setCaptions(
-              captions === "English"
-                ? "Chichewa"
-                : "English"
-            )
-          }
+          title="App Language"
+          value="English"
         />
 
         <SelectRow
           icon={<Globe />}
-          title="Country / region"
+          title="Country / Region"
           value="Malawi"
         />
 
         <SelectRow
-          icon={<Calendar />}
+          icon={<Clock3 />}
           title="Timezone"
-          value="Africa/Blantyre"
+          value="CAT — UTC+02:00"
         />
 
         <SelectRow
           icon={<Banknote />}
           title="Currency"
-          value="MWK"
+          value={profile?.currency_preference || "MWK"}
         />
 
-        <SelectRow
-          icon={<Calendar />}
-          title="Date format"
-          value="DD/MM/YYYY"
-        />
-
-        <SelectRow
-          icon={<HashIcon />}
-          title="Number format"
-          value="1,234.56"
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={() =>
-          showToast("Language preferences saved")
-        }
-        className="
-          mt-5 w-full rounded-xl
-          bg-cyan-400 py-3.5
-          text-[9px] font-black uppercase tracking-[1.5px]
-          text-black
-        "
-      >
-        Save region preferences
-      </button>
-    </div>
-  );
-};
-
-/* ============================================================
-   APPEARANCE
-============================================================ */
-
-const AppearanceSettings = ({
-  theme,
-  setTheme,
-  accent,
-  setAccent,
-  density,
-  setDensity,
-  reduceMotion,
-  setReduceMotion,
-  highContrast
-}) => {
-  const accents = [
-    ["cyan", "Cyan"],
-    ["purple", "Purple"],
-    ["pink", "Pink"],
-    ["emerald", "Emerald"],
-    ["orange", "Orange"]
-  ];
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Appearance"
-        description="Customize the visual experience of Mpade Universe."
-      />
-
-      <div className="space-y-5">
-
-        <div>
-          <SettingLabel>
-            Theme
-          </SettingLabel>
-
-          <div className="grid grid-cols-3 gap-2">
-            {["dark", "light", "system"].map(
-              (value) => (
-                <ChoiceButton
-                  key={value}
-                  active={theme === value}
-                  onClick={() =>
-                    setTheme(value)
-                  }
-                  label={
-                    value.charAt(0).toUpperCase() +
-                    value.slice(1)
-                  }
-                />
-              )
-            )}
-          </div>
-        </div>
-
-        <div>
-          <SettingLabel>
-            Interface style
-          </SettingLabel>
-
-          <ChoiceButton
-            active={theme === "neon"}
-            onClick={() =>
-              setTheme(
-                theme === "neon"
-                  ? "dark"
-                  : "neon"
-              )
-            }
-            label="Neon Glow"
-          />
-        </div>
-
-        <div>
-          <SettingLabel>
-            Accent color
-          </SettingLabel>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {accents.map(([value, label]) => (
-              <ChoiceButton
-                key={value}
-                active={accent === value}
-                onClick={() =>
-                  setAccent(value)
-                }
-                label={label}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <SettingLabel>
-            Interface density
-          </SettingLabel>
-
-          <div className="grid grid-cols-2 gap-2">
-            <ChoiceButton
-              active={density === "comfortable"}
-              onClick={() =>
-                setDensity("comfortable")
-              }
-              label="Comfortable"
-            />
-
-            <ChoiceButton
-              active={density === "compact"}
-              onClick={() =>
-                setDensity("compact")
-              }
-              label="Compact"
-            />
-          </div>
-        </div>
-
-        <SettingToggle
-          icon={<Activity className="text-purple-400" />}
-          title="Reduce motion"
-          description="Reduce animations and transitions."
-          active={reduceMotion}
-          onToggle={() =>
-            setReduceMotion(!reduceMotion)
-          }
-        />
-
-        <SettingToggle
-          icon={<Eye className="text-blue-400" />}
-          title="High contrast"
-          description="Increase contrast throughout the application."
-          active={highContrast}
+        <PanelToggle
+          icon={<Languages />}
+          title="Auto Translate"
+          description="Automatically translate supported content."
+          active={true}
           onToggle={() => {}}
-          border={false}
         />
-      </div>
-    </div>
-  );
-};
 
-/* ============================================================
-   ACCESSIBILITY
-============================================================ */
-
-const AccessibilitySettings = ({
-  reduceMotion,
-  setReduceMotion,
-  highContrast
-}) => {
-  const [captions, setCaptions] = useState(true);
-  const [audioDescriptions, setAudioDescriptions] = useState(false);
-  const [largeTargets, setLargeTargets] = useState(false);
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Accessibility"
-        description="Make Mpade Universe easier to see, hear and navigate."
-      />
-
-      <div className="space-y-3">
+        <SelectRow
+          icon={<MessageCircle />}
+          title="Caption Language"
+          value="English"
+        />
 
         <SelectRow
           icon={<SlidersHorizontal />}
-          title="Font size"
-          value="Default"
+          title="Date & Number Format"
+          value="Regional"
         />
+      </PanelShell>
+    );
+  }
 
-        <SettingToggle
-          icon={<Eye className="text-cyan-400" />}
-          title="High contrast"
-          active={highContrast}
+  /*
+  |--------------------------------------------------------------------------
+  | APPEARANCE
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "appearance") {
+    return (
+      <PanelShell
+        title="Appearance"
+        description="Make Mpade Universe look and feel the way you want."
+      >
+        <div className="grid grid-cols-3 gap-2">
+          <ThemeButton
+            icon={<Moon />}
+            label="Dark"
+            active={darkMode === "dark"}
+            onClick={() => setDarkMode("dark")}
+          />
+
+          <ThemeButton
+            icon={<Sun />}
+            label="Light"
+            active={darkMode === "light"}
+            onClick={() => setDarkMode("light")}
+          />
+
+          <ThemeButton
+            icon={<Monitor />}
+            label="System"
+            active={darkMode === "system"}
+            onClick={() => setDarkMode("system")}
+          />
+        </div>
+
+        <PanelToggle
+          icon={<Sparkles />}
+          title="Neon Mode"
+          description="Enable Mpade Universe's futuristic neon visual treatment."
+          active={true}
           onToggle={() => {}}
         />
 
-        <SettingToggle
-          icon={<Activity className="text-purple-400" />}
-          title="Reduce motion"
-          active={reduceMotion}
-          onToggle={() =>
-            setReduceMotion(!reduceMotion)
-          }
-        />
-
-        <SettingToggle
-          icon={<MessageSquare className="text-emerald-400" />}
-          title="Captions"
-          active={captions}
-          onToggle={() =>
-            setCaptions(!captions)
-          }
-        />
-
-        <SettingToggle
-          icon={<Volume2 className="text-orange-400" />}
-          title="Audio descriptions"
-          active={audioDescriptions}
-          onToggle={() =>
-            setAudioDescriptions(!audioDescriptions)
-          }
-        />
-
-        <SettingToggle
-          icon={<Smartphone className="text-blue-400" />}
-          title="Larger touch targets"
-          active={largeTargets}
-          onToggle={() =>
-            setLargeTargets(!largeTargets)
-          }
-          border={false}
-        />
-      </div>
-    </div>
-  );
-};
-
-/* ============================================================
-   WALLET
-============================================================ */
-
-const WalletSettings = ({
-  profile,
-  onNavigate
-}) => {
-  const currency =
-    profile?.currency_preference || "MWK";
-
-  const balance = profile?.balance || 0;
-  const coins = profile?.coins || 0;
-  const lifetime =
-    profile?.total_tokens_earned || 0;
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Wallet"
-        description="View your creator financial overview."
-      />
-
-      <div className="
-        rounded-3xl
-        border border-emerald-400/10
-        bg-gradient-to-br
-        from-emerald-400/[0.08]
-        via-[#0A0A0A]
-        to-cyan-400/[0.04]
-        p-5
-      ">
-        <p className="text-[9px] font-black uppercase tracking-[2px] text-emerald-400/70">
-          Available balance
-        </p>
-
-        <p className="mt-2 text-3xl font-black">
-          {formatCurrency(balance, currency)}
-        </p>
-
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <WalletStat
-            label="Coins"
-            value={formatNumber(coins)}
-          />
-
-          <WalletStat
-            label="Lifetime"
-            value={formatNumber(lifetime)}
-          />
-        </div>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <SecurityAction
-          icon={<Banknote />}
-          title="Payouts"
-          description="Request and track creator payouts."
-          onClick={() =>
-            onNavigate("/payouts")
-          }
-        />
-
-        <SecurityAction
-          icon={<CreditCard />}
-          title="Payment methods"
-          description="Manage your payout methods."
-        />
-
-        <SecurityAction
-          icon={<History />}
-          title="Transaction history"
-          description="Review financial transactions."
-        />
-      </div>
-    </div>
-  );
-};
-
-/* ============================================================
-   PAYMENT METHODS
-============================================================ */
-
-const PaymentMethodsSettings = ({
-  showToast
-}) => {
-  const [defaultMethod, setDefaultMethod] =
-    useState("TNM Mpamba");
-
-  const methods = [
-    {
-      id: "TNM Mpamba",
-      icon: <Smartphone />,
-      description: "Mobile money"
-    },
-    {
-      id: "Airtel Money",
-      icon: <Smartphone />,
-      description: "Mobile money"
-    },
-    {
-      id: "Bank account",
-      icon: <Banknote />,
-      description: "Bank transfer"
-    }
-  ];
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Payment methods"
-        description="Choose how you receive eligible creator payouts."
-      />
-
-      <div className="space-y-3">
-        {methods.map((method) => (
-          <button
-            type="button"
-            key={method.id}
-            onClick={() =>
-              setDefaultMethod(method.id)
-            }
-            className="
-              flex w-full items-center gap-4
-              rounded-2xl
-              border border-white/[0.06]
-              bg-[#0A0A0A]
-              p-4
-              text-left
-              transition
-              hover:border-emerald-400/20
-            "
-          >
-            <div className="
-              flex h-11 w-11 items-center justify-center
-              rounded-xl bg-black text-emerald-400
-            ">
-              {method.icon}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-black">
-                {method.id}
-              </p>
-
-              <p className="mt-1 text-[10px] text-zinc-600">
-                {method.description}
-              </p>
-            </div>
-
-            <div className="
-              flex h-6 w-6 items-center justify-center
-              rounded-full
-              border border-white/[0.1]
-            ">
-              {defaultMethod === method.id && (
-                <Check
-                  size={13}
-                  className="text-emerald-400"
-                />
-              )}
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <InfoNotice>
-        Payment verification and payout processing must be
-        connected to your actual payment provider before funds
-        can be sent.
-      </InfoNotice>
-
-      <button
-        type="button"
-        onClick={() =>
-          showToast(
-            `${defaultMethod} selected as default payout method`
-          )
-        }
-        className="
-          mt-4 w-full rounded-xl
-          bg-emerald-400
-          py-3.5
-          text-[9px] font-black uppercase tracking-[1.5px]
-          text-black
-        "
-      >
-        Save default method
-      </button>
-    </div>
-  );
-};
-
-/* ============================================================
-   COMMENTS
-============================================================ */
-
-const CommentsSettings = ({ showToast }) => {
-  const [comments, setComments] = useState(true);
-  const [offensive, setOffensive] = useState(true);
-  const [spam, setSpam] = useState(true);
-  const [manualModeration, setManualModeration] =
-    useState(false);
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Comment controls"
-        description="Moderate comments and protect your community."
-      />
-
-      <div className="space-y-3">
-        <SettingToggle
-          icon={<MessageSquare className="text-cyan-400" />}
-          title="Allow comments"
-          active={comments}
-          onToggle={() =>
-            setComments(!comments)
-          }
-        />
-
-        <SettingToggle
-          icon={<ShieldAlert className="text-red-400" />}
-          title="Filter offensive comments"
-          active={offensive}
-          onToggle={() =>
-            setOffensive(!offensive)
-          }
-        />
-
-        <SettingToggle
-          icon={<ShieldAlert className="text-orange-400" />}
-          title="Filter spam"
-          active={spam}
-          onToggle={() =>
-            setSpam(!spam)
-          }
-        />
-
-        <SettingToggle
-          icon={<SlidersHorizontal className="text-purple-400" />}
-          title="Manual moderation"
-          description="Review selected comments before publishing."
-          active={manualModeration}
-          onToggle={() =>
-            setManualModeration(!manualModeration)
-          }
-          border={false}
-        />
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <PrivacyAction
-          icon={<Ban />}
-          title="Hidden words"
-          value="Manage"
-        />
-
-        <PrivacyAction
-          icon={<ShieldAlert />}
-          title="Blocked commenters"
-          value="Manage"
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={() =>
-          showToast("Comment preferences saved")
-        }
-        className="
-          mt-4 w-full rounded-xl
-          bg-cyan-400 py-3.5
-          text-[9px] font-black uppercase tracking-[1.5px]
-          text-black
-        "
-      >
-        Save comment settings
-      </button>
-    </div>
-  );
-};
-
-/* ============================================================
-   MESSAGES
-============================================================ */
-
-const MessagesSettings = ({ showToast }) => {
-  const [readReceipts, setReadReceipts] =
-    useState(true);
-
-  const [typing, setTyping] =
-    useState(true);
-
-  const [messageNotifications, setMessageNotifications] =
-    useState(true);
-
-  const [groupMessages, setGroupMessages] =
-    useState(true);
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Messages"
-        description="Control direct messages and messaging privacy."
-      />
-
-      <div className="space-y-3">
         <SelectRow
-          icon={<MessageCircle />}
-          title="Who can message you"
-          value="Everyone"
+          icon={<Palette />}
+          title="Accent Color"
+          value="Cyan"
         />
 
         <SelectRow
-          icon={<Mail />}
-          title="Message requests"
-          value="Enabled"
+          icon={<SlidersHorizontal />}
+          title="Interface Density"
+          value="Comfortable"
         />
 
-        <SettingToggle
-          icon={<Users className="text-purple-400" />}
-          title="Group messages"
-          active={groupMessages}
-          onToggle={() =>
-            setGroupMessages(!groupMessages)
-          }
+        <PanelToggle
+          icon={<Zap />}
+          title="Animations"
+          description="Enable interface animations."
+          active={true}
+          onToggle={() => {}}
         />
 
-        <SettingToggle
-          icon={<CheckCircle2 className="text-cyan-400" />}
-          title="Read receipts"
-          active={readReceipts}
-          onToggle={() =>
-            setReadReceipts(!readReceipts)
-          }
+        <PanelToggle
+          icon={<MousePointer2 />}
+          title="Reduce Motion"
+          description="Reduce animation and movement effects."
+          active={false}
+          onToggle={() => {}}
         />
 
-        <SettingToggle
-          icon={<Activity className="text-emerald-400" />}
-          title="Typing indicator"
-          active={typing}
-          onToggle={() =>
-            setTyping(!typing)
-          }
+        <PanelToggle
+          icon={<Eye />}
+          title="Glass & Blur"
+          description="Enable glassmorphism and backdrop blur effects."
+          active={true}
+          onToggle={() => {}}
         />
+      </PanelShell>
+    );
+  }
 
-        <SettingToggle
-          icon={<Bell className="text-orange-400" />}
-          title="Message notifications"
-          active={messageNotifications}
-          onToggle={() =>
-            setMessageNotifications(
-              !messageNotifications
-            )
-          }
-          border={false}
-        />
-      </div>
+  /*
+  |--------------------------------------------------------------------------
+  | ACCESSIBILITY
+  |--------------------------------------------------------------------------
+  */
 
-      <button
-        type="button"
-        onClick={() =>
-          showToast("Message settings saved")
-        }
-        className="
-          mt-4 w-full rounded-xl
-          bg-cyan-400 py-3.5
-          text-[9px] font-black uppercase tracking-[1.5px]
-          text-black
-        "
+  if (item.id === "accessibility") {
+    return (
+      <PanelShell
+        title="Accessibility"
+        description="Customize Mpade Universe for easier viewing and interaction."
       >
-        Save message settings
-      </button>
-    </div>
-  );
-};
-
-/* ============================================================
-   FOLLOWERS
-============================================================ */
-
-const FollowersSettings = ({ showToast }) => {
-  const [contactSync, setContactSync] =
-    useState(false);
-
-  const [suggestions, setSuggestions] =
-    useState(true);
-
-  const [discoverability, setDiscoverability] =
-    useState(true);
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="Followers & audience"
-        description="Manage follower requests and how people discover you."
-      />
-
-      <div className="space-y-3">
-
         <SelectRow
-          icon={<UserPlus />}
-          title="Follow requests"
-          value="Everyone"
+          icon={<Accessibility />}
+          title="Font Size"
+          value="Default"
         />
 
-        <PrivacyAction
-          icon={<Users />}
-          title="Follower management"
-          value="Manage"
+        <PanelToggle
+          icon={<Eye />}
+          title="High Contrast"
+          description="Increase contrast between interface elements."
+          active={false}
+          onToggle={() => {}}
         />
 
-        <PrivacyAction
-          icon={<UserRoundX />}
-          title="Remove followers"
-          value="Manage"
+        <PanelToggle
+          icon={<MousePointer2 />}
+          title="Large Touch Targets"
+          description="Make buttons and interactive controls easier to tap."
+          active={false}
+          onToggle={() => {}}
         />
 
-        <PrivacyAction
-          icon={<Ban />}
-          title="Blocked & restricted"
-          value="Manage"
-        />
-
-        <SettingToggle
-          icon={<Users className="text-cyan-400" />}
-          title="People you may know"
-          active={suggestions}
-          onToggle={() =>
-            setSuggestions(!suggestions)
-          }
-        />
-
-        <SettingToggle
-          icon={<Smartphone className="text-orange-400" />}
-          title="Contact syncing"
-          active={contactSync}
-          onToggle={() =>
-            setContactSync(!contactSync)
-          }
-        />
-
-        <SettingToggle
-          icon={<Globe className="text-emerald-400" />}
-          title="Discoverability"
-          active={discoverability}
-          onToggle={() =>
-            setDiscoverability(!discoverability)
-          }
-          border={false}
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={() =>
-          showToast("Audience settings saved")
-        }
-        className="
-          mt-4 w-full rounded-xl
-          bg-cyan-400 py-3.5
-          text-[9px] font-black uppercase tracking-[1.5px]
-          text-black
-        "
-      >
-        Save audience settings
-      </button>
-    </div>
-  );
-};
-
-/* ============================================================
-   CREATOR AI
-============================================================ */
-
-const CreatorAISettings = ({ showToast }) => {
-  const [assistant, setAssistant] =
-    useState(true);
-
-  const [recommendations, setRecommendations] =
-    useState(true);
-
-  const [contentGeneration, setContentGeneration] =
-    useState(true);
-
-  const [personalization, setPersonalization] =
-    useState(true);
-
-  const [dataUsage, setDataUsage] =
-    useState(false);
-
-  return (
-    <div>
-      <div className="
-        rounded-3xl
-        border border-cyan-400/10
-        bg-gradient-to-br
-        from-cyan-400/[0.08]
-        via-[#0A0A0A]
-        to-purple-500/[0.06]
-        p-5
-      ">
-        <div className="flex items-center gap-3">
-          <div className="
-            flex h-11 w-11 items-center justify-center
-            rounded-2xl
-            border border-cyan-400/20
-            bg-cyan-400/[0.08]
-          ">
-            <Sparkles
-              size={21}
-              className="text-cyan-300"
-            />
-          </div>
-
-          <div>
-            <p className="text-xs font-black">
-              Mpade AI
-            </p>
-
-            <p className="mt-1 text-[10px] text-zinc-600">
-              Intelligent tools for creators and communities.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <SettingToggle
-          icon={<Sparkles className="text-cyan-400" />}
-          title="AI assistant"
-          active={assistant}
-          onToggle={() =>
-            setAssistant(!assistant)
-          }
-        />
-
-        <SettingToggle
-          icon={<BarChart3 className="text-purple-400" />}
-          title="Recommendations"
-          active={recommendations}
-          onToggle={() =>
-            setRecommendations(!recommendations)
-          }
-        />
-
-        <SettingToggle
-          icon={<FileText className="text-emerald-400" />}
-          title="Content generation"
-          description="Captions, hashtags, scripts and creative assistance."
-          active={contentGeneration}
-          onToggle={() =>
-            setContentGeneration(!contentGeneration)
-          }
-        />
-
-        <SettingToggle
-          icon={<SlidersHorizontal className="text-orange-400" />}
-          title="Personalization"
-          active={personalization}
-          onToggle={() =>
-            setPersonalization(!personalization)
-          }
-        />
-
-        <SettingToggle
-          icon={<Database className="text-red-400" />}
-          title="AI data usage"
-          description="Allow eligible activity to improve AI experiences."
-          active={dataUsage}
-          onToggle={() =>
-            setDataUsage(!dataUsage)
-          }
-          border={false}
-        />
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <PrivacyAction
-          icon={<History />}
-          title="AI history"
-          value="Manage"
-        />
-
-        <PrivacyAction
-          icon={<Trash2 />}
-          title="Clear AI history"
-          value="Clear"
-          onClick={() =>
-            showToast("AI history cleared")
-          }
-        />
-
-        <PrivacyAction
-          icon={<Sparkles />}
-          title="AI disclosure"
-          value="Enabled"
-        />
-      </div>
-    </div>
-  );
-};
-
-/* ============================================================
-   SYSTEM
-============================================================ */
-
-const SystemSettings = ({
-  showToast,
-  onClearCache
-}) => {
-  const [autoRefresh, setAutoRefresh] =
-    useState(true);
-
-  const [backgroundSync, setBackgroundSync] =
-    useState(true);
-
-  const [offlineMode, setOfflineMode] =
-    useState(false);
-
-  return (
-    <div>
-      <SettingSectionHeader
-        title="System"
-        description="Application health, synchronization and diagnostics."
-      />
-
-      <div className="space-y-3">
-
-        <SystemStatus
-          icon={<Server />}
-          title="Application server"
-          status="Operational"
-        />
-
-        <SystemStatus
-          icon={<Database />}
-          title="Database"
-          status="Connected"
-        />
-
-        <SystemStatus
-          icon={<HardDrive />}
-          title="Storage"
-          status="Available"
-        />
-
-        <SystemStatus
-          icon={<Bell />}
-          title="Notifications"
-          status="Operational"
-        />
-
-        <SystemStatus
+        <PanelToggle
           icon={<Video />}
-          title="Media processing"
-          status="Operational"
+          title="Captions"
+          description="Prefer captions when available."
+          active={true}
+          onToggle={() => {}}
         />
 
-        <SystemStatus
-          icon={<Wifi />}
-          title="Network"
-          status={
-            navigator.onLine
-              ? "Online"
-              : "Offline"
-          }
+        <PanelToggle
+          icon={<Volume2 />}
+          title="Audio Descriptions"
+          description="Use audio descriptions when available."
+          active={false}
+          onToggle={() => {}}
         />
 
-        <SettingToggle
-          icon={<RefreshCw className="text-cyan-400" />}
-          title="Auto refresh"
-          active={autoRefresh}
-          onToggle={() =>
-            setAutoRefresh(!autoRefresh)
-          }
+        <PanelToggle
+          icon={<Palette />}
+          title="Color-Blind Friendly"
+          description="Use visual indicators that don't depend only on color."
+          active={false}
+          onToggle={() => {}}
         />
+      </PanelShell>
+    );
+  }
 
-        <SettingToggle
-          icon={<DatabaseBackup className="text-purple-400" />}
-          title="Background sync"
-          active={backgroundSync}
-          onToggle={() =>
-            setBackgroundSync(!backgroundSync)
-          }
-        />
+  /*
+  |--------------------------------------------------------------------------
+  | PAYMENTS / WALLET
+  |--------------------------------------------------------------------------
+  */
 
-        <SettingToggle
-          icon={<Wifi className="text-orange-400" />}
-          title="Offline mode"
-          active={offlineMode}
-          onToggle={() =>
-            setOfflineMode(!offlineMode)
-          }
-          border={false}
-        />
-      </div>
+  if (
+    item.id === "wallet" ||
+    item.id === "payment-methods" ||
+    item.id === "payouts" ||
+    item.id === "transactions"
+  ) {
+    return (
+      <PanelShell
+        title={
+          item.id === "wallet"
+            ? "Wallet"
+            : item.id === "payment-methods"
+              ? "Payment Methods"
+              : item.id === "payouts"
+                ? "Payouts"
+                : "Transactions"
+        }
+        description={item.description}
+      >
+        {item.id === "wallet" && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <MoneyCard
+                label="Available"
+                value={profile?.balance ?? 0}
+                currency={profile?.currency_preference || "MWK"}
+              />
 
-      <div className="
-        mt-5 rounded-2xl
-        border border-white/[0.06]
-        bg-[#0A0A0A]
-        p-4
-      ">
-        <InfoRow
-          label="App version"
-          value={APP_VERSION}
-        />
+              <MoneyCard
+                label="Coins"
+                value={profile?.coins ?? 0}
+                currency=""
+              />
 
-        <InfoRow
-          label="Last sync"
-          value="Current session"
-        />
+              <MoneyCard
+                label="Lifetime Earned"
+                value={profile?.total_tokens_earned ?? 0}
+                currency=""
+              />
 
-        <InfoRow
-          label="Build"
-          value="Production"
-        />
+              <MoneyCard
+                label="Subscription"
+                value={profile?.subscription_tier || "Free"}
+                currency=""
+              />
+            </div>
 
-        <InfoRow
-          label="Platform"
-          value="Web"
-          border={false}
-        />
-      </div>
+            <ActionButton
+              icon={<Wallet size={16} />}
+              label="Open Payouts"
+              onClick={() => onNavigate("/payouts")}
+            />
+          </>
+        )}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={() =>
-            showToast("Diagnostics started")
-          }
-          className="
-            flex items-center justify-center gap-2
-            rounded-xl
-            border border-white/[0.06]
-            bg-white/[0.03]
-            py-3
-            text-[9px] font-black uppercase tracking-[1.5px]
-            text-zinc-400
-          "
-        >
-          <Activity size={14} />
-          Run diagnostics
-        </button>
+        {item.id === "payment-methods" && (
+          <>
+            <PanelLink
+              icon={<Smartphone />}
+              title="TNM Mpamba"
+              description="Mobile-money payout method."
+            />
 
-        <button
-          type="button"
-          onClick={onClearCache}
-          className="
-            flex items-center justify-center gap-2
-            rounded-xl
-            border border-orange-400/15
-            bg-orange-400/[0.04]
-            py-3
-            text-[9px] font-black uppercase tracking-[1.5px]
-            text-orange-300
-          "
-        >
-          <Trash2 size={14} />
-          Clear temp data
-        </button>
-      </div>
-    </div>
-  );
-};
+            <PanelLink
+              icon={<Smartphone />}
+              title="Airtel Money"
+              description="Mobile-money payout method."
+            />
 
-/* ============================================================
-   GENERIC SETTING MODULE
-============================================================ */
+            <PanelLink
+              icon={<Banknote />}
+              title="Bank Account"
+              description="Bank payout method."
+            />
 
-const GenericSettingModule = ({
-  group,
-  item,
-  onNavigate,
-  onLogout,
-  showToast
-}) => {
-  const [enabled, setEnabled] =
-    useState(true);
+            <Notice
+              icon={<ShieldCheck />}
+              title="Payment verification"
+              description="Payment methods should be verified before they can receive payouts."
+            />
+          </>
+        )}
 
-  const genericOptions =
-    getGenericOptions(item.id);
+        {item.id === "payouts" && (
+          <>
+            <PanelLink
+              icon={<Banknote />}
+              title="Request Payout"
+              description="Request an eligible payout from your available balance."
+              onClick={() => onNavigate("/payouts")}
+            />
 
-  return (
-    <div>
-      <SettingSectionHeader
+            <PanelLink
+              icon={<Clock3 />}
+              title="Pending Payouts"
+              description="View payouts currently being processed."
+            />
+
+            <PanelLink
+              icon={<CheckCircle2 />}
+              title="Completed Payouts"
+              description="View successfully completed payouts."
+            />
+
+            <PanelLink
+              icon={<AlertTriangle />}
+              title="Failed / Cancelled"
+              description="Review failed or cancelled payout requests."
+            />
+
+            <PanelLink
+              icon={<History />}
+              title="Payout History"
+              description="Review your complete payout history."
+            />
+          </>
+        )}
+
+        {item.id === "transactions" && (
+          <>
+            <PanelLink
+              icon={<CreditCard />}
+              title="Purchases"
+              description="Coins, subscriptions and platform purchases."
+            />
+
+            <PanelLink
+              icon={<Gift />}
+              title="Gifts"
+              description="Gift purchases and received gifts."
+            />
+
+            <PanelLink
+              icon={<Coins />}
+              title="Earnings"
+              description="Creator earnings and rewards."
+            />
+
+            <PanelLink
+              icon={<RefreshCw />}
+              title="Refunds"
+              description="Refund and reversal history."
+            />
+
+            <PanelLink
+              icon={<History />}
+              title="Transaction History"
+              description="Complete transaction history."
+            />
+          </>
+        )}
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | CREATOR
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    item.id.startsWith("creator-") ||
+    item.id === "creator-studio" ||
+    item.id === "creator-analytics"
+  ) {
+    return (
+      <PanelShell
         title={item.title}
         description={item.description}
-      />
+      >
+        <PanelLink
+          icon={<BarChart3 />}
+          title="Professional Dashboard"
+          description="Creator overview, audience and content performance."
+          onClick={() => onNavigate("/universe-tools")}
+        />
 
-      {genericOptions.length > 0 ? (
-        <div className="space-y-3">
-          {genericOptions.map((option, index) => {
-            if (option.type === "toggle") {
-              return (
-                <SettingToggle
-                  key={option.title}
-                  icon={option.icon}
-                  title={option.title}
-                  description={option.description}
-                  active={
-                    option.shared
-                      ? enabled
-                      : index % 2 === 0
-                  }
-                  onToggle={() =>
-                    setEnabled(!enabled)
-                  }
-                  border={
-                    index !==
-                    genericOptions.length - 1
-                  }
-                />
-              );
-            }
+        <PanelLink
+          icon={<Activity />}
+          title="Audience Analytics"
+          description="Follower growth, demographics and audience activity."
+        />
 
-            return (
-              <SelectRow
-                key={option.title}
-                icon={option.icon}
-                title={option.title}
-                value={option.value || "Manage"}
-              />
-            );
-          })}
+        <PanelLink
+          icon={<Video />}
+          title="Content Performance"
+          description="Views, likes, comments, shares and retention."
+        />
+
+        <PanelLink
+          icon={<Coins />}
+          title="Creator Earnings"
+          description="Earnings, gifts, subscriptions and creator fund."
+        />
+
+        <PanelLink
+          icon={<CalendarClock />}
+          title="Content Scheduling"
+          description="Schedule videos and live broadcasts."
+          onClick={() => onNavigate("/settings/creator/scheduling")}
+        />
+
+        <PanelLink
+          icon={<Bot />}
+          title="Creator AI"
+          description="AI-powered creator assistance."
+          onClick={() => onNavigate("/settings/ai")}
+        />
+
+        <PanelLink
+          icon={<Trophy />}
+          title="Creator Progress"
+          description="XP, level, achievements and milestones."
+        />
+
+        <Notice
+          icon={<Sparkles />}
+          title="Creator ecosystem"
+          description="These controls are ready for integration with your Creator Studio, monetization, livestream and scheduling modules."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | AI
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    item.id.startsWith("ai-") ||
+    item.id === "ai-settings"
+  ) {
+    return (
+      <PanelShell
+        title={item.title}
+        description={item.description}
+      >
+        <PanelToggle
+          icon={<Bot />}
+          title="AI Assistant"
+          description="Enable the Mpade Universe AI assistant."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<Sparkles />}
+          title="AI Recommendations"
+          description="Use AI to personalize recommendations."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelLink
+          icon={<FileText />}
+          title="Caption Generator"
+          description="Generate captions for your content."
+        />
+
+        <PanelLink
+          icon={<HashIcon />}
+          title="Hashtag Suggestions"
+          description="Generate relevant hashtags."
+        />
+
+        <PanelLink
+          icon={<Image />}
+          title="Thumbnail Assistant"
+          description="Analyze and improve thumbnail choices."
+        />
+
+        <PanelLink
+          icon={<MessageCircle />}
+          title="Comment Replies"
+          description="Generate suggested replies to comments."
+        />
+
+        <PanelLink
+          icon={<History />}
+          title="AI History"
+          description="Review or clear AI interaction history."
+        />
+
+        <Notice
+          icon={<ShieldCheck />}
+          title="AI disclosure"
+          description="AI-generated or AI-assisted content should be clearly disclosed where required by your platform policies."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | COPYRIGHT / SAFETY
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    item.id === "copyright" ||
+    item.id === "safety" ||
+    item.id === "guidelines"
+  ) {
+    return (
+      <PanelShell
+        title={item.title}
+        description={item.description}
+      >
+        <PanelLink
+          icon={<Copyright />}
+          title="Copyright Status"
+          description="Review claims and copyright status."
+          onClick={() => onNavigate("/settings/copyright")}
+        />
+
+        <PanelLink
+          icon={<AlertTriangle />}
+          title="Content Warnings"
+          description="Review warnings applied to your content."
+        />
+
+        <PanelLink
+          icon={<Ban />}
+          title="Content Violations"
+          description="Review removed or restricted content."
+        />
+
+        <PanelLink
+          icon={<FileText />}
+          title="Disputes & Appeals"
+          description="Manage disputes and appeals."
+        />
+
+        <PanelLink
+          icon={<Music />}
+          title="Music Rights"
+          description="Review music and audio rights."
+        />
+
+        <PanelLink
+          icon={<ShieldCheck />}
+          title="Community Guidelines"
+          description="Review platform safety rules."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | CONTENT
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    item.id === "content" ||
+    item.id === "comments" ||
+    item.id === "messages" ||
+    item.id === "followers"
+  ) {
+    return (
+      <PanelShell
+        title={item.title}
+        description={item.description}
+      >
+        <PanelToggle
+          icon={<Eye />}
+          title="Default Public Content"
+          description="Use public visibility as your default content setting."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<MessageCircle />}
+          title="Allow Comments"
+          description="Allow viewers to comment on new content."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<Download />}
+          title="Allow Downloads"
+          description="Allow viewers to download supported content."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<Share2 />}
+          title="Allow Sharing"
+          description="Allow people to share your content."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelToggle
+          icon={<RepeatIcon />}
+          title="Allow Reposts"
+          description="Allow your content to be reposted."
+          active={true}
+          onToggle={() => {}}
+        />
+
+        <PanelLink
+          icon={<MessageSquareWarning />}
+          title="Comment Moderation"
+          description="Offensive words, spam and manual moderation."
+        />
+
+        <PanelLink
+          icon={<Users />}
+          title="Audience Controls"
+          description="Follower and audience permissions."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | REPORTS
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    item.id === "personal-data" ||
+    item.id === "analytics-export" ||
+    item.id === "earnings-reports" ||
+    item.id === "creator-reports"
+  ) {
+    return (
+      <PanelShell
+        title={item.title}
+        description={item.description}
+      >
+        <div className="grid gap-2 sm:grid-cols-3">
+          <ExportCard
+            icon={<FileSpreadsheet />}
+            title="CSV"
+          />
+
+          <ExportCard
+            icon={<FileJson />}
+            title="JSON"
+          />
+
+          <ExportCard
+            icon={<FileType2 />}
+            title="PDF"
+          />
         </div>
-      ) : (
-        <div className="
-          rounded-3xl
-          border border-white/[0.06]
-          bg-[#0A0A0A]
-          p-5
-        ">
-          <div className="
-            flex h-12 w-12 items-center justify-center
-            rounded-2xl
-            bg-cyan-400/[0.06]
-            text-cyan-400
-          ">
-            <Settings2 size={21} />
-          </div>
 
-          <h3 className="mt-5 text-sm font-black">
-            {item.title}
-          </h3>
+        <PanelLink
+          icon={<CloudDownload />}
+          title="Personal Data Archive"
+          description="Request a downloadable copy of your account information."
+        />
 
-          <p className="mt-2 text-[11px] leading-relaxed text-zinc-600">
-            This module is ready to be connected to its
-            dedicated Supabase data and service layer.
+        <PanelLink
+          icon={<BarChart3 />}
+          title="Analytics Export"
+          description="Export creator analytics."
+        />
+
+        <PanelLink
+          icon={<Coins />}
+          title="Financial Report"
+          description="Export earnings and transaction information."
+        />
+
+        <Notice
+          icon={<Info />}
+          title="Data export"
+          description="Large exports should be generated server-side and delivered through a secure download link rather than generated entirely in the browser."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | CONNECTED APPS
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "connected-apps") {
+    return (
+      <PanelShell
+        title="Connected Apps"
+        description="Review third-party applications and authorized access."
+      >
+        <PanelLink
+          icon={<Link2 />}
+          title="OAuth Applications"
+          description="Applications connected through OAuth."
+        />
+
+        <PanelLink
+          icon={<Smartphone />}
+          title="Authorized Devices"
+          description="Devices authorized to access your account."
+        />
+
+        <PanelLink
+          icon={<KeyRound />}
+          title="API Access"
+          description="Manage API keys and integrations."
+        />
+
+        <PanelLink
+          icon={<Shield />}
+          title="Permissions"
+          description="Review what connected applications can access."
+        />
+
+        <Notice
+          icon={<ShieldCheck />}
+          title="Security"
+          description="Only grant third-party applications the minimum permissions they require."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | CACHE
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "cache") {
+    return (
+      <PanelShell
+        title="Cache & Temporary Data"
+        description="Manage locally stored application data."
+      >
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+          <p className="text-[9px] font-black uppercase tracking-[2px] text-zinc-600">
+            Local storage
+          </p>
+
+          <p className="mt-2 text-3xl font-black text-white">
+            {formatBytes(cacheSize)}
+          </p>
+
+          <p className="mt-1 text-[10px] text-zinc-600">
+            This represents browser-side storage available to this settings
+            module. Supabase storage usage is separate.
           </p>
 
           <button
-            type="button"
-            onClick={() => {
-              if (item.route) {
-                onNavigate(item.route);
-              } else {
-                showToast(
-                  `${item.title} is ready for integration`
-                );
-              }
-            }}
-            className="
-              mt-5 flex w-full
-              items-center justify-center gap-2
-              rounded-xl
-              bg-cyan-400
-              py-3.5
-              text-[9px] font-black uppercase tracking-[1.5px]
-              text-black
-            "
+            onClick={onClearCache}
+            disabled={clearingCache}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-cyan-300 disabled:opacity-50"
           >
-            Open module
-            <ExternalLink size={14} />
+            {clearingCache ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" />
+                Clearing...
+              </>
+            ) : (
+              <>
+                <Trash2 size={14} />
+                Clear Temporary Data
+              </>
+            )}
           </button>
         </div>
-      )}
+      </PanelShell>
+    );
+  }
 
-      {item.id === "logout" && (
-        <button
-          type="button"
-          onClick={onLogout}
-          className="
-            mt-5 flex w-full
-            items-center justify-center gap-2
-            rounded-xl
-            bg-red-500
-            py-3.5
-            text-[9px] font-black uppercase tracking-[1.5px]
-            text-white
-          "
-        >
-          <LogOut size={14} />
-          Log out
-        </button>
-      )}
+  /*
+  |--------------------------------------------------------------------------
+  | SYSTEM
+  |--------------------------------------------------------------------------
+  */
 
-      <InfoNotice>
-        This settings module is intentionally separated from
-        the main Settings Hub so its backend implementation can
-        be added without making the central page difficult to
-        maintain.
-      </InfoNotice>
-    </div>
+  if (
+    item.id === "diagnostics" ||
+    item.id === "server" ||
+    item.id === "sync" ||
+    item.id === "about-system"
+  ) {
+    return (
+      <PanelShell
+        title={item.title}
+        description={item.description}
+      >
+        <StatusRow
+          icon={<Activity />}
+          title="Application"
+          value="Operational"
+          positive
+        />
+
+        <StatusRow
+          icon={<Wifi />}
+          title="Network"
+          value={navigator.onLine ? "Online" : "Offline"}
+          positive={navigator.onLine}
+        />
+
+        <StatusRow
+          icon={<Server />}
+          title="Supabase"
+          value="Connected through application"
+          positive
+        />
+
+        <StatusRow
+          icon={<HardDrive />}
+          title="Local Storage"
+          value={formatBytes(cacheSize)}
+          positive
+        />
+
+        <StatusRow
+          icon={<RefreshCw />}
+          title="Application Version"
+          value={APP_VERSION}
+          positive
+        />
+
+        <Notice
+          icon={<Info />}
+          title="Diagnostics"
+          description="Server-side health information should be populated from your actual monitoring/health endpoint instead of being hardcoded."
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | SUPPORT
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    item.id === "help" ||
+    item.id === "report" ||
+    item.id === "tickets" ||
+    item.id === "account-recovery" ||
+    item.id === "safety-center" ||
+    item.id === "about"
+  ) {
+    return (
+      <PanelShell
+        title={item.title}
+        description={item.description}
+      >
+        <PanelLink
+          icon={<LifeBuoy />}
+          title="Help Center"
+          description="Find guides and answers."
+          onClick={() => onNavigate("/support")}
+        />
+
+        <PanelLink
+          icon={<Flag />}
+          title="Report a Problem"
+          description="Report a technical or account issue."
+        />
+
+        <PanelLink
+          icon={<MessageCircle />}
+          title="Support Tickets"
+          description="Review previous requests."
+        />
+
+        <PanelLink
+          icon={<KeyRound />}
+          title="Account Recovery"
+          description="Recover access to your account."
+        />
+
+        <PanelLink
+          icon={<ShieldCheck />}
+          title="Safety Center"
+          description="Account and community safety information."
+        />
+
+        <PanelLink
+          icon={<FileText />}
+          title="Privacy Policy"
+          description="Read the privacy policy."
+          onClick={() => onNavigate("/privacy")}
+        />
+
+        <PanelLink
+          icon={<Smartphone />}
+          title={`About ${APP_NAME}`}
+          description={`Version ${APP_VERSION}`}
+          onClick={() => onNavigate("/about")}
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | ACCOUNT MANAGEMENT
+  |--------------------------------------------------------------------------
+  */
+
+  if (item.id === "account-management") {
+    return (
+      <PanelShell
+        title="Account Management"
+        description="Manage your account lifecycle. These actions require careful confirmation."
+      >
+        <PanelLink
+          icon={<Download />}
+          title="Download Account Information"
+          description="Create an archive before making major account changes."
+        />
+
+        <PanelLink
+          icon={<Archive />}
+          title="Transfer Data"
+          description="Prepare supported data for transfer."
+        />
+
+        <PanelLink
+          icon={<UserX />}
+          title="Deactivate Account"
+          description="Temporarily disable your account."
+          danger
+        />
+
+        <PanelLink
+          icon={<Trash2 />}
+          title="Delete Account"
+          description="Permanently delete your account and associated data."
+          danger
+        />
+
+        <Notice
+          icon={<AlertTriangle />}
+          title="Permanent action"
+          description="Account deletion should be connected to a secure server-side deletion workflow with confirmation and recovery safeguards."
+          danger
+        />
+      </PanelShell>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | DEFAULT
+  |--------------------------------------------------------------------------
+  */
+
+  return (
+    <PanelShell
+      title={item.title}
+      description={item.description}
+    >
+      <Notice
+        icon={<Settings2 />}
+        title="Module ready"
+        description="This settings module has been added to the new Settings Hub. Connect its controls to the corresponding backend feature when that module is implemented."
+      />
+
+      <PanelLink
+        icon={<Settings2 />}
+        title="Open Full Settings Module"
+        description="Continue to the dedicated settings page when available."
+      />
+    </PanelShell>
   );
 };
 
-/* ============================================================
-   GENERIC OPTIONS
-============================================================ */
+/*
+|--------------------------------------------------------------------------
+| PANEL SHELL
+|--------------------------------------------------------------------------
+*/
 
-const getGenericOptions = (id) => {
-  const options = {
-    "account-type": [
-      {
-        type: "select",
-        title: "Account type",
-        value: "Personal",
-        icon: <User />
-      },
-      {
-        type: "toggle",
-        title: "Creator mode",
-        description: "Enable creator-focused tools.",
-        icon: <Sparkles />
-      },
-      {
-        type: "select",
-        title: "Professional dashboard",
-        value: "Available",
-        icon: <BarChart3 />
-      }
-    ],
+const PanelShell = ({ title, description, children }) => (
+  <div className="space-y-4">
+    <div>
+      <h3 className="text-xl font-black tracking-tight text-white">
+        {title}
+      </h3>
 
-    "account-management": [
-      {
-        type: "select",
-        title: "Account recovery",
-        value: "Manage",
-        icon: <KeyRound />
-      },
-      {
-        type: "select",
-        title: "Download account information",
-        value: "Request",
-        icon: <Download />
-      },
-      {
-        type: "select",
-        title: "Transfer data",
-        value: "Manage",
-        icon: <Upload />
-      },
-      {
-        type: "select",
-        title: "Deactivate account",
-        value: "Manage",
-        icon: <UserRoundX />
-      },
-      {
-        type: "select",
-        title: "Delete account",
-        value: "Permanent",
-        icon: <Trash2 />
-      }
-    ],
-
-    "blocked": [
-      {
-        type: "select",
-        title: "Blocked accounts",
-        value: "Manage",
-        icon: <Ban />
-      },
-      {
-        type: "select",
-        title: "Muted accounts",
-        value: "Manage",
-        icon: <VolumeX />
-      },
-      {
-        type: "select",
-        title: "Restricted accounts",
-        value: "Manage",
-        icon: <ShieldAlert />
-      },
-      {
-        type: "select",
-        title: "Hidden words",
-        value: "Manage",
-        icon: <EyeOff />
-      }
-    ],
-
-    "connected-apps": [
-      {
-        type: "select",
-        title: "Connected apps",
-        value: "Manage",
-        icon: <Link2 />
-      },
-      {
-        type: "select",
-        title: "OAuth permissions",
-        value: "Manage",
-        icon: <Shield />
-      },
-      {
-        type: "select",
-        title: "Authorized devices",
-        value: "Manage",
-        icon: <MonitorSmartphone />
-      },
-      {
-        type: "select",
-        title: "API access",
-        value: "Manage",
-        icon: <KeyRound />
-      }
-    ],
-
-    "creator-dashboard": [
-      {
-        type: "select",
-        title: "Creator mode",
-        value: "Enabled",
-        icon: <Sparkles />
-      },
-      {
-        type: "select",
-        title: "Creator category",
-        value: "Not set",
-        icon: <Tag />
-      },
-      {
-        type: "select",
-        title: "Creator profile",
-        value: "Manage",
-        icon: <User />
-      }
-    ],
-
-    "creator-analytics": [
-      {
-        type: "select",
-        title: "Audience analytics",
-        value: "Available",
-        icon: <Users />
-      },
-      {
-        type: "select",
-        title: "Content performance",
-        value: "Available",
-        icon: <BarChart3 />
-      },
-      {
-        type: "select",
-        title: "Growth analytics",
-        value: "Available",
-        icon: <Activity />
-      }
-    ],
-
-    "creator-monetization": [
-      {
-        type: "select",
-        title: "Creator fund",
-        value: "Manage",
-        icon: <Coins />
-      },
-      {
-        type: "select",
-        title: "Earnings",
-        value: "Manage",
-        icon: <Banknote />
-      },
-      {
-        type: "select",
-        title: "Gifts",
-        value: "Manage",
-        icon: <Gift />
-      },
-      {
-        type: "select",
-        title: "Paid content",
-        value: "Manage",
-        icon: <CreditCard />
-      }
-    ],
-
-    "creator-gifts": [
-      {
-        type: "select",
-        title: "Gift earnings",
-        value: "Manage",
-        icon: <Gift />
-      },
-      {
-        type: "select",
-        title: "Virtual tokens",
-        value: "Manage",
-        icon: <Coins />
-      },
-      {
-        type: "toggle",
-        title: "Receive gifts",
-        description: "Allow eligible viewers to send gifts.",
-        icon: <Gift />
-      }
-    ],
-
-    "creator-subscriptions": [
-      {
-        type: "toggle",
-        title: "Subscriptions",
-        description: "Allow viewers to subscribe to your creator profile.",
-        icon: <Users />
-      },
-      {
-        type: "select",
-        title: "Subscription price",
-        value: "Manage",
-        icon: <Banknote />
-      },
-      {
-        type: "select",
-        title: "Subscriber benefits",
-        value: "Manage",
-        icon: <Trophy />
-      }
-    ],
-
-    "creator-livestream": [
-      {
-        type: "toggle",
-        title: "Allow livestreams",
-        description: "Enable livestreaming on your account.",
-        icon: <Radio />
-      },
-      {
-        type: "select",
-        title: "Live privacy",
-        value: "Public",
-        icon: <Eye />
-      },
-      {
-        type: "select",
-        title: "Live moderation",
-        value: "Manage",
-        icon: <ShieldAlert />
-      }
-    ],
-
-    "creator-scheduling": [
-      {
-        type: "select",
-        title: "Scheduled videos",
-        value: "Manage",
-        icon: <CalendarClock />
-      },
-      {
-        type: "select",
-        title: "Scheduled lives",
-        value: "Manage",
-        icon: <Radio />
-      },
-      {
-        type: "select",
-        title: "Default timezone",
-        value: "Africa/Blantyre",
-        icon: <Globe />
-      },
-      {
-        type: "toggle",
-        title: "Publishing notifications",
-        description: "Notify me after scheduled publishing.",
-        icon: <Bell />
-      }
-    ],
-
-    "creator-library": [
-      {
-        type: "select",
-        title: "Videos",
-        value: "Manage",
-        icon: <Video />
-      },
-      {
-        type: "select",
-        title: "Drafts",
-        value: "Manage",
-        icon: <FileText />
-      },
-      {
-        type: "select",
-        title: "Images",
-        value: "Manage",
-        icon: <Image />
-      },
-      {
-        type: "select",
-        title: "Audio",
-        value: "Manage",
-        icon: <Music />
-      },
-      {
-        type: "select",
-        title: "Live recordings",
-        value: "Manage",
-        icon: <Radio />
-      },
-      {
-        type: "select",
-        title: "Archived / deleted",
-        value: "Manage",
-        icon: <FileArchive />
-      }
-    ],
-
-    "creator-progress": [
-      {
-        type: "select",
-        title: "Creator level",
-        value: "View",
-        icon: <Trophy />
-      },
-      {
-        type: "select",
-        title: "XP progress",
-        value: "View",
-        icon: <Activity />
-      },
-      {
-        type: "select",
-        title: "Achievements",
-        value: "View",
-        icon: <Medal />
-      },
-      {
-        type: "select",
-        title: "Goals",
-        value: "Manage",
-        icon: <Target />
-      },
-      {
-        type: "select",
-        title: "Rewards",
-        value: "View",
-        icon: <Gift />
-      },
-      {
-        type: "select",
-        title: "Leaderboards",
-        value: "View",
-        icon: <Trophy />
-      }
-    ],
-
-    "creator-brand": [
-      {
-        type: "select",
-        title: "Media kit",
-        value: "Manage",
-        icon: <FileText />
-      },
-      {
-        type: "select",
-        title: "Portfolio",
-        value: "Manage",
-        icon: <FolderOpen />
-      },
-      {
-        type: "select",
-        title: "Rate card",
-        value: "Manage",
-        icon: <Banknote />
-      },
-      {
-        type: "select",
-        title: "Brand messages",
-        value: "Manage",
-        icon: <MessageCircle />
-      },
-      {
-        type: "select",
-        title: "Campaigns",
-        value: "Manage",
-        icon: <Megaphone />
-      },
-      {
-        type: "select",
-        title: "Business contact",
-        value: "Manage",
-        icon: <BriefcaseBusiness />
-      }
-    ],
-
-    "payouts": [
-      {
-        type: "select",
-        title: "Request payout",
-        value: "Available",
-        icon: <Banknote />
-      },
-      {
-        type: "select",
-        title: "Payout limits",
-        value: "View",
-        icon: <SlidersHorizontal />
-      },
-      {
-        type: "select",
-        title: "Payout status",
-        value: "View",
-        icon: <Activity />
-      },
-      {
-        type: "select",
-        title: "Payout history",
-        value: "View",
-        icon: <History />
-      },
-      {
-        type: "toggle",
-        title: "Automatic payouts",
-        description: "Automatically request eligible payouts.",
-        icon: <RefreshCw />
-      }
-    ],
-
-    "transactions": [
-      {
-        type: "select",
-        title: "Payments",
-        value: "View",
-        icon: <CreditCard />
-      },
-      {
-        type: "select",
-        title: "Purchases",
-        value: "View",
-        icon: <ShoppingBagIcon />
-      },
-      {
-        type: "select",
-        title: "Gifts",
-        value: "View",
-        icon: <Gift />
-      },
-      {
-        type: "select",
-        title: "Earnings",
-        value: "View",
-        icon: <Banknote />
-      },
-      {
-        type: "select",
-        title: "Refunds",
-        value: "View",
-        icon: <RefreshCw />
-      }
-    ],
-
-    "copyright": [
-      {
-        type: "select",
-        title: "Copyright status",
-        value: "View",
-        icon: <ShieldCheck />
-      },
-      {
-        type: "select",
-        title: "Claims",
-        value: "View",
-        icon: <FileText />
-      },
-      {
-        type: "select",
-        title: "Strikes",
-        value: "View",
-        icon: <ShieldAlert />
-      },
-      {
-        type: "select",
-        title: "Disputes",
-        value: "Manage",
-        icon: <MessageCircle />
-      },
-      {
-        type: "select",
-        title: "Music rights",
-        value: "Manage",
-        icon: <Music />
-      }
-    ],
-
-    "content-safety": [
-      {
-        type: "select",
-        title: "Content violations",
-        value: "View",
-        icon: <ShieldAlert />
-      },
-      {
-        type: "select",
-        title: "Warnings",
-        value: "View",
-        icon: <AlertTriangle />
-      },
-      {
-        type: "select",
-        title: "Removed content",
-        value: "View",
-        icon: <Trash2 />
-      },
-      {
-        type: "select",
-        title: "Restricted content",
-        value: "View",
-        icon: <EyeOff />
-      }
-    ],
-
-    "data-reports": [
-      {
-        type: "select",
-        title: "Export format",
-        value: "CSV / JSON / PDF",
-        icon: <FileDown />
-      }
-    ],
-
-    "personal-data": [
-      {
-        type: "select",
-        title: "Personal data",
-        value: "Request",
-        icon: <Download />
-      },
-      {
-        type: "select",
-        title: "Videos",
-        value: "Request",
-        icon: <Video />
-      },
-      {
-        type: "select",
-        title: "Followers",
-        value: "Request",
-        icon: <Users />
-      },
-      {
-        type: "select",
-        title: "Transactions",
-        value: "Request",
-        icon: <History />
-      }
-    ],
-
-    "analytics-export": [
-      {
-        type: "select",
-        title: "Analytics export",
-        value: "CSV / JSON / PDF",
-        icon: <BarChart3 />
-      },
-      {
-        type: "select",
-        title: "Audience export",
-        value: "Request",
-        icon: <Users />
-      }
-    ],
-
-    "earnings-reports": [
-      {
-        type: "select",
-        title: "Earnings report",
-        value: "PDF",
-        icon: <Banknote />
-      },
-      {
-        type: "select",
-        title: "Transaction report",
-        value: "CSV",
-        icon: <History />
-      }
-    ],
-
-    "creator-reports": [
-      {
-        type: "select",
-        title: "Monthly report",
-        value: "Available",
-        icon: <Newspaper />
-      },
-      {
-        type: "select",
-        title: "Creator report",
-        value: "Available",
-        icon: <BarChart3 />
-      }
-    ],
-
-    "report-problem": [
-      {
-        type: "select",
-        title: "Technical problem",
-        value: "Report",
-        icon: <CircleAlert />
-      },
-      {
-        type: "select",
-        title: "Content report",
-        value: "Report",
-        icon: <Flag />
-      }
-    ],
-
-    "support-tickets": [
-      {
-        type: "select",
-        title: "Open tickets",
-        value: "View",
-        icon: <FileText />
-      },
-      {
-        type: "select",
-        title: "Ticket history",
-        value: "View",
-        icon: <History />
-      }
-    ],
-
-    "system-status": [
-      {
-        type: "select",
-        title: "Server status",
-        value: "Operational",
-        icon: <Server />
-      },
-      {
-        type: "select",
-        title: "Database status",
-        value: "Connected",
-        icon: <Database />
-      },
-      {
-        type: "select",
-        title: "Media processing",
-        value: "Operational",
-        icon: <Video />
-      }
-    ],
-
-    "app-preferences": [
-      {
-        type: "toggle",
-        title: "Auto refresh",
-        description: "Refresh dynamic application data automatically.",
-        icon: <RefreshCw />
-      },
-      {
-        type: "toggle",
-        title: "Background sync",
-        description: "Synchronize eligible data in the background.",
-        icon: <DatabaseBackup />
-      }
-    ],
-
-    "logout-all": [
-      {
-        type: "select",
-        title: "Active devices",
-        value: "Manage",
-        icon: <MonitorSmartphone />
-      },
-      {
-        type: "select",
-        title: "Trusted devices",
-        value: "Manage",
-        icon: <Shield />
-      }
-    ],
-
-    "deactivate": [
-      {
-        type: "select",
-        title: "Deactivate account",
-        value: "Continue",
-        icon: <UserRoundX />
-      },
-      {
-        type: "select",
-        title: "Download data first",
-        value: "Recommended",
-        icon: <Download />
-      }
-    ],
-
-    "delete": [
-      {
-        type: "select",
-        title: "Download your data",
-        value: "Before deletion",
-        icon: <Download />
-      },
-      {
-        type: "select",
-        title: "Delete account",
-        value: "Permanent",
-        icon: <Trash2 />
-      }
-    ]
-  };
-
-  return options[id] || [];
-};
-
-/* ============================================================
-   COMPONENTS
-============================================================ */
-
-const SectionTitle = ({
-  eyebrow,
-  title
-}) => (
-  <div className="mb-4">
-    <p className="text-[9px] font-black uppercase tracking-[3px] text-zinc-700">
-      {eyebrow}
-    </p>
-
-    <h3 className="mt-1 text-lg font-black">
-      {title}
-    </h3>
-  </div>
-);
-
-const SettingSectionHeader = ({
-  title,
-  description
-}) => (
-  <div className="mb-5">
-    <h3 className="text-lg font-black">
-      {title}
-    </h3>
-
-    {description && (
-      <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
+      <p className="mt-1 text-xs leading-relaxed text-zinc-600">
         {description}
       </p>
-    )}
+    </div>
+
+    <div className="space-y-2">{children}</div>
   </div>
 );
 
-const SettingLabel = ({ children }) => (
-  <p className="
-    mb-2
-    text-[9px]
-    font-black
-    uppercase
-    tracking-[2px]
-    text-zinc-600
-  ">
-    {children}
-  </p>
-);
+/*
+|--------------------------------------------------------------------------
+| PANEL LINK
+|--------------------------------------------------------------------------
+*/
 
-const SettingToggle = ({
+const PanelLink = ({
   icon,
   title,
   description,
-  active,
-  onToggle,
-  border = true
-}) => (
-  <div
-    className={[
-      "flex items-center gap-3 p-4",
-      border
-        ? "border-b border-white/[0.05]"
-        : ""
-    ].join(" ")}
-  >
-    <div className="
-      flex h-10 w-10 shrink-0
-      items-center justify-center
-      rounded-xl
-      bg-black
-      text-zinc-400
-    ">
-      {React.cloneElement(icon, {
-        size: 17
-      })}
-    </div>
-
-    <div className="min-w-0 flex-1">
-      <h4 className="text-xs font-black text-zinc-200">
-        {title}
-      </h4>
-
-      {description && (
-        <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
-          {description}
-        </p>
-      )}
-    </div>
-
+  onClick,
+  danger = false
+}) => {
+  return (
     <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={active}
-      className={[
-        "relative h-6 w-11 shrink-0 rounded-full",
-        "transition-all duration-300",
-        active
-          ? "bg-cyan-400"
-          : "bg-zinc-800"
-      ].join(" ")}
+      onClick={onClick}
+      className={`group flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
+        danger
+          ? "border-red-500/10 bg-red-500/[0.025] hover:border-red-500/25 hover:bg-red-500/[0.05]"
+          : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.11] hover:bg-white/[0.035]"
+      }`}
     >
-      <motion.span
-        animate={{
-          x: active ? 22 : 4
-        }}
-        transition={{
-          type: "spring",
-          stiffness: 500,
-          damping: 30
-        }}
-        className="
-          absolute left-0 top-1
-          h-4 w-4
-          rounded-full
-          bg-white
-          shadow-lg
-        "
+      <span
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+          danger
+            ? "border-red-500/10 bg-red-500/[0.06] text-red-400"
+            : "border-white/[0.05] bg-black text-zinc-400 group-hover:text-cyan-300"
+        }`}
+      >
+        {React.cloneElement(icon, { size: 17 })}
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span
+          className={`block text-[12px] font-black ${
+            danger ? "text-red-300" : "text-zinc-200"
+          }`}
+        >
+          {title}
+        </span>
+
+        <span className="mt-1 block text-[10px] leading-relaxed text-zinc-600">
+          {description}
+        </span>
+      </span>
+
+      <ChevronRight
+        size={16}
+        className="shrink-0 text-zinc-700 group-hover:text-zinc-400"
       />
     </button>
-  </div>
-);
+  );
+};
 
-const MiniToggle = ({
+/*
+|--------------------------------------------------------------------------
+| PANEL TOGGLE
+|--------------------------------------------------------------------------
+*/
+
+const PanelToggle = ({
   icon,
   title,
   description,
   active,
   onToggle
-}) => (
-  <button
-    type="button"
-    onClick={onToggle}
-    className="
-      flex items-center gap-3
-      rounded-2xl
-      border border-white/[0.06]
-      bg-[#090909]
-      p-4
-      text-left
-      transition
-      hover:border-cyan-400/20
-    "
-  >
-    <div className="
-      flex h-10 w-10 shrink-0
-      items-center justify-center
-      rounded-xl bg-black
-    ">
-      {React.cloneElement(icon, {
-        size: 17
-      })}
-    </div>
+}) => {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.05] bg-black text-zinc-400">
+        {React.cloneElement(icon, { size: 17 })}
+      </span>
 
-    <div className="min-w-0 flex-1">
-      <p className="text-[11px] font-black">
-        {title}
-      </p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[12px] font-black text-zinc-200">{title}</p>
 
-      <p className="mt-1 truncate text-[9px] text-zinc-600">
-        {description}
-      </p>
-    </div>
-
-    <span
-      className={[
-        "h-2 w-2 rounded-full",
-        active
-          ? "bg-cyan-400 shadow-lg shadow-cyan-400/50"
-          : "bg-zinc-700"
-      ].join(" ")}
-    />
-  </button>
-);
-
-const SecurityAction = ({
-  icon,
-  title,
-  description,
-  onClick,
-  badge
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="
-      flex w-full items-center gap-3
-      rounded-2xl
-      border border-white/[0.06]
-      bg-[#0A0A0A]
-      p-4
-      text-left
-      transition
-      hover:border-cyan-400/15
-      hover:bg-white/[0.015]
-    "
-  >
-    <div className="
-      flex h-10 w-10 shrink-0
-      items-center justify-center
-      rounded-xl bg-black
-      text-cyan-400
-    ">
-      {React.cloneElement(icon, {
-        size: 17
-      })}
-    </div>
-
-    <div className="min-w-0 flex-1">
-      <p className="text-xs font-black">
-        {title}
-      </p>
-
-      {description && (
         <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
           {description}
         </p>
-      )}
-    </div>
-
-    {badge && (
-      <span className="
-        rounded-md
-        bg-cyan-400/[0.06]
-        px-2 py-1
-        text-[8px] font-black uppercase
-        text-cyan-400
-      ">
-        {badge}
-      </span>
-    )}
-
-    <ChevronRight
-      size={15}
-      className="text-zinc-700"
-    />
-  </button>
-);
-
-const PrivacyAction = ({
-  icon,
-  title,
-  value,
-  onClick
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="
-      flex w-full items-center gap-3
-      rounded-2xl
-      border border-white/[0.06]
-      bg-[#0A0A0A]
-      p-4
-      text-left
-    "
-  >
-    <div className="
-      flex h-10 w-10 shrink-0
-      items-center justify-center
-      rounded-xl bg-black
-      text-zinc-400
-    ">
-      {React.cloneElement(icon, {
-        size: 17
-      })}
-    </div>
-
-    <span className="min-w-0 flex-1 text-xs font-black">
-      {title}
-    </span>
-
-    <span className="
-      max-w-[120px]
-      truncate
-      text-[9px]
-      font-bold
-      uppercase
-      text-zinc-600
-    ">
-      {value}
-    </span>
-
-    <ChevronRight
-      size={14}
-      className="text-zinc-700"
-    />
-  </button>
-);
-
-const SelectRow = ({
-  icon,
-  title,
-  value,
-  onClick
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="
-      flex w-full items-center gap-3
-      rounded-2xl
-      border border-white/[0.06]
-      bg-[#0A0A0A]
-      p-4
-      text-left
-      transition
-      hover:border-white/[0.1]
-    "
-  >
-    <div className="
-      flex h-10 w-10 shrink-0
-      items-center justify-center
-      rounded-xl bg-black
-      text-zinc-400
-    ">
-      {React.cloneElement(icon, {
-        size: 17
-      })}
-    </div>
-
-    <span className="min-w-0 flex-1 text-xs font-black">
-      {title}
-    </span>
-
-    <span className="
-      max-w-[140px]
-      truncate
-      rounded-md
-      bg-white/[0.04]
-      px-2 py-1
-      text-[9px]
-      font-bold
-      text-zinc-500
-    ">
-      {value}
-    </span>
-
-    <ChevronRight
-      size={14}
-      className="text-zinc-700"
-    />
-  </button>
-);
-
-const ChoiceButton = ({
-  active,
-  onClick,
-  label
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={[
-      "flex items-center justify-center gap-2",
-      "rounded-xl border px-3 py-3",
-      "text-[9px] font-black uppercase tracking-wider",
-      "transition",
-      active
-        ? "border-cyan-400/25 bg-cyan-400/[0.08] text-cyan-300"
-        : "border-white/[0.06] bg-[#0A0A0A] text-zinc-500"
-    ].join(" ")}
-  >
-    {active && <Check size={13} />}
-    {label}
-  </button>
-);
-
-const InfoRow = ({
-  label,
-  value,
-  border = true
-}) => (
-  <div
-    className={[
-      "flex items-center gap-4 px-4 py-3.5",
-      border
-        ? "border-b border-white/[0.04]"
-        : ""
-    ].join(" ")}
-  >
-    <span className="min-w-0 flex-1 text-[10px] text-zinc-600">
-      {label}
-    </span>
-
-    <span className="
-      max-w-[60%]
-      truncate
-      text-right
-      text-[10px]
-      font-bold
-      text-zinc-300
-    ">
-      {value}
-    </span>
-  </div>
-);
-
-const NotificationCategory = ({
-  title,
-  border
-}) => {
-  const [active, setActive] =
-    useState(true);
-
-  return (
-    <div
-      className={[
-        "flex items-center gap-3 px-4 py-3",
-        border
-          ? "border-b border-white/[0.04]"
-          : ""
-      ].join(" ")}
-    >
-      <span className="flex-1 text-[10px] font-bold text-zinc-400">
-        {title}
-      </span>
+      </div>
 
       <button
-        type="button"
-        onClick={() =>
-          setActive(!active)
-        }
-        className={[
-          "h-5 w-9 rounded-full",
-          "relative transition",
-          active
-            ? "bg-cyan-400"
-            : "bg-zinc-800"
-        ].join(" ")}
+        onClick={onToggle}
+        className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+          active ? "bg-cyan-400" : "bg-zinc-800"
+        }`}
+        aria-label={title}
       >
-        <span
-          className={[
-            "absolute top-1 h-3 w-3 rounded-full bg-white",
-            active
-              ? "left-5"
-              : "left-1"
-          ].join(" ")}
+        <motion.span
+          animate={{
+            x: active ? 22 : 4
+          }}
+          className="absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-lg"
         />
       </button>
     </div>
   );
 };
 
-const StatusBadge = ({
-  icon,
-  label
-}) => (
-  <span className="
-    inline-flex items-center gap-1.5
-    rounded-full
-    border border-white/[0.06]
-    bg-black/30
-    px-2.5 py-1
-    text-[8px] font-black uppercase tracking-wider
-    text-zinc-500
-  ">
-    {icon}
-    {label}
-  </span>
-);
+/*
+|--------------------------------------------------------------------------
+| CHOICE CARD
+|--------------------------------------------------------------------------
+*/
 
-const Stat = ({
-  label,
-  value
-}) => (
-  <div className="text-center">
-    <p className="text-sm font-black text-zinc-200">
-      {value}
-    </p>
-
-    <p className="mt-1 text-[8px] font-black uppercase tracking-[1.5px] text-zinc-700">
-      {label}
-    </p>
-  </div>
-);
-
-const WalletStat = ({
-  label,
-  value
-}) => (
-  <div className="
-    rounded-xl
-    border border-white/[0.05]
-    bg-black/30
-    p-3
-  ">
-    <p className="text-[8px] font-black uppercase tracking-wider text-zinc-700">
-      {label}
-    </p>
-
-    <p className="mt-1 text-sm font-black text-zinc-200">
-      {value}
-    </p>
-  </div>
-);
-
-const SystemStatus = ({
-  icon,
-  title,
-  status
-}) => (
-  <div className="
-    flex items-center gap-3
-    rounded-2xl
-    border border-white/[0.06]
-    bg-[#0A0A0A]
-    p-4
-  ">
-    <div className="
-      flex h-10 w-10 items-center justify-center
-      rounded-xl bg-black
-      text-emerald-400
-    ">
-      {React.cloneElement(icon, {
-        size: 17
-      })}
-    </div>
-
-    <span className="flex-1 text-xs font-black">
-      {title}
-    </span>
-
-    <span className="
-      flex items-center gap-1.5
-      text-[8px] font-black uppercase
-      tracking-wider text-emerald-400
-    ">
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-      {status}
-    </span>
-  </div>
-);
-
-const ActionCard = ({
-  icon,
-  title,
-  description,
-  onClick
-}) => (
+const ChoiceCard = ({ title, description, icon, active = false }) => (
   <button
-    type="button"
-    onClick={onClick}
-    className="
-      rounded-2xl
-      border border-white/[0.06]
-      bg-[#090909]
-      p-4
-      text-left
-      transition
-      hover:border-cyan-400/15
-    "
+    className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
+      active
+        ? "border-cyan-400/25 bg-cyan-400/[0.06]"
+        : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12]"
+    }`}
   >
-    <div className="
-      flex h-10 w-10 items-center justify-center
-      rounded-xl bg-black
-    ">
-      {React.cloneElement(icon, {
-        size: 17
-      })}
-    </div>
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-cyan-300">
+      {icon}
+    </span>
 
-    <h4 className="mt-4 text-xs font-black">
-      {title}
-    </h4>
+    <span className="min-w-0 flex-1">
+      <span className="block text-[12px] font-black text-zinc-200">
+        {title}
+      </span>
 
-    <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
-      {description}
-    </p>
+      <span className="mt-1 block text-[10px] text-zinc-600">
+        {description}
+      </span>
+    </span>
+
+    {active && (
+      <CheckCircle2 size={18} className="text-cyan-300" />
+    )}
   </button>
 );
 
-const EmptyState = ({
-  icon,
-  title,
-  description
-}) => (
-  <div className="
-    rounded-3xl
-    border border-white/[0.06]
-    bg-[#090909]
-    p-10
-    text-center
-  ">
-    <div className="
-      mx-auto flex h-12 w-12
-      items-center justify-center
-      rounded-2xl
-      bg-white/[0.03]
-      text-zinc-600
-    ">
+/*
+|--------------------------------------------------------------------------
+| SELECT ROW
+|--------------------------------------------------------------------------
+*/
+
+const SelectRow = ({ icon, title, value }) => (
+  <button className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-left">
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-zinc-400">
+      {React.cloneElement(icon, { size: 17 })}
+    </span>
+
+    <span className="min-w-0 flex-1">
+      <span className="block text-[12px] font-black text-zinc-200">
+        {title}
+      </span>
+
+      <span className="mt-1 block text-[10px] text-zinc-600">
+        {value}
+      </span>
+    </span>
+
+    <ChevronDown size={15} className="text-zinc-700" />
+  </button>
+);
+
+/*
+|--------------------------------------------------------------------------
+| THEME BUTTON
+|--------------------------------------------------------------------------
+*/
+
+const ThemeButton = ({ icon, label, active, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`flex flex-col items-center justify-center gap-2 rounded-2xl border p-4 transition ${
+      active
+        ? "border-cyan-400/25 bg-cyan-400/[0.07] text-cyan-300"
+        : "border-white/[0.06] bg-white/[0.02] text-zinc-500 hover:text-zinc-200"
+    }`}
+  >
+    {React.cloneElement(icon, { size: 18 })}
+    <span className="text-[9px] font-black uppercase tracking-wider">
+      {label}
+    </span>
+  </button>
+);
+
+/*
+|--------------------------------------------------------------------------
+| MONEY CARD
+|--------------------------------------------------------------------------
+*/
+
+const MoneyCard = ({ label, value, currency }) => (
+  <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+    <p className="text-[8px] font-black uppercase tracking-[1.5px] text-zinc-600">
+      {label}
+    </p>
+
+    <p className="mt-2 break-words text-lg font-black text-white">
+      {typeof value === "number"
+        ? value.toLocaleString()
+        : String(value || "0")}
+    </p>
+
+    {currency && (
+      <p className="mt-0.5 text-[9px] font-bold text-cyan-400">
+        {currency}
+      </p>
+    )}
+  </div>
+);
+
+/*
+|--------------------------------------------------------------------------
+| EXPORT CARD
+|--------------------------------------------------------------------------
+*/
+
+const ExportCard = ({ icon, title }) => (
+  <button className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-zinc-500 transition hover:border-cyan-400/20 hover:text-cyan-300">
+    {React.cloneElement(icon, { size: 20 })}
+    <span className="text-[9px] font-black uppercase tracking-wider">
+      {title}
+    </span>
+  </button>
+);
+
+/*
+|--------------------------------------------------------------------------
+| STATUS ROW
+|--------------------------------------------------------------------------
+*/
+
+const StatusRow = ({ icon, title, value, positive }) => (
+  <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
+    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-zinc-400">
+      {React.cloneElement(icon, { size: 17 })}
+    </span>
+
+    <div className="min-w-0 flex-1">
+      <p className="text-[12px] font-black text-zinc-200">{title}</p>
+      <p className="mt-1 truncate text-[10px] text-zinc-600">{value}</p>
+    </div>
+
+    <span
+      className={`h-2 w-2 rounded-full ${
+        positive ? "bg-emerald-400" : "bg-red-400"
+      }`}
+    />
+  </div>
+);
+
+/*
+|--------------------------------------------------------------------------
+| INFO GRID
+|--------------------------------------------------------------------------
+*/
+
+const InfoGrid = ({ children }) => (
+  <div className="grid grid-cols-2 gap-2">{children}</div>
+);
+
+const InfoField = ({ label, value }) => (
+  <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
+    <p className="text-[8px] font-black uppercase tracking-[1.2px] text-zinc-700">
+      {label}
+    </p>
+
+    <p className="mt-1 break-words text-[11px] font-bold text-zinc-300">
+      {value}
+    </p>
+  </div>
+);
+
+/*
+|--------------------------------------------------------------------------
+| ACTION BUTTON
+|--------------------------------------------------------------------------
+*/
+
+const ActionButton = ({ icon, label, onClick }) => (
+  <button
+    onClick={onClick}
+    className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-cyan-300"
+  >
+    {icon}
+    {label}
+  </button>
+);
+
+/*
+|--------------------------------------------------------------------------
+| NOTICE
+|--------------------------------------------------------------------------
+*/
+
+const Notice = ({ icon, title, description, danger = false }) => (
+  <div
+    className={`rounded-2xl border p-4 ${
+      danger
+        ? "border-red-500/15 bg-red-500/[0.04]"
+        : "border-cyan-400/10 bg-cyan-400/[0.025]"
+    }`}
+  >
+    <div className="flex gap-3">
+      <span
+        className={`mt-0.5 ${
+          danger ? "text-red-400" : "text-cyan-300"
+        }`}
+      >
+        {icon}
+      </span>
+
+      <div>
+        <p
+          className={`text-[11px] font-black ${
+            danger ? "text-red-300" : "text-cyan-300"
+          }`}
+        >
+          {title}
+        </p>
+
+        <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
+          {description}
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
+/*
+|--------------------------------------------------------------------------
+| EMPTY STATE
+|--------------------------------------------------------------------------
+*/
+
+const EmptyState = ({ icon, title, description }) => (
+  <div className="rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.015] p-10 text-center">
+    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.025] text-zinc-600">
       {icon}
     </div>
 
-    <h3 className="mt-4 text-sm font-black">
-      {title}
-    </h3>
+    <h3 className="mt-4 text-sm font-black text-zinc-300">{title}</h3>
 
-    <p className="mx-auto mt-2 max-w-sm text-[10px] leading-relaxed text-zinc-600">
+    <p className="mx-auto mt-2 max-w-md text-[10px] leading-relaxed text-zinc-600">
       {description}
     </p>
   </div>
 );
 
-const InfoNotice = ({
-  children
-}) => (
-  <div className="
-    mt-5 flex gap-3
-    rounded-2xl
-    border border-blue-400/10
-    bg-blue-400/[0.035]
-    p-4
-  ">
-    <Info
-      size={16}
-      className="shrink-0 text-blue-400"
-    />
+/*
+|--------------------------------------------------------------------------
+| DANGER ZONE
+|--------------------------------------------------------------------------
+*/
 
-    <p className="text-[10px] leading-relaxed text-blue-300/60">
-      {children}
-    </p>
+const DangerZone = ({ onLogout, onDeactivate }) => (
+  <section className="rounded-[24px] border border-red-500/10 bg-red-500/[0.025] p-5">
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-500/10 bg-red-500/[0.06]">
+        <AlertTriangle size={17} className="text-red-400" />
+      </div>
+
+      <div>
+        <h2 className="text-sm font-black uppercase tracking-[1.5px] text-red-300">
+          Account Exit
+        </h2>
+
+        <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
+          Sign out, deactivate or permanently delete your Mpade Universe
+          account.
+        </p>
+      </div>
+    </div>
+
+    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+      <button
+        onClick={onLogout}
+        className="flex items-center justify-center gap-2 rounded-xl border border-red-500/15 bg-red-500/[0.06] py-3 text-[10px] font-black uppercase tracking-widest text-red-300 transition hover:bg-red-500/[0.1]"
+      >
+        <LogOut size={15} />
+        Log Out
+      </button>
+
+      <button
+        onClick={onDeactivate}
+        className="flex items-center justify-center gap-2 rounded-xl border border-red-500/15 bg-red-500/[0.03] py-3 text-[10px] font-black uppercase tracking-widest text-red-400 transition hover:bg-red-500/[0.08]"
+      >
+        <UserX size={15} />
+        Account Management
+      </button>
+    </div>
+  </section>
+);
+
+/*
+|--------------------------------------------------------------------------
+| SYSTEM FOOTER
+|--------------------------------------------------------------------------
+*/
+
+const SystemFooter = ({
+  version,
+  cacheSize,
+  clearingCache,
+  onClearCache
+}) => (
+  <section className="pb-6">
+    <div className="rounded-[24px] border border-white/[0.05] bg-white/[0.015] p-5">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SystemFooterItem
+          icon={<Smartphone />}
+          label="Application"
+          value={APP_NAME}
+        />
+
+        <SystemFooterItem
+          icon={<RefreshCw />}
+          label="Version"
+          value={version}
+        />
+
+        <SystemFooterItem
+          icon={<HardDrive />}
+          label="Local Cache"
+          value={formatBytes(cacheSize)}
+        />
+      </div>
+
+      <button
+        onClick={onClearCache}
+        disabled={clearingCache}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.06] bg-black/30 py-3 text-[9px] font-black uppercase tracking-[1.5px] text-zinc-500 transition hover:text-white disabled:opacity-50"
+      >
+        {clearingCache ? (
+          <>
+            <RefreshCw size={13} className="animate-spin" />
+            Clearing temporary data
+          </>
+        ) : (
+          <>
+            <Trash2 size={13} />
+            Free up space
+          </>
+        )}
+      </button>
+
+      <p className="mt-5 text-center text-[8px] font-black uppercase tracking-[2px] text-zinc-800">
+        {APP_NAME} • {version} • Settings & Privacy
+      </p>
+    </div>
+  </section>
+);
+
+/*
+|--------------------------------------------------------------------------
+| SYSTEM FOOTER ITEM
+|--------------------------------------------------------------------------
+*/
+
+const SystemFooterItem = ({ icon, label, value }) => (
+  <div className="flex items-center gap-3 rounded-xl border border-white/[0.04] bg-black/20 p-3">
+    <span className="text-zinc-700">
+      {React.cloneElement(icon, { size: 15 })}
+    </span>
+
+    <div className="min-w-0">
+      <p className="text-[7px] font-black uppercase tracking-[1.5px] text-zinc-700">
+        {label}
+      </p>
+
+      <p className="mt-1 truncate text-[9px] font-bold text-zinc-500">
+        {value}
+      </p>
+    </div>
   </div>
 );
 
-const Toast = ({
-  message,
-  type
-}) => (
-  <motion.div
-    initial={{
-      opacity: 0,
-      y: 20,
-      scale: 0.96
-    }}
-    animate={{
-      opacity: 1,
-      y: 0,
-      scale: 1
-    }}
-    exit={{
-      opacity: 0,
-      y: 20,
-      scale: 0.96
-    }}
-    className="
-      fixed bottom-6 left-1/2 z-[200]
-      flex -translate-x-1/2
-      items-center gap-2
-      rounded-2xl
-      border border-white/[0.08]
-      bg-[#111]/95
-      px-4 py-3
-      shadow-2xl shadow-black
-      backdrop-blur-xl
-    "
-  >
-    {type === "error" ? (
-      <CircleAlert
-        size={16}
-        className="text-red-400"
-      />
-    ) : (
-      <CheckCircle2
-        size={16}
-        className="text-cyan-400"
-      />
-    )}
+/*
+|--------------------------------------------------------------------------
+| ICON FALLBACKS
+|--------------------------------------------------------------------------
+|
+| These are deliberately tiny local components so the settings page does
+| not depend on icon names that may not exist in the installed lucide
+| version.
+|--------------------------------------------------------------------------
+*/
 
-    <span className="whitespace-nowrap text-[10px] font-bold text-zinc-200">
-      {message}
-    </span>
-  </motion.div>
-);
-
-/* ============================================================
-   COLOR HELPER
-============================================================ */
-
-const getColorClass = (color) => {
-  const map = {
-    cyan: "text-cyan-400",
-    purple: "text-purple-400",
-    pink: "text-pink-400",
-    orange: "text-orange-400",
-    emerald: "text-emerald-400",
-    red: "text-red-400",
-    blue: "text-blue-400",
-    zinc: "text-zinc-400"
-  };
-
-  return map[color] || map.zinc;
-};
-
-/* ============================================================
-   PLACEHOLDER ICONS
-============================================================ */
-
-const HashIcon = ({ size = 18 }) => (
+const AtSignFallback = ({ size = 17 }) => (
   <span
     style={{
-      fontSize: size
+      width: size,
+      height: size,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: 900,
+      fontSize: size * 0.8
     }}
-    className="font-black"
+  >
+    @
+  </span>
+);
+
+const HashIcon = ({ size = 17 }) => (
+  <span
+    style={{
+      width: size,
+      height: size,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: 900,
+      fontSize: size * 0.8
+    }}
   >
     #
   </span>
 );
 
-const ShoppingBagIcon = ({ size = 18 }) => (
+const RepeatIcon = ({ size = 17 }) => (
   <span
     style={{
-      fontSize: size
+      width: size,
+      height: size,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: 900,
+      fontSize: size * 0.75
     }}
-    className="font-black"
   >
-    $
+    ↻
   </span>
 );
-
-/* ============================================================
-   EXPORT
-============================================================ */
 
 export default SettingsPage;
