@@ -6,297 +6,95 @@ import React, {
   useState,
 } from 'react';
 
-import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import {
+  useNavigate,
+} from 'react-router-dom';
+
+import {
+  motion,
+  AnimatePresence,
+} from 'framer-motion';
 
 import {
   ChevronLeft,
   ChevronRight,
   Play,
-  DollarSign,
+  Eye,
   Heart,
-  RefreshCcw,
+  MessageCircle,
+  Share2,
+  Bookmark,
+  Repeat2,
   Coins,
-  Crown,
-  Gift,
+  DollarSign,
+  Users,
+  UserPlus,
   BarChart3,
   LayoutDashboard,
   ListVideo,
   Sparkles,
-  Eye,
-  Bell,
-  Video,
-  FileText,
-  Users,
-  MessageCircle,
-  Calendar,
-  Wand2,
-  TrendingUp,
-  Clock3,
-  Share2,
-  Bookmark,
-  Repeat2,
-  UserPlus,
+  Gift,
+  Crown,
   Radio,
-  Upload,
+  Calendar,
+  Target,
+  Trophy,
+  Brain,
+  Wallet,
+  Bell,
   Search,
   Filter,
-  MoreHorizontal,
+  RefreshCcw,
+  Clock,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Video,
+  FileText,
+  Download,
   Settings,
-  Shield,
-  Lock,
-  Smartphone,
-  Monitor,
-  Globe,
-  Music,
-  Image as ImageIcon,
-  Megaphone,
-  Trophy,
-  Target,
-  Zap,
-  CreditCard,
-  Banknote,
-  Wallet,
-  ArrowUpRight,
-  ArrowDownRight,
+  MoreHorizontal,
   CheckCircle2,
   AlertCircle,
   X,
-  Plus,
-  Trash2,
-  Edit3,
   Archive,
+  Trash2,
   RotateCcw,
-  Download,
-  CalendarDays,
-  Timer,
-  Gauge,
+  Edit3,
+  Globe,
+  MapPin,
+  Smartphone,
+  Monitor,
   Activity,
-  MousePointerClick,
-  UserRound,
+  MessageSquare,
   UserCheck,
-  UserX,
-  Volume2,
-  Flag,
-  Tag,
-  Hash,
-  Lightbulb,
-  Bot,
-  FileDown,
-  ExternalLink,
-  Menu,
-  SlidersHorizontal,
-  Layers,
-  Database,
-  Wifi,
-  WifiOff,
-  MoreVertical,
+  Shield,
+  Zap,
 } from 'lucide-react';
 
-import { supabase } from '../supabaseClient';
+import useCreatorStudio from '../hooks/useCreatorStudio';
+
+import {
+  normalizeOverview,
+  safeNumber,
+  calculateGrowth,
+  getLatestDailyStat,
+  getPreviousDailyStat,
+  updateVideo,
+  archiveVideo,
+  restoreVideo,
+  deleteVideo,
+  scheduleVideo,
+} from '../services/creatorStudioService';
 
 /*
-|--------------------------------------------------------------------------
-| CREATOR TIPS
-|--------------------------------------------------------------------------
-*/
-
-const CREATOR_TIPS = [
-  "Trending: Use 'glassmorphism' tags to reach more developers.",
-  "Peak Hour: Post at 7:00 PM CAT for maximum Malawian reach.",
-  "Engagement Tip: Reply to 3 comments to boost video rank.",
-  "Monetization: You're close to a payout. Keep streaming.",
-  "Growth Tip: Strong hooks in the first 2 seconds improve retention.",
-  "Discovery Tip: Mix trending topics with your own creator identity.",
-  "Audience Tip: Study the videos that bring the most followers.",
-  "Consistency Tip: Build a predictable publishing schedule.",
-];
-
-/*
-|--------------------------------------------------------------------------
-| NAVIGATION
-|--------------------------------------------------------------------------
-*/
-
-const NAV_GROUPS = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    items: [
-      {
-        id: 'dashboard',
-        label: 'Dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        id: 'analytics',
-        label: 'Analytics',
-        icon: BarChart3,
-      },
-      {
-        id: 'growth',
-        label: 'Growth Center',
-        icon: TrendingUp,
-      },
-    ],
-  },
-
-  {
-    id: 'content',
-    label: 'Content',
-    items: [
-      {
-        id: 'videos',
-        label: 'Content',
-        icon: ListVideo,
-      },
-      {
-        id: 'library',
-        label: 'Library',
-        icon: Database,
-      },
-      {
-        id: 'schedule',
-        label: 'Scheduler',
-        icon: CalendarDays,
-      },
-      {
-        id: 'seo',
-        label: 'SEO & Discovery',
-        icon: Hash,
-      },
-    ],
-  },
-
-  {
-    id: 'audience',
-    label: 'Audience',
-    items: [
-      {
-        id: 'audience',
-        label: 'Audience',
-        icon: Users,
-      },
-      {
-        id: 'comments',
-        label: 'Comments',
-        icon: MessageCircle,
-      },
-      {
-        id: 'notifications',
-        label: 'Notifications',
-        icon: Bell,
-      },
-    ],
-  },
-
-  {
-    id: 'creator',
-    label: 'Creator',
-    items: [
-      {
-        id: 'ai',
-        label: 'AI Intelligence',
-        icon: Sparkles,
-      },
-      {
-        id: 'livestream',
-        label: 'Live Studio',
-        icon: Radio,
-      },
-      {
-        id: 'goals',
-        label: 'Goals & Achievements',
-        icon: Trophy,
-      },
-      {
-        id: 'tools',
-        label: 'Creator Tools',
-        icon: Wand2,
-      },
-    ],
-  },
-
-  {
-    id: 'earn',
-    label: 'Earn',
-    items: [
-      {
-        id: 'monetization',
-        label: 'Monetization',
-        icon: DollarSign,
-      },
-      {
-        id: 'gifts',
-        label: 'Gifts',
-        icon: Gift,
-      },
-      {
-        id: 'subscriptions',
-        label: 'Subscriptions',
-        icon: Crown,
-      },
-      {
-        id: 'paid',
-        label: 'Paid Content',
-        icon: CreditCard,
-      },
-      {
-        id: 'finance',
-        label: 'Financial Analytics',
-        icon: Wallet,
-      },
-    ],
-  },
-
-  {
-    id: 'business',
-    label: 'Business',
-    items: [
-      {
-        id: 'collaboration',
-        label: 'Brand Studio',
-        icon: Megaphone,
-      },
-      {
-        id: 'profile',
-        label: 'Creator Profile',
-        icon: UserRound,
-      },
-    ],
-  },
-
-  {
-    id: 'system',
-    label: 'System',
-    items: [
-      {
-        id: 'security',
-        label: 'Security',
-        icon: Shield,
-      },
-      {
-        id: 'settings',
-        label: 'Studio Settings',
-        icon: Settings,
-      },
-      {
-        id: 'reports',
-        label: 'Reports & Export',
-        icon: FileDown,
-      },
-    ],
-  },
-];
-
-/*
-|--------------------------------------------------------------------------
-| HELPERS
-|--------------------------------------------------------------------------
+============================================================
+FORMATTERS
+============================================================
 */
 
 const formatNumber = (value) => {
-  const number = Number(value) || 0;
+  const number = safeNumber(value);
 
   if (number >= 1000000000) {
     return `${(number / 1000000000).toFixed(1)}B`;
@@ -313,5283 +111,3654 @@ const formatNumber = (value) => {
   return number.toLocaleString();
 };
 
-const toSafeNumber = (value) => {
-  const number = Number(value);
-
-  return Number.isFinite(number) ? number : 0;
-};
-
-const percentage = (part, total) => {
-  if (!total) return 0;
-
-  return Math.min(
-    100,
-    Math.max(0, (Number(part) / Number(total)) * 100)
+const formatMoney = (value) => {
+  return safeNumber(value).toLocaleString(
+    undefined,
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }
   );
 };
 
-const getVideoStatus = (video) => {
-  if (!video) return 'Unknown';
+const formatDate = (value) => {
+  if (!value) return '—';
 
-  if (video.status) {
-    return String(video.status);
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '—';
   }
 
-  return 'Published';
+  return date.toLocaleDateString();
 };
 
-const getVideoTitle = (video) =>
-  video?.title ||
-  video?.caption ||
-  'Untitled Content';
+const formatDuration = (seconds) => {
+  const total = Math.max(
+    0,
+    Math.floor(safeNumber(seconds))
+  );
 
-const downloadJSON = (data, filename) => {
-  try {
-    const blob = new Blob(
-      [JSON.stringify(data, null, 2)],
-      {
-        type: 'application/json',
-      }
-    );
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(
+    (total % 3600) / 60
+  );
+  const secs = total % 60;
 
-    const url = URL.createObjectURL(blob);
-
-    const anchor = document.createElement('a');
-
-    anchor.href = url;
-    anchor.download = filename;
-
-    document.body.appendChild(anchor);
-    anchor.click();
-
-    anchor.remove();
-
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error('Export error:', error);
+  if (hours) {
+    return `${hours}h ${minutes}m`;
   }
+
+  if (minutes) {
+    return `${minutes}m ${secs}s`;
+  }
+
+  return `${secs}s`;
+};
+
+const percentage = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(Number(value))
+  ) {
+    return null;
+  }
+
+  return Number(value);
 };
 
 /*
-|--------------------------------------------------------------------------
-| MAIN COMPONENT
-|--------------------------------------------------------------------------
+============================================================
+NAVIGATION
+============================================================
+*/
+
+const NAV_ITEMS = [
+  {
+    id: 'dashboard',
+    label: 'Overview',
+    icon: LayoutDashboard,
+  },
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    icon: BarChart3,
+  },
+  {
+    id: 'content',
+    label: 'Content',
+    icon: ListVideo,
+  },
+  {
+    id: 'live',
+    label: 'Livestream',
+    icon: Radio,
+  },
+  {
+    id: 'audience',
+    label: 'Audience',
+    icon: Users,
+  },
+  {
+    id: 'engagement',
+    label: 'Engagement',
+    icon: MessageSquare,
+  },
+  {
+    id: 'growth',
+    label: 'Growth',
+    icon: TrendingUp,
+  },
+  {
+    id: 'earnings',
+    label: 'Earnings',
+    icon: Wallet,
+  },
+  {
+    id: 'gifts',
+    label: 'Gifts',
+    icon: Gift,
+  },
+  {
+    id: 'goals',
+    label: 'Goals',
+    icon: Target,
+  },
+  {
+    id: 'achievements',
+    label: 'Achievements',
+    icon: Trophy,
+  },
+  {
+    id: 'ai',
+    label: 'AI Intelligence',
+    icon: Brain,
+  },
+  {
+    id: 'schedule',
+    label: 'Schedule',
+    icon: Calendar,
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    icon: FileText,
+  },
+];
+
+/*
+============================================================
+MAIN COMPONENT
+============================================================
 */
 
 const UniverseTools = () => {
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const studio = useCreatorStudio();
 
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  const {
+    profile,
+    overview,
+    videoPerformance,
+    livePerformance,
+    dailyAnalytics,
+    topContent,
+    achievements,
+    aiInsights,
+    growth,
+    videos,
+    liveStreams,
+    earnings,
+    dailyStats,
 
-  const [myVideos, setMyVideos] = useState([]);
+    loading,
+    refreshing,
+    error,
+    lastSyncedAt,
 
-  const [aiTip, setAiTip] = useState(
-    'Analyzing creator trends...'
-  );
+    refresh,
+    aiTip,
+  } = studio;
 
-  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [activeTab, setActiveTab] =
+    useState('dashboard');
+
+  const [selectedVideo, setSelectedVideo] =
+    useState(null);
 
   const [drawerMode, setDrawerMode] =
     useState('metrics');
 
-  const [fetchError, setFetchError] = useState('');
-
-  const [searchQuery, setSearchQuery] =
+  const [videoSearch, setVideoSearch] =
     useState('');
 
-  const [contentFilter, setContentFilter] =
+  const [videoFilter, setVideoFilter] =
     useState('all');
 
   const [analyticsRange, setAnalyticsRange] =
-    useState('28d');
+    useState('28');
 
   const [mobileMenu, setMobileMenu] =
     useState(false);
 
-  const [showNotifications, setShowNotifications] =
+  const [actionLoading, setActionLoading] =
     useState(false);
 
-  const [showCreatorMenu, setShowCreatorMenu] =
+  const [actionError, setActionError] =
+    useState('');
+
+  const [toast, setToast] =
+    useState('');
+
+  const [notificationOpen, setNotificationOpen] =
     useState(false);
 
-  const [stats, setStats] = useState({
-    views: '0',
-    followers: '0',
-    likes: '0',
-    revenue: '0.00',
-    coins: '0',
-
-    comments: '0',
-    shares: '0',
-    saves: '0',
-
-    profileVisits: '0',
-    reach: '0',
-    impressions: '0',
-
-    engagement: '0%',
-    retention: '0%',
-    watchTime: '0m',
-
-    dailyViews: '0',
-    weeklyViews: '0',
-    monthlyViews: '0',
-
-    followerGrowth: '+0%',
-    viewsGrowth: '+0%',
-    likesGrowth: '+0%',
-    revenueGrowth: '+0%',
-  });
-
-  const [notifications, setNotifications] =
-    useState([
-      {
-        id: 1,
-        type: 'follower',
-        title: 'New followers',
-        message: 'Your audience is growing.',
-        time: 'Today',
-        unread: true,
-      },
-      {
-        id: 2,
-        type: 'gift',
-        title: 'Creator gift',
-        message: 'You received new virtual gifts.',
-        time: 'Today',
-        unread: true,
-      },
-      {
-        id: 3,
-        type: 'analytics',
-        title: 'Analytics ready',
-        message: 'Your latest performance report is available.',
-        time: 'Yesterday',
-        unread: false,
-      },
-    ]);
-
-  const [settings, setSettings] = useState({
-    autoRefresh: true,
-    refreshInterval: '60',
-    compactMode: false,
-    reducedMotion: false,
-    desktopLayout: true,
-    showWidgets: true,
-    offlineMode: false,
-  });
-
-  const mountedRef = useRef(true);
-
-  const refreshLockRef = useRef(false);
+  const mainRef = useRef(null);
 
   /*
-  |--------------------------------------------------------------------------
-  | LIFECYCLE
-  |--------------------------------------------------------------------------
+  ==========================================================
+  NORMALIZED OVERVIEW
+  ==========================================================
+  */
+
+  const stats = useMemo(
+    () => normalizeOverview(overview || {}),
+    [overview]
+  );
+
+  /*
+  ==========================================================
+  LATEST DAILY DATA
+  ==========================================================
+  */
+
+  const latestDaily = useMemo(
+    () =>
+      getLatestDailyStat(
+        dailyStats?.length
+          ? dailyStats
+          : dailyAnalytics
+      ),
+    [dailyStats, dailyAnalytics]
+  );
+
+  const previousDaily = useMemo(
+    () =>
+      getPreviousDailyStat(
+        dailyStats?.length
+          ? dailyStats
+          : dailyAnalytics
+      ),
+    [dailyStats, dailyAnalytics]
+  );
+
+  /*
+  ==========================================================
+  REAL GROWTH VALUES
+  ==========================================================
+  */
+
+  const growthMetrics = useMemo(
+    () => ({
+      views: calculateGrowth(
+        latestDaily?.views,
+        previousDaily?.views
+      ),
+
+      likes: calculateGrowth(
+        latestDaily?.likes,
+        previousDaily?.likes
+      ),
+
+      followers: calculateGrowth(
+        latestDaily?.followers_gained,
+        previousDaily?.followers_gained
+      ),
+
+      comments: calculateGrowth(
+        latestDaily?.comments,
+        previousDaily?.comments
+      ),
+
+      shares: calculateGrowth(
+        latestDaily?.shares,
+        previousDaily?.shares
+      ),
+
+      revenue: calculateGrowth(
+        latestDaily?.revenue,
+        previousDaily?.revenue
+      ),
+
+      coins: calculateGrowth(
+        latestDaily?.coins_received,
+        previousDaily?.coins_received
+      ),
+    }),
+    [latestDaily, previousDaily]
+  );
+
+  /*
+  ==========================================================
+  VIDEO FILTERING
+  ==========================================================
+  */
+
+  const filteredVideos = useMemo(() => {
+    let result = [...videos];
+
+    const search =
+      videoSearch.trim().toLowerCase();
+
+    if (search) {
+      result = result.filter((video) => {
+        return (
+          String(video.title || '')
+            .toLowerCase()
+            .includes(search) ||
+          String(video.caption || '')
+            .toLowerCase()
+            .includes(search) ||
+          String(video.id || '')
+            .toLowerCase()
+            .includes(search)
+        );
+      });
+    }
+
+    if (videoFilter === 'published') {
+      result = result.filter(
+        (video) =>
+          video.status === 'published'
+      );
+    }
+
+    if (videoFilter === 'scheduled') {
+      result = result.filter(
+        (video) =>
+          video.status === 'scheduled' ||
+          video.scheduled_at
+      );
+    }
+
+    if (videoFilter === 'private') {
+      result = result.filter(
+        (video) =>
+          video.is_private === true ||
+          video.privacy === 'private'
+      );
+    }
+
+    if (videoFilter === 'archived') {
+      result = result.filter(
+        (video) =>
+          video.status === 'archived' ||
+          video.archived_at
+      );
+    }
+
+    return result;
+  }, [
+    videos,
+    videoSearch,
+    videoFilter,
+  ]);
+
+  /*
+  ==========================================================
+  SCROLL TOP WHEN TAB CHANGES
+  ==========================================================
   */
 
   useEffect(() => {
-    mountedRef.current = true;
+    mainRef.current?.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    });
+  }, [activeTab]);
 
-    return () => {
-      mountedRef.current = false;
-    };
+  /*
+  ==========================================================
+  VIDEO DRAWER
+  ==========================================================
+  */
+
+  const openVideo = useCallback(
+    (video) => {
+      setSelectedVideo(video);
+      setDrawerMode('metrics');
+      setActionError('');
+    },
+    []
+  );
+
+  const closeVideo = useCallback(() => {
+    setSelectedVideo(null);
+    setDrawerMode('metrics');
+    setActionError('');
   }, []);
 
   /*
-  |--------------------------------------------------------------------------
-  | SUPABASE DATA
-  |--------------------------------------------------------------------------
+  ==========================================================
+  VIDEO ACTIONS
+  ==========================================================
   */
 
-  const fetchRealtimeStats = useCallback(
-    async () => {
-      if (refreshLockRef.current) return;
+  const performVideoAction = async (
+    action
+  ) => {
+    if (!selectedVideo || actionLoading) {
+      return;
+    }
 
-      refreshLockRef.current = true;
+    setActionLoading(true);
+    setActionError('');
 
-      if (mountedRef.current) {
-        setSyncing(true);
-        setFetchError('');
+    try {
+      if (action === 'archive') {
+        await archiveVideo(
+          selectedVideo.id
+        );
+
+        setToast('Video archived.');
       }
 
-      try {
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser();
-
-        if (authError) {
-          throw authError;
-        }
-
-        if (!user) {
-          if (mountedRef.current) {
-            setMyVideos([]);
-
-            setStats({
-              views: '0',
-              followers: '0',
-              likes: '0',
-              revenue: '0.00',
-              coins: '0',
-              comments: '0',
-              shares: '0',
-              saves: '0',
-              profileVisits: '0',
-              reach: '0',
-              impressions: '0',
-              engagement: '0%',
-              retention: '0%',
-              watchTime: '0m',
-              dailyViews: '0',
-              weeklyViews: '0',
-              monthlyViews: '0',
-              followerGrowth: '+0%',
-              viewsGrowth: '+0%',
-              likesGrowth: '+0%',
-              revenueGrowth: '+0%',
-            });
-
-            setFetchError(
-              'No authenticated creator session found.'
-            );
-          }
-
-          return;
-        }
-
-        const [
-          profileResult,
-          videosResult,
-        ] = await Promise.all([
-          supabase
-            .from('profiles')
-            .select(
-              `
-                id,
-                coins,
-                follower_count,
-                follower_counts,
-                following_count,
-                total_likes,
-                balance,
-                total_tokens_earned
-              `
-            )
-            .eq('id', user.id)
-            .maybeSingle(),
-
-          supabase
-            .from('videos')
-            .select(
-              `
-                id,
-                user_id,
-                caption,
-                title,
-                description,
-                video_url,
-                thumbnail_url,
-                views_count,
-                likes_count,
-                comments_count,
-                shares_count,
-                saves_count,
-                created_at,
-                status,
-                privacy,
-                category,
-                hashtags,
-                duration,
-                processing_status
-              `
-            )
-            .eq('user_id', user.id)
-            .order('created_at', {
-              ascending: false,
-            }),
-        ]);
-
-        if (profileResult.error) {
-          console.error(
-            'Universe Studio profile error:',
-            profileResult.error
-          );
-        }
-
-        if (videosResult.error) {
-          console.error(
-            'Universe Studio videos error:',
-            videosResult.error
-          );
-        }
-
-        if (!mountedRef.current) return;
-
-        const profile =
-          profileResult.data || {};
-
-        const videos = Array.isArray(
-          videosResult.data
-        )
-          ? videosResult.data
-          : [];
-
-        const totalViews = videos.reduce(
-          (total, video) =>
-            total +
-            toSafeNumber(
-              video?.views_count
-            ),
-          0
+      if (action === 'restore') {
+        await restoreVideo(
+          selectedVideo.id
         );
 
-        const totalLikes = videos.reduce(
-          (total, video) =>
-            total +
-            toSafeNumber(
-              video?.likes_count
-            ),
-          0
-        );
-
-        const totalComments = videos.reduce(
-          (total, video) =>
-            total +
-            toSafeNumber(
-              video?.comments_count
-            ),
-          0
-        );
-
-        const totalShares = videos.reduce(
-          (total, video) =>
-            total +
-            toSafeNumber(
-              video?.shares_count
-            ),
-          0
-        );
-
-        const totalSaves = videos.reduce(
-          (total, video) =>
-            total +
-            toSafeNumber(
-              video?.saves_count
-            ),
-          0
-        );
-
-        const followers = toSafeNumber(
-          profile?.follower_count ??
-            profile?.follower_counts
-        );
-
-        const rawCoins = toSafeNumber(
-          profile?.coins
-        );
-
-        const balance = toSafeNumber(
-          profile?.balance
-        );
-
-        const revenue =
-          balance ||
-          rawCoins * 0.1;
-
-        const totalInteractions =
-          totalLikes +
-          totalComments +
-          totalShares +
-          totalSaves;
-
-        const engagementRate =
-          totalViews > 0
-            ? (
-                (totalInteractions /
-                  totalViews) *
-                100
-              ).toFixed(1)
-            : '0.0';
-
-        setMyVideos(videos);
-
-        setStats({
-          views: formatNumber(
-            totalViews
-          ),
-
-          followers: formatNumber(
-            followers
-          ),
-
-          likes: formatNumber(
-            totalLikes
-          ),
-
-          revenue:
-            revenue.toLocaleString(
-              undefined,
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              }
-            ),
-
-          coins: formatNumber(
-            rawCoins
-          ),
-
-          comments: formatNumber(
-            totalComments
-          ),
-
-          shares: formatNumber(
-            totalShares
-          ),
-
-          saves: formatNumber(
-            totalSaves
-          ),
-
-          profileVisits: formatNumber(
-            Math.round(
-              totalViews * 0.08
-            )
-          ),
-
-          reach: formatNumber(
-            Math.round(
-              totalViews * 0.82
-            )
-          ),
-
-          impressions: formatNumber(
-            Math.round(
-              totalViews * 1.24
-            )
-          ),
-
-          engagement: `${engagementRate}%`,
-
-          retention:
-            totalViews > 0
-              ? `${Math.min(
-                  100,
-                  Math.max(
-                    1,
-                    Math.round(
-                      45 +
-                        engagementRate
-                    )
-                  )
-                )}%`
-              : '0%',
-
-          watchTime:
-            totalViews > 0
-              ? `${Math.max(
-                  1,
-                  Math.round(
-                    totalViews / 1500
-                  )
-                )}m`
-              : '0m',
-
-          dailyViews: formatNumber(
-            Math.round(
-              totalViews * 0.07
-            )
-          ),
-
-          weeklyViews: formatNumber(
-            Math.round(
-              totalViews * 0.29
-            )
-          ),
-
-          monthlyViews: formatNumber(
-            totalViews
-          ),
-
-          followerGrowth: '+12.4%',
-          viewsGrowth: '+18.7%',
-          likesGrowth: '+9.8%',
-          revenueGrowth: '+14.2%',
-        });
-
-        setAiTip(
-          CREATOR_TIPS[
-            Math.floor(
-              Math.random() *
-                CREATOR_TIPS.length
-            )
-          ]
-        );
-
-        if (
-          profileResult.error ||
-          videosResult.error
-        ) {
-          setFetchError(
-            'Some creator data could not be synchronized.'
-          );
-        }
-      } catch (error) {
-        console.error(
-          'Universe Studio sync error:',
-          error
-        );
-
-        if (mountedRef.current) {
-          setFetchError(
-            error?.message ||
-              'Unable to synchronize creator data.'
-          );
-        }
-      } finally {
-        refreshLockRef.current = false;
-
-        if (mountedRef.current) {
-          setSyncing(false);
-          setLoading(false);
-        }
+        setToast('Video restored.');
       }
-    },
-    []
-  );
 
-  useEffect(() => {
-    fetchRealtimeStats();
-  }, [fetchRealtimeStats]);
+      if (action === 'delete') {
+        await deleteVideo(
+          selectedVideo.id
+        );
 
-  /*
-  |--------------------------------------------------------------------------
-  | AUTO REFRESH
-  |--------------------------------------------------------------------------
-  */
+        setToast('Video moved to deleted state.');
+      }
 
-  useEffect(() => {
-    if (!settings.autoRefresh) return;
+      await refresh();
 
-    const interval =
-      Number(settings.refreshInterval) ||
-      60;
+      closeVideo();
+    } catch (err) {
+      console.error(err);
 
-    const timer = setInterval(
-      () => {
-        fetchRealtimeStats();
-      },
-      interval * 1000
-    );
-
-    return () => clearInterval(timer);
-  }, [
-    settings.autoRefresh,
-    settings.refreshInterval,
-    fetchRealtimeStats,
-  ]);
-
-  /*
-  |--------------------------------------------------------------------------
-  | VIDEO HELPERS
-  |--------------------------------------------------------------------------
-  */
-
-  const handleOpenVideo = useCallback(
-    (video) => {
-      if (!video) return;
-
-      setSelectedVideo(video);
-      setDrawerMode('metrics');
-    },
-    []
-  );
-
-  const handleCloseVideo = useCallback(
-    () => {
-      setSelectedVideo(null);
-      setDrawerMode('metrics');
-    },
-    []
-  );
-
-  const filteredVideos = useMemo(() => {
-    return myVideos.filter((video) => {
-      const title =
-        getVideoTitle(video)
-          .toLowerCase();
-
-      const query =
-        searchQuery
-          .trim()
-          .toLowerCase();
-
-      const matchesSearch =
-        !query ||
-        title.includes(query);
-
-      const status =
-        getVideoStatus(video)
-          .toLowerCase();
-
-      const matchesFilter =
-        contentFilter === 'all' ||
-        status ===
-          contentFilter.toLowerCase();
-
-      return (
-        matchesSearch &&
-        matchesFilter
+      setActionError(
+        err?.message ||
+          'Video action failed.'
       );
-    });
-  }, [
-    myVideos,
-    searchQuery,
-    contentFilter,
-  ]);
-
-  /*
-  |--------------------------------------------------------------------------
-  | NOTIFICATIONS
-  |--------------------------------------------------------------------------
-  */
-
-  const unreadNotifications =
-    notifications.filter(
-      (item) => item.unread
-    ).length;
-
-  const markAllNotificationsRead =
-    () => {
-      setNotifications((items) =>
-        items.map((item) => ({
-          ...item,
-          unread: false,
-        }))
-      );
-    };
-
-  /*
-  |--------------------------------------------------------------------------
-  | EXPORT
-  |--------------------------------------------------------------------------
-  */
-
-  const exportStudioData = () => {
-    downloadJSON(
-      {
-        exported_at:
-          new Date().toISOString(),
-
-        statistics: stats,
-
-        videos: myVideos,
-
-        creator_studio: {
-          analytics_range:
-            analyticsRange,
-
-          settings,
-        },
-      },
-      'universe-studio-report.json'
-    );
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   /*
-  |--------------------------------------------------------------------------
-  | LOADING
-  |--------------------------------------------------------------------------
+  ==========================================================
+  EXPORT ANALYTICS
+  ==========================================================
+  */
+
+  const exportAnalytics = useCallback(() => {
+    const payload = {
+      exported_at:
+        new Date().toISOString(),
+
+      creator_id:
+        studio.creatorId,
+
+      profile,
+
+      overview,
+
+      daily_analytics:
+        dailyAnalytics,
+
+      video_performance:
+        videoPerformance,
+
+      livestream_performance:
+        livePerformance,
+
+      top_content:
+        topContent,
+
+      earnings,
+    };
+
+    const blob = new Blob(
+      [JSON.stringify(payload, null, 2)],
+      {
+        type: 'application/json',
+      }
+    );
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const anchor =
+      document.createElement('a');
+
+    anchor.href = url;
+    anchor.download =
+      `creator-studio-${new Date()
+        .toISOString()
+        .slice(0, 10)}.json`;
+
+    anchor.click();
+
+    URL.revokeObjectURL(url);
+
+    setToast(
+      'Creator report exported.'
+    );
+  }, [
+    studio.creatorId,
+    profile,
+    overview,
+    dailyAnalytics,
+    videoPerformance,
+    livePerformance,
+    topContent,
+    earnings,
+  ]);
+
+  /*
+  ==========================================================
+  LOADING
+  ==========================================================
   */
 
   if (loading) {
     return (
-      <div className="h-screen w-full bg-black flex items-center justify-center">
-        <div className="flex flex-col items-center gap-5">
-          <div className="relative">
-            <div className="w-12 h-12 border-2 border-cyan-500/20 rounded-full" />
+      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
+        <div className="w-full max-w-2xl px-6 space-y-5">
+          <div className="h-8 w-52 rounded-xl bg-white/5 animate-pulse" />
 
-            <div className="absolute inset-0 w-12 h-12 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map((item) => (
+              <div
+                key={item}
+                className="h-28 rounded-3xl bg-white/5 animate-pulse"
+              />
+            ))}
           </div>
 
-          <div className="text-center">
-            <p className="text-[10px] font-black uppercase tracking-[4px] text-cyan-400">
-              Universe Studio
-            </p>
+          <div className="h-72 rounded-[32px] bg-white/5 animate-pulse" />
 
-            <p className="text-[8px] font-black uppercase tracking-[3px] text-zinc-600 mt-2">
-              Synchronizing Creator Network
-            </p>
-          </div>
+          <p className="text-center text-[9px] uppercase tracking-[4px] text-zinc-600 font-black">
+            Synchronizing Creator Studio
+          </p>
         </div>
       </div>
     );
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | MAIN
-  |--------------------------------------------------------------------------
+  ==========================================================
+  UI
+  ==========================================================
   */
 
   return (
-    <div className="h-screen w-full bg-[#030303] text-white font-sans flex overflow-hidden relative selection:bg-cyan-500/20">
+    <div className="min-h-screen bg-[#050505] text-white overflow-hidden relative">
 
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            .scrollbar-studio::-webkit-scrollbar {
-              width: 5px;
-              height: 5px;
-            }
+      {/* Atmospheric background */}
 
-            .scrollbar-studio::-webkit-scrollbar-track {
-              background: transparent;
-            }
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full bg-cyan-500/[0.035] blur-[140px]" />
+        <div className="absolute top-1/3 -right-40 w-[500px] h-[500px] rounded-full bg-purple-500/[0.035] blur-[140px]" />
+        <div className="absolute -bottom-40 left-1/3 w-[500px] h-[500px] rounded-full bg-blue-500/[0.025] blur-[140px]" />
+      </div>
 
-            .scrollbar-studio::-webkit-scrollbar-thumb {
-              background: rgba(255,255,255,.06);
-              border-radius: 99px;
-            }
+      {/* ==================================================
+          TOP BAR
+      ================================================== */}
 
-            .scrollbar-studio::-webkit-scrollbar-thumb:hover {
-              background: rgba(6,182,212,.25);
-            }
+      <header className="sticky top-0 z-[100] h-16 border-b border-white/[0.06] bg-[#050505]/90 backdrop-blur-2xl">
 
-            .studio-grid {
-              background-image:
-                linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
-              background-size: 40px 40px;
-            }
-          `,
-        }}
-      />
-
-      <div className="fixed inset-0 pointer-events-none z-0 studio-grid opacity-30" />
-
-      <div className="fixed top-[-20%] left-[-10%] w-[45%] h-[50%] bg-cyan-500/[0.06] blur-[160px] rounded-full pointer-events-none z-0" />
-
-      <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-500/[0.06] blur-[160px] rounded-full pointer-events-none z-0" />
-
-      {/* =========================================================
-          SIDEBAR
-      ========================================================== */}
-
-      <aside
-        className={`
-          fixed lg:relative
-          inset-y-0 left-0
-          w-[270px]
-          bg-[#050505]/95
-          backdrop-blur-3xl
-          border-r border-white/[0.06]
-          z-[300]
-          flex flex-col
-          transition-transform duration-300
-          ${
-            mobileMenu
-              ? 'translate-x-0'
-              : '-translate-x-full lg:translate-x-0'
-          }
-        `}
-      >
-        {/* Brand */}
-
-        <div className="h-[76px] px-5 border-b border-white/[0.06] flex items-center justify-between shrink-0">
+        <div className="h-full max-w-[1500px] mx-auto px-4 md:px-6 flex items-center justify-between">
 
           <div className="flex items-center gap-3">
-
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-purple-500 flex items-center justify-center shadow-[0_0_25px_rgba(6,182,212,.2)]">
-              <Sparkles
-                size={17}
-                className="text-white"
-              />
-            </div>
-
-            <div>
-              <h1 className="text-[11px] font-black uppercase tracking-[3px] italic">
-                Universe
-              </h1>
-
-              <p className="text-[7px] font-black uppercase tracking-[3px] text-zinc-600">
-                Creator Studio
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() =>
-              setMobileMenu(false)
-            }
-            className="lg:hidden text-zinc-500"
-          >
-            <X size={17} />
-          </button>
-        </div>
-
-        {/* Navigation */}
-
-        <div className="flex-1 overflow-y-auto scrollbar-studio px-3 py-5 space-y-6">
-
-          {NAV_GROUPS.map((group) => (
-            <div key={group.id}>
-
-              <p className="px-3 mb-2 text-[7px] font-black uppercase tracking-[3px] text-zinc-700">
-                {group.label}
-              </p>
-
-              <div className="space-y-0.5">
-
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-
-                  const active =
-                    activeTab === item.id;
-
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setActiveTab(
-                          item.id
-                        );
-
-                        setMobileMenu(
-                          false
-                        );
-                      }}
-                      className={`
-                        w-full
-                        flex
-                        items-center
-                        gap-3
-                        px-3
-                        py-2.5
-                        rounded-xl
-                        text-left
-                        transition-all
-                        group
-                        ${
-                          active
-                            ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/10'
-                            : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.025]'
-                        }
-                      `}
-                    >
-                      <Icon
-                        size={15}
-                        className={
-                          active
-                            ? 'text-cyan-400'
-                            : 'text-zinc-600 group-hover:text-zinc-300'
-                        }
-                      />
-
-                      <span className="flex-1 text-[9px] font-black uppercase tracking-wider">
-                        {item.label}
-                      </span>
-
-                      {active && (
-                        <span className="w-1 h-1 bg-cyan-400 rounded-full shadow-[0_0_8px_rgba(6,182,212,.8)]" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Creator footer */}
-
-        <div className="p-3 border-t border-white/[0.06] shrink-0">
-
-          <button
-            onClick={() =>
-              navigate('/profile')
-            }
-            className="w-full p-3 rounded-2xl bg-white/[0.025] border border-white/[0.05] flex items-center gap-3 hover:bg-white/[0.05] transition-all"
-          >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 flex items-center justify-center">
-              <UserRound size={16} />
-            </div>
-
-            <div className="min-w-0 flex-1 text-left">
-              <p className="text-[9px] font-black uppercase tracking-wider truncate">
-                Creator Account
-              </p>
-
-              <p className="text-[7px] text-zinc-600 uppercase tracking-wider mt-0.5">
-                Professional
-              </p>
-            </div>
-
-            <ChevronRight
-              size={13}
-              className="text-zinc-700"
-            />
-          </button>
-        </div>
-      </aside>
-
-      {/* Mobile sidebar backdrop */}
-
-      <AnimatePresence>
-        {mobileMenu && (
-          <motion.div
-            initial={{
-              opacity: 0,
-            }}
-            animate={{
-              opacity: 1,
-            }}
-            exit={{
-              opacity: 0,
-            }}
-            onClick={() =>
-              setMobileMenu(false)
-            }
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] lg:hidden"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* =========================================================
-          MAIN AREA
-      ========================================================== */}
-
-      <div className="flex-1 min-w-0 flex flex-col relative z-10">
-
-        {/* Header */}
-
-        <header className="h-[76px] shrink-0 border-b border-white/[0.06] bg-black/70 backdrop-blur-2xl flex items-center justify-between px-4 lg:px-6 z-[200]">
-
-          <div className="flex items-center gap-3">
-
-            <button
-              onClick={() =>
-                setMobileMenu(true)
-              }
-              className="lg:hidden p-2 rounded-xl bg-white/[0.04] text-zinc-400"
-            >
-              <Menu size={17} />
-            </button>
 
             <button
               onClick={() =>
                 navigate(-1)
               }
-              className="p-2 rounded-xl bg-white/[0.035] border border-white/[0.05] text-zinc-500 hover:text-white transition-colors"
+              className="w-9 h-9 rounded-xl bg-white/[0.035] border border-white/[0.06] flex items-center justify-center text-zinc-500 hover:text-white transition"
             >
-              <ChevronLeft size={17} />
+              <ChevronLeft
+                size={17}
+              />
             </button>
 
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-[10px] font-black uppercase tracking-[3px] italic">
-                  {NAV_GROUPS.flatMap(
-                    (group) =>
-                      group.items
-                  ).find(
-                    (item) =>
-                      item.id ===
-                      activeTab
-                  )?.label ||
-                    'Dashboard'}
-                </h2>
 
-                <span className="hidden sm:flex items-center gap-1 text-[6px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/10 text-emerald-400 font-black uppercase">
-                  <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
-                  Live
-                </span>
+                <Sparkles
+                  size={14}
+                  className="text-cyan-400"
+                />
+
+                <h1 className="text-xs md:text-sm font-black uppercase tracking-[3px] italic">
+                  Universe Studio
+                </h1>
+
               </div>
 
-              <p className="hidden sm:block text-[7px] text-zinc-700 uppercase tracking-[2px] mt-1">
+              <p className="hidden md:block text-[7px] text-zinc-600 font-bold uppercase tracking-[2px] mt-0.5">
                 Creator command center
               </p>
             </div>
+
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
 
-            {/* Connection */}
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/[0.05] border border-emerald-500/10">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
 
-            <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.025] border border-white/[0.04] mr-2">
-              {settings.offlineMode ? (
-                <WifiOff
-                  size={12}
-                  className="text-yellow-400"
-                />
-              ) : (
-                <Wifi
-                  size={12}
-                  className="text-emerald-400"
-                />
-              )}
-
-              <span className="text-[7px] font-black uppercase tracking-wider text-zinc-600">
-                {settings.offlineMode
-                  ? 'Offline'
-                  : 'Connected'}
+              <span className="text-[7px] uppercase tracking-widest font-black text-emerald-400">
+                Database Live
               </span>
             </div>
 
-            {/* Notifications */}
-
-            <div className="relative">
-
-              <button
-                onClick={() =>
-                  setShowNotifications(
-                    (value) =>
-                      !value
-                  )
-                }
-                className="relative p-2.5 rounded-xl hover:bg-white/[0.04] text-zinc-500 hover:text-white transition-all"
-              >
-                <Bell size={16} />
-
-                {unreadNotifications >
-                  0 && (
-                  <span className="absolute top-1.5 right-1.5 min-w-[12px] h-3 px-0.5 rounded-full bg-cyan-400 text-black text-[6px] font-black flex items-center justify-center">
-                    {unreadNotifications}
-                  </span>
-                )}
-              </button>
-
-              <AnimatePresence>
-                {showNotifications && (
-                  <motion.div
-                    initial={{
-                      opacity: 0,
-                      y: -5,
-                      scale: 0.98,
-                    }}
-                    animate={{
-                      opacity: 1,
-                      y: 0,
-                      scale: 1,
-                    }}
-                    exit={{
-                      opacity: 0,
-                      y: -5,
-                      scale: 0.98,
-                    }}
-                    className="absolute right-0 top-12 w-[320px] bg-zinc-950 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[500]"
-                  >
-                    <div className="p-4 border-b border-white/[0.06] flex items-center justify-between">
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-wider">
-                          Notifications
-                        </p>
-
-                        <p className="text-[7px] text-zinc-600 uppercase mt-1">
-                          Creator activity
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={
-                          markAllNotificationsRead
-                        }
-                        className="text-[7px] font-black uppercase text-cyan-400"
-                      >
-                        Mark all read
-                      </button>
-                    </div>
-
-                    <div className="max-h-[320px] overflow-y-auto scrollbar-studio">
-
-                      {notifications.map(
-                        (notification) => (
-                          <div
-                            key={
-                              notification.id
-                            }
-                            className={`p-4 border-b border-white/[0.04] ${
-                              notification.unread
-                                ? 'bg-cyan-500/[0.025]'
-                                : ''
-                            }`}
-                          >
-                            <div className="flex gap-3">
-
-                              <div className="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0">
-                                {notification.type ===
-                                'gift' ? (
-                                  <Gift
-                                    size={13}
-                                    className="text-pink-400"
-                                  />
-                                ) : notification.type ===
-                                  'follower' ? (
-                                  <UserPlus
-                                    size={13}
-                                    className="text-cyan-400"
-                                  />
-                                ) : (
-                                  <BarChart3
-                                    size={13}
-                                    className="text-purple-400"
-                                  />
-                                )}
-                              </div>
-
-                              <div className="min-w-0">
-                                <p className="text-[9px] font-black">
-                                  {
-                                    notification.title
-                                  }
-                                </p>
-
-                                <p className="text-[8px] text-zinc-500 mt-1">
-                                  {
-                                    notification.message
-                                  }
-                                </p>
-
-                                <p className="text-[6px] text-zinc-700 uppercase mt-2">
-                                  {
-                                    notification.time
-                                  }
-                                </p>
-                              </div>
-
-                              {notification.unread && (
-                                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full mt-1 ml-auto shrink-0" />
-                              )}
-                            </div>
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Refresh */}
+            <button
+              onClick={() =>
+                setNotificationOpen(
+                  (value) => !value
+                )
+              }
+              className="w-9 h-9 rounded-xl hover:bg-white/5 flex items-center justify-center text-zinc-500 hover:text-white"
+            >
+              <Bell size={16} />
+            </button>
 
             <button
-              onClick={
-                fetchRealtimeStats
-              }
-              disabled={syncing}
-              className="p-2.5 rounded-xl hover:bg-white/[0.04] text-zinc-500 hover:text-cyan-400 disabled:opacity-40"
+              onClick={refresh}
+              disabled={refreshing}
+              className="w-9 h-9 rounded-xl hover:bg-cyan-500/10 flex items-center justify-center text-cyan-400 disabled:opacity-50"
             >
               <RefreshCcw
                 size={15}
                 className={
-                  syncing
+                  refreshing
                     ? 'animate-spin'
                     : ''
                 }
               />
             </button>
 
-            {/* Settings */}
-
             <button
               onClick={() =>
-                setActiveTab(
-                  'settings'
+                setMobileMenu(
+                  (value) => !value
                 )
               }
-              className="p-2.5 rounded-xl hover:bg-white/[0.04] text-zinc-500 hover:text-white"
+              className="md:hidden w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center"
             >
-              <Settings size={15} />
-            </button>
-
-            <button
-              onClick={() =>
-                setShowCreatorMenu(
-                  (value) =>
-                    !value
-                )
-              }
-              className="hidden sm:flex w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/10 items-center justify-center"
-            >
-              <UserRound
-                size={15}
-                className="text-cyan-300"
+              <MoreHorizontal
+                size={16}
               />
             </button>
+
           </div>
-        </header>
 
-        {/* Error */}
+        </div>
+      </header>
 
-        <AnimatePresence>
-          {fetchError && (
-            <motion.div
-              initial={{
-                opacity: 0,
-                y: -10,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              exit={{
-                opacity: 0,
-                y: -10,
-              }}
-              className="absolute top-[86px] left-1/2 -translate-x-1/2 z-[190] w-[92%] max-w-lg"
-            >
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 backdrop-blur-xl">
-                <AlertCircle
+      {/* ==================================================
+          NOTIFICATION PANEL
+      ================================================== */}
+
+      <AnimatePresence>
+        {notificationOpen && (
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: -10,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            exit={{
+              opacity: 0,
+              y: -10,
+            }}
+            className="fixed top-20 right-4 z-[150] w-80 bg-[#0b0b0b] border border-white/10 rounded-3xl p-5 shadow-2xl"
+          >
+            <div className="flex items-center justify-between mb-4">
+
+              <h3 className="text-xs font-black uppercase tracking-widest">
+                Studio Notifications
+              </h3>
+
+              <button
+                onClick={() =>
+                  setNotificationOpen(
+                    false
+                  )
+                }
+              >
+                <X
                   size={14}
-                  className="text-yellow-400 shrink-0"
+                  className="text-zinc-600"
                 />
+              </button>
 
-                <p className="flex-1 text-[8px] font-bold text-yellow-300 uppercase tracking-wider">
-                  {fetchError}
-                </p>
+            </div>
 
-                <button
-                  onClick={() =>
-                    setFetchError('')
-                  }
-                  className="text-yellow-600"
-                >
-                  <X size={13} />
-                </button>
+            <div className="py-8 text-center">
+
+              <Bell
+                size={22}
+                className="mx-auto text-zinc-700 mb-3"
+              />
+
+              <p className="text-[9px] text-zinc-600 uppercase tracking-widest font-black">
+                No creator notifications
+              </p>
+
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================================================
+          BODY
+      ================================================== */}
+
+      <div className="relative z-10 flex max-w-[1500px] mx-auto">
+
+        {/* =================================================
+            DESKTOP SIDEBAR
+        ================================================= */}
+
+        <aside className="hidden md:block w-56 shrink-0 border-r border-white/[0.05] min-h-[calc(100vh-64px)]">
+
+          <div className="sticky top-16 p-4">
+
+            <div className="mb-5 px-3">
+
+              <div className="flex items-center gap-3">
+
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/10 overflow-hidden flex items-center justify-center">
+
+                  {profile?.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Sparkles
+                      size={17}
+                      className="text-cyan-400"
+                    />
+                  )}
+
+                </div>
+
+                <div className="min-w-0">
+
+                  <p className="text-xs font-black truncate">
+                    {profile?.display_name ||
+                      profile?.full_name ||
+                      profile?.username ||
+                      'Creator'}
+                  </p>
+
+                  <p className="text-[8px] text-zinc-600 truncate">
+                    @{profile?.username ||
+                      'creator'}
+                  </p>
+
+                </div>
+
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
-        {/* =======================================================
-            CONTENT
-        ======================================================== */}
+            </div>
 
-        <main className="flex-1 overflow-y-auto scrollbar-studio pb-10">
+            <div className="space-y-1">
 
-          <div className="max-w-[1500px] mx-auto p-4 sm:p-5 lg:p-7">
+              {NAV_ITEMS.map(
+                (item) => {
+                  const Icon =
+                    item.icon;
+
+                  const active =
+                    activeTab ===
+                    item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() =>
+                        setActiveTab(
+                          item.id
+                        )
+                      }
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
+                        active
+                          ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/10'
+                          : 'text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.025]'
+                      }`}
+                    >
+
+                      <Icon size={15} />
+
+                      <span className="text-[9px] font-black uppercase tracking-wider">
+                        {item.label}
+                      </span>
+
+                    </button>
+                  );
+                }
+              )}
+
+            </div>
+
+            <div className="mt-5 pt-5 border-t border-white/[0.05]">
+
+              <button
+                onClick={() =>
+                  navigate(
+                    '/edit-profile'
+                  )
+                }
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-zinc-600 hover:text-white hover:bg-white/5 transition"
+              >
+                <Settings size={15} />
+
+                <span className="text-[9px] font-black uppercase tracking-wider">
+                  Creator Settings
+                </span>
+              </button>
+
+            </div>
+
+          </div>
+
+        </aside>
+
+        {/* =================================================
+            MAIN
+        ================================================= */}
+
+        <main
+          ref={mainRef}
+          className="flex-1 min-w-0 h-[calc(100vh-64px)] overflow-y-auto"
+        >
+
+          <div className="max-w-[1150px] mx-auto px-4 md:px-8 py-6 md:py-8 pb-32">
+
+            {/* Mobile navigation */}
+
+            <div className="md:hidden mb-5 overflow-x-auto scrollbar-none flex gap-2">
+
+              {NAV_ITEMS.map(
+                (item) => {
+                  const Icon =
+                    item.icon;
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() =>
+                        setActiveTab(
+                          item.id
+                        )
+                      }
+                      className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-[8px] font-black uppercase tracking-wider ${
+                        activeTab ===
+                        item.id
+                          ? 'bg-cyan-500 text-black border-cyan-500'
+                          : 'bg-white/[0.03] border-white/[0.06] text-zinc-500'
+                      }`}
+                    >
+                      <Icon size={12} />
+                      {item.label}
+                    </button>
+                  );
+                }
+              )}
+
+            </div>
+
+            {/* Error */}
+
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{
+                    opacity: 0,
+                    y: -10,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                  }}
+                  className="mb-5 flex items-center gap-3 p-4 rounded-2xl bg-red-500/[0.05] border border-red-500/10"
+                >
+
+                  <AlertCircle
+                    size={16}
+                    className="text-red-400"
+                  />
+
+                  <p className="flex-1 text-[9px] text-red-300 font-bold">
+                    {error}
+                  </p>
+
+                  <button
+                    onClick={refresh}
+                    className="text-[8px] uppercase font-black text-red-400"
+                  >
+                    Retry
+                  </button>
+
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* =================================================
+                PAGE CONTENT
+            ================================================= */}
 
             <AnimatePresence mode="wait">
 
-              {/* =================================================
-                  DASHBOARD
-              ================================================== */}
-
-              {activeTab === 'dashboard' && (
-                <DashboardView
-                  key="dashboard"
+              {activeTab ===
+                'dashboard' && (
+                <DashboardSection
                   stats={stats}
-                  aiTip={aiTip}
-                  myVideos={myVideos}
-                  syncing={syncing}
-                  navigate={navigate}
-                  setActiveTab={
-                    setActiveTab
+                  profile={profile}
+                  latestDaily={
+                    latestDaily
                   }
-                  onOpenVideo={
-                    handleOpenVideo
+                  growthMetrics={
+                    growthMetrics
+                  }
+                  aiTip={aiTip}
+                  dailyAnalytics={
+                    dailyAnalytics
+                  }
+                  topContent={
+                    topContent
+                  }
+                  videos={videos}
+                  liveStreams={
+                    liveStreams
+                  }
+                  achievements={
+                    achievements
+                  }
+                  onVideo={
+                    openVideo
+                  }
+                  onNavigate={
+                    setActiveTab
                   }
                 />
               )}
 
-              {/* =================================================
-                  ANALYTICS
-              ================================================== */}
-
-              {activeTab === 'analytics' && (
-                <AnalyticsView
-                  key="analytics"
+              {activeTab ===
+                'analytics' && (
+                <AnalyticsSection
                   stats={stats}
+                  dailyAnalytics={
+                    dailyAnalytics
+                  }
+                  dailyStats={
+                    dailyStats
+                  }
+                  growthMetrics={
+                    growthMetrics
+                  }
                   range={
                     analyticsRange
                   }
                   setRange={
                     setAnalyticsRange
                   }
-                  myVideos={myVideos}
-                />
-              )}
-
-              {/* =================================================
-                  GROWTH
-              ================================================== */}
-
-              {activeTab === 'growth' && (
-                <GrowthView
-                  key="growth"
-                  stats={stats}
-                  aiTip={aiTip}
-                  myVideos={myVideos}
-                  setActiveTab={
-                    setActiveTab
+                  videoPerformance={
+                    videoPerformance
                   }
                 />
               )}
 
-              {/* =================================================
-                  CONTENT
-              ================================================== */}
-
-              {activeTab === 'videos' && (
-                <ContentView
-                  key="videos"
+              {activeTab ===
+                'content' && (
+                <ContentSection
                   videos={
                     filteredVideos
                   }
                   total={
-                    myVideos.length
+                    videos.length
                   }
-                  searchQuery={
-                    searchQuery
+                  search={
+                    videoSearch
                   }
-                  setSearchQuery={
-                    setSearchQuery
+                  setSearch={
+                    setVideoSearch
                   }
                   filter={
-                    contentFilter
+                    videoFilter
                   }
                   setFilter={
-                    setContentFilter
+                    setVideoFilter
                   }
-                  onOpenVideo={
-                    handleOpenVideo
+                  onVideo={
+                    openVideo
                   }
-                  navigate={navigate}
-                />
-              )}
-
-              {/* =================================================
-                  LIBRARY
-              ================================================== */}
-
-              {activeTab === 'library' && (
-                <LibraryView
-                  key="library"
-                  videos={myVideos}
-                  setActiveTab={
-                    setActiveTab
+                  onRefresh={
+                    refresh
                   }
                 />
               )}
 
-              {/* =================================================
-                  SCHEDULER
-              ================================================== */}
-
-              {activeTab === 'schedule' && (
-                <SchedulerView
-                  key="schedule"
+              {activeTab ===
+                'live' && (
+                <LiveSection
+                  livePerformance={
+                    livePerformance
+                  }
+                  liveStreams={
+                    liveStreams
+                  }
+                  onSchedule={() =>
+                    setActiveTab(
+                      'schedule'
+                    )
+                  }
                 />
               )}
 
-              {/* =================================================
-                  SEO
-              ================================================== */}
-
-              {activeTab === 'seo' && (
-                <SEOView key="seo" />
+              {activeTab ===
+                'audience' && (
+                <AudienceSection
+                  stats={stats}
+                  latestDaily={
+                    latestDaily
+                  }
+                  dailyAnalytics={
+                    dailyAnalytics
+                  }
+                  profile={
+                    profile
+                  }
+                />
               )}
 
-              {/* =================================================
-                  AUDIENCE
-              ================================================== */}
+              {activeTab ===
+                'engagement' && (
+                <EngagementSection
+                  stats={stats}
+                  latestDaily={
+                    latestDaily
+                  }
+                  videoPerformance={
+                    videoPerformance
+                  }
+                />
+              )}
 
-              {activeTab === 'audience' && (
-                <AudienceView
-                  key="audience"
+              {activeTab ===
+                'growth' && (
+                <GrowthSection
+                  stats={stats}
+                  growth={
+                    growth
+                  }
+                  dailyAnalytics={
+                    dailyAnalytics
+                  }
+                  growthMetrics={
+                    growthMetrics
+                  }
+                />
+              )}
+
+              {activeTab ===
+                'earnings' && (
+                <EarningsSection
+                  stats={stats}
+                  earnings={
+                    earnings
+                  }
+                  livePerformance={
+                    livePerformance
+                  }
+                />
+              )}
+
+              {activeTab ===
+                'gifts' && (
+                <GiftsSection
+                  stats={stats}
+                  livePerformance={
+                    livePerformance
+                  }
+                />
+              )}
+
+              {activeTab ===
+                'goals' && (
+                <GoalsSection
+                  achievements={
+                    achievements
+                  }
                   stats={stats}
                 />
               )}
 
-              {/* =================================================
-                  COMMENTS
-              ================================================== */}
-
-              {activeTab === 'comments' && (
-                <CommentsView
-                  key="comments"
+              {activeTab ===
+                'achievements' && (
+                <AchievementsSection
+                  achievements={
+                    achievements
+                  }
                 />
               )}
-
-              {/* =================================================
-                  NOTIFICATIONS
-              ================================================== */}
 
               {activeTab ===
-                'notifications' && (
-                <NotificationsView
-                  key="notifications"
-                  notifications={
-                    notifications
+                'ai' && (
+                <AISection
+                  aiInsights={
+                    aiInsights
                   }
-                  markAll={
-                    markAllNotificationsRead
-                  }
-                />
-              )}
-
-              {/* =================================================
-                  AI
-              ================================================== */}
-
-              {activeTab === 'ai' && (
-                <AIView
-                  key="ai"
                   aiTip={aiTip}
                 />
               )}
 
-              {/* =================================================
-                  LIVESTREAM
-              ================================================== */}
-
               {activeTab ===
-                'livestream' && (
-                <LiveStudioView
-                  key="livestream"
-                  stats={stats}
-                  navigate={navigate}
-                />
-              )}
-
-              {/* =================================================
-                  GOALS
-              ================================================== */}
-
-              {activeTab === 'goals' && (
-                <GoalsView
-                  key="goals"
-                />
-              )}
-
-              {/* =================================================
-                  TOOLS
-              ================================================== */}
-
-              {activeTab === 'tools' && (
-                <ToolsView
-                  key="tools"
-                  navigate={navigate}
-                />
-              )}
-
-              {/* =================================================
-                  MONETIZATION
-              ================================================== */}
-
-              {activeTab ===
-                'monetization' && (
-                <MonetizationView
-                  key="monetization"
-                  stats={stats}
-                  navigate={navigate}
-                />
-              )}
-
-              {/* =================================================
-                  GIFTS
-              ================================================== */}
-
-              {activeTab === 'gifts' && (
-                <GiftsView
-                  key="gifts"
-                  navigate={navigate}
-                />
-              )}
-
-              {/* =================================================
-                  SUBSCRIPTIONS
-              ================================================== */}
-
-              {activeTab ===
-                'subscriptions' && (
-                <SubscriptionsView
-                  key="subscriptions"
-                />
-              )}
-
-              {/* =================================================
-                  PAID CONTENT
-              ================================================== */}
-
-              {activeTab === 'paid' && (
-                <PaidContentView
-                  key="paid"
-                />
-              )}
-
-              {/* =================================================
-                  FINANCE
-              ================================================== */}
-
-              {activeTab === 'finance' && (
-                <FinanceView
-                  key="finance"
-                  stats={stats}
-                />
-              )}
-
-              {/* =================================================
-                  BRAND
-              ================================================== */}
-
-              {activeTab ===
-                'collaboration' && (
-                <CollaborationView
-                  key="collaboration"
-                />
-              )}
-
-              {/* =================================================
-                  PROFILE
-              ================================================== */}
-
-              {activeTab === 'profile' && (
-                <ProfileView
-                  key="profile"
-                  navigate={navigate}
-                />
-              )}
-
-              {/* =================================================
-                  SECURITY
-              ================================================== */}
-
-              {activeTab === 'security' && (
-                <SecurityView
-                  key="security"
-                />
-              )}
-
-              {/* =================================================
-                  SETTINGS
-              ================================================== */}
-
-              {activeTab === 'settings' && (
-                <SettingsView
-                  key="settings"
-                  settings={settings}
-                  setSettings={
-                    setSettings
+                'schedule' && (
+                <ScheduleSection
+                  videos={videos}
+                  liveStreams={
+                    liveStreams
+                  }
+                  onVideo={
+                    openVideo
                   }
                 />
               )}
 
-              {/* =================================================
-                  REPORTS
-              ================================================== */}
-
-              {activeTab === 'reports' && (
-                <ReportsView
-                  key="reports"
+              {activeTab ===
+                'reports' && (
+                <ReportsSection
                   stats={stats}
-                  videos={myVideos}
-                  exportStudioData={
-                    exportStudioData
+                  dailyAnalytics={
+                    dailyAnalytics
+                  }
+                  videoPerformance={
+                    videoPerformance
+                  }
+                  livePerformance={
+                    livePerformance
+                  }
+                  earnings={
+                    earnings
+                  }
+                  onExport={
+                    exportAnalytics
                   }
                 />
               )}
+
             </AnimatePresence>
+
+            {/* Sync status */}
+
+            <div className="mt-8 flex justify-center">
+
+              <div className="flex items-center gap-2 text-[7px] uppercase tracking-[2px] text-zinc-700 font-black">
+
+                <Activity
+                  size={10}
+                />
+
+                {lastSyncedAt
+                  ? `Last synchronized ${new Date(
+                      lastSyncedAt
+                    ).toLocaleTimeString()}`
+                  : 'Waiting for synchronization'}
+
+              </div>
+
+            </div>
+
           </div>
+
         </main>
       </div>
 
-      {/* =========================================================
+      {/* ==================================================
           VIDEO DRAWER
-      ========================================================== */}
+      ================================================== */}
 
       <AnimatePresence>
         {selectedVideo && (
           <VideoDrawer
-            video={selectedVideo}
-            mode={drawerMode}
-            setMode={setDrawerMode}
-            onClose={handleCloseVideo}
+            video={
+              selectedVideo
+            }
+            mode={
+              drawerMode
+            }
+            setMode={
+              setDrawerMode
+            }
+            onClose={
+              closeVideo
+            }
+            onAction={
+              performVideoAction
+            }
+            actionLoading={
+              actionLoading
+            }
+            actionError={
+              actionError
+            }
+            onRefresh={
+              refresh
+            }
           />
         )}
       </AnimatePresence>
+
+      {/* Toast */}
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 20,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            exit={{
+              opacity: 0,
+              y: 20,
+            }}
+            className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-[300] px-5 py-3 rounded-2xl bg-white text-black shadow-2xl"
+          >
+            <div className="flex items-center gap-2">
+
+              <CheckCircle2
+                size={14}
+              />
+
+              <span className="text-[9px] uppercase tracking-widest font-black">
+                {toast}
+              </span>
+
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
 
 /*
-|--------------------------------------------------------------------------
-| PAGE WRAPPER
-|--------------------------------------------------------------------------
+============================================================
+DASHBOARD
+============================================================
 */
 
-const Page = ({
-  title,
-  subtitle,
-  icon: Icon,
-  children,
-  action,
-}) => (
-  <motion.div
-    initial={{
-      opacity: 0,
-      y: 10,
-    }}
-    animate={{
-      opacity: 1,
-      y: 0,
-    }}
-    exit={{
-      opacity: 0,
-      y: -10,
-    }}
-    transition={{
-      duration: 0.2,
-    }}
-    className="space-y-6"
-  >
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+const DashboardSection = ({
+  stats,
+  profile,
+  latestDaily,
+  growthMetrics,
+  aiTip,
+  dailyAnalytics,
+  topContent,
+  videos,
+  liveStreams,
+  achievements,
+  onVideo,
+  onNavigate,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
 
-      <div className="flex items-center gap-3">
+      <PageHeader
+        eyebrow="Creator command center"
+        title="Overview"
+        description={`Welcome back ${
+          profile?.display_name ||
+          profile?.username ||
+          'Creator'
+        }. Your studio is synchronized with Supabase.`}
+      />
 
-        {Icon && (
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/10 flex items-center justify-center">
-            <Icon
-              size={18}
+      {/* AI */}
+
+      <div className="relative overflow-hidden rounded-[28px] border border-cyan-500/10 bg-gradient-to-r from-cyan-500/[0.08] via-purple-500/[0.04] to-transparent p-5">
+
+        <div className="flex gap-4">
+
+          <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/10 flex items-center justify-center shrink-0">
+
+            <Brain
+              size={17}
               className="text-cyan-400"
             />
+
           </div>
-        )}
 
-        <div>
-          <h1 className="text-lg sm:text-xl font-black italic tracking-tight uppercase">
-            {title}
-          </h1>
+          <div className="min-w-0">
 
-          <p className="text-[8px] sm:text-[9px] text-zinc-600 uppercase tracking-[2px] mt-1">
-            {subtitle}
-          </p>
+            <p className="text-[8px] uppercase tracking-[3px] font-black text-cyan-400">
+              Creator Intelligence
+            </p>
+
+            <p className="text-sm text-zinc-300 font-medium mt-1 leading-relaxed">
+              {aiTip}
+            </p>
+
+          </div>
+
         </div>
+
       </div>
 
-      {action}
-    </div>
+      {/* PRIMARY STATS */}
 
-    {children}
-  </motion.div>
-);
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-/*
-|--------------------------------------------------------------------------
-| CARD
-|--------------------------------------------------------------------------
-*/
-
-const Card = ({
-  children,
-  className = '',
-}) => (
-  <div
-    className={`bg-zinc-900/30 border border-white/[0.06] rounded-[24px] backdrop-blur-xl ${className}`}
-  >
-    {children}
-  </div>
-);
-
-/*
-|--------------------------------------------------------------------------
-| STAT CARD
-|--------------------------------------------------------------------------
-*/
-
-const StatCard = ({
-  label,
-  value,
-  icon: Icon,
-  iconClass = 'text-cyan-400',
-  trend,
-  trendPositive = true,
-}) => (
-  <Card className="p-5">
-
-    <div className="flex items-start justify-between">
-
-      <div className="w-9 h-9 rounded-xl bg-black border border-white/[0.06] flex items-center justify-center">
-        <Icon
-          size={16}
-          className={iconClass}
-        />
-      </div>
-
-      {trend && (
-        <span
-          className={`flex items-center gap-0.5 text-[7px] font-black ${
-            trendPositive
-              ? 'text-emerald-400'
-              : 'text-rose-400'
-          }`}
-        >
-          {trendPositive ? (
-            <ArrowUpRight size={10} />
-          ) : (
-            <ArrowDownRight size={10} />
+        <MetricCard
+          label="Video Views"
+          value={formatNumber(
+            stats.videoViews
           )}
-          {trend}
-        </span>
-      )}
-    </div>
-
-    <p className="text-2xl font-black font-mono italic mt-5 tracking-tight">
-      {value}
-    </p>
-
-    <p className="text-[7px] font-black uppercase tracking-[2px] text-zinc-600 mt-1">
-      {label}
-    </p>
-  </Card>
-);
-
-/*
-|--------------------------------------------------------------------------
-| DASHBOARD
-|--------------------------------------------------------------------------
-*/
-
-const DashboardView = ({
-  stats,
-  aiTip,
-  myVideos,
-  navigate,
-  setActiveTab,
-  onOpenVideo,
-}) => (
-  <Page
-    title="Creator Dashboard"
-    subtitle="Your complete creator command center"
-    icon={LayoutDashboard}
-    action={
-      <div className="flex gap-2">
-        <button
-          onClick={() =>
-            setActiveTab('ai')
-          }
-          className="px-4 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/10 text-purple-300 text-[8px] font-black uppercase tracking-wider flex items-center gap-2"
-        >
-          <Sparkles size={12} />
-          AI Center
-        </button>
-
-        <button
-          onClick={() =>
-            setActiveTab('livestream')
-          }
-          className="px-4 py-2.5 rounded-xl bg-cyan-500 text-black text-[8px] font-black uppercase tracking-wider flex items-center gap-2"
-        >
-          <Radio size={12} />
-          Go Live
-        </button>
-      </div>
-    }
-  >
-    {/* AI */}
-
-    <Card className="p-5 bg-gradient-to-r from-cyan-500/[0.08] via-purple-500/[0.06] to-transparent border-cyan-500/10">
-
-      <div className="flex gap-4 items-center">
-
-        <div className="w-11 h-11 rounded-2xl bg-cyan-400 flex items-center justify-center shrink-0 shadow-[0_0_30px_rgba(6,182,212,.2)]">
-          <Sparkles
-            size={19}
-            className="text-black"
-          />
-        </div>
-
-        <div className="flex-1">
-          <p className="text-[7px] font-black uppercase tracking-[3px] text-cyan-400">
-            Creator Intelligence
-          </p>
-
-          <p className="text-xs text-zinc-300 mt-1">
-            {aiTip}
-          </p>
-        </div>
-
-        <button
-          onClick={() =>
-            setActiveTab('ai')
-          }
-          className="hidden sm:flex p-2.5 rounded-xl bg-white/[0.04] text-zinc-500 hover:text-white"
-        >
-          <ChevronRight size={14} />
-        </button>
-      </div>
-    </Card>
-
-    {/* Primary stats */}
-
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-
-      <StatCard
-        label="Total Views"
-        value={stats.views}
-        icon={Eye}
-        trend={
-          stats.viewsGrowth
-        }
-      />
-
-      <StatCard
-        label="Followers"
-        value={
-          stats.followers
-        }
-        icon={Users}
-        iconClass="text-purple-400"
-        trend={
-          stats.followerGrowth
-        }
-      />
-
-      <StatCard
-        label="Total Likes"
-        value={stats.likes}
-        icon={Heart}
-        iconClass="text-rose-400"
-        trend={
-          stats.likesGrowth
-        }
-      />
-
-      <StatCard
-        label="Estimated Revenue"
-        value={`MK ${stats.revenue}`}
-        icon={DollarSign}
-        iconClass="text-emerald-400"
-        trend={
-          stats.revenueGrowth
-        }
-      />
-    </div>
-
-    {/* Secondary metrics */}
-
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-
-      <MiniMetric
-        icon={MessageCircle}
-        label="Comments"
-        value={stats.comments}
-      />
-
-      <MiniMetric
-        icon={Share2}
-        label="Shares"
-        value={stats.shares}
-      />
-
-      <MiniMetric
-        icon={Bookmark}
-        label="Saves"
-        value={stats.saves}
-      />
-
-      <MiniMetric
-        icon={MousePointerClick}
-        label="Profile Visits"
-        value={
-          stats.profileVisits
-        }
-      />
-    </div>
-
-    {/* Performance */}
-
-    <div className="grid lg:grid-cols-[1.7fr_1fr] gap-4">
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Performance Overview"
-          subtitle="Creator performance across your content"
-          action={
-            <button
-              onClick={() =>
-                setActiveTab(
-                  'analytics'
-                )
-              }
-              className="text-[7px] font-black uppercase text-cyan-400"
-            >
-              Full analytics
-            </button>
+          icon={Eye}
+          tone="cyan"
+          growth={
+            growthMetrics.views
           }
         />
 
-        <div className="flex items-end gap-2 h-44 mt-8">
-
-          {[
-            32,
-            48,
-            41,
-            65,
-            53,
-            79,
-            68,
-            91,
-            70,
-            84,
-            62,
-            95,
-            78,
-            88,
-          ].map(
-            (height, index) => (
-              <div
-                key={index}
-                className="flex-1 h-full flex items-end group"
-              >
-                <motion.div
-                  initial={{
-                    height: 0,
-                  }}
-                  animate={{
-                    height: `${height}%`,
-                  }}
-                  transition={{
-                    duration: 0.6,
-                    delay:
-                      index * 0.03,
-                  }}
-                  className="w-full rounded-t-lg bg-gradient-to-t from-cyan-500/20 to-cyan-400/80 group-hover:to-cyan-300 transition-all"
-                />
-              </div>
-            )
+        <MetricCard
+          label="Followers"
+          value={formatNumber(
+            stats.followers
           )}
-        </div>
-
-        <div className="flex justify-between mt-3 text-[7px] font-mono text-zinc-700 uppercase">
-          <span>Past 14 days</span>
-          <span>Today</span>
-        </div>
-      </Card>
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Creator Health"
-          subtitle="Account performance signals"
-        />
-
-        <div className="space-y-5 mt-7">
-
-          <HealthBar
-            label="Engagement"
-            value={
-              stats.engagement
-            }
-            percent={72}
-          />
-
-          <HealthBar
-            label="Retention"
-            value={
-              stats.retention
-            }
-            percent={68}
-          />
-
-          <HealthBar
-            label="Discovery"
-            value="81%"
-            percent={81}
-          />
-
-          <HealthBar
-            label="Monetization"
-            value="64%"
-            percent={64}
-          />
-        </div>
-      </Card>
-    </div>
-
-    {/* Quick actions */}
-
-    <div>
-      <SectionHeader
-        title="Creator Command Center"
-        subtitle="Frequently used creator operations"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 mt-3">
-
-        <QuickAction
-          icon={Upload}
-          title="Upload"
-          onClick={() =>
-            navigate('/upload')
-          }
-        />
-
-        <QuickAction
-          icon={Radio}
-          title="Start Live"
-          onClick={() =>
-            navigate('/live')
-          }
-        />
-
-        <QuickAction
-          icon={Calendar}
-          title="Schedule"
-          onClick={() =>
-            setActiveTab(
-              'schedule'
-            )
-          }
-        />
-
-        <QuickAction
-          icon={Sparkles}
-          title="AI Ideas"
-          onClick={() =>
-            setActiveTab('ai')
-          }
-        />
-
-        <QuickAction
           icon={Users}
-          title="Audience"
-          onClick={() =>
-            setActiveTab(
-              'audience'
-            )
+          tone="purple"
+          growth={
+            growthMetrics.followers
           }
         />
 
-        <QuickAction
-          icon={DollarSign}
-          title="Earnings"
-          onClick={() =>
-            setActiveTab(
-              'monetization'
-            )
+        <MetricCard
+          label="Total Likes"
+          value={formatNumber(
+            stats.videoLikes
+          )}
+          icon={Heart}
+          tone="rose"
+          growth={
+            growthMetrics.likes
           }
         />
+
+        <MetricCard
+          label="Total Engagement"
+          value={formatNumber(
+            stats.totalEngagements
+          )}
+          icon={Activity}
+          tone="emerald"
+        />
+
       </div>
-    </div>
 
-    {/* Latest videos */}
+      {/* SECONDARY */}
 
-    <Card className="p-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-      <SectionHeader
-        title="Latest Content"
-        subtitle={`${myVideos.length} content items indexed`}
+        <SmallMetric
+          label="Comments"
+          value={stats.videoComments}
+          icon={MessageCircle}
+        />
+
+        <SmallMetric
+          label="Shares"
+          value={stats.videoShares}
+          icon={Share2}
+        />
+
+        <SmallMetric
+          label="Saves"
+          value={stats.videoSaves}
+          icon={Bookmark}
+        />
+
+        <SmallMetric
+          label="Reposts"
+          value={stats.videoReposts}
+          icon={Repeat2}
+        />
+
+      </div>
+
+      {/* REAL DAILY ANALYTICS */}
+
+      <SectionShell
+        title="Performance"
+        subtitle="Historical database analytics"
         action={
           <button
             onClick={() =>
-              setActiveTab(
-                'videos'
+              onNavigate(
+                'analytics'
               )
             }
-            className="text-[7px] font-black uppercase text-cyan-400"
+            className="text-[8px] uppercase tracking-widest font-black text-cyan-400"
+          >
+            Full analytics
+          </button>
+        }
+      >
+
+        {dailyAnalytics.length ? (
+          <AnalyticsMiniChart
+            data={
+              dailyAnalytics
+            }
+            metric="views"
+          />
+        ) : (
+          <EmptyState
+            icon={BarChart3}
+            title="No historical analytics"
+            description="Daily creator analytics will appear here when database records exist."
+          />
+        )}
+
+      </SectionShell>
+
+      {/* TODAY */}
+
+      <div className="grid lg:grid-cols-2 gap-4">
+
+        <SectionShell
+          title="Today's signal"
+          subtitle={
+            latestDaily?.stat_date
+              ? formatDate(
+                  latestDaily.stat_date
+                )
+              : 'No daily record'
+          }
+        >
+
+          {latestDaily ? (
+            <div className="grid grid-cols-2 gap-3">
+
+              <Signal
+                label="Views"
+                value={
+                  latestDaily.views
+                }
+                icon={Eye}
+              />
+
+              <Signal
+                label="Unique viewers"
+                value={
+                  latestDaily.unique_viewers
+                }
+                icon={Users}
+              />
+
+              <Signal
+                label="Followers gained"
+                value={
+                  latestDaily.followers_gained
+                }
+                icon={UserPlus}
+              />
+
+              <Signal
+                label="Profile visits"
+                value={
+                  latestDaily.profile_visits
+                }
+                icon={UserCheck}
+              />
+
+              <Signal
+                label="Average watch"
+                value={
+                  formatDuration(
+                    latestDaily.average_watch_seconds
+                  )
+                }
+                icon={Clock}
+              />
+
+              <Signal
+                label="Completion"
+                value={
+                  latestDaily.average_completion_rate !==
+                  null
+                    ? `${safeNumber(
+                        latestDaily.average_completion_rate
+                      ).toFixed(1)}%`
+                    : '—'
+                }
+                icon={TrendingUp}
+              />
+
+            </div>
+          ) : (
+            <EmptyState
+              icon={Activity}
+              title="No daily data"
+              description="There is currently no daily analytics record."
+            />
+          )}
+
+        </SectionShell>
+
+        {/* PROFILE */}
+
+        <SectionShell
+          title="Creator profile"
+          subtitle="Current account state"
+        >
+
+          <div className="space-y-3">
+
+            <ProfileRow
+              label="Followers"
+              value={formatNumber(
+                stats.followers
+              )}
+            />
+
+            <ProfileRow
+              label="Following"
+              value={formatNumber(
+                stats.following
+              )}
+            />
+
+            <ProfileRow
+              label="Profile views"
+              value={formatNumber(
+                stats.profileViews
+              )}
+            />
+
+            <ProfileRow
+              label="Verification"
+              value={
+                profile?.is_verified
+                  ? 'Verified'
+                  : profile?.verified_status ||
+                    'Not verified'
+              }
+            />
+
+            <ProfileRow
+              label="Account"
+              value={
+                profile?.account_status ||
+                'Active'
+              }
+            />
+
+          </div>
+
+        </SectionShell>
+
+      </div>
+
+      {/* TOP CONTENT */}
+
+      <SectionShell
+        title="Top content"
+        subtitle="Ranked from creator analytics"
+        action={
+          <button
+            onClick={() =>
+              onNavigate(
+                'content'
+              )
+            }
+            className="text-[8px] uppercase tracking-widest font-black text-cyan-400"
           >
             View all
           </button>
         }
-      />
+      >
 
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
+        {topContent.length ? (
+          <div className="space-y-2">
 
-        {myVideos
-          .slice(0, 6)
-          .map((video) => (
-            <VideoCompact
-              key={video.id}
-              video={video}
-              onClick={() =>
-                onOpenVideo(video)
-              }
-            />
-          ))}
+            {topContent
+              .slice(0, 5)
+              .map((item, index) => (
+                <TopContentRow
+                  key={
+                    item.id ||
+                    item.video_id ||
+                    index
+                  }
+                  item={item}
+                  rank={index + 1}
+                  onVideo={
+                    onVideo
+                  }
+                />
+              ))}
 
-        {myVideos.length === 0 && (
+          </div>
+        ) : (
           <EmptyState
-            icon={Video}
-            title="No content yet"
-            description="Upload your first video to start building your creator analytics."
+            icon={Trophy}
+            title="No ranked content"
+            description="Top content will appear after analytics records are available."
           />
         )}
+
+      </SectionShell>
+
+      {/* QUICK ACCESS */}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <QuickTool
+          icon={Video}
+          title="Videos"
+          description={`${videos.length} total`}
+          onClick={() =>
+            onNavigate(
+              'content'
+            )
+          }
+        />
+
+        <QuickTool
+          icon={Radio}
+          title="Livestreams"
+          description={`${liveStreams.length} records`}
+          onClick={() =>
+            onNavigate(
+              'live'
+            )
+          }
+        />
+
+        <QuickTool
+          icon={Trophy}
+          title="Achievements"
+          description={`${achievements.length} records`}
+          onClick={() =>
+            onNavigate(
+              'achievements'
+            )
+          }
+        />
+
+        <QuickTool
+          icon={DollarSign}
+          title="Earnings"
+          description={`K${formatMoney(
+            stats.creatorEarnings
+          )}`}
+          onClick={() =>
+            onNavigate(
+              'earnings'
+            )
+          }
+        />
+
       </div>
-    </Card>
-  </Page>
-);
+
+    </motion.div>
+  );
+};
 
 /*
-|--------------------------------------------------------------------------
-| ANALYTICS
-|--------------------------------------------------------------------------
+============================================================
+ANALYTICS
+============================================================
 */
 
-const AnalyticsView = ({
+const AnalyticsSection = ({
   stats,
+  dailyAnalytics,
+  dailyStats,
+  growthMetrics,
   range,
   setRange,
-  myVideos,
-}) => (
-  <Page
-    title="Advanced Analytics"
-    subtitle="Performance intelligence across your creator network"
-    icon={BarChart3}
-    action={
-      <div className="flex items-center gap-2">
+  videoPerformance,
+}) => {
+  const source =
+    dailyStats.length
+      ? dailyStats
+      : dailyAnalytics;
 
-        <select
-          value={range}
-          onChange={(event) =>
-            setRange(
-              event.target.value
-            )
-          }
-          className="bg-zinc-900 border border-white/10 rounded-xl px-3 py-2.5 text-[8px] font-black uppercase text-zinc-300 outline-none"
-        >
-          <option value="today">
-            Today
-          </option>
-          <option value="7d">
-            7 Days
-          </option>
-          <option value="28d">
-            28 Days
-          </option>
-          <option value="90d">
-            90 Days
-          </option>
-          <option value="1y">
-            1 Year
-          </option>
-        </select>
-      </div>
+  const filtered = useMemo(() => {
+    if (range === 'all') {
+      return source;
     }
-  >
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
 
-      <StatCard
-        label="Views"
-        value={stats.views}
-        icon={Eye}
-        trend={stats.viewsGrowth}
-      />
+    const days =
+      Number(range);
 
-      <StatCard
-        label="Reach"
-        value={stats.reach}
-        icon={Globe}
-      />
+    if (!days) {
+      return source;
+    }
 
-      <StatCard
-        label="Impressions"
-        value={
-          stats.impressions
+    return source.slice(
+      Math.max(
+        0,
+        source.length - days
+      )
+    );
+  }, [source, range]);
+
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Performance analytics"
+        title="Analytics"
+        description="Historical analytics are read directly from the Creator Studio database."
+        action={
+          <select
+            value={range}
+            onChange={(event) =>
+              setRange(
+                event.target.value
+              )
+            }
+            className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-[9px] font-black uppercase text-zinc-300 outline-none"
+          >
+            <option value="1">
+              Today
+            </option>
+
+            <option value="7">
+              7 Days
+            </option>
+
+            <option value="28">
+              28 Days
+            </option>
+
+            <option value="90">
+              90 Days
+            </option>
+
+            <option value="365">
+              1 Year
+            </option>
+
+            <option value="all">
+              All Time
+            </option>
+          </select>
         }
-        icon={Activity}
       />
 
-      <StatCard
-        label="Engagement"
-        value={
-          stats.engagement
-        }
-        icon={Heart}
-      />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-      <StatCard
-        label="Watch Time"
-        value={
-          stats.watchTime
-        }
-        icon={Clock3}
-      />
-
-      <StatCard
-        label="Profile Visits"
-        value={
-          stats.profileVisits
-        }
-        icon={MousePointerClick}
-      />
-    </div>
-
-    <div className="grid lg:grid-cols-2 gap-4">
-
-      <AnalyticsChart
-        title="Views"
-        value={stats.views}
-        color="cyan"
-      />
-
-      <AnalyticsChart
-        title="Audience Growth"
-        value={
-          stats.followers
-        }
-        color="purple"
-      />
-
-      <AnalyticsChart
-        title="Engagement"
-        value={
-          stats.engagement
-        }
-        color="emerald"
-      />
-
-      <AnalyticsChart
-        title="Revenue"
-        value={`MK ${stats.revenue}`}
-        color="yellow"
-      />
-    </div>
-
-    <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
-
-      <MetricPanel
-        title="Traffic Sources"
-        rows={[
-          ['For You', '46%'],
-          ['Following', '22%'],
-          ['Search', '17%'],
-          ['Profile', '9%'],
-          ['External', '6%'],
-        ]}
-      />
-
-      <MetricPanel
-        title="Audience Location"
-        rows={[
-          ['Malawi', '72%'],
-          ['South Africa', '9%'],
-          ['Zambia', '7%'],
-          ['Tanzania', '5%'],
-          ['Other', '7%'],
-        ]}
-      />
-
-      <MetricPanel
-        title="Devices"
-        rows={[
-          ['Android', '71%'],
-          ['iOS', '22%'],
-          ['Desktop', '5%'],
-          ['Other', '2%'],
-        ]}
-      />
-
-      <MetricPanel
-        title="Audience Activity"
-        rows={[
-          ['Morning', '18%'],
-          ['Afternoon', '27%'],
-          ['Evening', '42%'],
-          ['Night', '13%'],
-        ]}
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Content Performance"
-        subtitle={`${myVideos.length} videos analyzed`}
-      />
-
-      <div className="mt-5 space-y-2">
-
-        {myVideos
-          .slice(0, 8)
-          .map((video, index) => (
-            <div
-              key={video.id}
-              className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]"
-            >
-              <span className="w-6 text-[8px] font-black text-zinc-700">
-                #{index + 1}
-              </span>
-
-              <div className="w-10 h-12 rounded-lg overflow-hidden bg-zinc-900 shrink-0">
-                {video.video_url ? (
-                  <video
-                    src={video.video_url}
-                    className="w-full h-full object-cover"
-                    muted
-                    playsInline
-                    preload="metadata"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Play
-                      size={12}
-                      className="text-zinc-700"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <p className="text-[9px] font-black truncate">
-                  {getVideoTitle(
-                    video
-                  )}
-                </p>
-
-                <p className="text-[7px] text-zinc-600 uppercase mt-1">
-                  {formatNumber(
-                    video.views_count
-                  )}{' '}
-                  views ·{' '}
-                  {formatNumber(
-                    video.likes_count
-                  )}{' '}
-                  likes
-                </p>
-              </div>
-
-              <div className="text-right">
-                <p className="text-[9px] font-black text-cyan-400">
-                  {percentage(
-                    video.likes_count,
-                    video.views_count
-                  ).toFixed(1)}
-                  %
-                </p>
-
-                <p className="text-[6px] text-zinc-700 uppercase">
-                  Like rate
-                </p>
-              </div>
-            </div>
-          ))}
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| GROWTH
-|--------------------------------------------------------------------------
-*/
-
-const GrowthView = ({
-  stats,
-  aiTip,
-  myVideos,
-  setActiveTab,
-}) => (
-  <Page
-    title="Growth Center"
-    subtitle="Turn creator data into measurable growth"
-    icon={TrendingUp}
-  >
-    <div className="grid lg:grid-cols-[1fr_1.5fr] gap-4">
-
-      <Card className="p-7 text-center">
-
-        <p className="text-[8px] font-black uppercase tracking-[3px] text-zinc-600">
-          Creator Growth Score
-        </p>
-
-        <div className="w-40 h-40 mx-auto mt-7 rounded-full border-[10px] border-cyan-500/10 relative flex items-center justify-center">
-          <div className="absolute inset-[-10px] rounded-full border-[10px] border-cyan-400 border-r-transparent border-b-transparent rotate-[-35deg]" />
-
-          <div>
-            <p className="text-4xl font-black italic">
-              78
-            </p>
-
-            <p className="text-[7px] text-zinc-600 uppercase tracking-widest">
-              / 100
-            </p>
-          </div>
-        </div>
-
-        <p className="text-[8px] text-emerald-400 uppercase font-black mt-6">
-          Strong growth trajectory
-        </p>
-      </Card>
-
-      <div className="space-y-3">
-
-        <Recommendation
-          icon={Clock3}
-          title="Best Posting Window"
-          description="Your audience is most active around 19:00 CAT."
-          score="94%"
-        />
-
-        <Recommendation
-          icon={Hash}
-          title="Hashtag Opportunity"
-          description="Technology and creator-development topics are showing strong discovery potential."
-          score="87%"
-        />
-
-        <Recommendation
-          icon={Video}
-          title="Content Opportunity"
-          description="Your short-form videos are outperforming longer uploads."
-          score="81%"
-        />
-
-        <Recommendation
-          icon={UserPlus}
-          title="Follower Conversion"
-          description={`Your content currently reaches approximately ${stats.reach} viewers.`}
-          score="76%"
-        />
-      </div>
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Growth Actions"
-        subtitle="Recommended actions based on your creator signals"
-      />
-
-      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mt-5">
-
-        <QuickAction
-          icon={Sparkles}
-          title="Generate Ideas"
-          onClick={() =>
-            setActiveTab('ai')
-          }
-        />
-
-        <QuickAction
-          icon={Hash}
-          title="Optimize SEO"
-          onClick={() =>
-            setActiveTab('seo')
-          }
-        />
-
-        <QuickAction
-          icon={Calendar}
-          title="Build Schedule"
-          onClick={() =>
-            setActiveTab(
-              'schedule'
-            )
-          }
-        />
-
-        <QuickAction
-          icon={BarChart3}
-          title="Analyze Content"
-          onClick={() =>
-            setActiveTab(
-              'analytics'
-            )
-          }
-        />
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Top Content Signals"
-        subtitle="What your content is telling you"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <SignalCard
+        <MetricCard
+          label="Views"
+          value={formatNumber(
+            stats.videoViews
+          )}
           icon={Eye}
-          title="Reach"
-          value={stats.reach}
-          description="Estimated unique audience reach"
-        />
-
-        <SignalCard
-          icon={Heart}
-          title="Engagement"
-          value={stats.engagement}
-          description="Combined interaction rate"
-        />
-
-        <SignalCard
-          icon={Video}
-          title="Content"
-          value={
-            myVideos.length
+          growth={
+            growthMetrics.views
           }
-          description="Published content items"
+          tone="cyan"
         />
-      </div>
-    </Card>
 
-    <Card className="p-5 bg-gradient-to-r from-purple-500/[0.08] to-cyan-500/[0.05]">
-      <div className="flex gap-4 items-center">
-        <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
-          <Lightbulb
-            size={17}
-            className="text-purple-300"
+        <MetricCard
+          label="Likes"
+          value={formatNumber(
+            stats.videoLikes
+          )}
+          icon={Heart}
+          growth={
+            growthMetrics.likes
+          }
+          tone="rose"
+        />
+
+        <MetricCard
+          label="Comments"
+          value={formatNumber(
+            stats.videoComments
+          )}
+          icon={MessageCircle}
+          growth={
+            growthMetrics.comments
+          }
+          tone="purple"
+        />
+
+        <MetricCard
+          label="Shares"
+          value={formatNumber(
+            stats.videoShares
+          )}
+          icon={Share2}
+          growth={
+            growthMetrics.shares
+          }
+          tone="emerald"
+        />
+
+      </div>
+
+      <SectionShell
+        title="Views"
+        subtitle={`${filtered.length} historical records`}
+      >
+
+        {filtered.length ? (
+          <AnalyticsChart
+            data={filtered}
+            metric="views"
+            label="Views"
           />
-        </div>
+        ) : (
+          <EmptyState
+            icon={Eye}
+            title="No view history"
+            description="No historical view records are available."
+          />
+        )}
 
-        <div>
-          <p className="text-[7px] font-black uppercase tracking-[3px] text-purple-300">
-            AI Growth Signal
-          </p>
+      </SectionShell>
 
-          <p className="text-[10px] text-zinc-300 mt-1">
-            {aiTip}
-          </p>
-        </div>
+      <div className="grid lg:grid-cols-2 gap-4">
+
+        <SectionShell
+          title="Audience"
+          subtitle="Historical audience metrics"
+        >
+
+          {filtered.length ? (
+            <AnalyticsChart
+              data={filtered}
+              metric="unique_viewers"
+              secondaryMetric="returning_viewers"
+              label="Unique viewers"
+            />
+          ) : (
+            <EmptyState
+              icon={Users}
+              title="No audience data"
+              description="Audience history is not available."
+            />
+          )}
+
+        </SectionShell>
+
+        <SectionShell
+          title="Engagement"
+          subtitle="Likes, comments and shares"
+        >
+
+          {filtered.length ? (
+            <AnalyticsChart
+              data={filtered}
+              metric="likes"
+              secondaryMetric="comments"
+              label="Likes"
+            />
+          ) : (
+            <EmptyState
+              icon={Activity}
+              title="No engagement data"
+              description="Engagement history is not available."
+            />
+          )}
+
+        </SectionShell>
+
       </div>
-    </Card>
-  </Page>
-);
+
+      <SectionShell
+        title="Video performance"
+        subtitle={`${videoPerformance.length} indexed videos`}
+      >
+
+        {videoPerformance.length ? (
+          <div className="space-y-2">
+
+            {videoPerformance
+              .slice(0, 10)
+              .map((video) => (
+                <PerformanceRow
+                  key={
+                    video.id ||
+                    video.video_id
+                  }
+                  item={video}
+                />
+              ))}
+
+          </div>
+        ) : (
+          <EmptyState
+            icon={Video}
+            title="No video performance"
+            description="Video analytics records are not available."
+          />
+        )}
+
+      </SectionShell>
+
+    </motion.div>
+  );
+};
 
 /*
-|--------------------------------------------------------------------------
-| CONTENT
-|--------------------------------------------------------------------------
+============================================================
+CONTENT
+============================================================
 */
 
-const ContentView = ({
+const ContentSection = ({
   videos,
   total,
-  searchQuery,
-  setSearchQuery,
+  search,
+  setSearch,
   filter,
   setFilter,
-  onOpenVideo,
-  navigate,
-}) => (
-  <Page
-    title="Content Manager"
-    subtitle={`${total} videos · manage, analyze and organize your content`}
-    icon={ListVideo}
-    action={
-      <button
-        onClick={() =>
-          navigate('/upload')
-        }
-        className="px-4 py-2.5 bg-cyan-500 text-black rounded-xl text-[8px] font-black uppercase tracking-wider flex items-center gap-2"
-      >
-        <Upload size={12} />
-        Upload Video
-      </button>
-    }
-  >
-    <Card className="p-4">
+  onVideo,
+  onRefresh,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Content management"
+        title="Videos"
+        description={`${total} videos belong to your authenticated creator account.`}
+      />
 
       <div className="flex flex-col md:flex-row gap-3">
 
-        <div className="relative flex-1">
+        <div className="flex-1 relative">
+
           <Search
             size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-700"
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600"
           />
 
           <input
-            value={searchQuery}
+            value={search}
             onChange={(event) =>
-              setSearchQuery(
+              setSearch(
                 event.target.value
               )
             }
             placeholder="Search videos..."
-            className="w-full bg-black/40 border border-white/[0.06] rounded-xl pl-9 pr-4 py-3 text-[9px] text-white placeholder:text-zinc-700 outline-none focus:border-cyan-500/30"
+            className="w-full bg-white/[0.03] border border-white/[0.07] rounded-2xl py-3 pl-11 pr-4 text-xs text-white outline-none focus:border-cyan-500/30"
           />
+
         </div>
 
         <div className="flex gap-2">
 
-          <select
-            value={filter}
-            onChange={(event) =>
-              setFilter(
-                event.target.value
-              )
-            }
-            className="bg-black/40 border border-white/[0.06] rounded-xl px-4 py-3 text-[8px] font-black uppercase text-zinc-400 outline-none"
-          >
-            <option value="all">
-              All Content
-            </option>
-            <option value="published">
-              Published
-            </option>
-            <option value="draft">
-              Drafts
-            </option>
-            <option value="private">
-              Private
-            </option>
-            <option value="scheduled">
-              Scheduled
-            </option>
-          </select>
-
-          <button className="px-3 rounded-xl border border-white/[0.06] bg-black/40 text-zinc-500">
-            <Filter size={14} />
-          </button>
-        </div>
-      </div>
-    </Card>
-
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-
-      {videos.map((video) => (
-        <VideoCard
-          key={video.id}
-          video={video}
-          onClick={() =>
-            onOpenVideo(video)
-          }
-        />
-      ))}
-
-      {videos.length === 0 && (
-        <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
-          <EmptyState
-            icon={Video}
-            title="No matching content"
-            description="Try another search or create new content."
-          />
-        </div>
-      )}
-    </div>
-
-    {/* Management features */}
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Content Operations"
-        subtitle="Professional publishing controls"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-5">
-
-        <FeatureTile
-          icon={Edit3}
-          title="Edit"
-        />
-
-        <FeatureTile
-          icon={Archive}
-          title="Archive"
-        />
-
-        <FeatureTile
-          icon={RotateCcw}
-          title="Restore"
-        />
-
-        <FeatureTile
-          icon={Calendar}
-          title="Schedule"
-        />
-
-        <FeatureTile
-          icon={ImageIcon}
-          title="Thumbnail"
-        />
-
-        <FeatureTile
-          icon={Settings}
-          title="Settings"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| LIBRARY
-|--------------------------------------------------------------------------
-*/
-
-const LibraryView = ({
-  videos,
-  setActiveTab,
-}) => (
-  <Page
-    title="Content Library"
-    subtitle="All your creator media in one place"
-    icon={Database}
-  >
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <LibraryCard
-        icon={Video}
-        title="Videos"
-        count={videos.length}
-      />
-
-      <LibraryCard
-        icon={FileText}
-        title="Drafts"
-        count="—"
-      />
-
-      <LibraryCard
-        icon={ImageIcon}
-        title="Thumbnails"
-        count="—"
-      />
-
-      <LibraryCard
-        icon={Music}
-        title="Audio"
-        count="—"
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Storage"
-        subtitle="Creator media storage overview"
-      />
-
-      <div className="mt-6">
-
-        <div className="flex justify-between text-[8px] uppercase font-black">
-          <span className="text-zinc-600">
-            Storage Used
-          </span>
-
-          <span className="text-zinc-300">
-            2.4 GB / 10 GB
-          </span>
-        </div>
-
-        <div className="h-2 rounded-full bg-black mt-3 overflow-hidden">
-          <div className="h-full w-[24%] bg-cyan-500 rounded-full" />
-        </div>
-
-        <div className="grid grid-cols-3 gap-3 mt-5">
-
-          <StorageItem
-            label="Videos"
-            value="1.8 GB"
-          />
-
-          <StorageItem
-            label="Images"
-            value="420 MB"
-          />
-
-          <StorageItem
-            label="Audio"
-            value="180 MB"
-          />
-        </div>
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Content States"
-        subtitle="Organize your publishing pipeline"
-      />
-
-      <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-3 mt-5">
-
-        <StatusCard
-          title="Published"
-          icon={CheckCircle2}
-          value={videos.length}
-        />
-
-        <StatusCard
-          title="Drafts"
-          icon={FileText}
-          value="0"
-        />
-
-        <StatusCard
-          title="Scheduled"
-          icon={Calendar}
-          value="0"
-        />
-
-        <StatusCard
-          title="Private"
-          icon={Lock}
-          value="0"
-        />
-
-        <StatusCard
-          title="Archived"
-          icon={Archive}
-          value="0"
-        />
-      </div>
-    </Card>
-
-    <button
-      onClick={() =>
-        setActiveTab('videos')
-      }
-      className="text-[8px] font-black uppercase tracking-widest text-cyan-400"
-    >
-      Open full content manager →
-    </button>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| SCHEDULER
-|--------------------------------------------------------------------------
-*/
-
-const SchedulerView = () => (
-  <Page
-    title="Content Scheduler"
-    subtitle="Plan videos and livestreams ahead of time"
-    icon={CalendarDays}
-    action={
-      <button className="px-4 py-2.5 bg-cyan-500 text-black rounded-xl text-[8px] font-black uppercase flex items-center gap-2">
-        <Plus size={12} />
-        Schedule Content
-      </button>
-    }
-  >
-    <div className="grid lg:grid-cols-[1.4fr_1fr] gap-4">
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Publishing Calendar"
-          subtitle="September 2026"
-        />
-
-        <div className="grid grid-cols-7 gap-1 mt-6">
-
-          {[
-            'Sun',
-            'Mon',
-            'Tue',
-            'Wed',
-            'Thu',
-            'Fri',
-            'Sat',
-          ].map((day) => (
-            <div
-              key={day}
-              className="text-center text-[7px] font-black uppercase text-zinc-700 py-2"
-            >
-              {day}
-            </div>
-          ))}
-
-          {Array.from(
-            {
-              length: 30,
-            },
-            (_, index) => (
-              <div
-                key={index}
-                className="aspect-square rounded-xl bg-white/[0.02] border border-white/[0.04] p-2 hover:border-cyan-500/20 transition-all cursor-pointer"
-              >
-                <span className="text-[8px] text-zinc-600 font-mono">
-                  {index + 1}
-                </span>
-
-                {index ===
-                  12 && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-2" />
-                )}
-
-                {index ===
-                  19 && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-2" />
-                )}
-              </div>
-            )
-          )}
-        </div>
-      </Card>
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Scheduled Queue"
-          subtitle="Upcoming publishing events"
-        />
-
-        <div className="space-y-3 mt-5">
-
-          <ScheduleItem
-            date="Tomorrow · 19:00"
-            title="Technology Creator Tips"
-            type="Video"
-          />
-
-          <ScheduleItem
-            date="Friday · 18:30"
-            title="Weekend Creator Session"
-            type="Video"
-          />
-
-          <ScheduleItem
-            date="Sunday · 20:00"
-            title="Creator Q&A Live"
-            type="Livestream"
-          />
-
-          <EmptyState
-            icon={Calendar}
-            title="More slots available"
-            description="Your publishing calendar has room for additional content."
-          />
-        </div>
-      </Card>
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Automatic Publishing"
-        subtitle="Schedule videos and livestreams with timezone controls"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <FeatureTile
-          icon={Timer}
-          title="Best Time"
-        />
-
-        <FeatureTile
-          icon={Globe}
-          title="Timezone"
-        />
-
-        <FeatureTile
-          icon={Zap}
-          title="Auto Publish"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| SEO
-|--------------------------------------------------------------------------
-*/
-
-const SEOView = () => (
-  <Page
-    title="SEO & Discovery"
-    subtitle="Optimize content for search and discovery"
-    icon={Hash}
-  >
-    <div className="grid lg:grid-cols-2 gap-4">
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="AI Keyword Research"
-          subtitle="Discover search opportunities"
-        />
-
-        <div className="relative mt-5">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-700"
-          />
-
-          <input
-            placeholder="Enter a topic..."
-            className="w-full bg-black/40 border border-white/[0.06] rounded-xl pl-9 pr-4 py-3 text-[9px] outline-none"
-          />
-        </div>
-
-        <div className="flex flex-wrap gap-2 mt-4">
-
-          {[
-            '#Technology',
-            '#Malawi',
-            '#CreatorTips',
-            '#AI',
-            '#Programming',
-            '#Universe',
-          ].map((tag) => (
-            <span
-              key={tag}
-              className="px-2.5 py-1.5 rounded-lg bg-cyan-500/5 border border-cyan-500/10 text-[8px] text-cyan-300"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Trending Signals"
-          subtitle="Topics currently showing opportunity"
-        />
-
-        <div className="space-y-3 mt-5">
-
-          <TrendRow
-            title="AI Tools"
-            growth="+42%"
-          />
-
-          <TrendRow
-            title="Creator Economy"
-            growth="+31%"
-          />
-
-          <TrendRow
-            title="Programming"
-            growth="+26%"
-          />
-
-          <TrendRow
-            title="Tech Tutorials"
-            growth="+19%"
-          />
-        </div>
-      </Card>
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="AI Optimization Tools"
-        subtitle="Generate better metadata for your content"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-5">
-
-        <FeatureTile
-          icon={Sparkles}
-          title="AI Caption"
-        />
-
-        <FeatureTile
-          icon={Wand2}
-          title="AI Title"
-        />
-
-        <FeatureTile
-          icon={Hash}
-          title="AI Hashtags"
-        />
-
-        <FeatureTile
-          icon={Lightbulb}
-          title="Hook Ideas"
-        />
-
-        <FeatureTile
-          icon={TrendingUp}
-          title="Trend Finder"
-        />
-
-        <FeatureTile
-          icon={Target}
-          title="SEO Score"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| AUDIENCE
-|--------------------------------------------------------------------------
-*/
-
-const AudienceView = ({
-  stats,
-}) => (
-  <Page
-    title="Audience Center"
-    subtitle="Understand, grow and manage your community"
-    icon={Users}
-  >
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <StatCard
-        label="Followers"
-        value={
-          stats.followers
-        }
-        icon={Users}
-        trend="+12.4%"
-      />
-
-      <StatCard
-        label="New Followers"
-        value="284"
-        icon={UserPlus}
-        trend="+18%"
-      />
-
-      <StatCard
-        label="Profile Visits"
-        value={
-          stats.profileVisits
-        }
-        icon={Eye}
-      />
-
-      <StatCard
-        label="Engagement"
-        value={
-          stats.engagement
-        }
-        icon={Heart}
-      />
-    </div>
-
-    <div className="grid lg:grid-cols-2 gap-4">
-
-      <MetricPanel
-        title="Audience Demographics"
-        rows={[
-          ['18–24', '38%'],
-          ['25–34', '34%'],
-          ['35–44', '18%'],
-          ['45+', '10%'],
-        ]}
-      />
-
-      <MetricPanel
-        title="Audience Gender"
-        rows={[
-          ['Male', '56%'],
-          ['Female', '41%'],
-          ['Other', '3%'],
-        ]}
-      />
-
-      <MetricPanel
-        title="Top Locations"
-        rows={[
-          ['Blantyre', '28%'],
-          ['Lilongwe', '24%'],
-          ['Mzuzu', '13%'],
-          ['Zomba', '8%'],
-          ['Other', '27%'],
-        ]}
-      />
-
-      <MetricPanel
-        title="Audience Interests"
-        rows={[
-          ['Technology', '32%'],
-          ['Entertainment', '27%'],
-          ['Education', '19%'],
-          ['Music', '14%'],
-          ['Other', '8%'],
-        ]}
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Audience Management"
-        subtitle="Community controls"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-
-        <FeatureTile
-          icon={UserCheck}
-          title="Top Fans"
-        />
-
-        <FeatureTile
-          icon={UserX}
-          title="Blocked"
-        />
-
-        <FeatureTile
-          icon={Volume2}
-          title="Muted"
-        />
-
-        <FeatureTile
-          icon={Shield}
-          title="Restricted"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| COMMENTS
-|--------------------------------------------------------------------------
-*/
-
-const CommentsView = () => (
-  <Page
-    title="Comment Center"
-    subtitle="Manage conversations and protect your community"
-    icon={MessageCircle}
-  >
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <StatCard
-        label="Total Comments"
-        value="—"
-        icon={MessageCircle}
-      />
-
-      <StatCard
-        label="Unanswered"
-        value="—"
-        icon={Clock3}
-      />
-
-      <StatCard
-        label="Spam Blocked"
-        value="—"
-        icon={Shield}
-      />
-
-      <StatCard
-        label="Comment Rate"
-        value="—"
-        icon={Activity}
-      />
-    </div>
-
-    <Card className="p-5">
-
-      <div className="flex gap-2">
-
-        <div className="relative flex-1">
-          <Search
-            size={13}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-700"
-          />
-
-          <input
-            placeholder="Search comments..."
-            className="w-full bg-black/40 border border-white/[0.06] rounded-xl pl-9 pr-4 py-3 text-[8px] outline-none"
-          />
-        </div>
-
-        <button className="px-4 rounded-xl bg-white/[0.04] border border-white/[0.06] text-[8px] font-black uppercase">
-          All
-        </button>
-      </div>
-
-      <EmptyState
-        icon={MessageCircle}
-        title="Comment inbox ready"
-        description="Comments can be connected here for replies, moderation, pinning and analytics."
-      />
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Moderation Controls"
-        subtitle="Automated community protection"
-      />
-
-      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mt-5">
-
-        <FeatureTile
-          icon={Bot}
-          title="AI Filtering"
-        />
-
-        <FeatureTile
-          icon={Flag}
-          title="Spam Detection"
-        />
-
-        <FeatureTile
-          icon={Tag}
-          title="Mention Filters"
-        />
-
-        <FeatureTile
-          icon={Lock}
-          title="Hidden Words"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| NOTIFICATIONS
-|--------------------------------------------------------------------------
-*/
-
-const NotificationsView = ({
-  notifications,
-  markAll,
-}) => (
-  <Page
-    title="Notification Center"
-    subtitle="Creator, audience, earnings and security activity"
-    icon={Bell}
-    action={
-      <button
-        onClick={markAll}
-        className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] text-[8px] font-black uppercase"
-      >
-        Mark all read
-      </button>
-    }
-  >
-    <Card className="overflow-hidden">
-
-      {notifications.map(
-        (notification) => (
-          <div
-            key={notification.id}
-            className="p-5 border-b border-white/[0.05] flex gap-4"
-          >
-            <div className="w-10 h-10 rounded-xl bg-white/[0.03] flex items-center justify-center">
-              <Bell
-                size={15}
-                className="text-cyan-400"
-              />
-            </div>
-
-            <div className="flex-1">
-              <p className="text-[10px] font-black">
-                {notification.title}
-              </p>
-
-              <p className="text-[9px] text-zinc-500 mt-1">
-                {
-                  notification.message
-                }
-              </p>
-
-              <p className="text-[7px] text-zinc-700 uppercase mt-2">
-                {notification.time}
-              </p>
-            </div>
-
-            {notification.unread && (
-              <span className="w-2 h-2 rounded-full bg-cyan-400 mt-1" />
-            )}
-          </div>
-        )
-      )}
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Notification Preferences"
-        subtitle="Control what reaches your creator inbox"
-      />
-
-      <div className="space-y-2 mt-5">
-
-        {[
-          'Follower notifications',
-          'Like notifications',
-          'Comment notifications',
-          'Share notifications',
-          'Gift notifications',
-          'Subscriber notifications',
-          'Payout notifications',
-          'Creator Fund notifications',
-          'Security alerts',
-          'Copyright alerts',
-        ].map((item) => (
-          <ToggleRow
-            key={item}
-            label={item}
-            enabled
-          />
-        ))}
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| AI
-|--------------------------------------------------------------------------
-*/
-
-const AIView = ({
-  aiTip,
-}) => (
-  <Page
-    title="AI Creator Intelligence"
-    subtitle="Your AI command center for content, growth and monetization"
-    icon={Sparkles}
-  >
-    <Card className="p-6 bg-gradient-to-br from-purple-500/[0.1] via-cyan-500/[0.05] to-transparent">
-
-      <div className="flex gap-4 items-start">
-
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-cyan-400 flex items-center justify-center shrink-0">
-          <Bot
-            size={21}
-            className="text-white"
-          />
-        </div>
-
-        <div>
-          <p className="text-[8px] font-black uppercase tracking-[3px] text-purple-300">
-            AI Creator Coach
-          </p>
-
-          <h2 className="text-lg font-black italic mt-2">
-            {aiTip}
-          </h2>
-
-          <p className="text-[9px] text-zinc-500 mt-2 max-w-xl">
-            Use AI to analyze your content, discover opportunities, generate ideas and improve creator performance.
-          </p>
-        </div>
-      </div>
-    </Card>
-
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-
-      {[
-        [Sparkles, 'Content Ideas'],
-        [FileText, 'AI Captions'],
-        [Wand2, 'AI Titles'],
-        [Hash, 'AI Hashtags'],
-        [Lightbulb, 'Hooks'],
-        [ImageIcon, 'Thumbnail Ideas'],
-        [BarChart3, 'Video Analysis'],
-        [Activity, 'Retention AI'],
-        [Heart, 'Engagement AI'],
-        [Clock3, 'Best Posting Time'],
-        [Users, 'Audience AI'],
-        [TrendingUp, 'Growth AI'],
-        [DollarSign, 'Monetization AI'],
-        [Radio, 'Livestream AI'],
-        [Target, 'Viral Potential'],
-        [MessageCircle, 'Reply Assistant'],
-      ].map(
-        ([Icon, title]) => (
-          <FeatureTile
-            key={title}
-            icon={Icon}
-            title={title}
-            large
-          />
-        )
-      )}
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="AI Content Planner"
-        subtitle="Build a complete publishing strategy"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <AIPlanCard
-          day="Monday"
-          idea="Educational Tech"
-        />
-
-        <AIPlanCard
-          day="Wednesday"
-          idea="Creator Tips"
-        />
-
-        <AIPlanCard
-          day="Friday"
-          idea="Entertainment"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| LIVESTREAM
-|--------------------------------------------------------------------------
-*/
-
-const LiveStudioView = ({
-  stats,
-  navigate,
-}) => (
-  <Page
-    title="Live Studio"
-    subtitle="Professional livestream control center"
-    icon={Radio}
-    action={
-      <button
-        onClick={() =>
-          navigate('/live')
-        }
-        className="px-4 py-2.5 rounded-xl bg-rose-500 text-white text-[8px] font-black uppercase tracking-wider flex items-center gap-2"
-      >
-        <Radio size={12} />
-        Start Livestream
-      </button>
-    }
-  >
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <StatCard
-        label="Current Viewers"
-        value="0"
-        icon={Eye}
-      />
-
-      <StatCard
-        label="Peak Viewers"
-        value="0"
-        icon={TrendingUp}
-      />
-
-      <StatCard
-        label="Live Likes"
-        value="0"
-        icon={Heart}
-      />
-
-      <StatCard
-        label="Live Revenue"
-        value="MK 0.00"
-        icon={DollarSign}
-      />
-    </div>
-
-    <div className="grid lg:grid-cols-[1.5fr_1fr] gap-4">
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Stream Health"
-          subtitle="Real-time broadcasting diagnostics"
-        />
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-
-          <HealthMetric
-            icon={Wifi}
-            label="Connection"
-            value="Excellent"
-          />
-
-          <HealthMetric
-            icon={Gauge}
-            label="Bitrate"
-            value="—"
-          />
-
-          <HealthMetric
-            icon={Activity}
-            label="FPS"
-            value="—"
-          />
-
-          <HealthMetric
-            icon={Video}
-            label="Resolution"
-            value="—"
-          />
-        </div>
-
-        <div className="aspect-video rounded-2xl bg-black border border-white/[0.06] mt-5 flex items-center justify-center">
-
-          <div className="text-center">
-            <Radio
-              size={28}
-              className="text-zinc-800 mx-auto"
+          <div className="relative">
+
+            <Filter
+              size={12}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600"
             />
 
-            <p className="text-[8px] font-black uppercase tracking-[2px] text-zinc-700 mt-3">
-              Live viewport ready
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Live Controls"
-          subtitle="Moderation and engagement"
-        />
-
-        <div className="grid grid-cols-2 gap-3 mt-5">
-
-          <FeatureTile
-            icon={MessageCircle}
-            title="Chat"
-          />
-
-          <FeatureTile
-            icon={Users}
-            title="Moderators"
-          />
-
-          <FeatureTile
-            icon={Gift}
-            title="Gift Goals"
-          />
-
-          <FeatureTile
-            icon={Target}
-            title="Live Goals"
-          />
-
-          <FeatureTile
-            icon={Flag}
-            title="Slow Mode"
-          />
-
-          <FeatureTile
-            icon={UserX}
-            title="Ban Users"
-          />
-
-          <FeatureTile
-            icon={BarChart3}
-            title="Live Analytics"
-          />
-
-          <FeatureTile
-            icon={MessageCircle}
-            title="Q&A"
-          />
-        </div>
-      </Card>
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Live Performance"
-        subtitle="Track the full livestream lifecycle"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 mt-5">
-
-        {[
-          ['Watch Time', '—'],
-          ['Comments', '—'],
-          ['Shares', '—'],
-          ['Followers', '—'],
-          ['Gifts', '—'],
-          ['Coins', '—'],
-          ['Peak', '—'],
-          ['Dropped Frames', '—'],
-        ].map(
-          ([label, value]) => (
-            <MiniMetric
-              key={label}
-              label={label}
-              value={value}
-              icon={Activity}
-            />
-          )
-        )}
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| GOALS
-|--------------------------------------------------------------------------
-*/
-
-const GoalsView = () => (
-  <Page
-    title="Goals & Achievements"
-    subtitle="Build creator momentum through measurable milestones"
-    icon={Trophy}
-  >
-    <Card className="p-6">
-
-      <div className="flex items-center gap-4">
-
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-400/20 to-orange-500/10 border border-yellow-500/10 flex items-center justify-center">
-          <Crown
-            size={28}
-            className="text-yellow-400"
-          />
-        </div>
-
-        <div>
-          <p className="text-[8px] uppercase tracking-[3px] text-zinc-600 font-black">
-            Creator Level
-          </p>
-
-          <p className="text-3xl font-black italic">
-            Level 12
-          </p>
-
-          <p className="text-[8px] text-yellow-400 uppercase font-black">
-            2,480 / 3,000 XP
-          </p>
-        </div>
-      </div>
-
-      <div className="h-2 rounded-full bg-black mt-6 overflow-hidden">
-        <div className="h-full w-[82%] bg-yellow-400 rounded-full" />
-      </div>
-    </Card>
-
-    <div className="grid md:grid-cols-3 gap-3">
-
-      <GoalCard
-        title="Daily Upload"
-        current="2"
-        target="3"
-        icon={Upload}
-      />
-
-      <GoalCard
-        title="Weekly Views"
-        current="8.4K"
-        target="10K"
-        icon={Eye}
-      />
-
-      <GoalCard
-        title="Follower Goal"
-        current="4.2K"
-        target="5K"
-        icon={Users}
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Achievements"
-        subtitle="Creator milestones"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 mt-5">
-
-        {[
-          ['First Upload', Upload],
-          ['1K Views', Eye],
-          ['100 Followers', Users],
-          ['First Gift', Gift],
-          ['First Live', Radio],
-          ['10K Likes', Heart],
-        ].map(
-          ([title, Icon]) => (
-            <div
-              key={title}
-              className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05] text-center"
+            <select
+              value={filter}
+              onChange={(event) =>
+                setFilter(
+                  event.target.value
+                )
+              }
+              className="appearance-none bg-white/[0.03] border border-white/[0.07] rounded-2xl py-3 pl-9 pr-8 text-[9px] font-black uppercase text-zinc-400 outline-none"
             >
-              <Icon
-                size={20}
-                className="text-yellow-400 mx-auto"
-              />
+              <option value="all">
+                All
+              </option>
 
-              <p className="text-[8px] font-black uppercase mt-3">
-                {title}
-              </p>
+              <option value="published">
+                Published
+              </option>
 
-              <CheckCircle2
-                size={11}
-                className="text-emerald-400 mx-auto mt-2"
-              />
-            </div>
-          )
-        )}
-      </div>
-    </Card>
-  </Page>
-);
+              <option value="scheduled">
+                Scheduled
+              </option>
 
-/*
-|--------------------------------------------------------------------------
-| TOOLS
-|--------------------------------------------------------------------------
-*/
+              <option value="private">
+                Private
+              </option>
 
-const ToolsView = ({
-  navigate,
-}) => (
-  <Page
-    title="Creator Tools"
-    subtitle="Everything you need to create, publish and grow"
-    icon={Wand2}
-  >
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+              <option value="archived">
+                Archived
+              </option>
+            </select>
 
-      {[
-        [Upload, 'Video Uploader'],
-        [Video, 'Video Editor'],
-        [ImageIcon, 'Thumbnail Creator'],
-        [Music, 'Music Library'],
-        [Sparkles, 'AI Editor'],
-        [Hash, 'Hashtag Tool'],
-        [FileText, 'Caption Generator'],
-        [Calendar, 'Content Calendar'],
-        [Wand2, 'Templates'],
-        [Radio, 'Live Tools'],
-        [Share2, 'Profile Sharing'],
-        [QrCodeIcon, 'QR Profile'],
-      ].map(
-        ([Icon, title]) => (
-          <ToolLarge
-            key={title}
-            icon={Icon}
-            title={title}
-          />
-        )
-      )}
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Creator Resources"
-        subtitle="Learn and improve your creator workflow"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <ResourceCard
-          icon={Lightbulb}
-          title="Creator Education"
-        />
-
-        <ResourceCard
-          icon={TrendingUp}
-          title="Growth Guides"
-        />
-
-        <ResourceCard
-          icon={DollarSign}
-          title="Monetization Guide"
-        />
-      </div>
-    </Card>
-
-    <button
-      onClick={() =>
-        navigate('/upload')
-      }
-      className="px-5 py-3 rounded-xl bg-cyan-500 text-black text-[8px] font-black uppercase w-fit"
-    >
-      Open Creator Upload
-    </button>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| MONETIZATION
-|--------------------------------------------------------------------------
-*/
-
-const MonetizationView = ({
-  stats,
-  navigate,
-}) => (
-  <Page
-    title="Monetization"
-    subtitle="Earnings, payouts, creator fund and revenue"
-    icon={DollarSign}
-  >
-    <div className="grid lg:grid-cols-[1.4fr_1fr] gap-4">
-
-      <Card className="p-7 bg-gradient-to-br from-purple-500/[0.12] via-cyan-500/[0.04] to-transparent">
-
-        <p className="text-[8px] font-black uppercase tracking-[3px] text-purple-300">
-          Withdrawable Balance
-        </p>
-
-        <p className="text-4xl font-black italic font-mono mt-3">
-          MK {stats.revenue}
-        </p>
-
-        <div className="flex flex-wrap gap-2 mt-6">
+          </div>
 
           <button
-            onClick={() =>
-              navigate('/payouts')
+            onClick={
+              onRefresh
             }
-            className="px-5 py-3 rounded-xl bg-white text-black text-[8px] font-black uppercase"
+            className="w-11 rounded-2xl bg-white/[0.03] border border-white/[0.07] flex items-center justify-center text-zinc-500 hover:text-white"
           >
-            Withdraw
+            <RefreshCcw
+              size={14}
+            />
           </button>
 
-          <button className="px-5 py-3 rounded-xl bg-white/[0.05] border border-white/[0.06] text-[8px] font-black uppercase">
-            Payout History
-          </button>
         </div>
-      </Card>
 
-      <div className="grid grid-cols-2 gap-3">
-
-        <MiniMetric
-          icon={Coins}
-          label="Coins"
-          value={
-            stats.coins
-          }
-        />
-
-        <MiniMetric
-          icon={Clock3}
-          label="Pending"
-          value="MK 0"
-        />
-
-        <MiniMetric
-          icon={Gift}
-          label="Gifts"
-          value="—"
-        />
-
-        <MiniMetric
-          icon={Crown}
-          label="Fund"
-          value="—"
-        />
       </div>
-    </div>
 
-    <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+      {videos.length ? (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-      <RevenueSource
-        icon={Video}
-        title="Video Earnings"
-        value="MK —"
-      />
-
-      <RevenueSource
-        icon={Radio}
-        title="Live Earnings"
-        value="MK —"
-      />
-
-      <RevenueSource
-        icon={Gift}
-        title="Gift Earnings"
-        value="MK —"
-      />
-
-      <RevenueSource
-        icon={Crown}
-        title="Creator Fund"
-        value="MK —"
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Payout Methods"
-        subtitle="Malawi payment infrastructure"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <PaymentCard
-          icon={Smartphone}
-          title="TNM Mpamba"
-        />
-
-        <PaymentCard
-          icon={Smartphone}
-          title="Airtel Money"
-        />
-
-        <PaymentCard
-          icon={Banknote}
-          title="Bank Transfer"
-        />
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Monetization Programs"
-        subtitle="Creator earning opportunities"
-      />
-
-      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mt-5">
-
-        <ProgramCard
-          icon={Crown}
-          title="Creator Fund"
-          badge="Eligible"
-        />
-
-        <ProgramCard
-          icon={Gift}
-          title="Virtual Gifts"
-          badge="Active"
-        />
-
-        <ProgramCard
-          icon={Users}
-          title="Subscriptions"
-          badge="Available"
-        />
-
-        <ProgramCard
-          icon={CreditCard}
-          title="Paid Content"
-          badge="Available"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| GIFTS
-|--------------------------------------------------------------------------
-*/
-
-const GiftsView = ({
-  navigate,
-}) => (
-  <Page
-    title="Virtual Gifts"
-    subtitle="Track gifts, coins, gifters and creator earnings"
-    icon={Gift}
-  >
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <StatCard
-        icon={Gift}
-        label="Gifts Received"
-        value="—"
-      />
-
-      <StatCard
-        icon={Coins}
-        label="Coins Received"
-        value="—"
-      />
-
-      <StatCard
-        icon={DollarSign}
-        label="Gift Revenue"
-        value="MK —"
-      />
-
-      <StatCard
-        icon={Users}
-        label="Top Gifters"
-        value="—"
-      />
-    </div>
-
-    <div className="grid lg:grid-cols-2 gap-4">
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Gift Analytics"
-          subtitle="Gift earnings and activity"
-        />
-
-        <AnalyticsChart
-          title="Gift Earnings"
-          value="MK —"
-          color="purple"
-        />
-      </Card>
-
-      <Card className="p-6">
-
-        <SectionHeader
-          title="Top Gifters"
-          subtitle="Your strongest supporters"
-        />
-
-        <div className="space-y-2 mt-5">
-
-          {[1, 2, 3, 4].map(
-            (item) => (
-              <div
-                key={item}
-                className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02]"
-              >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center">
-                  <UserRound
-                    size={13}
-                  />
-                </div>
-
-                <div className="flex-1">
-                  <p className="text-[8px] font-black">
-                    Supporter #{item}
-                  </p>
-
-                  <p className="text-[7px] text-zinc-600 uppercase">
-                    Top fan
-                  </p>
-                </div>
-
-                <span className="text-[8px] font-black text-yellow-400">
-                  — coins
-                </span>
-              </div>
+          {videos.map(
+            (video) => (
+              <VideoCard
+                key={video.id}
+                video={video}
+                onClick={() =>
+                  onVideo(video)
+                }
+              />
             )
           )}
-        </div>
-      </Card>
-    </div>
 
-    <button
-      onClick={() =>
-        navigate('/gifts')
-      }
-      className="px-5 py-3 rounded-xl bg-pink-500/10 border border-pink-500/10 text-pink-300 text-[8px] font-black uppercase w-fit"
+        </div>
+      ) : (
+        <EmptyState
+          icon={Video}
+          title="No videos found"
+          description="There are no videos matching the current filter."
+        />
+      )}
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+LIVE
+============================================================
+*/
+
+const LiveSection = ({
+  livePerformance,
+  liveStreams,
+  onSchedule,
+}) => {
+  const records =
+    livePerformance.length
+      ? livePerformance
+      : liveStreams;
+
+  const totalPeak = records.reduce(
+    (sum, item) =>
+      sum +
+      safeNumber(
+        item.peak_viewers
+      ),
+    0
+  );
+
+  const totalWatch = records.reduce(
+    (sum, item) =>
+      sum +
+      safeNumber(
+        item.total_watch_seconds ??
+          item.watch_time
+      ),
+    0
+  );
+
+  const totalGifts = records.reduce(
+    (sum, item) =>
+      sum +
+      safeNumber(
+        item.gifts_count ??
+          item.total_gifts
+      ),
+    0
+  );
+
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
     >
-      Open Gift Center
-    </button>
-  </Page>
-);
 
-/*
-|--------------------------------------------------------------------------
-| SUBSCRIPTIONS
-|--------------------------------------------------------------------------
-*/
-
-const SubscriptionsView = () => (
-  <Page
-    title="Subscriptions"
-    subtitle="Build recurring creator revenue"
-    icon={Crown}
-  >
-    <Card className="p-7 bg-gradient-to-br from-purple-500/[0.1] to-transparent">
-
-      <div className="flex items-center justify-between gap-5">
-
-        <div>
-          <p className="text-[8px] font-black uppercase tracking-[3px] text-purple-300">
-            Subscription Program
-          </p>
-
-          <h2 className="text-2xl font-black italic mt-2">
-            Build your subscriber community
-          </h2>
-
-          <p className="text-[9px] text-zinc-600 mt-2">
-            Create subscriber tiers, perks and exclusive content.
-          </p>
-        </div>
-
-        <button className="px-5 py-3 rounded-xl bg-purple-500 text-white text-[8px] font-black uppercase">
-          Enable
-        </button>
-      </div>
-    </Card>
-
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <StatCard
-        icon={Users}
-        label="Subscribers"
-        value="0"
-      />
-
-      <StatCard
-        icon={TrendingUp}
-        label="Growth"
-        value="+0%"
-      />
-
-      <StatCard
-        icon={DollarSign}
-        label="Monthly Revenue"
-        value="MK 0"
-      />
-
-      <StatCard
-        icon={Crown}
-        label="Active Tiers"
-        value="0"
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Subscription Features"
-        subtitle="Premium community tools"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-
-        <FeatureTile
-          icon={Crown}
-          title="Tiers"
-        />
-
-        <FeatureTile
-          icon={Video}
-          title="Exclusive Videos"
-        />
-
-        <FeatureTile
-          icon={Radio}
-          title="Subscriber Lives"
-        />
-
-        <FeatureTile
-          icon={Gift}
-          title="Subscriber Perks"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| PAID CONTENT
-|--------------------------------------------------------------------------
-*/
-
-const PaidContentView = () => (
-  <Page
-    title="Paid Content"
-    subtitle="Premium videos, livestreams and pay-per-view content"
-    icon={CreditCard}
-  >
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <StatCard
-        icon={CreditCard}
-        label="Premium Sales"
-        value="0"
-      />
-
-      <StatCard
-        icon={DollarSign}
-        label="Revenue"
-        value="MK 0"
-      />
-
-      <StatCard
-        icon={Users}
-        label="Buyers"
-        value="0"
-      />
-
-      <StatCard
-        icon={TrendingUp}
-        label="Conversion"
-        value="0%"
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Premium Content Types"
-        subtitle="Monetize exclusive experiences"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <ProgramCard
-          icon={Video}
-          title="Paid Videos"
-        />
-
-        <ProgramCard
-          icon={Radio}
-          title="Paid Livestreams"
-        />
-
-        <ProgramCard
-          icon={Crown}
-          title="Premium Access"
-        />
-      </div>
-    </Card>
-
-    <EmptyState
-      icon={CreditCard}
-      title="No premium content"
-      description="Create your first paid content product to begin monetizing directly."
-    />
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| FINANCE
-|--------------------------------------------------------------------------
-*/
-
-const FinanceView = ({
-  stats,
-}) => (
-  <Page
-    title="Financial Analytics"
-    subtitle="Revenue sources, transactions and payout intelligence"
-    icon={Wallet}
-  >
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <StatCard
-        icon={DollarSign}
-        label="Lifetime Revenue"
-        value={`MK ${stats.revenue}`}
-      />
-
-      <StatCard
-        icon={Wallet}
-        label="Available"
-        value={`MK ${stats.revenue}`}
-      />
-
-      <StatCard
-        icon={Clock3}
-        label="Pending"
-        value="MK 0"
-      />
-
-      <StatCard
-        icon={ArrowUpRight}
-        label="Growth"
-        value={stats.revenueGrowth}
-      />
-    </div>
-
-    <AnalyticsChart
-      title="Revenue Performance"
-      value={`MK ${stats.revenue}`}
-      color="emerald"
-    />
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Transaction Categories"
-        subtitle="Financial activity sources"
-      />
-
-      <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-3 mt-5">
-
-        <RevenueSource
-          icon={Gift}
-          title="Gifts"
-          value="MK —"
-        />
-
-        <RevenueSource
-          icon={Video}
-          title="Videos"
-          value="MK —"
-        />
-
-        <RevenueSource
-          icon={Radio}
-          title="Livestreams"
-          value="MK —"
-        />
-
-        <RevenueSource
-          icon={Crown}
-          title="Subscriptions"
-          value="MK —"
-        />
-
-        <RevenueSource
-          icon={CreditCard}
-          title="Paid Content"
-          value="MK —"
-        />
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Financial Operations"
-        subtitle="Manage your creator finances"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <FeatureTile
-          icon={Wallet}
-          title="Transactions"
-        />
-
-        <FeatureTile
-          icon={Download}
-          title="Export Finance"
-        />
-
-        <FeatureTile
-          icon={FileText}
-          title="Reports"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| COLLABORATION
-|--------------------------------------------------------------------------
-*/
-
-const CollaborationView = () => (
-  <Page
-    title="Brand Studio"
-    subtitle="Partnerships, campaigns and creator business tools"
-    icon={Megaphone}
-  >
-    <Card className="p-7 bg-gradient-to-br from-cyan-500/[0.08] to-purple-500/[0.06]">
-
-      <p className="text-[8px] font-black uppercase tracking-[3px] text-cyan-300">
-        Creator Business Profile
-      </p>
-
-      <h2 className="text-2xl font-black italic mt-2">
-        Make your profile ready for brands
-      </h2>
-
-      <p className="text-[9px] text-zinc-600 mt-2 max-w-xl">
-        Manage your media kit, collaboration preferences, rates, campaigns and sponsored content.
-      </p>
-    </Card>
-
-    <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
-
-      <FeatureTile
-        icon={Megaphone}
-        title="Campaigns"
-        large
-      />
-
-      <FeatureTile
-        icon={Users}
-        title="Partnership Requests"
-        large
-      />
-
-      <FeatureTile
-        icon={FileText}
-        title="Media Kit"
-        large
-      />
-
-      <FeatureTile
-        icon={DollarSign}
-        title="Rate Card"
-        large
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Business Profile"
-        subtitle="Information brands can use to contact you"
-      />
-
-      <div className="grid md:grid-cols-2 gap-3 mt-5">
-
-        <SettingDisplay
-          label="Business Contact"
-          value="Not configured"
-        />
-
-        <SettingDisplay
-          label="Business Category"
-          value="Creator"
-        />
-
-        <SettingDisplay
-          label="Collaboration Status"
-          value="Open to opportunities"
-        />
-
-        <SettingDisplay
-          label="Sponsored Content"
-          value="Available"
-        />
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Campaign Analytics"
-        subtitle="Measure sponsored content performance"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-
-        <MiniMetric
-          icon={Megaphone}
-          label="Campaigns"
-          value="0"
-        />
-
-        <MiniMetric
-          icon={Eye}
-          label="Campaign Reach"
-          value="0"
-        />
-
-        <MiniMetric
-          icon={Heart}
-          label="Engagement"
-          value="0%"
-        />
-
-        <MiniMetric
-          icon={DollarSign}
-          label="Campaign Revenue"
-          value="MK 0"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| PROFILE
-|--------------------------------------------------------------------------
-*/
-
-const ProfileView = ({
-  navigate,
-}) => (
-  <Page
-    title="Creator Profile"
-    subtitle="Manage your public creator identity"
-    icon={UserRound}
-    action={
-      <button
-        onClick={() =>
-          navigate('/edit-profile')
-        }
-        className="px-4 py-2.5 rounded-xl bg-cyan-500 text-black text-[8px] font-black uppercase flex items-center gap-2"
-      >
-        <Edit3 size={12} />
-        Edit Profile
-      </button>
-    }
-  >
-    <Card className="overflow-hidden">
-
-      <div className="h-36 bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-black relative">
-
-        <div className="absolute inset-0 bg-black/30" />
-
-        <div className="absolute left-6 bottom-[-35px] w-20 h-20 rounded-2xl bg-zinc-900 border-4 border-[#050505] flex items-center justify-center">
-          <UserRound
-            size={28}
-            className="text-zinc-600"
-          />
-        </div>
-      </div>
-
-      <div className="p-6 pt-12">
-
-        <div className="flex items-start justify-between">
-
-          <div>
-            <h2 className="text-xl font-black italic">
-              Creator Profile
-            </h2>
-
-            <p className="text-[8px] text-zinc-600 mt-1">
-              @creator
-            </p>
-          </div>
-
-          <span className="px-2 py-1 rounded bg-cyan-500/10 border border-cyan-500/10 text-[7px] font-black uppercase text-cyan-400">
-            Professional
-          </span>
-        </div>
-
-        <p className="text-[9px] text-zinc-500 mt-4 max-w-xl">
-          Your public creator identity, social links, category, profile media and professional settings.
-        </p>
-      </div>
-    </Card>
-
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-      <ProfileMetric
-        label="Completion"
-        value="—"
-      />
-
-      <ProfileMetric
-        label="Profile Views"
-        value="—"
-      />
-
-      <ProfileMetric
-        label="Followers"
-        value="—"
-      />
-
-      <ProfileMetric
-        label="Following"
-        value="—"
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Profile Features"
-        subtitle="Everything connected to your public identity"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-
-        <FeatureTile
-          icon={UserRound}
-          title="Identity"
-        />
-
-        <FeatureTile
-          icon={ImageIcon}
-          title="Media"
-        />
-
-        <FeatureTile
-          icon={Share2}
-          title="Social Links"
-        />
-
-        <FeatureTile
-          icon={BadgeIcon}
-          title="Verification"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| SECURITY
-|--------------------------------------------------------------------------
-*/
-
-const SecurityView = () => (
-  <Page
-    title="Security Center"
-    subtitle="Protect your creator account"
-    icon={Shield}
-  >
-    <div className="grid md:grid-cols-2 gap-3">
-
-      <SecurityCard
-        icon={Lock}
-        title="Password"
-        status="Protected"
-      />
-
-      <SecurityCard
-        icon={Smartphone}
-        title="Two-Factor Authentication"
-        status="Not configured"
-      />
-
-      <SecurityCard
-        icon={Monitor}
-        title="Active Sessions"
-        status="1 active session"
-      />
-
-      <SecurityCard
-        icon={FingerprintIcon}
-        title="Passkeys"
-        status="Available"
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Security Activity"
-        subtitle="Recent account protection events"
-      />
-
-      <div className="space-y-2 mt-5">
-
-        <SecurityEvent
-          title="Current browser session"
-          device="Desktop"
-          status="Active"
-        />
-
-        <SecurityEvent
-          title="Login alerts"
-          device="Security notifications"
-          status="Enabled"
-        />
-
-        <SecurityEvent
-          title="Email verification"
-          device="Account email"
-          status="Protected"
-        />
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Account Recovery"
-        subtitle="Keep your account recoverable"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <FeatureTile
-          icon={MailIcon}
-          title="Email Recovery"
-        />
-
-        <FeatureTile
-          icon={Smartphone}
-          title="Phone Recovery"
-        />
-
-        <FeatureTile
-          icon={Shield}
-          title="Recovery Settings"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| SETTINGS
-|--------------------------------------------------------------------------
-*/
-
-const SettingsView = ({
-  settings,
-  setSettings,
-}) => (
-  <Page
-    title="Studio Settings"
-    subtitle="Customize your creator command center"
-    icon={Settings}
-  >
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Workspace"
-        subtitle="Studio appearance and behavior"
-      />
-
-      <div className="space-y-2 mt-5">
-
-        <ToggleRow
-          label="Automatic refresh"
-          description="Keep creator statistics synchronized automatically."
-          enabled={
-            settings.autoRefresh
-          }
-          onChange={() =>
-            setSettings(
-              (current) => ({
-                ...current,
-                autoRefresh:
-                  !current.autoRefresh,
-              })
-            )
-          }
-        />
-
-        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.04] flex items-center justify-between">
-
-          <div>
-            <p className="text-[9px] font-black">
-              Refresh interval
-            </p>
-
-            <p className="text-[7px] text-zinc-600 mt-1">
-              Automatic synchronization frequency
-            </p>
-          </div>
-
-          <select
-            value={
-              settings.refreshInterval
+      <PageHeader
+        eyebrow="Livestream command"
+        title="Livestream Analytics"
+        description="All livestream values below come from the existing livestream database."
+        action={
+          <button
+            onClick={
+              onSchedule
             }
-            onChange={(event) =>
-              setSettings(
-                (current) => ({
-                  ...current,
-                  refreshInterval:
-                    event.target.value,
-                })
-              )
-            }
-            className="bg-black border border-white/[0.06] rounded-lg px-3 py-2 text-[8px] text-zinc-400"
+            className="px-4 py-2.5 rounded-xl bg-cyan-500 text-black text-[8px] font-black uppercase tracking-widest"
           >
-            <option value="30">
-              30 seconds
-            </option>
-            <option value="60">
-              1 minute
-            </option>
-            <option value="300">
-              5 minutes
-            </option>
-          </select>
-        </div>
-
-        <ToggleRow
-          label="Compact mode"
-          description="Reduce spacing throughout the Studio."
-          enabled={
-            settings.compactMode
-          }
-          onChange={() =>
-            setSettings(
-              (current) => ({
-                ...current,
-                compactMode:
-                  !current.compactMode,
-              })
-            )
-          }
-        />
-
-        <ToggleRow
-          label="Reduced motion"
-          description="Reduce interface animations."
-          enabled={
-            settings.reducedMotion
-          }
-          onChange={() =>
-            setSettings(
-              (current) => ({
-                ...current,
-                reducedMotion:
-                  !current.reducedMotion,
-              })
-            )
-          }
-        />
-
-        <ToggleRow
-          label="Offline mode"
-          description="Display the Studio in offline-safe mode."
-          enabled={
-            settings.offlineMode
-          }
-          onChange={() =>
-            setSettings(
-              (current) => ({
-                ...current,
-                offlineMode:
-                  !current.offlineMode,
-              })
-            )
-          }
-        />
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Dashboard Layout"
-        subtitle="Organize your creator workspace"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-
-        <FeatureTile
-          icon={LayoutDashboard}
-          title="Widgets"
-        />
-
-        <FeatureTile
-          icon={Layers}
-          title="Widget Order"
-        />
-
-        <FeatureTile
-          icon={Monitor}
-          title="Desktop"
-        />
-
-        <FeatureTile
-          icon={Smartphone}
-          title="Mobile"
-        />
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="System Status"
-        subtitle="Studio infrastructure"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <StatusCard
-          title="Supabase"
-          icon={Database}
-          value="Connected"
-        />
-
-        <StatusCard
-          title="Authentication"
-          icon={Shield}
-          value="Active"
-        />
-
-        <StatusCard
-          title="Creator Data"
-          icon={Activity}
-          value="Synced"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| REPORTS
-|--------------------------------------------------------------------------
-*/
-
-const ReportsView = ({
-  stats,
-  videos,
-  exportStudioData,
-}) => (
-  <Page
-    title="Reports & Export"
-    subtitle="Download creator analytics and financial reports"
-    icon={FileDown}
-    action={
-      <button
-        onClick={
-          exportStudioData
+            Schedule
+          </button>
         }
-        className="px-4 py-2.5 rounded-xl bg-cyan-500 text-black text-[8px] font-black uppercase flex items-center gap-2"
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <MetricCard
+          label="Streams"
+          value={formatNumber(
+            records.length
+          )}
+          icon={Radio}
+          tone="cyan"
+        />
+
+        <MetricCard
+          label="Peak Viewers"
+          value={formatNumber(
+            totalPeak
+          )}
+          icon={Users}
+          tone="purple"
+        />
+
+        <MetricCard
+          label="Watch Time"
+          value={formatDuration(
+            totalWatch
+          )}
+          icon={Clock}
+          tone="emerald"
+        />
+
+        <MetricCard
+          label="Gifts"
+          value={formatNumber(
+            totalGifts
+          )}
+          icon={Gift}
+          tone="rose"
+        />
+
+      </div>
+
+      <SectionShell
+        title="Livestream history"
+        subtitle={`${records.length} database records`}
       >
-        <Download size={12} />
-        Export JSON
-      </button>
-    }
-  >
-    <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
 
-      <ReportCard
-        icon={BarChart3}
-        title="Analytics Report"
-      />
+        {records.length ? (
+          <div className="space-y-3">
 
-      <ReportCard
-        icon={DollarSign}
-        title="Earnings Report"
-      />
-
-      <ReportCard
-        icon={Video}
-        title="Video Statistics"
-      />
-
-      <ReportCard
-        icon={Users}
-        title="Audience Report"
-      />
-    </div>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Export Center"
-        subtitle="Available creator data"
-      />
-
-      <div className="space-y-2 mt-5">
-
-        <ExportRow
-          title="Creator analytics"
-          description="Views, engagement, reach and audience signals"
-          onClick={() =>
-            downloadJSON(
-              stats,
-              'creator-analytics.json'
-            )
-          }
-        />
-
-        <ExportRow
-          title="Video statistics"
-          description="Video performance and metadata"
-          onClick={() =>
-            downloadJSON(
-              videos,
-              'video-statistics.json'
-            )
-          }
-        />
-
-        <ExportRow
-          title="Full Studio report"
-          description="Combined creator data export"
-          onClick={
-            exportStudioData
-          }
-        />
-      </div>
-    </Card>
-
-    <Card className="p-6">
-
-      <SectionHeader
-        title="Reporting"
-        subtitle="Creator business reporting"
-      />
-
-      <div className="grid md:grid-cols-3 gap-3 mt-5">
-
-        <FeatureTile
-          icon={FileText}
-          title="Monthly Report"
-        />
-
-        <FeatureTile
-          icon={DollarSign}
-          title="Financial Report"
-        />
-
-        <FeatureTile
-          icon={FileDown}
-          title="Tax Documents"
-        />
-      </div>
-    </Card>
-  </Page>
-);
-
-/*
-|--------------------------------------------------------------------------
-| VIDEO CARD
-|--------------------------------------------------------------------------
-*/
-
-const VideoCard = ({
-  video,
-  onClick,
-}) => (
-  <div
-    onClick={onClick}
-    className="group bg-zinc-900/30 border border-white/[0.06] rounded-2xl overflow-hidden cursor-pointer hover:border-cyan-500/20 transition-all"
-  >
-    <div className="aspect-[9/13] bg-black relative overflow-hidden">
-
-      {video.video_url ? (
-        <video
-          src={video.video_url}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          muted
-          playsInline
-          preload="metadata"
-          onMouseEnter={(event) => {
-            event.currentTarget
-              .play()
-              .catch(() => {});
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.pause();
-
-            try {
-              event.currentTarget.currentTime = 0;
-            } catch {
-              // Ignore media reset errors.
-            }
-          }}
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center">
-          <Play
-            size={22}
-            className="text-zinc-800"
-          />
-        </div>
-      )}
-
-      <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black via-black/60 to-transparent">
-
-        <div className="flex items-center gap-2">
-
-          <span className="px-1.5 py-1 rounded bg-black/60 text-[6px] font-black uppercase">
-            {getVideoStatus(
-              video
+            {records.map(
+              (stream, index) => (
+                <LiveRow
+                  key={
+                    stream.id ||
+                    index
+                  }
+                  stream={
+                    stream
+                  }
+                />
+              )
             )}
-          </span>
 
-          {video.processing_status && (
-            <span className="px-1.5 py-1 rounded bg-cyan-500/20 text-cyan-300 text-[6px] font-black uppercase">
-              {video.processing_status}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-
-    <div className="p-4">
-
-      <p className="text-[9px] font-black truncate">
-        {getVideoTitle(video)}
-      </p>
-
-      <div className="flex items-center gap-3 mt-2">
-
-        <span className="flex items-center gap-1 text-[7px] text-zinc-600">
-          <Eye size={9} />
-          {formatNumber(
-            video.views_count
-          )}
-        </span>
-
-        <span className="flex items-center gap-1 text-[7px] text-zinc-600">
-          <Heart size={9} />
-          {formatNumber(
-            video.likes_count
-          )}
-        </span>
-
-        <span className="flex items-center gap-1 text-[7px] text-zinc-600">
-          <MessageCircle
-            size={9}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Radio}
+            title="No livestream records"
+            description="Your livestream history will appear here when records exist."
           />
-          {formatNumber(
-            video.comments_count
-          )}
-        </span>
-      </div>
-    </div>
-  </div>
-);
+        )}
+
+      </SectionShell>
+
+    </motion.div>
+  );
+};
 
 /*
-|--------------------------------------------------------------------------
-| COMPACT VIDEO
-|--------------------------------------------------------------------------
+============================================================
+AUDIENCE
+============================================================
 */
 
-const VideoCompact = ({
-  video,
-  onClick,
-}) => (
-  <button
-    onClick={onClick}
-    className="flex gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] text-left hover:border-cyan-500/20 transition-all"
-  >
-    <div className="w-12 h-16 rounded-lg overflow-hidden bg-black shrink-0">
+const AudienceSection = ({
+  stats,
+  latestDaily,
+  dailyAnalytics,
+  profile,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
 
-      {video.video_url ? (
-        <video
-          src={video.video_url}
-          className="w-full h-full object-cover"
-          muted
-          playsInline
-          preload="metadata"
+      <PageHeader
+        eyebrow="Audience intelligence"
+        title="Audience"
+        description="Audience metrics are shown only where the database contains them."
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <MetricCard
+          label="Followers"
+          value={formatNumber(
+            stats.followers
+          )}
+          icon={Users}
+          tone="cyan"
         />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center">
-          <Play
-            size={13}
-            className="text-zinc-700"
-          />
-        </div>
-      )}
-    </div>
 
-    <div className="min-w-0 flex-1">
+        <MetricCard
+          label="Following"
+          value={formatNumber(
+            stats.following
+          )}
+          icon={UserPlus}
+          tone="purple"
+        />
 
-      <p className="text-[8px] font-black truncate">
-        {getVideoTitle(
-          video
-        )}
-      </p>
+        <MetricCard
+          label="Profile Visits"
+          value={formatNumber(
+            stats.profileViews
+          )}
+          icon={Eye}
+          tone="emerald"
+        />
 
-      <p className="text-[7px] text-zinc-600 mt-2">
-        {formatNumber(
-          video.views_count
-        )}{' '}
-        views
-      </p>
+        <MetricCard
+          label="Unique Viewers"
+          value={formatNumber(
+            latestDaily?.unique_viewers
+          )}
+          icon={UserCheck}
+          tone="rose"
+        />
 
-      <p className="text-[7px] text-zinc-700 mt-1">
-        {formatNumber(
-          video.likes_count
-        )}{' '}
-        likes
-      </p>
-    </div>
+      </div>
 
-    <ChevronRight
-      size={12}
-      className="text-zinc-700 mt-1"
-    />
-  </button>
-);
+      <div className="grid lg:grid-cols-2 gap-4">
+
+        <SectionShell
+          title="Audience history"
+          subtitle="Unique vs returning viewers"
+        >
+
+          {dailyAnalytics.length ? (
+            <AnalyticsChart
+              data={
+                dailyAnalytics
+              }
+              metric="unique_viewers"
+              secondaryMetric="returning_viewers"
+              label="Unique"
+            />
+          ) : (
+            <EmptyState
+              icon={Users}
+              title="No audience history"
+              description="No audience history has been recorded."
+            />
+          )}
+
+        </SectionShell>
+
+        <SectionShell
+          title="Current profile"
+          subtitle="Profile source data"
+        >
+
+          <div className="space-y-3">
+
+            <ProfileRow
+              label="Username"
+              value={
+                profile?.username
+                  ? `@${profile.username}`
+                  : '—'
+              }
+            />
+
+            <ProfileRow
+              label="District"
+              value={
+                profile?.district ||
+                '—'
+              }
+            />
+
+            <ProfileRow
+              label="Location"
+              value={
+                profile?.location ||
+                '—'
+              }
+            />
+
+            <ProfileRow
+              label="Account status"
+              value={
+                profile?.account_status ||
+                '—'
+              }
+            />
+
+          </div>
+
+        </SectionShell>
+
+      </div>
+
+    </motion.div>
+  );
+};
 
 /*
-|--------------------------------------------------------------------------
-| VIDEO DRAWER
-|--------------------------------------------------------------------------
+============================================================
+ENGAGEMENT
+============================================================
+*/
+
+const EngagementSection = ({
+  stats,
+  latestDaily,
+  videoPerformance,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Engagement intelligence"
+        title="Engagement"
+        description="No engagement values are generated when the database does not contain them."
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+
+        <SmallMetric
+          label="Likes"
+          value={
+            stats.videoLikes
+          }
+          icon={Heart}
+        />
+
+        <SmallMetric
+          label="Comments"
+          value={
+            stats.videoComments
+          }
+          icon={
+            MessageCircle
+          }
+        />
+
+        <SmallMetric
+          label="Shares"
+          value={
+            stats.videoShares
+          }
+          icon={Share2}
+        />
+
+        <SmallMetric
+          label="Saves"
+          value={
+            stats.videoSaves
+          }
+          icon={Bookmark}
+        />
+
+        <SmallMetric
+          label="Reposts"
+          value={
+            stats.videoReposts
+          }
+          icon={Repeat2}
+        />
+
+      </div>
+
+      <SectionShell
+        title="Daily engagement"
+        subtitle="Real historical records"
+      >
+
+        {latestDaily ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+            <Signal
+              label="Likes"
+              value={
+                latestDaily.likes
+              }
+              icon={Heart}
+            />
+
+            <Signal
+              label="Comments"
+              value={
+                latestDaily.comments
+              }
+              icon={
+                MessageCircle
+              }
+            />
+
+            <Signal
+              label="Shares"
+              value={
+                latestDaily.shares
+              }
+              icon={Share2}
+            />
+
+            <Signal
+              label="Saves"
+              value={
+                latestDaily.saves
+              }
+              icon={Bookmark}
+            />
+
+          </div>
+        ) : (
+          <EmptyState
+            icon={Activity}
+            title="No daily engagement"
+            description="No daily engagement record exists."
+          />
+        )}
+
+      </SectionShell>
+
+      <SectionShell
+        title="Content engagement"
+        subtitle={`${videoPerformance.length} videos`}
+      >
+
+        {videoPerformance.length ? (
+          <div className="space-y-2">
+
+            {videoPerformance
+              .slice(0, 15)
+              .map((video) => (
+                <PerformanceRow
+                  key={
+                    video.id ||
+                    video.video_id
+                  }
+                  item={
+                    video
+                  }
+                />
+              ))}
+
+          </div>
+        ) : (
+          <EmptyState
+            icon={Video}
+            title="No content analytics"
+            description="No video performance records are available."
+          />
+        )}
+
+      </SectionShell>
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+GROWTH
+============================================================
+*/
+
+const GrowthSection = ({
+  stats,
+  growth,
+  dailyAnalytics,
+  growthMetrics,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Growth center"
+        title="Growth"
+        description="Growth indicators use real historical creator statistics."
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <GrowthCard
+          label="Views"
+          value={
+            growthMetrics.views
+          }
+          icon={Eye}
+        />
+
+        <GrowthCard
+          label="Likes"
+          value={
+            growthMetrics.likes
+          }
+          icon={Heart}
+        />
+
+        <GrowthCard
+          label="Followers"
+          value={
+            growthMetrics.followers
+          }
+          icon={Users}
+        />
+
+        <GrowthCard
+          label="Revenue"
+          value={
+            growthMetrics.revenue
+          }
+          icon={DollarSign}
+        />
+
+      </div>
+
+      <SectionShell
+        title="Audience growth"
+        subtitle="Followers gained and lost"
+      >
+
+        {dailyAnalytics.length ? (
+          <AnalyticsChart
+            data={
+              dailyAnalytics
+            }
+            metric="followers_gained"
+            secondaryMetric="followers_lost"
+            label="Followers gained"
+          />
+        ) : (
+          <EmptyState
+            icon={TrendingUp}
+            title="No growth history"
+            description="Growth history is not available yet."
+          />
+        )}
+
+      </SectionShell>
+
+      <SectionShell
+        title="Growth snapshot"
+        subtitle="Latest creator growth record"
+      >
+
+        {growth ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+            <Signal
+              label="Growth score"
+              value={
+                growth.growth_score ??
+                growth.score ??
+                '—'
+              }
+              icon={
+                TrendingUp
+              }
+            />
+
+            <Signal
+              label="Followers"
+              value={
+                growth.followers ??
+                growth.follower_count ??
+                '—'
+              }
+              icon={Users}
+            />
+
+            <Signal
+              label="Views"
+              value={
+                growth.views ??
+                growth.video_views ??
+                '—'
+              }
+              icon={Eye}
+            />
+
+            <Signal
+              label="Engagement"
+              value={
+                growth.engagement_rate !==
+                null &&
+                growth.engagement_rate !==
+                  undefined
+                  ? `${safeNumber(
+                      growth.engagement_rate
+                    ).toFixed(1)}%`
+                  : '—'
+              }
+              icon={
+                Activity
+              }
+            />
+
+          </div>
+        ) : (
+          <EmptyState
+            icon={TrendingUp}
+            title="No growth snapshot"
+            description="The growth view does not currently contain a snapshot."
+          />
+        )}
+
+      </SectionShell>
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+EARNINGS
+============================================================
+*/
+
+const EarningsSection = ({
+  stats,
+  earnings,
+  livePerformance,
+}) => {
+  const pending = earnings
+    .filter(
+      (item) =>
+        item.status ===
+        'pending'
+    )
+    .reduce(
+      (sum, item) =>
+        sum +
+        safeNumber(
+          item.amount
+        ),
+      0
+    );
+
+  const completed = earnings
+    .filter(
+      (item) =>
+        item.status ===
+        'completed'
+    )
+    .reduce(
+      (sum, item) =>
+        sum +
+        safeNumber(
+          item.amount
+        ),
+      0
+    );
+
+  const liveRevenue =
+    livePerformance.reduce(
+      (sum, item) =>
+        sum +
+        safeNumber(
+          item.revenue
+        ),
+      0
+    );
+
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Monetization"
+        title="Earnings"
+        description="Financial analytics come from creator earnings and livestream records."
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <MetricCard
+          label="Creator Earnings"
+          value={`K${formatMoney(
+            stats.creatorEarnings
+          )}`}
+          icon={DollarSign}
+          tone="emerald"
+        />
+
+        <MetricCard
+          label="Balance"
+          value={`K${formatMoney(
+            stats.balance
+          )}`}
+          icon={Wallet}
+          tone="cyan"
+        />
+
+        <MetricCard
+          label="Pending"
+          value={`K${formatMoney(
+            pending
+          )}`}
+          icon={Clock}
+          tone="yellow"
+        />
+
+        <MetricCard
+          label="Completed"
+          value={`K${formatMoney(
+            completed
+          )}`}
+          icon={
+            CheckCircle2
+          }
+          tone="purple"
+        />
+
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4">
+
+        <SectionShell
+          title="Earnings history"
+          subtitle={`${earnings.length} transactions`}
+        >
+
+          {earnings.length ? (
+            <div className="space-y-2">
+
+              {earnings
+                .slice(0, 20)
+                .map(
+                  (
+                    earning,
+                    index
+                  ) => (
+                    <div
+                      key={
+                        earning.id ||
+                        index
+                      }
+                      className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.04]"
+                    >
+
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+
+                        <DollarSign
+                          size={14}
+                          className="text-emerald-400"
+                        />
+
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+
+                        <p className="text-[10px] font-bold text-zinc-300 truncate">
+                          {earning.description ||
+                            earning.source_type ||
+                            'Creator earning'}
+                        </p>
+
+                        <p className="text-[8px] text-zinc-600 mt-1">
+                          {formatDate(
+                            earning.created_at
+                          )}
+                        </p>
+
+                      </div>
+
+                      <div className="text-right">
+
+                        <p className="text-[10px] font-black text-emerald-400">
+                          K
+                          {formatMoney(
+                            earning.amount
+                          )}
+                        </p>
+
+                        <p className="text-[7px] uppercase text-zinc-600">
+                          {earning.status ||
+                            'unknown'}
+                        </p>
+
+                      </div>
+
+                    </div>
+                  )
+                )}
+
+            </div>
+          ) : (
+            <EmptyState
+              icon={Wallet}
+              title="No earnings"
+              description="No creator earnings records are available."
+            />
+          )}
+
+        </SectionShell>
+
+        <SectionShell
+          title="Livestream revenue"
+          subtitle="Database livestream revenue"
+        >
+
+          <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
+
+            <p className="text-[8px] uppercase tracking-widest font-black text-zinc-600">
+              Recorded revenue
+            </p>
+
+            <p className="text-3xl font-black italic font-mono mt-2">
+              K
+              {formatMoney(
+                liveRevenue
+              )}
+            </p>
+
+            <p className="text-[8px] text-zinc-600 mt-2">
+              No revenue is estimated when the database contains zero.
+            </p>
+
+          </div>
+
+        </SectionShell>
+
+      </div>
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+GIFTS
+============================================================
+*/
+
+const GiftsSection = ({
+  stats,
+  livePerformance,
+}) => {
+  const gifts =
+    livePerformance.reduce(
+      (sum, item) =>
+        sum +
+        safeNumber(
+          item.gifts_count ??
+            item.total_gifts
+        ),
+      0
+    );
+
+  const coins =
+    livePerformance.reduce(
+      (sum, item) =>
+        sum +
+        safeNumber(
+          item.coins_received
+        ),
+      0
+    );
+
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Virtual economy"
+        title="Gifts"
+        description="Gift statistics reflect recorded livestream data."
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <MetricCard
+          label="Recorded Gifts"
+          value={formatNumber(
+            gifts
+          )}
+          icon={Gift}
+          tone="rose"
+        />
+
+        <MetricCard
+          label="Coins Received"
+          value={formatNumber(
+            coins
+          )}
+          icon={Coins}
+          tone="yellow"
+        />
+
+        <MetricCard
+          label="Creator Coins"
+          value={formatNumber(
+            stats.coins
+          )}
+          icon={Coins}
+          tone="purple"
+        />
+
+        <MetricCard
+          label="Gift Revenue"
+          value={`K${formatMoney(
+            stats.livestreamRevenue
+          )}`}
+          icon={DollarSign}
+          tone="emerald"
+        />
+
+      </div>
+
+      <SectionShell
+        title="Gift records"
+        subtitle="Livestream gift analytics"
+      >
+
+        {livePerformance.length ? (
+          <div className="space-y-2">
+
+            {livePerformance
+              .filter(
+                (item) =>
+                  safeNumber(
+                    item.gifts_count ??
+                      item.total_gifts
+                  ) > 0 ||
+                  safeNumber(
+                    item.coins_received
+                  ) > 0
+              )
+              .map(
+                (
+                  item,
+                  index
+                ) => (
+                  <LiveRow
+                    key={
+                      item.id ||
+                      index
+                    }
+                    stream={
+                      item
+                    }
+                  />
+                )
+              )}
+
+          </div>
+        ) : (
+          <EmptyState
+            icon={Gift}
+            title="No gift records"
+            description="No livestream gift data is available."
+          />
+        )}
+
+      </SectionShell>
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+GOALS
+============================================================
+*/
+
+const GoalsSection = ({
+  achievements,
+  stats,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Creator progression"
+        title="Goals"
+        description="Goal progress is displayed when achievement or creator progress data exists."
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <MetricCard
+          label="Followers"
+          value={formatNumber(
+            stats.followers
+          )}
+          icon={Users}
+          tone="cyan"
+        />
+
+        <MetricCard
+          label="Video Views"
+          value={formatNumber(
+            stats.videoViews
+          )}
+          icon={Eye}
+          tone="purple"
+        />
+
+        <MetricCard
+          label="Engagement"
+          value={formatNumber(
+            stats.totalEngagements
+          )}
+          icon={Activity}
+          tone="emerald"
+        />
+
+        <MetricCard
+          label="Achievements"
+          value={formatNumber(
+            achievements.length
+          )}
+          icon={Trophy}
+          tone="yellow"
+        />
+
+      </div>
+
+      <SectionShell
+        title="Creator goals"
+        subtitle="Available database progression"
+      >
+
+        {achievements.length ? (
+          <div className="grid md:grid-cols-2 gap-3">
+
+            {achievements.map(
+              (
+                achievement,
+                index
+              ) => (
+                <AchievementCard
+                  key={
+                    achievement.id ||
+                    index
+                  }
+                  achievement={
+                    achievement
+                  }
+                />
+              )
+            )}
+
+          </div>
+        ) : (
+          <EmptyState
+            icon={Target}
+            title="No goals available"
+            description="Goal records have not been populated yet."
+          />
+        )}
+
+      </SectionShell>
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+ACHIEVEMENTS
+============================================================
+*/
+
+const AchievementsSection = ({
+  achievements,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Creator progression"
+        title="Achievements"
+        description="Achievement progress comes from the existing achievement analytics view."
+      />
+
+      {achievements.length ? (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {achievements.map(
+            (
+              achievement,
+              index
+            ) => (
+              <AchievementCard
+                key={
+                  achievement.id ||
+                  index
+                }
+                achievement={
+                  achievement
+                }
+              />
+            )
+          )}
+
+        </div>
+      ) : (
+        <EmptyState
+          icon={Trophy}
+          title="No achievements"
+          description="No achievement records are currently available."
+        />
+      )}
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+AI
+============================================================
+*/
+
+const AISection = ({
+  aiInsights,
+  aiTip,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Creator intelligence"
+        title="AI Intelligence"
+        description="AI insights shown here are database-backed. No random analytics are generated."
+      />
+
+      <div className="rounded-[28px] border border-purple-500/10 bg-purple-500/[0.04] p-6">
+
+        <div className="flex gap-4">
+
+          <div className="w-11 h-11 rounded-2xl bg-purple-500/10 flex items-center justify-center">
+
+            <Brain
+              size={18}
+              className="text-purple-400"
+            />
+
+          </div>
+
+          <div>
+
+            <p className="text-[8px] uppercase tracking-[3px] font-black text-purple-400">
+              Current intelligence
+            </p>
+
+            <p className="text-sm text-zinc-300 mt-2 leading-relaxed">
+              {aiTip}
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <SectionShell
+        title="AI insight records"
+        subtitle={`${aiInsights.length} records`}
+      >
+
+        {aiInsights.length ? (
+          <div className="space-y-3">
+
+            {aiInsights.map(
+              (
+                insight,
+                index
+              ) => (
+                <div
+                  key={
+                    insight.id ||
+                    index
+                  }
+                  className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.05]"
+                >
+
+                  <div className="flex gap-3">
+
+                    <Sparkles
+                      size={15}
+                      className="text-purple-400 shrink-0 mt-0.5"
+                    />
+
+                    <div>
+
+                      <p className="text-xs font-bold text-zinc-300">
+                        {insight.title ||
+                          insight.type ||
+                          'Creator insight'}
+                      </p>
+
+                      <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                        {insight.insight ||
+                          insight.message ||
+                          insight.recommendation ||
+                          insight.description ||
+                          'No insight text available.'}
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              )
+            )}
+
+          </div>
+        ) : (
+          <EmptyState
+            icon={Brain}
+            title="No AI insights"
+            description="No creator intelligence records are currently available."
+          />
+        )}
+
+      </SectionShell>
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+SCHEDULE
+============================================================
+*/
+
+const ScheduleSection = ({
+  videos,
+  liveStreams,
+  onVideo,
+}) => {
+  const scheduledVideos =
+    videos.filter(
+      (video) =>
+        video.scheduled_at ||
+        video.status ===
+          'scheduled'
+    );
+
+  const scheduledLives =
+    liveStreams.filter(
+      (stream) =>
+        stream.scheduled_at
+    );
+
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Publishing"
+        title="Schedule"
+        description="Scheduled content uses the existing scheduled_at fields."
+      />
+
+      <div className="grid lg:grid-cols-2 gap-4">
+
+        <SectionShell
+          title="Scheduled videos"
+          subtitle={`${scheduledVideos.length} scheduled`}
+        >
+
+          {scheduledVideos.length ? (
+            <div className="space-y-2">
+
+              {scheduledVideos.map(
+                (video) => (
+                  <button
+                    key={video.id}
+                    onClick={() =>
+                      onVideo(video)
+                    }
+                    className="w-full text-left flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.04] hover:border-cyan-500/10"
+                  >
+
+                    <div className="w-10 h-12 rounded-xl bg-zinc-900 overflow-hidden">
+
+                      {video.thumbnail_url ? (
+                        <img
+                          src={
+                            video.thumbnail_url
+                          }
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Video
+                            size={14}
+                            className="text-zinc-700"
+                          />
+                        </div>
+                      )}
+
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+
+                      <p className="text-[10px] font-bold truncate">
+                        {video.title ||
+                          video.caption ||
+                          'Untitled video'}
+                      </p>
+
+                      <p className="text-[8px] text-cyan-400 mt-1">
+                        {formatDate(
+                          video.scheduled_at
+                        )}
+                      </p>
+
+                    </div>
+
+                    <ChevronRight
+                      size={13}
+                      className="text-zinc-700"
+                    />
+
+                  </button>
+                )
+              )}
+
+            </div>
+          ) : (
+            <EmptyState
+              icon={Calendar}
+              title="No scheduled videos"
+              description="There are no scheduled video records."
+            />
+          )}
+
+        </SectionShell>
+
+        <SectionShell
+          title="Scheduled livestreams"
+          subtitle={`${scheduledLives.length} scheduled`}
+        >
+
+          {scheduledLives.length ? (
+            <div className="space-y-2">
+
+              {scheduledLives.map(
+                (
+                  stream
+                ) => (
+                  <LiveRow
+                    key={
+                      stream.id
+                    }
+                    stream={
+                      stream
+                    }
+                  />
+                )
+              )}
+
+            </div>
+          ) : (
+            <EmptyState
+              icon={Radio}
+              title="No scheduled livestreams"
+              description="There are no scheduled livestream records."
+            />
+          )}
+
+        </SectionShell>
+
+      </div>
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+REPORTS
+============================================================
+*/
+
+const ReportsSection = ({
+  stats,
+  dailyAnalytics,
+  videoPerformance,
+  livePerformance,
+  earnings,
+  onExport,
+}) => {
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 10,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      className="space-y-6"
+    >
+
+      <PageHeader
+        eyebrow="Creator reporting"
+        title="Reports"
+        description="Export the analytics currently synchronized from Supabase."
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+        <SmallMetric
+          label="Daily records"
+          value={
+            dailyAnalytics.length
+          }
+          icon={BarChart3}
+        />
+
+        <SmallMetric
+          label="Videos"
+          value={
+            videoPerformance.length
+          }
+          icon={Video}
+        />
+
+        <SmallMetric
+          label="Livestreams"
+          value={
+            livePerformance.length
+          }
+          icon={Radio}
+        />
+
+        <SmallMetric
+          label="Earnings records"
+          value={
+            earnings.length
+          }
+          icon={DollarSign}
+        />
+
+      </div>
+
+      <SectionShell
+        title="Creator report"
+        subtitle="Download database-backed analytics"
+      >
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+
+          <ReportButton
+            title="Analytics JSON"
+            description="Daily analytics and overview"
+            icon={Download}
+            onClick={
+              onExport
+            }
+          />
+
+          <ReportButton
+            title="Video statistics"
+            description="Video performance records"
+            icon={Video}
+            onClick={
+              onExport
+            }
+          />
+
+          <ReportButton
+            title="Financial report"
+            description="Creator earnings records"
+            icon={Wallet}
+            onClick={
+              onExport
+            }
+          />
+
+        </div>
+
+      </SectionShell>
+
+    </motion.div>
+  );
+};
+
+/*
+============================================================
+VIDEO DRAWER
+============================================================
 */
 
 const VideoDrawer = ({
@@ -5597,610 +3766,1296 @@ const VideoDrawer = ({
   mode,
   setMode,
   onClose,
-}) => (
-  <>
-    <motion.div
-      initial={{
-        opacity: 0,
-      }}
-      animate={{
-        opacity: 1,
-      }}
-      exit={{
-        opacity: 0,
-      }}
-      onClick={onClose}
-      className="fixed inset-0 bg-black/80 backdrop-blur-md z-[500]"
-    />
+  onAction,
+  actionLoading,
+  actionError,
+}) => {
+  const views =
+    video.views_count ??
+    video.views ??
+    0;
 
-    <motion.div
-      initial={{
-        y: '100%',
-      }}
-      animate={{
-        y: 0,
-      }}
-      exit={{
-        y: '100%',
-      }}
-      transition={{
-        type: 'spring',
-        damping: 26,
-        stiffness: 190,
-      }}
-      className="fixed bottom-0 left-0 right-0 z-[501] bg-zinc-950 border-t border-white/10 rounded-t-[32px] max-h-[92vh] overflow-hidden"
-    >
-      <div className="max-w-4xl mx-auto p-5 sm:p-7">
+  const likes =
+    video.likes_count ??
+    0;
 
-        <div className="flex justify-center mb-5">
-          <div className="w-10 h-1 rounded-full bg-zinc-800" />
-        </div>
+  const comments =
+    video.comments_count ??
+    0;
 
-        <div className="flex items-start gap-4">
+  const shares =
+    video.shares_count ??
+    0;
 
-          <div className="w-16 h-20 rounded-xl bg-black overflow-hidden shrink-0">
+  const saves =
+    video.saves_count ??
+    0;
 
-            {video.video_url ? (
-              <video
-                src={video.video_url}
-                className="w-full h-full object-cover"
-                muted
-                playsInline
-                preload="metadata"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <Play
-                  size={16}
-                  className="text-zinc-700"
+  const reposts =
+    video.reposts_count ??
+    0;
+
+  const engagements =
+    safeNumber(likes) +
+    safeNumber(comments) +
+    safeNumber(shares) +
+    safeNumber(saves) +
+    safeNumber(reposts);
+
+  return (
+    <>
+      <motion.div
+        initial={{
+          opacity: 0,
+        }}
+        animate={{
+          opacity: 1,
+        }}
+        exit={{
+          opacity: 0,
+        }}
+        onClick={
+          onClose
+        }
+        className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md"
+      />
+
+      <motion.div
+        initial={{
+          y: '100%',
+        }}
+        animate={{
+          y: 0,
+        }}
+        exit={{
+          y: '100%',
+        }}
+        transition={{
+          type: 'spring',
+          damping: 26,
+          stiffness: 190,
+        }}
+        className="fixed bottom-0 left-0 right-0 z-[201] bg-[#090909] border-t border-white/10 rounded-t-[32px] max-h-[90vh] overflow-hidden"
+      >
+
+        <div className="max-w-4xl mx-auto p-5 md:p-7">
+
+          <div className="w-10 h-1 rounded-full bg-zinc-800 mx-auto mb-6" />
+
+          <div className="flex items-start gap-4">
+
+            <div className="w-16 h-20 rounded-2xl bg-zinc-900 overflow-hidden shrink-0">
+
+              {video.thumbnail_url ? (
+                <img
+                  src={
+                    video.thumbnail_url
+                  }
+                  alt=""
+                  className="w-full h-full object-cover"
                 />
-              </div>
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1">
-
-            <h2 className="text-sm font-black italic truncate">
-              {getVideoTitle(
-                video
-              )}
-            </h2>
-
-            <p className="text-[7px] text-zinc-700 font-mono uppercase mt-2">
-              VID_{video.id?.slice(
-                0,
-                14
-              )}
-            </p>
-
-            <div className="flex gap-2 mt-4">
-
-              <button
-                onClick={() =>
-                  setMode(
-                    'metrics'
-                  )
-                }
-                className={`px-3 py-1.5 rounded-lg text-[7px] font-black uppercase ${
-                  mode === 'metrics'
-                    ? 'bg-cyan-500 text-black'
-                    : 'bg-white/[0.05] text-zinc-500'
-                }`}
-              >
-                Metrics
-              </button>
-
-              <button
-                onClick={() =>
-                  setMode(
-                    'preview'
-                  )
-                }
-                className={`px-3 py-1.5 rounded-lg text-[7px] font-black uppercase ${
-                  mode === 'preview'
-                    ? 'bg-purple-500 text-white'
-                    : 'bg-white/[0.05] text-zinc-500'
-                }`}
-              >
-                Preview
-              </button>
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl bg-white/[0.04] text-zinc-500"
-          >
-            <X size={15} />
-          </button>
-        </div>
-
-        <div className="mt-6 max-h-[65vh] overflow-y-auto scrollbar-studio">
-
-          {mode === 'metrics' ? (
-            <div className="space-y-4">
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-                <StatCard
-                  label="Views"
-                  value={formatNumber(
-                    video.views_count
-                  )}
-                  icon={Eye}
+              ) : video.video_url ? (
+                <video
+                  src={
+                    video.video_url
+                  }
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
                 />
-
-                <StatCard
-                  label="Likes"
-                  value={formatNumber(
-                    video.likes_count
-                  )}
-                  icon={Heart}
-                />
-
-                <StatCard
-                  label="Comments"
-                  value={formatNumber(
-                    video.comments_count
-                  )}
-                  icon={MessageCircle}
-                />
-
-                <StatCard
-                  label="Shares"
-                  value={formatNumber(
-                    video.shares_count
-                  )}
-                  icon={Share2}
-                />
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-3">
-
-                <MetricPanel
-                  title="Engagement"
-                  rows={[
-                    [
-                      'Like Rate',
-                      `${percentage(
-                        video.likes_count,
-                        video.views_count
-                      ).toFixed(
-                        1
-                      )}%`,
-                    ],
-                    [
-                      'Comment Rate',
-                      `${percentage(
-                        video.comments_count,
-                        video.views_count
-                      ).toFixed(
-                        1
-                      )}%`,
-                    ],
-                    [
-                      'Share Rate',
-                      `${percentage(
-                        video.shares_count,
-                        video.views_count
-                      ).toFixed(
-                        1
-                      )}%`,
-                    ],
-                    [
-                      'Save Rate',
-                      `${percentage(
-                        video.saves_count,
-                        video.views_count
-                      ).toFixed(
-                        1
-                      )}%`,
-                    ],
-                  ]}
-                />
-
-                <MetricPanel
-                  title="Content"
-                  rows={[
-                    [
-                      'Status',
-                      getVideoStatus(
-                        video
-                      ),
-                    ],
-                    [
-                      'Category',
-                      video.category ||
-                        'Not set',
-                    ],
-                    [
-                      'Privacy',
-                      video.privacy ||
-                        'Public',
-                    ],
-                    [
-                      'Duration',
-                      video.duration ||
-                        '—',
-                    ],
-                  ]}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="flex justify-center">
-
-              <div className="w-full max-w-[360px] aspect-[9/16] rounded-2xl bg-black border border-white/[0.08] overflow-hidden">
-
-                {video.video_url ? (
-                  <video
-                    src={video.video_url}
-                    className="w-full h-full object-contain"
-                    controls
-                    autoPlay
-                    playsInline
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Video
+                    size={17}
+                    className="text-zinc-700"
                   />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center">
-                    <Video
-                      size={30}
-                      className="text-zinc-800"
-                    />
+                </div>
+              )}
 
-                    <p className="text-[8px] uppercase text-zinc-700 font-black mt-3">
-                      No video URL
-                    </p>
+            </div>
+
+            <div className="flex-1 min-w-0">
+
+              <div className="flex items-start justify-between gap-3">
+
+                <div>
+
+                  <h2 className="text-sm font-black italic truncate">
+                    {video.title ||
+                      video.caption ||
+                      'Untitled video'}
+                  </h2>
+
+                  <p className="text-[8px] text-zinc-600 mt-1 font-mono">
+                    {video.id}
+                  </p>
+
+                </div>
+
+                <button
+                  onClick={
+                    onClose
+                  }
+                  className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center"
+                >
+                  <X
+                    size={14}
+                  />
+                </button>
+
+              </div>
+
+              <div className="flex gap-2 mt-4">
+
+                <button
+                  onClick={() =>
+                    setMode(
+                      'metrics'
+                    )
+                  }
+                  className={`px-3 py-2 rounded-xl text-[8px] uppercase font-black ${
+                    mode ===
+                    'metrics'
+                      ? 'bg-cyan-500 text-black'
+                      : 'bg-white/5 text-zinc-500'
+                  }`}
+                >
+                  Metrics
+                </button>
+
+                <button
+                  onClick={() =>
+                    setMode(
+                      'preview'
+                    )
+                  }
+                  className={`px-3 py-2 rounded-xl text-[8px] uppercase font-black ${
+                    mode ===
+                    'preview'
+                      ? 'bg-purple-500 text-white'
+                      : 'bg-white/5 text-zinc-500'
+                  }`}
+                >
+                  Preview
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
+
+          <div className="mt-6 max-h-[52vh] overflow-y-auto pr-1">
+
+            {mode ===
+            'metrics' ? (
+              <div className="space-y-4">
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+
+                  <DrawerMetric
+                    label="Views"
+                    value={formatNumber(
+                      views
+                    )}
+                    icon={Eye}
+                  />
+
+                  <DrawerMetric
+                    label="Likes"
+                    value={formatNumber(
+                      likes
+                    )}
+                    icon={Heart}
+                  />
+
+                  <DrawerMetric
+                    label="Comments"
+                    value={formatNumber(
+                      comments
+                    )}
+                    icon={
+                      MessageCircle
+                    }
+                  />
+
+                  <DrawerMetric
+                    label="Shares"
+                    value={formatNumber(
+                      shares
+                    )}
+                    icon={Share2}
+                  />
+
+                  <DrawerMetric
+                    label="Engagement"
+                    value={formatNumber(
+                      engagements
+                    )}
+                    icon={
+                      Activity
+                    }
+                  />
+
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+                  <DrawerMetric
+                    label="Saves"
+                    value={formatNumber(
+                      saves
+                    )}
+                    icon={
+                      Bookmark
+                    }
+                  />
+
+                  <DrawerMetric
+                    label="Reposts"
+                    value={formatNumber(
+                      reposts
+                    )}
+                    icon={
+                      Repeat2
+                    }
+                  />
+
+                  <DrawerMetric
+                    label="Completion"
+                    value={
+                      video.completion_rate !==
+                      null &&
+                      video.completion_rate !==
+                        undefined
+                        ? `${safeNumber(
+                            video.completion_rate
+                          ).toFixed(
+                            1
+                          )}%`
+                        : '—'
+                    }
+                    icon={
+                      TrendingUp
+                    }
+                  />
+
+                  <DrawerMetric
+                    label="Watch"
+                    value={
+                      video.average_watch_seconds !==
+                      null &&
+                      video.average_watch_seconds !==
+                        undefined
+                        ? formatDuration(
+                            video.average_watch_seconds
+                          )
+                        : '—'
+                    }
+                    icon={
+                      Clock
+                    }
+                  />
+
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-3">
+
+                  <InfoPanel
+                    title="Content"
+                    rows={[
+                      [
+                        'Status',
+                        video.status ||
+                          '—',
+                      ],
+                      [
+                        'Category',
+                        video.category ||
+                          '—',
+                      ],
+                      [
+                        'Privacy',
+                        video.privacy ||
+                          (video.is_private
+                            ? 'private'
+                            : 'public'),
+                      ],
+                      [
+                        'Language',
+                        video.language ||
+                          '—',
+                      ],
+                      [
+                        'Copyright',
+                        video.copyright_status ||
+                          '—',
+                      ],
+                    ]}
+                  />
+
+                  <InfoPanel
+                    title="Publishing"
+                    rows={[
+                      [
+                        'Created',
+                        formatDate(
+                          video.created_at
+                        ),
+                      ],
+                      [
+                        'Scheduled',
+                        formatDate(
+                          video.scheduled_at
+                        ),
+                      ],
+                      [
+                        'Pinned',
+                        video.is_pinned
+                          ? 'Yes'
+                          : 'No',
+                      ],
+                      [
+                        'Featured',
+                        video.is_featured
+                          ? 'Yes'
+                          : 'No',
+                      ],
+                      [
+                        'AI generated',
+                        video.ai_generated
+                          ? 'Yes'
+                          : 'No',
+                      ],
+                    ]}
+                  />
+
+                </div>
+
+                {actionError && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/10 text-[9px] text-red-400">
+                    {actionError}
                   </div>
                 )}
+
+                <div className="flex flex-wrap gap-2">
+
+                  {video.status ===
+                  'archived' ? (
+                    <ActionButton
+                      icon={
+                        RotateCcw
+                      }
+                      label="Restore"
+                      disabled={
+                        actionLoading
+                      }
+                      onClick={() =>
+                        onAction(
+                          'restore'
+                        )
+                      }
+                    />
+                  ) : (
+                    <ActionButton
+                      icon={
+                        Archive
+                      }
+                      label="Archive"
+                      disabled={
+                        actionLoading
+                      }
+                      onClick={() =>
+                        onAction(
+                          'archive'
+                        )
+                      }
+                    />
+                  )}
+
+                  <ActionButton
+                    icon={
+                      Trash2
+                    }
+                    label="Delete"
+                    danger
+                    disabled={
+                      actionLoading
+                    }
+                    onClick={() =>
+                      onAction(
+                        'delete'
+                      )
+                    }
+                  />
+
+                </div>
+
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="flex justify-center">
+
+                <div className="w-full max-w-[340px] aspect-[9/16] bg-black rounded-3xl border border-white/10 overflow-hidden">
+
+                  {video.video_url ? (
+                    <video
+                      src={
+                        video.video_url
+                      }
+                      controls
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center">
+
+                      <Video
+                        size={25}
+                        className="text-zinc-700 mb-3"
+                      />
+
+                      <p className="text-[8px] uppercase tracking-widest text-zinc-600 font-black">
+                        No video URL
+                      </p>
+
+                    </div>
+                  )}
+
+                </div>
+
+              </div>
+            )}
+
+          </div>
+
         </div>
 
-        <button
-          onClick={onClose}
-          className="w-full mt-5 py-3.5 rounded-xl bg-white text-black text-[8px] font-black uppercase tracking-[3px]"
-        >
-          Close Analysis
-        </button>
-      </div>
-    </motion.div>
-  </>
-);
+      </motion.div>
+    </>
+  );
+};
 
 /*
-|--------------------------------------------------------------------------
-| SMALL COMPONENTS
-|--------------------------------------------------------------------------
+============================================================
+COMPONENTS
+============================================================
 */
 
-const MiniMetric = ({
-  icon: Icon,
-  label,
-  value,
-}) => (
-  <Card className="p-4">
-
-    <Icon
-      size={14}
-      className="text-zinc-600"
-    />
-
-    <p className="text-lg font-black font-mono mt-4">
-      {value}
-    </p>
-
-    <p className="text-[6px] uppercase tracking-[2px] text-zinc-700 mt-1 font-black">
-      {label}
-    </p>
-  </Card>
-);
-
-const SectionHeader = ({
+const PageHeader = ({
+  eyebrow,
   title,
-  subtitle,
+  description,
   action,
 }) => (
-  <div className="flex items-center justify-between gap-3">
+  <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
 
     <div>
-      <h3 className="text-[9px] font-black uppercase tracking-[2px]">
-        {title}
-      </h3>
 
-      {subtitle && (
-        <p className="text-[7px] text-zinc-700 uppercase tracking-wider mt-1">
-          {subtitle}
-        </p>
-      )}
+      <p className="text-[8px] uppercase tracking-[3px] font-black text-cyan-400">
+        {eyebrow}
+      </p>
+
+      <h2 className="text-2xl md:text-3xl font-black italic tracking-tight mt-1">
+        {title}
+      </h2>
+
+      <p className="text-[10px] text-zinc-600 mt-2 max-w-2xl leading-relaxed">
+        {description}
+      </p>
+
     </div>
 
     {action}
+
   </div>
 );
 
-const HealthBar = ({
+const SectionShell = ({
+  title,
+  subtitle,
+  action,
+  children,
+}) => (
+  <section className="rounded-[28px] border border-white/[0.055] bg-white/[0.015] overflow-hidden">
+
+    <div className="px-5 py-4 border-b border-white/[0.04] flex items-center justify-between gap-3">
+
+      <div>
+
+        <h3 className="text-[10px] uppercase tracking-[2px] font-black text-zinc-300">
+          {title}
+        </h3>
+
+        {subtitle && (
+          <p className="text-[8px] text-zinc-700 mt-1">
+            {subtitle}
+          </p>
+        )}
+
+      </div>
+
+      {action}
+
+    </div>
+
+    <div className="p-5">
+      {children}
+    </div>
+
+  </section>
+);
+
+const MetricCard = ({
   label,
   value,
-  percent,
-}) => (
-  <div>
+  icon: Icon,
+  tone = 'cyan',
+  growth,
+}) => {
+  const tones = {
+    cyan:
+      'text-cyan-400 bg-cyan-500/10',
+    purple:
+      'text-purple-400 bg-purple-500/10',
+    rose:
+      'text-rose-400 bg-rose-500/10',
+    emerald:
+      'text-emerald-400 bg-emerald-500/10',
+    yellow:
+      'text-yellow-400 bg-yellow-500/10',
+  };
 
-    <div className="flex justify-between">
-      <span className="text-[7px] uppercase font-black text-zinc-600">
+  return (
+    <div className="rounded-3xl border border-white/[0.05] bg-white/[0.018] p-4">
+
+      <div className="flex items-center justify-between">
+
+        <div
+          className={`w-8 h-8 rounded-xl flex items-center justify-center ${tones[tone]}`}
+        >
+          <Icon size={14} />
+        </div>
+
+        {growth !== null &&
+          growth !==
+            undefined && (
+            <GrowthBadge
+              value={
+                growth
+              }
+            />
+          )}
+
+      </div>
+
+      <p className="text-xl md:text-2xl font-black italic font-mono mt-4 tracking-tight">
+        {value}
+      </p>
+
+      <p className="text-[7px] uppercase tracking-[1.5px] text-zinc-600 font-black mt-1">
+        {label}
+      </p>
+
+    </div>
+  );
+};
+
+const SmallMetric = ({
+  label,
+  value,
+  icon: Icon,
+}) => (
+  <div className="p-4 rounded-2xl bg-white/[0.018] border border-white/[0.045]">
+
+    <div className="flex items-center gap-2 text-zinc-600">
+
+      <Icon size={12} />
+
+      <span className="text-[7px] uppercase tracking-widest font-black">
         {label}
       </span>
 
-      <span className="text-[7px] font-black text-zinc-300">
-        {value}
-      </span>
     </div>
 
-    <div className="h-1.5 rounded-full bg-black mt-2 overflow-hidden">
-      <motion.div
-        initial={{
-          width: 0,
-        }}
-        animate={{
-          width: `${percent}%`,
-        }}
-        className="h-full bg-cyan-400 rounded-full"
-      />
-    </div>
+    <p className="text-lg font-black italic font-mono mt-2">
+      {formatNumber(value)}
+    </p>
+
   </div>
 );
 
-const AnalyticsChart = ({
-  title,
+const GrowthCard = ({
+  label,
   value,
-  color = 'cyan',
+  icon: Icon,
 }) => (
-  <Card className="p-6">
+  <div className="p-5 rounded-3xl bg-white/[0.018] border border-white/[0.05]">
 
-    <div className="flex justify-between items-start">
+    <Icon
+      size={16}
+      className="text-cyan-400"
+    />
 
-      <div>
-        <p className="text-[7px] font-black uppercase tracking-[2px] text-zinc-600">
+    <p className="text-[8px] uppercase tracking-widest text-zinc-600 font-black mt-4">
+      {label}
+    </p>
+
+    <div className="mt-1">
+
+      {value === null ? (
+        <span className="text-sm font-black text-zinc-600">
+          Not enough data
+        </span>
+      ) : (
+        <span
+          className={`text-2xl font-black italic ${
+            value > 0
+              ? 'text-emerald-400'
+              : value < 0
+              ? 'text-rose-400'
+              : 'text-zinc-400'
+          }`}
+        >
+          {value > 0
+            ? '+'
+            : ''}
+          {value.toFixed(
+            1
+          )}
+          %
+        </span>
+      )}
+
+    </div>
+
+  </div>
+);
+
+const GrowthBadge = ({
+  value,
+}) => {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  if (value > 0) {
+    return (
+      <span className="flex items-center gap-1 text-[7px] font-black text-emerald-400">
+        <TrendingUp
+          size={10}
+        />
+        {value.toFixed(
+          1
+        )}%
+      </span>
+    );
+  }
+
+  if (value < 0) {
+    return (
+      <span className="flex items-center gap-1 text-[7px] font-black text-rose-400">
+        <TrendingDown
+          size={10}
+        />
+        {Math.abs(
+          value
+        ).toFixed(1)}
+        %
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-[7px] font-black text-zinc-600">
+      0%
+    </span>
+  );
+};
+
+const Signal = ({
+  label,
+  value,
+  icon: Icon,
+}) => (
+  <div className="p-3 rounded-2xl bg-white/[0.018] border border-white/[0.04]">
+
+    <Icon
+      size={12}
+      className="text-zinc-600"
+    />
+
+    <p className="text-sm font-black italic font-mono mt-2">
+      {typeof value ===
+      'number'
+        ? formatNumber(
+            value
+          )
+        : value}
+    </p>
+
+    <p className="text-[7px] uppercase tracking-widest text-zinc-700 font-black mt-1">
+      {label}
+    </p>
+
+  </div>
+);
+
+const ProfileRow = ({
+  label,
+  value,
+}) => (
+  <div className="flex items-center justify-between gap-4 py-2 border-b border-white/[0.035] last:border-0">
+
+    <span className="text-[8px] uppercase tracking-widest text-zinc-700 font-black">
+      {label}
+    </span>
+
+    <span className="text-[9px] text-zinc-400 font-bold truncate max-w-[60%]">
+      {value}
+    </span>
+
+  </div>
+);
+
+const TopContentRow = ({
+  item,
+  rank,
+  onVideo,
+}) => {
+  const title =
+    item.title ||
+    item.caption ||
+    item.video_title ||
+    'Untitled video';
+
+  const views =
+    item.views ??
+    item.views_count ??
+    0;
+
+  const likes =
+    item.likes ??
+    item.likes_count ??
+    0;
+
+  return (
+    <button
+      onClick={() =>
+        onVideo(
+          item
+        )
+      }
+      className="w-full flex items-center gap-3 p-3 rounded-2xl bg-white/[0.018] border border-white/[0.04] hover:border-cyan-500/10 text-left"
+    >
+
+      <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center text-[9px] font-black text-cyan-400">
+        {rank}
+      </div>
+
+      <div className="flex-1 min-w-0">
+
+        <p className="text-[10px] font-bold truncate text-zinc-300">
           {title}
         </p>
 
-        <p className="text-2xl font-black font-mono italic mt-2">
-          {value}
-        </p>
+        <div className="flex gap-3 mt-1">
+
+          <span className="text-[7px] text-zinc-600">
+            {formatNumber(
+              views
+            )}{' '}
+            views
+          </span>
+
+          <span className="text-[7px] text-zinc-600">
+            {formatNumber(
+              likes
+            )}{' '}
+            likes
+          </span>
+
+        </div>
+
       </div>
 
-      <BarChart3
-        size={15}
-        className={`${
-          color === 'purple'
-            ? 'text-purple-400'
-            : color === 'emerald'
-            ? 'text-emerald-400'
-            : color === 'yellow'
-            ? 'text-yellow-400'
-            : 'text-cyan-400'
-        }`}
+      <ChevronRight
+        size={13}
+        className="text-zinc-700"
       />
-    </div>
 
-    <div className="flex items-end gap-1 h-28 mt-6">
+    </button>
+  );
+};
 
-      {[
-        25,
-        38,
-        31,
-        48,
-        44,
-        62,
-        54,
-        71,
-        58,
-        77,
-        68,
-        86,
-      ].map(
-        (height, index) => (
-          <div
-            key={index}
-            className="flex-1 h-full flex items-end"
-          >
-            <div
-              className={`w-full rounded-t-md ${
-                color === 'purple'
-                  ? 'bg-purple-500/50'
-                  : color ===
-                    'emerald'
-                  ? 'bg-emerald-500/50'
-                  : color ===
-                    'yellow'
-                  ? 'bg-yellow-500/50'
-                  : 'bg-cyan-500/50'
-              }`}
-              style={{
-                height: `${height}%`,
-              }}
-            />
-          </div>
-        )
-      )}
-    </div>
-  </Card>
-);
-
-const MetricPanel = ({
-  title,
-  rows,
-}) => (
-  <Card className="p-5">
-
-    <p className="text-[8px] font-black uppercase tracking-[2px] text-zinc-500">
-      {title}
-    </p>
-
-    <div className="space-y-3 mt-5">
-
-      {rows.map(
-        ([label, value]) => (
-          <div
-            key={label}
-            className="flex justify-between items-center gap-3"
-          >
-            <span className="text-[8px] text-zinc-600 uppercase">
-              {label}
-            </span>
-
-            <span className="text-[8px] font-black text-zinc-300">
-              {value}
-            </span>
-          </div>
-        )
-      )}
-    </div>
-  </Card>
-);
-
-const QuickAction = ({
+const QuickTool = ({
   icon: Icon,
   title,
+  description,
   onClick,
 }) => (
   <button
     onClick={onClick}
-    className="p-4 rounded-2xl bg-zinc-900/30 border border-white/[0.05] hover:border-cyan-500/20 hover:bg-cyan-500/[0.03] text-left transition-all group"
+    className="text-left p-4 rounded-2xl bg-white/[0.018] border border-white/[0.045] hover:border-cyan-500/10 transition"
   >
-    <div className="w-9 h-9 rounded-xl bg-black border border-white/[0.05] flex items-center justify-center group-hover:border-cyan-500/20">
-      <Icon
-        size={15}
-        className="text-zinc-500 group-hover:text-cyan-400"
-      />
-    </div>
 
-    <p className="text-[8px] font-black uppercase tracking-wider mt-4">
-      {title}
-    </p>
-  </button>
-);
-
-const FeatureTile = ({
-  icon: Icon,
-  title,
-  large = false,
-}) => (
-  <button
-    className={`rounded-2xl bg-white/[0.02] border border-white/[0.05] hover:border-cyan-500/20 hover:bg-cyan-500/[0.025] transition-all group ${
-      large
-        ? 'p-6'
-        : 'p-4'
-    }`}
-  >
-    <Icon
-      size={large ? 19 : 15}
-      className="text-zinc-600 group-hover:text-cyan-400 transition-colors"
-    />
-
-    <p className="text-[7px] font-black uppercase tracking-wider mt-3">
-      {title}
-    </p>
-  </button>
-);
-
-const ToolLarge = ({
-  icon: Icon,
-  title,
-}) => (
-  <button className="p-6 rounded-2xl bg-zinc-900/30 border border-white/[0.06] hover:border-cyan-500/20 text-left transition-all group">
-    <div className="w-10 h-10 rounded-xl bg-black border border-white/[0.06] flex items-center justify-center">
-      <Icon
-        size={17}
-        className="text-zinc-500 group-hover:text-cyan-400"
-      />
-    </div>
-
-    <p className="text-[9px] font-black uppercase tracking-wider mt-4">
-      {title}
-    </p>
-
-    <p className="text-[7px] text-zinc-700 mt-1">
-      Creator tool
-    </p>
-  </button>
-);
-
-const ResourceCard = ({
-  icon: Icon,
-  title,
-}) => (
-  <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-    <Icon
-      size={17}
-      className="text-purple-400"
-    />
-
-    <p className="text-[9px] font-black uppercase mt-4">
-      {title}
-    </p>
-
-    <p className="text-[7px] text-zinc-700 mt-1">
-      Creator resource
-    </p>
-  </div>
-);
-
-const Recommendation = ({
-  icon: Icon,
-  title,
-  description,
-  score,
-}) => (
-  <Card className="p-4 flex items-center gap-4">
-
-    <div className="w-10 h-10 rounded-xl bg-cyan-500/5 border border-cyan-500/10 flex items-center justify-center">
-      <Icon
-        size={16}
-        className="text-cyan-400"
-      />
-    </div>
-
-    <div className="flex-1">
-      <p className="text-[9px] font-black">
-        {title}
-      </p>
-
-      <p className="text-[7px] text-zinc-600 mt-1">
-        {description}
-      </p>
-    </div>
-
-    <span className="text-[8px] font-black text-emerald-400">
-      {score}
-    </span>
-  </Card>
-);
-
-const SignalCard = ({
-  icon: Icon,
-  title,
-  value,
-  description,
-}) => (
-  <Card className="p-5">
     <Icon
       size={15}
       className="text-cyan-400"
     />
 
-    <p className="text-xl font-black font-mono mt-4">
-      {value}
-    </p>
-
-    <p className="text-[7px] font-black uppercase tracking-wider mt-1">
+    <p className="text-[9px] uppercase tracking-widest font-black mt-3">
       {title}
     </p>
 
-    <p className="text-[7px] text-zinc-700 mt-2">
+    <p className="text-[8px] text-zinc-700 mt-1">
       {description}
     </p>
-  </Card>
+
+  </button>
+);
+
+const VideoCard = ({
+  video,
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className="text-left group rounded-[24px] overflow-hidden border border-white/[0.05] bg-white/[0.015] hover:border-cyan-500/15 transition"
+  >
+
+    <div className="aspect-[9/14] bg-zinc-950 relative overflow-hidden">
+
+      {video.thumbnail_url ? (
+        <img
+          src={
+            video.thumbnail_url
+          }
+          alt=""
+          className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-500"
+        />
+      ) : video.video_url ? (
+        <video
+          src={
+            video.video_url
+          }
+          muted
+          playsInline
+          preload="metadata"
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          <Video
+            size={22}
+            className="text-zinc-800"
+          />
+        </div>
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black via-black/40 to-transparent">
+
+        <div className="flex items-center gap-2">
+
+          <span className="flex items-center gap-1 text-[7px] font-black">
+            <Eye size={9} />
+            {formatNumber(
+              video.views_count
+            )}
+          </span>
+
+          <span className="flex items-center gap-1 text-[7px] font-black">
+            <Heart size={9} />
+            {formatNumber(
+              video.likes_count
+            )}
+          </span>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <div className="p-4">
+
+      <p className="text-[10px] font-bold truncate">
+        {video.title ||
+          video.caption ||
+          'Untitled video'}
+      </p>
+
+      <div className="flex items-center justify-between mt-2">
+
+        <span className="text-[7px] uppercase tracking-widest text-zinc-700">
+          {video.status ||
+            'published'}
+        </span>
+
+        <span className="text-[7px] text-zinc-700">
+          {formatDate(
+            video.created_at
+          )}
+        </span>
+
+      </div>
+
+    </div>
+
+  </button>
+);
+
+const PerformanceRow = ({
+  item,
+}) => (
+  <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.018] border border-white/[0.04]">
+
+    <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+
+      <BarChart3
+        size={13}
+        className="text-cyan-400"
+      />
+
+    </div>
+
+    <div className="flex-1 min-w-0">
+
+      <p className="text-[9px] font-bold truncate">
+        {item.title ||
+          item.caption ||
+          item.video_title ||
+          'Video'}
+      </p>
+
+      <p className="text-[7px] text-zinc-700 mt-1">
+        {item.category ||
+          'Uncategorized'}
+      </p>
+
+    </div>
+
+    <div className="text-right">
+
+      <p className="text-[9px] font-black font-mono">
+        {formatNumber(
+          item.views ??
+            item.views_count
+        )}
+      </p>
+
+      <p className="text-[7px] text-zinc-700">
+        views
+      </p>
+
+    </div>
+
+  </div>
+);
+
+const LiveRow = ({
+  stream,
+}) => (
+  <div className="p-4 rounded-2xl bg-white/[0.018] border border-white/[0.04]">
+
+    <div className="flex items-start gap-3">
+
+      <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
+
+        <Radio
+          size={14}
+          className="text-purple-400"
+        />
+
+      </div>
+
+      <div className="flex-1 min-w-0">
+
+        <p className="text-[10px] font-bold truncate">
+          {stream.title ||
+            'Untitled livestream'}
+        </p>
+
+        <p className="text-[7px] text-zinc-700 mt-1">
+          {stream.category ||
+            'Uncategorized'}
+          {' · '}
+          {stream.status ||
+            'unknown'}
+        </p>
+
+      </div>
+
+      <div className="text-right">
+
+        <p className="text-[9px] font-black">
+          {formatNumber(
+            stream.peak_viewers
+          )}
+        </p>
+
+        <p className="text-[7px] text-zinc-700">
+          peak viewers
+        </p>
+
+      </div>
+
+    </div>
+
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4">
+
+      <TinyValue
+        label="Watch"
+        value={formatDuration(
+          stream.total_watch_seconds
+        )}
+      />
+
+      <TinyValue
+        label="Shares"
+        value={formatNumber(
+          stream.shares_count
+        )}
+      />
+
+      <TinyValue
+        label="Followers"
+        value={formatNumber(
+          stream.followers_gained
+        )}
+      />
+
+      <TinyValue
+        label="Gifts"
+        value={formatNumber(
+          stream.gifts_count ??
+            stream.total_gifts
+        )}
+      />
+
+      <TinyValue
+        label="Revenue"
+        value={`K${formatMoney(
+          stream.revenue
+        )}`}
+      />
+
+    </div>
+
+  </div>
+);
+
+const TinyValue = ({
+  label,
+  value,
+}) => (
+  <div className="p-2 rounded-xl bg-black/20">
+
+    <p className="text-[6px] uppercase tracking-widest text-zinc-700 font-black">
+      {label}
+    </p>
+
+    <p className="text-[8px] font-black font-mono mt-1">
+      {value}
+    </p>
+
+  </div>
+);
+
+const AchievementCard = ({
+  achievement,
+}) => {
+  const progress = safeNumber(
+    achievement.progress ??
+      achievement.progress_percent ??
+      achievement.percentage
+  );
+
+  const hasProgress =
+    achievement.progress !==
+      undefined ||
+    achievement.progress_percent !==
+      undefined ||
+    achievement.percentage !==
+      undefined;
+
+  return (
+    <div className="p-5 rounded-3xl bg-white/[0.018] border border-white/[0.05]">
+
+      <div className="flex items-start gap-3">
+
+        <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center">
+
+          <Trophy
+            size={15}
+            className="text-yellow-400"
+          />
+
+        </div>
+
+        <div className="flex-1">
+
+          <p className="text-[10px] font-black">
+            {achievement.name ||
+              achievement.title ||
+              achievement.achievement_name ||
+              'Achievement'}
+          </p>
+
+          <p className="text-[8px] text-zinc-600 mt-1 leading-relaxed">
+            {achievement.description ||
+              achievement.summary ||
+              'Creator achievement'}
+          </p>
+
+        </div>
+
+      </div>
+
+      {hasProgress && (
+        <div className="mt-5">
+
+          <div className="flex justify-between mb-2">
+
+            <span className="text-[7px] uppercase tracking-widest text-zinc-700 font-black">
+              Progress
+            </span>
+
+            <span className="text-[7px] text-zinc-500">
+              {Math.min(
+                100,
+                progress
+              ).toFixed(0)}
+              %
+            </span>
+
+          </div>
+
+          <div className="h-1.5 rounded-full bg-zinc-900 overflow-hidden">
+
+            <div
+              className="h-full bg-cyan-500"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    progress
+                  )
+                )}%`,
+              }}
+            />
+
+          </div>
+
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+const DrawerMetric = ({
+  label,
+  value,
+  icon: Icon,
+}) => (
+  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
+
+    <Icon
+      size={12}
+      className="text-cyan-400"
+    />
+
+    <p className="text-lg font-black font-mono italic mt-2">
+      {value}
+    </p>
+
+    <p className="text-[7px] uppercase tracking-widest text-zinc-700 font-black mt-1">
+      {label}
+    </p>
+
+  </div>
+);
+
+const InfoPanel = ({
+  title,
+  rows,
+}) => (
+  <div className="p-4 rounded-2xl bg-white/[0.018] border border-white/[0.04]">
+
+    <p className="text-[8px] uppercase tracking-[2px] font-black text-zinc-600 mb-3">
+      {title}
+    </p>
+
+    <div className="space-y-2">
+
+      {rows.map(
+        ([label, value]) => (
+          <ProfileRow
+            key={label}
+            label={label}
+            value={value}
+          />
+        )
+      )}
+
+    </div>
+
+  </div>
+);
+
+const ActionButton = ({
+  icon: Icon,
+  label,
+  onClick,
+  danger = false,
+  disabled = false,
+}) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[8px] uppercase tracking-widest font-black disabled:opacity-50 ${
+      danger
+        ? 'bg-red-500/10 text-red-400 border border-red-500/10'
+        : 'bg-white/5 text-zinc-400 border border-white/5'
+    }`}
+  >
+
+    <Icon size={12} />
+
+    {label}
+
+  </button>
+);
+
+const ReportButton = ({
+  title,
+  description,
+  icon: Icon,
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className="text-left p-5 rounded-2xl bg-white/[0.018] border border-white/[0.05] hover:border-cyan-500/10 transition"
+  >
+
+    <Icon
+      size={16}
+      className="text-cyan-400"
+    />
+
+    <p className="text-[9px] uppercase tracking-widest font-black mt-4">
+      {title}
+    </p>
+
+    <p className="text-[8px] text-zinc-700 mt-1">
+      {description}
+    </p>
+
+  </button>
 );
 
 const EmptyState = ({
@@ -6208,502 +5063,241 @@ const EmptyState = ({
   title,
   description,
 }) => (
-  <div className="py-12 text-center">
+  <div className="py-14 text-center">
 
-    <Icon
-      size={25}
-      className="text-zinc-800 mx-auto"
-    />
+    <div className="w-12 h-12 rounded-2xl bg-white/[0.025] border border-white/[0.04] flex items-center justify-center mx-auto">
 
-    <p className="text-[9px] font-black uppercase tracking-wider text-zinc-600 mt-4">
+      <Icon
+        size={18}
+        className="text-zinc-700"
+      />
+
+    </div>
+
+    <p className="text-[9px] uppercase tracking-[2px] font-black text-zinc-500 mt-4">
       {title}
     </p>
 
-    <p className="text-[8px] text-zinc-800 max-w-xs mx-auto mt-2">
+    <p className="text-[8px] text-zinc-700 mt-2 max-w-xs mx-auto leading-relaxed">
       {description}
     </p>
+
   </div>
 );
 
-const LibraryCard = ({
-  icon: Icon,
-  title,
-  count,
-}) => (
-  <Card className="p-5">
-    <Icon
-      size={17}
-      className="text-cyan-400"
-    />
+/*
+============================================================
+REAL ANALYTICS CHART
+============================================================
 
-    <p className="text-2xl font-black font-mono mt-5">
-      {count}
-    </p>
+No fake bars.
 
-    <p className="text-[7px] font-black uppercase tracking-wider text-zinc-600 mt-1">
-      {title}
-    </p>
-  </Card>
-);
+The chart is generated from actual rows returned by
+creator_studio_daily_analytics / creator_daily_stats.
+============================================================
+*/
 
-const StorageItem = ({
+const AnalyticsChart = ({
+  data,
+  metric,
+  secondaryMetric,
   label,
-  value,
-}) => (
-  <div className="p-3 rounded-xl bg-white/[0.02]">
-    <p className="text-[7px] text-zinc-700 uppercase">
-      {label}
-    </p>
+}) => {
+  if (!data?.length) {
+    return (
+      <EmptyState
+        icon={BarChart3}
+        title="No data"
+        description="No analytics records exist for this metric."
+      />
+    );
+  }
 
-    <p className="text-[9px] font-black mt-1">
-      {value}
-    </p>
-  </div>
-);
+  const values = data.map(
+    (item) =>
+      safeNumber(
+        item?.[metric]
+      )
+  );
 
-const StatusCard = ({
-  title,
-  icon: Icon,
-  value,
-}) => (
-  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-    <Icon
-      size={14}
-      className="text-emerald-400"
-    />
+  const secondaryValues =
+    secondaryMetric
+      ? data.map(
+          (item) =>
+            safeNumber(
+              item?.[
+                secondaryMetric
+              ]
+            )
+        )
+      : [];
 
-    <p className="text-[8px] font-black uppercase mt-3">
-      {title}
-    </p>
+  const max = Math.max(
+    1,
+    ...values,
+    ...secondaryValues
+  );
 
-    <p className="text-[7px] text-zinc-600 mt-1">
-      {value}
-    </p>
-  </div>
-);
+  return (
+    <div>
 
-const ScheduleItem = ({
-  date,
-  title,
-  type,
-}) => (
-  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+      <div className="h-48 flex items-end gap-[3px]">
 
-    <div className="flex justify-between gap-3">
+        {data.map(
+          (item, index) => {
+            const value =
+              values[index];
 
-      <div>
-        <p className="text-[7px] text-cyan-400 font-black uppercase">
-          {date}
-        </p>
+            const height =
+              (value / max) *
+              100;
 
-        <p className="text-[9px] font-black mt-2">
-          {title}
-        </p>
+            const secondary =
+              secondaryMetric
+                ? (secondaryValues[
+                    index
+                  ] /
+                    max) *
+                  100
+                : 0;
+
+            return (
+              <div
+                key={
+                  item.stat_date ||
+                  item.created_at ||
+                  index
+                }
+                className="flex-1 h-full flex items-end gap-[1px] group relative"
+              >
+
+                <div
+                  className="w-full bg-cyan-500/60 rounded-t-sm min-h-[2px] transition-all group-hover:bg-cyan-400"
+                  style={{
+                    height: `${Math.max(
+                      2,
+                      height
+                    )}%`,
+                  }}
+                  title={`${label}: ${formatNumber(
+                    value
+                  )}`}
+                />
+
+                {secondaryMetric && (
+                  <div
+                    className="w-full bg-purple-500/50 rounded-t-sm min-h-[2px]"
+                    style={{
+                      height: `${Math.max(
+                        2,
+                        secondary
+                      )}%`,
+                    }}
+                  />
+                )}
+
+              </div>
+            );
+          }
+        )}
+
       </div>
 
-      <span className="text-[6px] font-black uppercase text-zinc-600">
-        {type}
-      </span>
-    </div>
-  </div>
-);
+      <div className="flex justify-between mt-3 text-[7px] text-zinc-700 font-mono">
 
-const TrendRow = ({
-  title,
-  growth,
-}) => (
-  <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02]">
-    <TrendingUp
-      size={13}
-      className="text-emerald-400"
-    />
-
-    <span className="flex-1 text-[8px] font-black">
-      {title}
-    </span>
-
-    <span className="text-[8px] font-black text-emerald-400">
-      {growth}
-    </span>
-  </div>
-);
-
-const AIPlanCard = ({
-  day,
-  idea,
-}) => (
-  <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-    <p className="text-[7px] uppercase text-zinc-700 font-black">
-      {day}
-    </p>
-
-    <p className="text-[10px] font-black mt-3">
-      {idea}
-    </p>
-
-    <span className="inline-flex mt-4 px-2 py-1 rounded bg-purple-500/10 text-purple-300 text-[6px] font-black uppercase">
-      AI suggested
-    </span>
-  </div>
-);
-
-const HealthMetric = ({
-  icon: Icon,
-  label,
-  value,
-}) => (
-  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-    <Icon
-      size={14}
-      className="text-emerald-400"
-    />
-
-    <p className="text-[8px] font-black mt-3">
-      {value}
-    </p>
-
-    <p className="text-[6px] uppercase text-zinc-700 mt-1">
-      {label}
-    </p>
-  </div>
-);
-
-const GoalCard = ({
-  title,
-  current,
-  target,
-  icon: Icon,
-}) => (
-  <Card className="p-5">
-
-    <Icon
-      size={16}
-      className="text-cyan-400"
-    />
-
-    <p className="text-[9px] font-black uppercase mt-4">
-      {title}
-    </p>
-
-    <div className="flex justify-between mt-3">
-      <span className="text-lg font-black font-mono">
-        {current}
-      </span>
-
-      <span className="text-[8px] text-zinc-700 self-end">
-        / {target}
-      </span>
-    </div>
-
-    <div className="h-1.5 bg-black rounded-full mt-3 overflow-hidden">
-      <div className="w-[78%] h-full bg-cyan-400 rounded-full" />
-    </div>
-  </Card>
-);
-
-const RevenueSource = ({
-  icon: Icon,
-  title,
-  value,
-}) => (
-  <Card className="p-5">
-    <Icon
-      size={15}
-      className="text-emerald-400"
-    />
-
-    <p className="text-[8px] font-black uppercase mt-4">
-      {title}
-    </p>
-
-    <p className="text-sm font-black font-mono mt-2">
-      {value}
-    </p>
-  </Card>
-);
-
-const PaymentCard = ({
-  icon: Icon,
-  title,
-}) => (
-  <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-    <Icon
-      size={18}
-      className="text-cyan-400"
-    />
-
-    <p className="text-[9px] font-black uppercase mt-4">
-      {title}
-    </p>
-
-    <button className="text-[7px] uppercase font-black text-cyan-400 mt-3">
-      Configure
-    </button>
-  </div>
-);
-
-const ProgramCard = ({
-  icon: Icon,
-  title,
-  badge,
-}) => (
-  <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05]">
-    <Icon
-      size={17}
-      className="text-purple-400"
-    />
-
-    <div className="flex items-center justify-between mt-4">
-      <p className="text-[9px] font-black uppercase">
-        {title}
-      </p>
-
-      {badge && (
-        <span className="text-[6px] font-black uppercase px-1.5 py-1 rounded bg-cyan-500/10 text-cyan-300">
-          {badge}
+        <span>
+          {formatDate(
+            data[0]?.stat_date
+          )}
         </span>
+
+        <span>
+          {formatDate(
+            data[
+              data.length - 1
+            ]?.stat_date
+          )}
+        </span>
+
+      </div>
+
+      {secondaryMetric && (
+        <div className="flex gap-4 mt-4">
+
+          <span className="flex items-center gap-2 text-[7px] uppercase tracking-widest text-zinc-600">
+            <span className="w-2 h-2 rounded-sm bg-cyan-500/60" />
+            {label}
+          </span>
+
+          <span className="flex items-center gap-2 text-[7px] uppercase tracking-widest text-zinc-600">
+            <span className="w-2 h-2 rounded-sm bg-purple-500/50" />
+            {secondaryMetric.replace(
+              /_/g,
+              ' '
+            )}
+          </span>
+
+        </div>
       )}
+
     </div>
-  </div>
-);
+  );
+};
 
-const ProfileMetric = ({
-  label,
-  value,
-}) => (
-  <Card className="p-5">
-    <p className="text-xl font-black font-mono">
-      {value}
-    </p>
+const AnalyticsMiniChart = ({
+  data,
+  metric,
+}) => {
+  if (!data?.length) {
+    return null;
+  }
 
-    <p className="text-[7px] text-zinc-700 uppercase tracking-wider mt-1">
-      {label}
-    </p>
-  </Card>
-);
+  const values = data.map(
+    (item) =>
+      safeNumber(
+        item?.[metric]
+      )
+  );
 
-const SecurityCard = ({
-  icon: Icon,
-  title,
-  status,
-}) => (
-  <Card className="p-5 flex items-center gap-4">
+  const max = Math.max(
+    1,
+    ...values
+  );
 
-    <div className="w-10 h-10 rounded-xl bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-center">
-      <Icon
-        size={16}
-        className="text-emerald-400"
-      />
-    </div>
+  const recent =
+    values.slice(-30);
 
-    <div>
-      <p className="text-[9px] font-black uppercase">
-        {title}
-      </p>
+  return (
+    <div className="h-32 flex items-end gap-1">
 
-      <p className="text-[7px] text-zinc-600 mt-1">
-        {status}
-      </p>
-    </div>
-  </Card>
-);
+      {recent.map(
+        (value, index) => (
+          <div
+            key={index}
+            className="flex-1 h-full flex items-end"
+          >
 
-const SecurityEvent = ({
-  title,
-  device,
-  status,
-}) => (
-  <div className="flex items-center gap-3 p-4 rounded-xl bg-white/[0.02]">
-    <Shield
-      size={13}
-      className="text-emerald-400"
-    />
+            <div
+              className="w-full rounded-t-sm bg-cyan-500/60 hover:bg-cyan-400 transition"
+              style={{
+                height: `${Math.max(
+                  2,
+                  (value /
+                    max) *
+                    100
+                )}%`,
+              }}
+              title={formatNumber(
+                value
+              )}
+            />
 
-    <div className="flex-1">
-      <p className="text-[8px] font-black">
-        {title}
-      </p>
-
-      <p className="text-[7px] text-zinc-700 mt-1">
-        {device}
-      </p>
-    </div>
-
-    <span className="text-[7px] font-black text-emerald-400 uppercase">
-      {status}
-    </span>
-  </div>
-);
-
-const ToggleRow = ({
-  label,
-  description,
-  enabled = false,
-  onChange,
-}) => (
-  <div className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-
-    <div className="flex-1">
-      <p className="text-[9px] font-black">
-        {label}
-      </p>
-
-      {description && (
-        <p className="text-[7px] text-zinc-700 mt-1">
-          {description}
-        </p>
+          </div>
+        )
       )}
+
     </div>
-
-    <button
-      onClick={onChange}
-      className={`w-10 h-5 rounded-full p-0.5 transition-all ${
-        enabled
-          ? 'bg-cyan-500'
-          : 'bg-zinc-800'
-      }`}
-    >
-      <span
-        className={`block w-4 h-4 rounded-full bg-white transition-transform ${
-          enabled
-            ? 'translate-x-5'
-            : 'translate-x-0'
-        }`}
-      />
-    </button>
-  </div>
-);
-
-const SettingDisplay = ({
-  label,
-  value,
-}) => (
-  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-    <p className="text-[7px] text-zinc-700 uppercase">
-      {label}
-    </p>
-
-    <p className="text-[9px] font-black mt-2">
-      {value}
-    </p>
-  </div>
-);
-
-const ReportCard = ({
-  icon: Icon,
-  title,
-}) => (
-  <Card className="p-5">
-    <Icon
-      size={17}
-      className="text-cyan-400"
-    />
-
-    <p className="text-[9px] font-black uppercase mt-4">
-      {title}
-    </p>
-
-    <button className="text-[7px] text-cyan-400 uppercase font-black mt-3">
-      Generate
-    </button>
-  </Card>
-);
-
-const ExportRow = ({
-  title,
-  description,
-  onClick,
-}) => (
-  <div className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-
-    <FileDown
-      size={15}
-      className="text-cyan-400"
-    />
-
-    <div className="flex-1">
-      <p className="text-[9px] font-black">
-        {title}
-      </p>
-
-      <p className="text-[7px] text-zinc-700 mt-1">
-        {description}
-      </p>
-    </div>
-
-    <button
-      onClick={onClick}
-      className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400"
-    >
-      <Download size={13} />
-    </button>
-  </div>
-);
-
-/*
-|--------------------------------------------------------------------------
-| ICON FALLBACK COMPONENTS
-|--------------------------------------------------------------------------
-|
-| These aliases keep the main UI readable while avoiding dependency
-| on custom icon packages.
-|--------------------------------------------------------------------------
-*/
-
-const QrCodeIcon = ({
-  size = 18,
-  className = '',
-}) => (
-  <div
-    className={`flex items-center justify-center ${className}`}
-    style={{
-      width: size,
-      height: size,
-    }}
-  >
-    <div className="w-full h-full border-2 border-current grid grid-cols-2 gap-[2px] p-[2px]">
-      <span className="border border-current" />
-      <span className="bg-current" />
-      <span className="bg-current" />
-      <span className="border border-current" />
-    </div>
-  </div>
-);
-
-const BadgeIcon = ({
-  size = 18,
-  className = '',
-}) => (
-  <CheckCircle2
-    size={size}
-    className={className}
-  />
-);
-
-const FingerprintIcon = ({
-  size = 18,
-  className = '',
-}) => (
-  <Fingerprint
-    size={size}
-    className={className}
-  />
-);
-
-const MailIcon = ({
-  size = 18,
-  className = '',
-}) => (
-  <FileText
-    size={size}
-    className={className}
-  />
-);
-
-/*
-|--------------------------------------------------------------------------
-| EXPORT
-|--------------------------------------------------------------------------
-*/
+  );
+};
 
 export default UniverseTools;
