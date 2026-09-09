@@ -8248,22 +8248,20 @@ function Upload({
             className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none"
           />
 
-          {draft.scheduledAt && (
-            <button
-              type="button"
-              onClick={() =>
-                setDraft(
-                  (previous) => ({
-                    ...previous,
-                    scheduledAt:
-                      ""
-                  })
-              }
-              className="mt-2 text-xs text-white/40 hover:text-white"
-            >
-              Clear schedule
-            </button>
-          )}
+         {draft.scheduledAt && (
+  <button
+    type="button"
+    onClick={() =>
+      setDraft((previous) => ({
+        ...previous,
+        scheduledAt: ""
+      }))
+    }
+    className="mt-2 text-xs text-white/40 hover:text-white"
+  >
+    Clear schedule
+  </button>
+)}
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
