@@ -3,6 +3,7 @@ import React, {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
 } from "react";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -26,11 +27,51 @@ import {
   RefreshCw,
   Plus,
   Send,
+  Users,
+  AtSign,
+  Share2,
+  Bookmark,
+  Gift,
+  Crown,
+  ShieldAlert,
+  Megaphone,
+  Video,
+  ChevronRight,
+  MoreHorizontal,
+  UserCheck,
+  Clock3,
+  Inbox as InboxIcon,
+  Zap,
+  CircleDot,
 } from "lucide-react";
 
 import { supabase } from "../supabaseClient";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
+
+/*
+ * ============================================================
+ * INBOX
+ * ============================================================
+ *
+ * IMPORTANT ARCHITECTURE
+ * ------------------------------------------------------------
+ * Inbox is an overview/notification center.
+ *
+ * The actual conversation UI remains on:
+ *
+ *     /messaging?userId=<USER_ID>
+ *
+ * Inbox therefore only displays:
+ * - sender
+ * - avatar
+ * - last message preview
+ * - timestamp
+ * - unread count
+ *
+ * Existing Supabase fetching/realtime architecture is preserved.
+ * ============================================================
+ */
 
 const Inbox = () => {
   const navigate = useNavigate();
@@ -72,6 +113,12 @@ const Inbox = () => {
   const [acceptingInviteId, setAcceptingInviteId] =
     useState(null);
 
+  const [markingAllRead, setMarkingAllRead] =
+    useState(false);
+
+  const [showMoreMenu, setShowMoreMenu] =
+    useState(false);
+
   // =========================================================
   // DRAWERS
   // =========================================================
@@ -99,12 +146,65 @@ const Inbox = () => {
   const fetchInProgressRef = useRef(false);
 
   // =========================================================
+  // HELPERS
+  // =========================================================
+
+  const isFollowerType = useCallback((type) => {
+    return (
+      type === "follow" ||
+      type === "user_follow"
+    );
+  }, []);
+
+  const isLikeType = useCallback((type) => {
+    return (
+      type === "like" ||
+      type === "video_likes" ||
+      type === "video_like"
+    );
+  }, []);
+
+  const isCommentType = useCallback((type) => {
+    return (
+      type === "comment" ||
+      type === "video_comments" ||
+      type === "video_comment"
+    );
+  }, []);
+
+  const isUnreadMessage = useCallback((message) => {
+    if (!message) {
+      return false;
+    }
+
+    if (
+      typeof message.unread === "boolean"
+    ) {
+      return message.unread === true;
+    }
+
+    if (
+      typeof message.unread === "string"
+    ) {
+      return message.unread.toLowerCase() === "true";
+    }
+
+    return (
+      message.status === "unread" ||
+      message.status === "delivered"
+    );
+  }, []);
+
+  // =========================================================
   // FETCH PROFILES
   // =========================================================
 
   const fetchProfilesBatch = useCallback(
     async (userIds) => {
-      if (!userIds || userIds.length === 0) {
+      if (
+        !userIds ||
+        userIds.length === 0
+      ) {
         return new Map();
       }
 
@@ -114,7 +214,9 @@ const Inbox = () => {
         ),
       ];
 
-      if (uniqueIds.length === 0) {
+      if (
+        uniqueIds.length === 0
+      ) {
         return new Map();
       }
 
@@ -139,10 +241,12 @@ const Inbox = () => {
         }
 
         return new Map(
-          (data || []).map((profile) => [
-            profile.id,
-            profile,
-          ])
+          (data || []).map(
+            (profile) => [
+              profile.id,
+              profile,
+            ]
+          )
         );
       } catch (error) {
         console.warn(
@@ -162,7 +266,10 @@ const Inbox = () => {
 
   const fetchVideosBatch = useCallback(
     async (videoIds) => {
-      if (!videoIds || videoIds.length === 0) {
+      if (
+        !videoIds ||
+        videoIds.length === 0
+      ) {
         return new Map();
       }
 
@@ -172,7 +279,9 @@ const Inbox = () => {
         ),
       ];
 
-      if (uniqueIds.length === 0) {
+      if (
+        uniqueIds.length === 0
+      ) {
         return new Map();
       }
 
@@ -197,10 +306,12 @@ const Inbox = () => {
         }
 
         return new Map(
-          (data || []).map((video) => [
-            video.id,
-            video,
-          ])
+          (data || []).map(
+            (video) => [
+              video.id,
+              video,
+            ]
+          )
         );
       } catch (error) {
         console.warn(
@@ -219,16 +330,25 @@ const Inbox = () => {
   // =========================================================
 
   const fetchData = useCallback(
-    async (uid, isManual = false) => {
-      if (!uid || !mountedRef.current) {
+    async (
+      uid,
+      isManual = false
+    ) => {
+      if (
+        !uid ||
+        !mountedRef.current
+      ) {
         return;
       }
 
-      if (fetchInProgressRef.current) {
+      if (
+        fetchInProgressRef.current
+      ) {
         return;
       }
 
-      fetchInProgressRef.current = true;
+      fetchInProgressRef.current =
+        true;
 
       if (isManual) {
         setIsRefreshing(true);
@@ -239,89 +359,129 @@ const Inbox = () => {
         // LIVE STREAMS
         // -----------------------------------------------------
 
-        const streamsPromise = supabase
-          .from("live_streams")
-          .select(
-            "*, profiles:host_id(avatar_url, username)"
-          )
-          .eq("status", "live");
+        const streamsPromise =
+          supabase
+            .from("live_streams")
+            .select(
+              "*, profiles:host_id(avatar_url, username)"
+            )
+            .eq(
+              "status",
+              "live"
+            );
 
         // -----------------------------------------------------
         // ACTIVITIES
         // -----------------------------------------------------
 
-        const activitiesPromise = supabase
-          .from("activities")
-          .select(`
-            *,
-            actor:profiles!actor_id(
-              id,
-              avatar_url,
-              username,
-              full_name,
-              is_verified
-            ),
-            videos:video_id(
-              id,
-              thumbnail_url,
-              video_url,
-              caption
+        const activitiesPromise =
+          supabase
+            .from("activities")
+            .select(`
+              *,
+              actor:profiles!actor_id(
+                id,
+                avatar_url,
+                username,
+                full_name,
+                is_verified
+              ),
+              videos:video_id(
+                id,
+                thumbnail_url,
+                video_url,
+                caption
+              )
+            `)
+            .eq(
+              "user_id",
+              uid
             )
-          `)
-          .eq("user_id", uid)
-          .order("created_at", {
-            ascending: false,
-          })
-          .limit(100);
+            .order(
+              "created_at",
+              {
+                ascending:
+                  false,
+              }
+            )
+            .limit(100);
 
         // -----------------------------------------------------
         // MESSAGES
         // -----------------------------------------------------
 
-        const messagesPromise = supabase
-          .from("messages")
-          .select("*")
-          .or(
-            `receiver_id.eq.${uid},sender_id.eq.${uid}`
-          )
-          .order("updated_at", {
-            ascending: false,
-          })
-          .limit(300);
+        const messagesPromise =
+          supabase
+            .from("messages")
+            .select("*")
+            .or(
+              `receiver_id.eq.${uid},sender_id.eq.${uid}`
+            )
+            .order(
+              "updated_at",
+              {
+                ascending:
+                  false,
+              }
+            )
+            .limit(300);
 
         // -----------------------------------------------------
         // FOLLOWS
         // -----------------------------------------------------
 
-        const followsPromise = supabase
-          .from("follows")
-          .select("following_id")
-          .eq("follower_id", uid);
+        const followsPromise =
+          supabase
+            .from("follows")
+            .select(
+              "following_id"
+            )
+            .eq(
+              "follower_id",
+              uid
+            );
 
         // -----------------------------------------------------
         // LIVE INVITES
         // -----------------------------------------------------
 
-        const invitesPromise = supabase
-          .from("live_guest_requests")
-          .select("*")
-          .eq("user_id", uid)
-          .eq("status", "invited")
-          .order("created_at", {
-            ascending: false,
-          });
+        const invitesPromise =
+          supabase
+            .from(
+              "live_guest_requests"
+            )
+            .select("*")
+            .eq(
+              "user_id",
+              uid
+            )
+            .eq(
+              "status",
+              "invited"
+            )
+            .order(
+              "created_at",
+              {
+                ascending:
+                  false,
+              }
+            );
 
         // -----------------------------------------------------
         // SUGGESTED USERS
         // -----------------------------------------------------
 
-        const suggestedUsersPromise = supabase
-          .from("profiles")
-          .select(
-            "id, username, avatar_url, full_name, is_verified"
-          )
-          .neq("id", uid)
-          .limit(25);
+        const suggestedUsersPromise =
+          supabase
+            .from("profiles")
+            .select(
+              "id, username, avatar_url, full_name, is_verified"
+            )
+            .neq(
+              "id",
+              uid
+            )
+            .limit(25);
 
         const [
           streamsRes,
@@ -339,7 +499,9 @@ const Inbox = () => {
           suggestedUsersPromise,
         ]);
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return;
         }
 
@@ -347,9 +509,12 @@ const Inbox = () => {
         // LIVE STREAMS
         // =====================================================
 
-        if (!streamsRes.error) {
+        if (
+          !streamsRes.error
+        ) {
           setLiveStreams(
-            streamsRes.data || []
+            streamsRes.data ||
+              []
           );
         } else {
           console.error(
@@ -362,10 +527,15 @@ const Inbox = () => {
         // FOLLOWS
         // =====================================================
 
-        if (!followsRes.error) {
+        if (
+          !followsRes.error
+        ) {
           setMyFollows(
             new Set(
-              (followsRes.data || []).map(
+              (
+                followsRes.data ||
+                []
+              ).map(
                 (follow) =>
                   follow.following_id
               )
@@ -382,9 +552,12 @@ const Inbox = () => {
         // SUGGESTED USERS
         // =====================================================
 
-        if (!suggestedRes.error) {
+        if (
+          !suggestedRes.error
+        ) {
           setSuggestedUsers(
-            suggestedRes.data || []
+            suggestedRes.data ||
+              []
           );
         } else {
           console.error(
@@ -398,7 +571,8 @@ const Inbox = () => {
         // =====================================================
 
         let processedActivities =
-          activitiesRes.data || [];
+          activitiesRes.data ||
+          [];
 
         if (
           activitiesRes.error ||
@@ -414,10 +588,17 @@ const Inbox = () => {
           } = await supabase
             .from("activities")
             .select("*")
-            .eq("user_id", uid)
-            .order("created_at", {
-              ascending: false,
-            })
+            .eq(
+              "user_id",
+              uid
+            )
+            .order(
+              "created_at",
+              {
+                ascending:
+                  false,
+              }
+            )
             .limit(100);
 
           if (
@@ -428,10 +609,12 @@ const Inbox = () => {
               rawActivitiesError.message
             );
 
-            processedActivities = [];
+            processedActivities =
+              [];
           } else if (
             rawActivities &&
-            rawActivities.length > 0
+            rawActivities.length >
+              0
           ) {
             const actorIds = [
               ...new Set(
@@ -458,14 +641,15 @@ const Inbox = () => {
             const [
               profilesMap,
               videosMap,
-            ] = await Promise.all([
-              fetchProfilesBatch(
-                actorIds
-              ),
-              fetchVideosBatch(
-                videoIds
-              ),
-            ]);
+            ] =
+              await Promise.all([
+                fetchProfilesBatch(
+                  actorIds
+                ),
+                fetchVideosBatch(
+                  videoIds
+                ),
+              ]);
 
             processedActivities =
               rawActivities.map(
@@ -483,7 +667,6 @@ const Inbox = () => {
               );
           }
         } else {
-          // Fill missing actor information
           const missingActorIds =
             processedActivities
               .filter(
@@ -496,7 +679,6 @@ const Inbox = () => {
                   activity.actor_id
               );
 
-          // Fill missing video information
           const missingVideoIds =
             processedActivities
               .filter(
@@ -510,20 +692,23 @@ const Inbox = () => {
               );
 
           if (
-            missingActorIds.length > 0 ||
-            missingVideoIds.length > 0
+            missingActorIds.length >
+              0 ||
+            missingVideoIds.length >
+              0
           ) {
             const [
               profilesMap,
               videosMap,
-            ] = await Promise.all([
-              fetchProfilesBatch(
-                missingActorIds
-              ),
-              fetchVideosBatch(
-                missingVideoIds
-              ),
-            ]);
+            ] =
+              await Promise.all([
+                fetchProfilesBatch(
+                  missingActorIds
+                ),
+                fetchVideosBatch(
+                  missingVideoIds
+                ),
+              ]);
 
             processedActivities =
               processedActivities.map(
@@ -548,7 +733,9 @@ const Inbox = () => {
           }
         }
 
-        if (mountedRef.current) {
+        if (
+          mountedRef.current
+        ) {
           setActivities(
             processedActivities
           );
@@ -561,7 +748,8 @@ const Inbox = () => {
         if (
           !invitesRes.error &&
           invitesRes.data &&
-          invitesRes.data.length > 0
+          invitesRes.data.length >
+            0
         ) {
           const streamIds = [
             ...new Set(
@@ -574,12 +762,17 @@ const Inbox = () => {
             ),
           ];
 
-          if (streamIds.length > 0) {
+          if (
+            streamIds.length >
+            0
+          ) {
             const {
               data: activeStreamsData,
               error: activeStreamsError,
             } = await supabase
-              .from("live_streams")
+              .from(
+                "live_streams"
+              )
               .select(`
                 *,
                 host:profiles!host_id(
@@ -588,8 +781,14 @@ const Inbox = () => {
                   avatar_url
                 )
               `)
-              .in("id", streamIds)
-              .eq("status", "live");
+              .in(
+                "id",
+                streamIds
+              )
+              .eq(
+                "status",
+                "live"
+              );
 
             if (
               activeStreamsError
@@ -599,7 +798,9 @@ const Inbox = () => {
                 activeStreamsError.message
               );
 
-              setLiveInvites([]);
+              setLiveInvites(
+                []
+              );
             } else {
               const streamsMap =
                 new Map(
@@ -641,10 +842,14 @@ const Inbox = () => {
               }
             }
           } else {
-            setLiveInvites([]);
+            setLiveInvites(
+              []
+            );
           }
         } else {
-          setLiveInvites([]);
+          setLiveInvites(
+            []
+          );
         }
 
         // =====================================================
@@ -671,18 +876,22 @@ const Inbox = () => {
               `receiver_id.eq.${uid},sender_id.eq.${uid}`
             );
 
-          if (plainMsgsError) {
+          if (
+            plainMsgsError
+          ) {
             console.error(
               "Fallback messages error:",
               plainMsgsError.message
             );
           } else {
             rawMsgs =
-              plainMsgs || [];
+              plainMsgs ||
+              [];
           }
         } else {
           rawMsgs =
-            messagesRes.data || [];
+            messagesRes.data ||
+            [];
         }
 
         // =====================================================
@@ -690,7 +899,8 @@ const Inbox = () => {
         // =====================================================
 
         if (
-          rawMsgs.length > 0
+          rawMsgs.length >
+          0
         ) {
           rawMsgs.sort(
             (a, b) => {
@@ -709,33 +919,31 @@ const Inbox = () => {
                 ).getTime();
 
               return (
-                timeB - timeA
+                timeB -
+                timeA
               );
             }
           );
 
-          const peerUserIds = [
-            ...new Set(
-              rawMsgs
-                .map(
-                  (message) =>
-                    message.sender_id ===
-                    uid
-                      ? message.receiver_id
-                      : message.sender_id
-                )
-                .filter(Boolean)
-            ),
-          ];
+          const peerUserIds =
+            [
+              ...new Set(
+                rawMsgs
+                  .map(
+                    (message) =>
+                      message.sender_id ===
+                      uid
+                        ? message.receiver_id
+                        : message.sender_id
+                  )
+                  .filter(Boolean)
+              ),
+            ];
 
           const profilesMap =
             await fetchProfilesBatch(
               peerUserIds
             );
-
-          // ---------------------------------------------------
-          // UNREAD COUNTS
-          // ---------------------------------------------------
 
           const unreadCountPerPeer =
             {};
@@ -746,45 +954,11 @@ const Inbox = () => {
                 message.receiver_id ===
                 uid;
 
-              /*
-               * Primary source of truth:
-               * unread === true
-               *
-               * We only fall back to status when unread
-               * is not present.
-               */
-
-              let isUnread = false;
-
               if (
-                typeof message.unread ===
-                "boolean"
-              ) {
-                isUnread =
-                  isForMe &&
-                  message.unread ===
-                    true;
-              } else if (
-                typeof message.unread ===
-                "string"
-              ) {
-                isUnread =
-                  isForMe &&
-                  message.unread.toLowerCase() ===
-                    "true";
-              } else {
-                isUnread =
-                  isForMe &&
-                  (
-                    message.status ===
-                      "unread" ||
-                    message.status ===
-                      "delivered"
-                  );
-              }
-
-              if (
-                isUnread &&
+                isForMe &&
+                isUnreadMessage(
+                  message
+                ) &&
                 message.sender_id
               ) {
                 const peerId =
@@ -802,11 +976,8 @@ const Inbox = () => {
             }
           );
 
-          // ---------------------------------------------------
-          // GROUP INTO UNIQUE CONVERSATIONS
-          // ---------------------------------------------------
-
-          const uniqueThreads = [];
+          const uniqueThreads =
+            [];
 
           const seenPeerIds =
             new Set();
@@ -849,52 +1020,55 @@ const Inbox = () => {
                       5
                     )}`;
 
-              const displayProfile = {
-                id: peerId,
+              const displayProfile =
+                {
+                  id: peerId,
 
-                username:
-                  profile?.username ||
-                  fallbackUsername,
+                  username:
+                    profile?.username ||
+                    fallbackUsername,
 
-                full_name:
-                  profile?.full_name ||
-                  "",
+                  full_name:
+                    profile?.full_name ||
+                    "",
 
-                avatar_url:
-                  profile?.avatar_url ||
-                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId}`,
+                  avatar_url:
+                    profile?.avatar_url ||
+                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId}`,
 
-                is_verified:
-                  profile?.is_verified ||
-                  false,
+                  is_verified:
+                    profile?.is_verified ||
+                    false,
 
-                online:
-                  profile?.online ??
-                  message.online ??
-                  false,
-              };
+                  online:
+                    profile?.online ??
+                    message.online ??
+                    false,
+                };
 
-              uniqueThreads.push({
-                ...message,
+              uniqueThreads.push(
+                {
+                  ...message,
 
-                displayProfile,
+                  displayProfile,
 
-                unreadCount:
-                  unreadCountPerPeer[
-                    peerId
-                  ] || 0,
+                  unreadCount:
+                    unreadCountPerPeer[
+                      peerId
+                    ] || 0,
 
-                isFromMe,
+                  isFromMe,
 
-                last_msg:
-                  message.last_msg ||
-                  message.content ||
-                  "",
+                  last_msg:
+                    message.last_msg ||
+                    message.content ||
+                    "",
 
-                updated_at:
-                  message.updated_at ||
-                  message.created_at,
-              });
+                  updated_at:
+                    message.updated_at ||
+                    message.created_at,
+                }
+              );
             }
           );
 
@@ -906,7 +1080,9 @@ const Inbox = () => {
             );
           }
         } else {
-          setMessages([]);
+          setMessages(
+            []
+          );
         }
 
         if (
@@ -929,13 +1105,16 @@ const Inbox = () => {
           mountedRef.current
         ) {
           setLoading(false);
-          setIsRefreshing(false);
+          setIsRefreshing(
+            false
+          );
         }
       }
     },
     [
       fetchProfilesBatch,
       fetchVideosBatch,
+      isUnreadMessage,
     ]
   );
 
@@ -943,180 +1122,189 @@ const Inbox = () => {
   // MESSAGE PREVIEW
   // =========================================================
 
-  const getMessagePreviewText = (
-    message
-  ) => {
-    if (
-      message.type === "voice" ||
-      message.media_type === "voice" ||
-      message.audio_url ||
-      message.metadata?.type ===
-        "voice"
-    ) {
-      return "🎙️ Voice message";
-    }
+  const getMessagePreviewText =
+    useCallback((message) => {
+      if (
+        message.type ===
+          "voice" ||
+        message.media_type ===
+          "voice" ||
+        message.audio_url ||
+        message.metadata?.type ===
+          "voice"
+      ) {
+        return "🎙️ Voice message";
+      }
 
-    if (
-      message.type === "image" ||
-      message.media_type ===
-        "image" ||
-      (
-        message.media_url &&
-        !message.last_msg
-      )
-    ) {
-      return "📷 Photo";
-    }
+      if (
+        message.type ===
+          "image" ||
+        message.media_type ===
+          "image" ||
+        (
+          message.media_url &&
+          !message.last_msg
+        )
+      ) {
+        return "📷 Photo";
+      }
 
-    if (
-      message.type === "video" ||
-      message.media_type ===
-        "video"
-    ) {
-      return "🎬 Video attachment";
-    }
+      if (
+        message.type ===
+          "video" ||
+        message.media_type ===
+          "video"
+      ) {
+        return "🎬 Video attachment";
+      }
 
-    if (
-      message.type === "file" ||
-      message.media_type ===
-        "file"
-    ) {
-      return "📁 Document attached";
-    }
+      if (
+        message.type ===
+          "file" ||
+        message.media_type ===
+          "file"
+      ) {
+        return "📁 Document attached";
+      }
 
-    if (
-      message.type === "call" ||
-      (
-        message.call_duration &&
-        message.call_duration > 0
-      ) ||
-      message.metadata?.call_type
-    ) {
-      return message.metadata
-        ?.call_type === "video"
-        ? "📹 Video Call"
-        : "📞 Voice Call";
-    }
+      if (
+        message.type ===
+          "call" ||
+        (
+          message.call_duration &&
+          message.call_duration > 0
+        ) ||
+        message.metadata?.call_type
+      ) {
+        return message.metadata
+          ?.call_type ===
+          "video"
+          ? "📹 Video Call"
+          : "📞 Voice Call";
+      }
 
-    if (message.last_msg) {
-      return message.last_msg;
-    }
+      if (
+        message.last_msg
+      ) {
+        return message.last_msg;
+      }
 
-    if (message.content) {
-      return message.content;
-    }
+      if (
+        message.content
+      ) {
+        return message.content;
+      }
 
-    return "Sent a message";
-  };
+      return "Sent a message";
+    }, []);
 
   // =========================================================
   // FOLLOW BACK
   // =========================================================
 
-  const handleFollowBack = async (
-    targetId,
-    event
-  ) => {
-    if (event) {
-      event.stopPropagation();
-    }
+  const handleFollowBack =
+    async (
+      targetId,
+      event
+    ) => {
+      if (event) {
+        event.stopPropagation();
+      }
 
-    if (
-      !currentUserId ||
-      !targetId ||
-      currentUserId === targetId
-    ) {
-      return;
-    }
+      if (
+        !currentUserId ||
+        !targetId ||
+        currentUserId ===
+          targetId
+      ) {
+        return;
+      }
 
-    const wasFollowing =
-      myFollows.has(targetId);
-
-    setMyFollows((previous) => {
-      const updated =
-        new Set(previous);
-
-      updated.add(targetId);
-
-      return updated;
-    });
-
-    try {
-      const {
-        error,
-      } = await supabase
-        .from("follows")
-        .upsert(
-          {
-            follower_id:
-              currentUserId,
-
-            following_id:
-              targetId,
-          },
-          {
-            onConflict:
-              "follower_id,following_id",
-          }
+      const wasFollowing =
+        myFollows.has(
+          targetId
         );
 
-      if (error) {
-        throw error;
-      }
-    } catch (error) {
-      console.error(
-        "Follow operation failed:",
-        error
+      setMyFollows(
+        (previous) => {
+          const updated =
+            new Set(previous);
+
+          updated.add(
+            targetId
+          );
+
+          return updated;
+        }
       );
 
-      if (!wasFollowing) {
-        setMyFollows(
-          (previous) => {
-            const updated =
-              new Set(previous);
+      try {
+        const {
+          error,
+        } = await supabase
+          .from("follows")
+          .upsert(
+            {
+              follower_id:
+                currentUserId,
 
-            updated.delete(
-              targetId
-            );
+              following_id:
+                targetId,
+            },
+            {
+              onConflict:
+                "follower_id,following_id",
+            }
+          );
 
-            return updated;
-          }
+        if (error) {
+          throw error;
+        }
+      } catch (error) {
+        console.error(
+          "Follow operation failed:",
+          error
         );
+
+        if (!wasFollowing) {
+          setMyFollows(
+            (previous) => {
+              const updated =
+                new Set(
+                  previous
+                );
+
+              updated.delete(
+                targetId
+              );
+
+              return updated;
+            }
+          );
+        }
       }
-    }
-  };
+    };
 
   // =========================================================
   // MARK ALL AS READ
   // =========================================================
+  //
+  // IMPORTANT:
+  // Do not only modify React state.
+  // The database is the source of truth.
+  // =========================================================
 
   const handleMarkAllRead =
     async () => {
-      if (!currentUserId) {
+      if (
+        !currentUserId ||
+        markingAllRead
+      ) {
         return;
       }
 
-      // Optimistic update
-      setActivities(
-        (previous) =>
-          previous.map(
-            (activity) => ({
-              ...activity,
-              is_read: true,
-            })
-          )
-      );
-
-      setMessages(
-        (previous) =>
-          previous.map(
-            (message) => ({
-              ...message,
-              unreadCount: 0,
-              unread: false,
-              status: "read",
-            })
-          )
+      setMarkingAllRead(
+        true
       );
 
       try {
@@ -1171,11 +1359,54 @@ const Inbox = () => {
             messageResult.error
           );
         }
+
+        /*
+         * Update local state only after the database operation
+         * has been attempted.
+         */
+        setActivities(
+          (previous) =>
+            previous.map(
+              (activity) => ({
+                ...activity,
+                is_read: true,
+              })
+            )
+        );
+
+        setMessages(
+          (previous) =>
+            previous.map(
+              (message) => ({
+                ...message,
+                unreadCount: 0,
+                unread: false,
+                status: "read",
+              })
+            )
+        );
+
+        /*
+         * Re-fetch from Supabase so a refresh/realtime cycle
+         * cannot leave the UI displaying stale counts.
+         */
+        await fetchData(
+          currentUserId,
+          false
+        );
       } catch (error) {
         console.error(
           "Mark all read failed:",
           error
         );
+      } finally {
+        if (
+          mountedRef.current
+        ) {
+          setMarkingAllRead(
+            false
+          );
+        }
       }
     };
 
@@ -1184,93 +1415,84 @@ const Inbox = () => {
   // =========================================================
 
   const markCategoryAsRead =
-    async (typeGroup) => {
-      if (!currentUserId) {
+    async (
+      typeGroup
+    ) => {
+      if (
+        !currentUserId
+      ) {
         return;
       }
+
+      const shouldMark =
+        (activity) => {
+          if (
+            typeGroup ===
+            "all"
+          ) {
+            return true;
+          }
+
+          if (
+            typeGroup ===
+            "followers"
+          ) {
+            return isFollowerType(
+              activity.type
+            );
+          }
+
+          if (
+            typeGroup ===
+            "likes"
+          ) {
+            return isLikeType(
+              activity.type
+            );
+          }
+
+          if (
+            typeGroup ===
+            "comments"
+          ) {
+            return isCommentType(
+              activity.type
+            );
+          }
+
+          if (
+            typeGroup ===
+            "activity"
+          ) {
+            return (
+              !isFollowerType(
+                activity.type
+              ) &&
+              !isLikeType(
+                activity.type
+              ) &&
+              !isCommentType(
+                activity.type
+              )
+            );
+          }
+
+          return false;
+        };
 
       setActivities(
         (previous) =>
           previous.map(
-            (activity) => {
-              if (
-                typeGroup ===
-                "all"
-              ) {
-                return {
-                  ...activity,
-                  is_read: true,
-                };
-              }
-
-              if (
-                typeGroup ===
-                  "followers" &&
-                (
-                  activity.type ===
-                    "follow" ||
-                  activity.type ===
-                    "user_follow"
-                )
-              ) {
-                return {
-                  ...activity,
-                  is_read: true,
-                };
-              }
-
-              if (
-                typeGroup ===
-                  "likes" &&
-                (
-                  activity.type ===
-                    "like" ||
-                  activity.type ===
-                    "video_likes" ||
-                  activity.type ===
-                    "video_like"
-                )
-              ) {
-                return {
-                  ...activity,
-                  is_read: true,
-                };
-              }
-
-              if (
-                typeGroup ===
-                  "comments" &&
-                (
-                  activity.type ===
-                    "comment" ||
-                  activity.type ===
-                    "video_comments" ||
-                  activity.type ===
-                    "video_comment"
-                )
-              ) {
-                return {
-                  ...activity,
-                  is_read: true,
-                };
-              }
-
-              if (
-                typeGroup ===
-                  "activity" &&
-                activity.type !==
-                  "follow" &&
-                activity.type !==
-                  "user_follow"
-              ) {
-                return {
-                  ...activity,
-                  is_read: true,
-                };
-              }
-
-              return activity;
-            }
+            (activity) =>
+              shouldMark(
+                activity
+              )
+                ? {
+                    ...activity,
+                    is_read:
+                      true,
+                  }
+                : activity
           )
       );
 
@@ -1294,46 +1516,40 @@ const Inbox = () => {
           typeGroup ===
           "followers"
         ) {
-          query = query.in(
-            "type",
-            [
-              "follow",
-              "user_follow",
-            ]
-          );
+          query =
+            query.in(
+              "type",
+              [
+                "follow",
+                "user_follow",
+              ]
+            );
         } else if (
           typeGroup ===
           "likes"
         ) {
-          query = query.in(
-            "type",
-            [
-              "like",
-              "video_likes",
-              "video_like",
-            ]
-          );
+          query =
+            query.in(
+              "type",
+              [
+                "like",
+                "video_likes",
+                "video_like",
+              ]
+            );
         } else if (
           typeGroup ===
           "comments"
         ) {
-          query = query.in(
-            "type",
-            [
-              "comment",
-              "video_comments",
-              "video_comment",
-            ]
-          );
-        } else if (
-          typeGroup ===
-          "activity"
-        ) {
-          query = query.not(
-            "type",
-            "in",
-            '("follow","user_follow")'
-          );
+          query =
+            query.in(
+              "type",
+              [
+                "comment",
+                "video_comments",
+                "video_comment",
+              ]
+            );
         }
 
         const {
@@ -1367,11 +1583,15 @@ const Inbox = () => {
         event.stopPropagation();
       }
 
-      if (!item?.id) {
+      if (
+        !item?.id
+      ) {
         return;
       }
 
-      if (!item.is_read) {
+      if (
+        !item.is_read
+      ) {
         setActivities(
           (previous) =>
             previous.map(
@@ -1380,7 +1600,8 @@ const Inbox = () => {
                 item.id
                   ? {
                       ...activity,
-                      is_read: true,
+                      is_read:
+                        true,
                     }
                   : activity
             )
@@ -1412,14 +1633,13 @@ const Inbox = () => {
         item.video?.id ||
         item.data?.video_id;
 
-      if (targetVideoId) {
+      if (
+        targetVideoId
+      ) {
         const isComment =
-          item.type ===
-            "comment" ||
-          item.type ===
-            "video_comments" ||
-          item.type ===
-            "video_comment";
+          isCommentType(
+            item.type
+          );
 
         navigate(
           `/?videoId=${targetVideoId}`,
@@ -1442,7 +1662,9 @@ const Inbox = () => {
         item.actor?.id ||
         item.data?.actor_id;
 
-      if (targetActorId) {
+      if (
+        targetActorId
+      ) {
         navigate(
           `/profile/${targetActorId}`
         );
@@ -1463,11 +1685,15 @@ const Inbox = () => {
         event.stopPropagation();
       }
 
-      if (!actorId) {
+      if (
+        !actorId
+      ) {
         return;
       }
 
-      if (itemId) {
+      if (
+        itemId
+      ) {
         setActivities(
           (previous) =>
             previous.map(
@@ -1476,7 +1702,8 @@ const Inbox = () => {
                 itemId
                   ? {
                       ...activity,
-                      is_read: true,
+                      is_read:
+                        true,
                     }
                   : activity
             )
@@ -1522,11 +1749,15 @@ const Inbox = () => {
         event.stopPropagation();
       }
 
-      if (!videoId) {
+      if (
+        !videoId
+      ) {
         return;
       }
 
-      if (itemId) {
+      if (
+        itemId
+      ) {
         setActivities(
           (previous) =>
             previous.map(
@@ -1535,7 +1766,8 @@ const Inbox = () => {
                 itemId
                   ? {
                       ...activity,
-                      is_read: true,
+                      is_read:
+                        true,
                     }
                   : activity
             )
@@ -1580,7 +1812,9 @@ const Inbox = () => {
   // =========================================================
 
   const handleOpenThread =
-    async (peerId) => {
+    async (
+      peerId
+    ) => {
       if (
         !peerId ||
         !currentUserId
@@ -1588,12 +1822,17 @@ const Inbox = () => {
         return;
       }
 
+      /*
+       * Immediately update the Inbox UI.
+       */
       setMessages(
         (previous) =>
           previous.map(
             (message) =>
-              message.displayProfile
-                ?.id === peerId
+              message
+                .displayProfile
+                ?.id ===
+              peerId
                 ? {
                     ...message,
                     unreadCount: 0,
@@ -1604,6 +1843,9 @@ const Inbox = () => {
           )
       );
 
+      /*
+       * Persist read state in Supabase.
+       */
       try {
         const {
           error,
@@ -1639,6 +1881,9 @@ const Inbox = () => {
         );
       }
 
+      /*
+       * Full messaging remains on the dedicated Messages page.
+       */
       navigate(
         `/messaging?userId=${peerId}`
       );
@@ -1649,8 +1894,12 @@ const Inbox = () => {
   // =========================================================
 
   const handleAcceptLiveInvite =
-    async (invite) => {
-      if (!invite?.id) {
+    async (
+      invite
+    ) => {
+      if (
+        !invite?.id
+      ) {
         return;
       }
 
@@ -1664,14 +1913,18 @@ const Inbox = () => {
           error: streamError,
         } = await supabase
           .from("live_streams")
-          .select("status")
+          .select(
+            "status"
+          )
           .eq(
             "id",
             invite.stream_id
           )
           .single();
 
-        if (streamError) {
+        if (
+          streamError
+        ) {
           console.error(
             "Stream check error:",
             streamError
@@ -1707,13 +1960,20 @@ const Inbox = () => {
 
         const {
           count,
-          error: countError,
+          error:
+            countError,
         } = await supabase
-          .from("live_guest_requests")
-          .select("id", {
-            count: "exact",
-            head: true,
-          })
+          .from(
+            "live_guest_requests"
+          )
+          .select(
+            "id",
+            {
+              count:
+                "exact",
+              head: true,
+            }
+          )
           .eq(
             "stream_id",
             invite.stream_id
@@ -1723,7 +1983,8 @@ const Inbox = () => {
             "approved"
           );
 
-        const MAX_GUEST_SLOTS = 7;
+        const MAX_GUEST_SLOTS =
+          7;
 
         if (
           countError
@@ -1748,7 +2009,8 @@ const Inbox = () => {
               "live_guest_requests"
             )
             .update({
-              status: "full",
+              status:
+                "full",
             })
             .eq(
               "id",
@@ -1768,20 +2030,24 @@ const Inbox = () => {
         }
 
         const {
-          error: updateError,
+          error:
+            updateError,
         } = await supabase
           .from(
             "live_guest_requests"
           )
           .update({
-            status: "approved",
+            status:
+              "approved",
           })
           .eq(
             "id",
             invite.id
           );
 
-        if (updateError) {
+        if (
+          updateError
+        ) {
           console.error(
             "Accept invite update error:",
             updateError
@@ -1827,8 +2093,12 @@ const Inbox = () => {
   // =========================================================
 
   const handleDeclineLiveInvite =
-    async (invite) => {
-      if (!invite?.id) {
+    async (
+      invite
+    ) => {
+      if (
+        !invite?.id
+      ) {
         return;
       }
 
@@ -1840,7 +2110,8 @@ const Inbox = () => {
             "live_guest_requests"
           )
           .update({
-            status: "rejected",
+            status:
+              "rejected",
           })
           .eq(
             "id",
@@ -1881,9 +2152,11 @@ const Inbox = () => {
   // =========================================================
 
   useEffect(() => {
-    mountedRef.current = true;
+    mountedRef.current =
+      true;
 
-    let localChannel = null;
+    let localChannel =
+      null;
 
     const initInbox =
       async () => {
@@ -1899,7 +2172,10 @@ const Inbox = () => {
             !user ||
             !mountedRef.current
           ) {
-            setLoading(false);
+            setLoading(
+              false
+            );
+
             return;
           }
 
@@ -1933,7 +2209,7 @@ const Inbox = () => {
           }
 
           // ---------------------------------------------------
-          // CREATE REALTIME CHANNEL
+          // REALTIME
           // ---------------------------------------------------
 
           const channelName =
@@ -1952,10 +2228,14 @@ const Inbox = () => {
               .on(
                 "postgres_changes",
                 {
-                  event: "INSERT",
-                  schema: "public",
-                  table: "activities",
-                  filter: `user_id=eq.${user.id}`,
+                  event:
+                    "INSERT",
+                  schema:
+                    "public",
+                  table:
+                    "activities",
+                  filter:
+                    `user_id=eq.${user.id}`,
                 },
                 async (
                   payload
@@ -1968,12 +2248,15 @@ const Inbox = () => {
                   }
 
                   const actorId =
-                    payload.new.actor_id;
+                    payload.new
+                      .actor_id;
 
                   let profileData =
                     null;
 
-                  if (actorId) {
+                  if (
+                    actorId
+                  ) {
                     const {
                       data,
                     } =
@@ -2013,7 +2296,9 @@ const Inbox = () => {
                             newActivity.id
                         );
 
-                      if (exists) {
+                      if (
+                        exists
+                      ) {
                         return previous;
                       }
 
@@ -2033,10 +2318,14 @@ const Inbox = () => {
               .on(
                 "postgres_changes",
                 {
-                  event: "UPDATE",
-                  schema: "public",
-                  table: "activities",
-                  filter: `user_id=eq.${user.id}`,
+                  event:
+                    "UPDATE",
+                  schema:
+                    "public",
+                  table:
+                    "activities",
+                  filter:
+                    `user_id=eq.${user.id}`,
                 },
                 (
                   payload
@@ -2073,11 +2362,14 @@ const Inbox = () => {
               .on(
                 "postgres_changes",
                 {
-                  event: "*",
-                  schema: "public",
+                  event:
+                    "*",
+                  schema:
+                    "public",
                   table:
                     "live_guest_requests",
-                  filter: `user_id=eq.${user.id}`,
+                  filter:
+                    `user_id=eq.${user.id}`,
                 },
                 () => {
                   if (
@@ -2097,9 +2389,12 @@ const Inbox = () => {
               .on(
                 "postgres_changes",
                 {
-                  event: "*",
-                  schema: "public",
-                  table: "messages",
+                  event:
+                    "*",
+                  schema:
+                    "public",
+                  table:
+                    "messages",
                 },
                 (
                   payload
@@ -2143,8 +2438,10 @@ const Inbox = () => {
               .on(
                 "postgres_changes",
                 {
-                  event: "*",
-                  schema: "public",
+                  event:
+                    "*",
+                  schema:
+                    "public",
                   table:
                     "live_streams",
                 },
@@ -2160,7 +2457,9 @@ const Inbox = () => {
               )
 
               .subscribe(
-                (status) => {
+                (
+                  status
+                ) => {
                   console.log(
                     "Inbox realtime status:",
                     status
@@ -2179,16 +2478,14 @@ const Inbox = () => {
           if (
             mountedRef.current
           ) {
-            setLoading(false);
+            setLoading(
+              false
+            );
           }
         }
       };
 
     initInbox();
-
-    // ---------------------------------------------------------
-    // CLEANUP
-    // ---------------------------------------------------------
 
     return () => {
       mountedRef.current =
@@ -2201,7 +2498,8 @@ const Inbox = () => {
           localChannel
         );
 
-        localChannel = null;
+        localChannel =
+          null;
       }
 
       if (
@@ -2222,187 +2520,253 @@ const Inbox = () => {
   // =========================================================
 
   const unreadFollowers =
-    activities.filter(
-      (activity) =>
-        (
-          activity.type ===
-            "follow" ||
-          activity.type ===
-            "user_follow"
-        ) &&
-        !activity.is_read
+    useMemo(
+      () =>
+        activities.filter(
+          (activity) =>
+            isFollowerType(
+              activity.type
+            ) &&
+            !activity.is_read
+        ),
+      [
+        activities,
+        isFollowerType,
+      ]
     );
 
   const unreadLikes =
-    activities.filter(
-      (activity) =>
-        (
-          activity.type ===
-            "like" ||
-          activity.type ===
-            "video_likes" ||
-          activity.type ===
-            "video_like"
-        ) &&
-        !activity.is_read
+    useMemo(
+      () =>
+        activities.filter(
+          (activity) =>
+            isLikeType(
+              activity.type
+            ) &&
+            !activity.is_read
+        ),
+      [
+        activities,
+        isLikeType,
+      ]
     );
 
   const unreadComments =
-    activities.filter(
-      (activity) =>
-        (
-          activity.type ===
-            "comment" ||
-          activity.type ===
-            "video_comments" ||
-          activity.type ===
-            "video_comment"
-        ) &&
-        !activity.is_read
+    useMemo(
+      () =>
+        activities.filter(
+          (activity) =>
+            isCommentType(
+              activity.type
+            ) &&
+            !activity.is_read
+        ),
+      [
+        activities,
+        isCommentType,
+      ]
+    );
+
+  const unreadOtherActivity =
+    useMemo(
+      () =>
+        activities.filter(
+          (activity) =>
+            !isFollowerType(
+              activity.type
+            ) &&
+            !isLikeType(
+              activity.type
+            ) &&
+            !isCommentType(
+              activity.type
+            ) &&
+            !activity.is_read
+        ),
+      [
+        activities,
+        isFollowerType,
+        isLikeType,
+        isCommentType,
+      ]
     );
 
   const unreadMessagesTotal =
-    messages.reduce(
-      (
-        total,
-        message
-      ) =>
-        total +
-        (
-          Number(
-            message.unreadCount
-          ) || 0
+    useMemo(
+      () =>
+        messages.reduce(
+          (
+            total,
+            message
+          ) =>
+            total +
+            (
+              Number(
+                message.unreadCount
+              ) || 0
+            ),
+          0
         ),
-      0
+      [messages]
     );
 
   const totalUnreadCount =
     unreadFollowers.length +
     unreadLikes.length +
     unreadComments.length +
-    unreadMessagesTotal;
+    unreadOtherActivity.length +
+    unreadMessagesTotal +
+    liveInvites.length;
 
   // =========================================================
   // FILTER ACTIVITIES
   // =========================================================
 
   const filteredActivities =
-    activities
-      .filter((item) => {
-        if (
-          activeFilter ===
-          "followers"
-        ) {
-          return (
-            item.type ===
-              "follow" ||
-            item.type ===
-              "user_follow"
-          );
-        }
+    useMemo(
+      () =>
+        activities
+          .filter(
+            (item) => {
+              if (
+                activeFilter ===
+                "followers"
+              ) {
+                return isFollowerType(
+                  item.type
+                );
+              }
 
-        if (
-          activeFilter ===
-          "likes"
-        ) {
-          return (
-            item.type ===
-              "like" ||
-            item.type ===
-              "video_likes" ||
-            item.type ===
-              "video_like"
-          );
-        }
+              if (
+                activeFilter ===
+                "likes"
+              ) {
+                return isLikeType(
+                  item.type
+                );
+              }
 
-        if (
-          activeFilter ===
-          "comments"
-        ) {
-          return (
-            item.type ===
-              "comment" ||
-            item.type ===
-              "video_comments" ||
-            item.type ===
-              "video_comment"
-          );
-        }
+              if (
+                activeFilter ===
+                "comments"
+              ) {
+                return isCommentType(
+                  item.type
+                );
+              }
 
-        if (
-          activeFilter ===
-          "messages"
-        ) {
-          return false;
-        }
+              if (
+                activeFilter ===
+                "messages"
+              ) {
+                return false;
+              }
 
-        return true;
-      })
-      .filter((item) => {
-        if (
-          !searchQuery.trim()
-        ) {
-          return true;
-        }
+              if (
+                activeFilter ===
+                "live"
+              ) {
+                return false;
+              }
 
-        const query =
-          searchQuery.toLowerCase();
+              return true;
+            }
+          )
+          .filter(
+            (item) => {
+              if (
+                !searchQuery.trim()
+              ) {
+                return true;
+              }
 
-        return (
-          item.actor?.username
-            ?.toLowerCase()
-            .includes(query) ||
+              const query =
+                searchQuery
+                  .toLowerCase();
 
-          item.actor?.full_name
-            ?.toLowerCase()
-            .includes(query) ||
-
-          item.videos?.caption
-            ?.toLowerCase()
-            .includes(query)
-        );
-      });
+              return (
+                item.actor?.username
+                  ?.toLowerCase()
+                  .includes(
+                    query
+                  ) ||
+                item.actor?.full_name
+                  ?.toLowerCase()
+                  .includes(
+                    query
+                  ) ||
+                item.videos?.caption
+                  ?.toLowerCase()
+                  .includes(
+                    query
+                  )
+              );
+            }
+          ),
+      [
+        activities,
+        activeFilter,
+        searchQuery,
+        isFollowerType,
+        isLikeType,
+        isCommentType,
+      ]
+    );
 
   // =========================================================
   // FILTER MESSAGES
   // =========================================================
 
   const filteredMessages =
-    messages.filter(
-      (message) => {
-        if (
-          !searchQuery.trim()
-        ) {
-          return true;
-        }
+    useMemo(
+      () =>
+        messages.filter(
+          (message) => {
+            if (
+              !searchQuery.trim()
+            ) {
+              return true;
+            }
 
-        const query =
-          searchQuery.toLowerCase();
+            const query =
+              searchQuery
+                .toLowerCase();
 
-        return (
-          message.displayProfile
-            ?.username
-            ?.toLowerCase()
-            .includes(query) ||
-
-          message.displayProfile
-            ?.full_name
-            ?.toLowerCase()
-            .includes(query) ||
-
-          message.user_name
-            ?.toLowerCase()
-            .includes(query) ||
-
-          message.last_msg
-            ?.toLowerCase()
-            .includes(query) ||
-
-          message.content
-            ?.toLowerCase()
-            .includes(query)
-        );
-      }
+            return (
+              message.displayProfile
+                ?.username
+                ?.toLowerCase()
+                .includes(
+                  query
+                ) ||
+              message.displayProfile
+                ?.full_name
+                ?.toLowerCase()
+                .includes(
+                  query
+                ) ||
+              message.user_name
+                ?.toLowerCase()
+                .includes(
+                  query
+                ) ||
+              message.last_msg
+                ?.toLowerCase()
+                .includes(
+                  query
+                ) ||
+              message.content
+                ?.toLowerCase()
+                .includes(
+                  query
+                )
+            );
+          }
+        ),
+      [
+        messages,
+        searchQuery,
+      ]
     );
 
   // =========================================================
@@ -2410,26 +2774,38 @@ const Inbox = () => {
   // =========================================================
 
   const filteredSuggestedUsers =
-    suggestedUsers.filter(
-      (user) => {
-        if (
-          !newChatSearch.trim()
-        ) {
-          return true;
-        }
+    useMemo(
+      () =>
+        suggestedUsers.filter(
+          (user) => {
+            if (
+              !newChatSearch.trim()
+            ) {
+              return true;
+            }
 
-        const query =
-          newChatSearch.toLowerCase();
+            const query =
+              newChatSearch
+                .toLowerCase();
 
-        return (
-          user.username
-            ?.toLowerCase()
-            .includes(query) ||
-          user.full_name
-            ?.toLowerCase()
-            .includes(query)
-        );
-      }
+            return (
+              user.username
+                ?.toLowerCase()
+                .includes(
+                  query
+                ) ||
+              user.full_name
+                ?.toLowerCase()
+                .includes(
+                  query
+                )
+            );
+          }
+        ),
+      [
+        suggestedUsers,
+        newChatSearch,
+      ]
     );
 
   // =========================================================
@@ -2438,44 +2814,113 @@ const Inbox = () => {
 
   const getActivityIcon =
     (type) => {
-      switch (type) {
-        case "comment":
-        case "video_comments":
-        case "video_comment":
-          return (
-            <MessageCircle
-              size={12}
-              className="text-cyan-400 fill-cyan-400"
-            />
-          );
-
-        case "like":
-        case "video_likes":
-        case "video_like":
-          return (
-            <Heart
-              size={12}
-              className="text-pink-500 fill-pink-500"
-            />
-          );
-
-        case "follow":
-        case "user_follow":
-          return (
-            <UserPlus
-              size={12}
-              className="text-blue-400"
-            />
-          );
-
-        default:
-          return (
-            <Bell
-              size={12}
-              className="text-yellow-400"
-            />
-          );
+      if (
+        isCommentType(
+          type
+        )
+      ) {
+        return (
+          <MessageCircle
+            size={13}
+            className="text-cyan-400 fill-cyan-400"
+          />
+        );
       }
+
+      if (
+        isLikeType(
+          type
+        )
+      ) {
+        return (
+          <Heart
+            size={13}
+            className="text-pink-500 fill-pink-500"
+          />
+        );
+      }
+
+      if (
+        isFollowerType(
+          type
+        )
+      ) {
+        return (
+          <UserPlus
+            size={13}
+            className="text-blue-400"
+          />
+        );
+      }
+
+      if (
+        type ===
+        "mention"
+      ) {
+        return (
+          <AtSign
+            size={13}
+            className="text-purple-400"
+          />
+        );
+      }
+
+      if (
+        type ===
+          "share" ||
+        type ===
+          "repost"
+      ) {
+        return (
+          <Share2
+            size={13}
+            className="text-emerald-400"
+          />
+        );
+      }
+
+      if (
+        type ===
+        "save"
+      ) {
+        return (
+          <Bookmark
+            size={13}
+            className="text-yellow-400"
+          />
+        );
+      }
+
+      if (
+        type ===
+        "gift"
+      ) {
+        return (
+          <Gift
+            size={13}
+            className="text-pink-400"
+          />
+        );
+      }
+
+      if (
+        type ===
+        "live"
+      ) {
+        return (
+          <Radio
+            size={13}
+            className="text-rose-400"
+          />
+        );
+      }
+
+      return (
+        <Bell
+          size={13}
+          className="text-yellow-400"
+        />
+      );
     };
 
   // =========================================================
@@ -2485,38 +2930,107 @@ const Inbox = () => {
   const getActivityText =
     (item) => {
       if (
-        item.type ===
-          "follow" ||
-        item.type ===
-          "user_follow"
+        isFollowerType(
+          item.type
+        )
       ) {
         return "started following you";
       }
 
       if (
-        item.type ===
-          "like" ||
-        item.type ===
-          "video_likes" ||
-        item.type ===
-          "video_like"
+        isLikeType(
+          item.type
+        )
       ) {
         return "liked your video";
       }
 
       if (
-        item.type ===
-          "comment" ||
-        item.type ===
-          "video_comments" ||
-        item.type ===
-          "video_comment"
+        isCommentType(
+          item.type
+        )
       ) {
         return "commented on your video";
       }
 
-      return "interacted with your profile";
+      switch (
+        item.type
+      ) {
+        case "mention":
+          return "mentioned you";
+
+        case "share":
+          return "shared your content";
+
+        case "repost":
+          return "reposted your content";
+
+        case "save":
+          return "saved your video";
+
+        case "gift":
+          return "sent you a gift";
+
+        case "live":
+          return "started a live stream";
+
+        default:
+          return "interacted with your profile";
+      }
     };
+
+  // =========================================================
+  // CATEGORY CARD
+  // =========================================================
+
+  const CategoryCard = ({
+    icon,
+    title,
+    subtitle,
+    count,
+    accent,
+    onClick,
+  }) => (
+    <motion.button
+      whileTap={{
+        scale: 0.97,
+      }}
+      onClick={
+        onClick
+      }
+      className={`relative overflow-hidden text-left p-4 rounded-2xl bg-gradient-to-br ${accent} border border-white/10 hover:border-white/20 transition-all group`}
+    >
+      <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full bg-white/[0.03] blur-2xl" />
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="w-10 h-10 rounded-xl bg-black/40 border border-white/10 flex items-center justify-center group-hover:scale-105 transition-transform">
+          {icon}
+        </div>
+
+        {count > 0 ? (
+          <span className="min-w-6 h-6 px-1.5 rounded-full bg-white text-black text-[10px] font-black flex items-center justify-center shadow-lg">
+            {count > 99
+              ? "99+"
+              : count}
+          </span>
+        ) : (
+          <span className="text-[9px] uppercase font-black text-zinc-600">
+            Clear
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4">
+        <p className="text-xs font-black text-white">
+          {title}
+        </p>
+
+        <p className="text-[10px] text-zinc-500 mt-1">
+          {subtitle}
+        </p>
+      </div>
+    </motion.button>
+  );
 
   // =========================================================
   // ACTIVITY DRAWER
@@ -2546,7 +3060,7 @@ const Inbox = () => {
               onClick={
                 onClose
               }
-              className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[110]"
+              className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110]"
             />
 
             <motion.div
@@ -2566,7 +3080,7 @@ const Inbox = () => {
               }}
               className="fixed inset-y-0 right-0 w-full max-w-md bg-[#09090e] border-l border-cyan-500/20 z-[111] flex flex-col shadow-2xl"
             >
-              <div className="p-4 flex items-center justify-between border-b border-white/10 bg-black/60 backdrop-blur-md">
+              <div className="p-4 flex items-center justify-between border-b border-white/10 bg-black/70 backdrop-blur-xl">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={
@@ -2575,63 +3089,78 @@ const Inbox = () => {
                     className="p-2 hover:bg-white/10 rounded-full transition-colors"
                   >
                     <ArrowLeft
-                      size={22}
+                      size={21}
                       className="text-cyan-400"
                     />
                   </button>
 
-                  <h2 className="text-base font-black uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500">
-                    {title}
-                  </h2>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500">
+                      {title}
+                    </h2>
+
+                    <p className="text-[9px] text-zinc-600 uppercase tracking-wider mt-0.5">
+                      {data.length}{" "}
+                      items
+                    </p>
+                  </div>
                 </div>
 
-                <button
-                  onClick={() =>
-                    markCategoryAsRead(
-                      categoryKey
-                    )
-                  }
-                  className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1 rounded-lg transition-colors active:scale-95"
-                >
-                  <CheckCheck
-                    size={13}
-                  />
-                  Mark Read
-                </button>
+                {data.some(
+                  (item) =>
+                    !item.is_read
+                ) && (
+                  <button
+                    onClick={() =>
+                      markCategoryAsRead(
+                        categoryKey
+                      )
+                    }
+                    className="text-[10px] font-black text-cyan-400 hover:text-cyan-300 flex items-center gap-1 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    <CheckCheck
+                      size={13}
+                    />
+                    Mark Read
+                  </button>
+                )}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3 space-y-2 no-scrollbar">
+              <div className="flex-1 overflow-y-auto inbox-scrollbar p-3 space-y-2">
                 {data.length ===
                 0 ? (
-                  <div className="h-64 flex flex-col items-center justify-center text-zinc-500 text-sm">
-                    <Bell
-                      size={32}
-                      className="text-zinc-600 mb-2 opacity-50"
-                    />
-
-                    No items in this category yet
-                  </div>
+                  <EmptyState
+                    icon={
+                      <Bell
+                        size={30}
+                      />
+                    }
+                    title="Nothing here yet"
+                    description="New activity will appear here."
+                  />
                 ) : (
                   data.map(
                     (item) => {
-                      const isFollowingBack =
-                        myFollows.has(
-                          item.actor_id
-                        );
-
                       const isUnread =
                         !item.is_read;
 
+                      const actorId =
+                        item.actor_id ||
+                        item.actor?.id;
+
+                      const isFollowingBack =
+                        myFollows.has(
+                          actorId
+                        );
+
                       const isComment =
-                        item.type ===
-                          "comment" ||
-                        item.type ===
-                          "video_comments" ||
-                        item.type ===
-                          "video_comment";
+                        isCommentType(
+                          item.type
+                        );
 
                       return (
-                        <div
+                        <motion.div
+                          layout
                           key={
                             item.id
                           }
@@ -2647,35 +3176,28 @@ const Inbox = () => {
                           }}
                           className={`flex items-center justify-between p-3.5 rounded-2xl transition-all cursor-pointer border ${
                             isUnread
-                              ? "bg-cyan-950/20 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                              : "bg-white/[0.03] border-white/5 hover:bg-white/[0.07]"
+                              ? "bg-cyan-950/20 border-cyan-500/30 shadow-[0_0_18px_rgba(6,182,212,0.12)]"
+                              : "bg-white/[0.025] border-white/5 hover:bg-white/[0.06]"
                           }`}
                         >
                           <div className="flex items-center gap-3 flex-1 min-w-0">
                             <div
-                              className="relative shrink-0 cursor-pointer"
+                              className="relative shrink-0"
                               onClick={(
                                 event
-                              ) => {
-                                event.stopPropagation();
-
+                              ) =>
                                 handleActorProfileClick(
-                                  item.actor_id ||
-                                    item.actor
-                                      ?.id,
+                                  actorId,
                                   item.id,
                                   event
-                                );
-
-                                onClose();
-                              }}
+                                )
+                              }
                             >
                               {item.actor
                                 ?.avatar_url ? (
                                 <img
                                   src={
-                                    item
-                                      .actor
+                                    item.actor
                                       .avatar_url
                                   }
                                   crossOrigin="anonymous"
@@ -2693,34 +3215,16 @@ const Inbox = () => {
                                 </div>
                               )}
 
-                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/20 shadow">
+                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/20">
                                 {getActivityIcon(
                                   item.type
                                 )}
                               </div>
                             </div>
 
-                            <div className="flex-1 min-w-0 pr-2">
+                            <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <p
-                                  onClick={(
-                                    event
-                                  ) => {
-                                    event.stopPropagation();
-
-                                    handleActorProfileClick(
-                                      item.actor_id ||
-                                        item
-                                          .actor
-                                          ?.id,
-                                      item.id,
-                                      event
-                                    );
-
-                                    onClose();
-                                  }}
-                                  className="text-[13px] font-black text-white truncate hover:underline"
-                                >
+                                <p className="text-[13px] font-black text-white truncate">
                                   @
                                   {item.actor
                                     ?.username ||
@@ -2728,7 +3232,7 @@ const Inbox = () => {
                                 </p>
 
                                 {isUnread && (
-                                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(6,182,212,1)] shrink-0 animate-pulse" />
+                                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,1)] shrink-0" />
                                 )}
                               </div>
 
@@ -2754,82 +3258,79 @@ const Inbox = () => {
                             </div>
                           </div>
 
-                          {(
-                            item.type ===
-                              "follow" ||
-                            item.type ===
-                              "user_follow"
+                          {isFollowerType(
+                            item.type
                           ) ? (
                             <button
                               onClick={(
                                 event
                               ) =>
                                 handleFollowBack(
-                                  item.actor_id,
+                                  actorId,
                                   event
                                 )
                               }
                               disabled={
                                 isFollowingBack
                               }
-                              className={`text-[11px] font-black px-3.5 py-1.5 rounded-xl transition-all shadow-md shrink-0 ${
+                              className={`text-[10px] font-black px-3 py-1.5 rounded-xl shrink-0 ${
                                 isFollowingBack
-                                  ? "bg-zinc-800 text-zinc-400 border border-white/10 cursor-default"
-                                  : "bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20 active:scale-95"
+                                  ? "bg-zinc-800 text-zinc-500 border border-white/10"
+                                  : "bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-lg shadow-pink-500/20"
                               }`}
                             >
                               {isFollowingBack
                                 ? "Friends"
                                 : "Follow Back"}
                             </button>
-                          ) : item.video_id ||
-                            item.videos
-                              ?.id ? (
-                            <div
-                              onClick={(
-                                event
-                              ) => {
-                                event.stopPropagation();
-
-                                handleVideoThumbnailClick(
-                                  item.video_id ||
-                                    item
-                                      .videos
-                                      ?.id,
-                                  item.id,
-                                  isComment,
+                          ) : (
+                            (
+                              item.video_id ||
+                              item.videos
+                                ?.id
+                            ) && (
+                              <div
+                                onClick={(
                                   event
-                                );
-
-                                onClose();
-                              }}
-                              className="w-12 h-14 rounded-xl bg-zinc-800 relative overflow-hidden border border-cyan-500/30 cursor-pointer flex items-center justify-center shrink-0 shadow-md group hover:border-cyan-400"
-                            >
-                              {item
-                                .videos
-                                ?.thumbnail_url ? (
-                                <img
-                                  src={
-                                    item
-                                      .videos
-                                      .thumbnail_url
-                                  }
-                                  crossOrigin="anonymous"
-                                  referrerPolicy="no-referrer"
-                                  className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                                  alt=""
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-gradient-to-br from-cyan-950 to-pink-950 flex items-center justify-center">
-                                  <Play
-                                    size={14}
-                                    className="text-cyan-400 fill-cyan-400 opacity-80"
+                                ) =>
+                                  handleVideoThumbnailClick(
+                                    item.video_id ||
+                                      item.videos
+                                        ?.id,
+                                    item.id,
+                                    isComment,
+                                    event
+                                  )
+                                }
+                                className="w-11 h-14 rounded-xl overflow-hidden border border-cyan-500/30 shrink-0 bg-zinc-900"
+                              >
+                                {item.videos
+                                  ?.thumbnail_url ? (
+                                  <img
+                                    src={
+                                      item
+                                        .videos
+                                        .thumbnail_url
+                                    }
+                                    crossOrigin="anonymous"
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-cover"
+                                    alt=""
                                   />
-                                </div>
-                              )}
-                            </div>
-                          ) : null}
-                        </div>
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <Play
+                                      size={
+                                        14
+                                      }
+                                      className="text-cyan-400"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          )}
+                        </motion.div>
                       );
                     }
                   )
@@ -2842,20 +3343,53 @@ const Inbox = () => {
     );
 
   // =========================================================
+  // EMPTY STATE
+  // =========================================================
+
+  const EmptyState = ({
+    icon,
+    title,
+    description,
+    action,
+  }) => (
+    <div className="py-12 px-5 flex flex-col items-center justify-center text-center rounded-3xl bg-white/[0.02] border border-white/5">
+      <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-zinc-600 mb-3">
+        {icon}
+      </div>
+
+      <p className="text-sm font-black text-white">
+        {title}
+      </p>
+
+      <p className="text-xs text-zinc-500 mt-1 max-w-xs leading-relaxed">
+        {description}
+      </p>
+
+      {action}
+    </div>
+  );
+
+  // =========================================================
   // LOADING
   // =========================================================
 
   if (loading) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-[#07070a] text-white">
-        <Loader2
-          className="animate-spin text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.9)] mb-3"
-          size={40}
-        />
+      <div className="min-h-screen bg-[#050507] text-white flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-cyan-500/20 blur-xl" />
 
-        <p className="text-xs uppercase font-black tracking-widest text-zinc-400">
-          Loading Inbox & Messages...
-        </p>
+            <Loader2
+              className="relative animate-spin text-cyan-400"
+              size={42}
+            />
+          </div>
+
+          <p className="mt-4 text-[10px] uppercase font-black tracking-[3px] text-zinc-500">
+            Loading Inbox
+          </p>
+        </div>
       </div>
     );
   }
@@ -2865,1143 +3399,1156 @@ const Inbox = () => {
   // =========================================================
 
   return (
-    <div className="flex flex-col h-screen bg-[#07070a] text-white overflow-hidden font-sans select-none">
+    <div className="inbox-page min-h-screen bg-[#050507] text-white font-sans selection:bg-cyan-500/30">
+
+      {/* =====================================================
+          SCROLLBAR
+      ===================================================== */}
+
+      <style>{`
+        .inbox-scrollbar::-webkit-scrollbar {
+          width: 7px;
+          height: 7px;
+        }
+
+        .inbox-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255,255,255,0.025);
+          border-radius: 999px;
+        }
+
+        .inbox-scrollbar::-webkit-scrollbar-thumb {
+          background: linear-gradient(
+            180deg,
+            rgba(6,182,212,0.65),
+            rgba(236,72,153,0.65)
+          );
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .inbox-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(
+            180deg,
+            rgba(6,182,212,0.9),
+            rgba(236,72,153,0.9)
+          );
+        }
+
+        .inbox-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color:
+            rgba(6,182,212,0.65)
+            rgba(255,255,255,0.025);
+        }
+
+        .inbox-hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+
+        .inbox-hide-scrollbar {
+          scrollbar-width: none;
+        }
+      `}</style>
 
       {/* =====================================================
           HEADER
       ===================================================== */}
 
-      <header className="px-5 pt-8 pb-3.5 flex items-center justify-between border-b border-cyan-500/15 bg-black/40 backdrop-blur-xl z-20">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-            <Bell
-              size={20}
-              className="drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]"
-            />
-          </div>
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#050507]/85 backdrop-blur-2xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
+          <div className="flex items-center justify-between gap-3">
 
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black italic tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-pink-500 to-rose-400">
-                Inbox
-              </h1>
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() =>
+                  navigate(-1)
+                }
+                className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-all shrink-0"
+                title="Go back"
+              >
+                <ArrowLeft
+                  size={18}
+                />
+              </button>
 
-              {totalUnreadCount >
-                0 && (
-                <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-[10px] shadow-[0_0_10px_rgba(244,63,94,0.7)] animate-pulse">
-                  {totalUnreadCount}{" "}
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-pink-500/20 border border-cyan-500/20 flex items-center justify-center shrink-0">
+                <InboxIcon
+                  size={19}
+                  className="text-cyan-400"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg sm:text-xl font-black tracking-tight">
+                    Inbox
+                  </h1>
+
+                  {totalUnreadCount >
+                    0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-600 text-white text-[9px] font-black uppercase shadow-lg shadow-pink-500/20">
+                      {totalUnreadCount >
+                      99
+                        ? "99+"
+                        : totalUnreadCount}{" "}
+                      New
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[9px] sm:text-[10px] text-zinc-600 font-bold uppercase tracking-[1.5px] truncate">
+                  Activity • Updates • Messages
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+
+              <button
+                onClick={() =>
+                  setShowSearch(
+                    (value) =>
+                      !value
+                  )
+                }
+                className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${
+                  showSearch
+                    ? "bg-pink-500 text-white border-pink-400"
+                    : "bg-white/[0.04] border-white/10 text-zinc-400 hover:text-white"
+                }`}
+                title="Search"
+              >
+                <Search
+                  size={16}
+                />
+              </button>
+
+              <button
+                onClick={() =>
+                  fetchData(
+                    currentUserId,
+                    true
+                  )
+                }
+                disabled={
+                  isRefreshing
+                }
+                className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/10 text-cyan-400 flex items-center justify-center hover:bg-cyan-500/10 transition-all"
+                title="Refresh"
+              >
+                <RefreshCw
+                  size={16}
+                  className={
+                    isRefreshing
+                      ? "animate-spin"
+                      : ""
+                  }
+                />
+              </button>
+
+              <button
+                onClick={() =>
+                  setShowNewChatModal(
+                    true
+                  )
+                }
+                className="hidden sm:flex items-center gap-1.5 h-9 px-3 rounded-xl bg-gradient-to-r from-cyan-500/15 to-purple-500/15 border border-cyan-500/20 text-cyan-300 hover:border-cyan-400/40 transition-all"
+              >
+                <Plus
+                  size={15}
+                />
+
+                <span className="text-[10px] font-black uppercase tracking-wider">
                   New
                 </span>
-              )}
-            </div>
+              </button>
 
-            <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
-              <span>
-                Activity &
-                Messages
-              </span>
+              <div className="relative">
+                <button
+                  onClick={() =>
+                    setShowMoreMenu(
+                      (value) =>
+                        !value
+                    )
+                  }
+                  className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/10 text-zinc-400 flex items-center justify-center hover:text-white transition-all"
+                >
+                  <MoreHorizontal
+                    size={17}
+                  />
+                </button>
 
-              {lastFetchedAt && (
-                <span className="text-zinc-600 font-normal lowercase">
-                  •{" "}
-                  {formatDistanceToNow(
-                    lastFetchedAt,
-                    {
-                      addSuffix:
-                        true,
-                    }
+                <AnimatePresence>
+                  {showMoreMenu && (
+                    <motion.div
+                      initial={{
+                        opacity: 0,
+                        y: -5,
+                        scale: 0.96,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                        scale: 1,
+                      }}
+                      exit={{
+                        opacity: 0,
+                        y: -5,
+                        scale: 0.96,
+                      }}
+                      className="absolute right-0 top-11 w-52 rounded-2xl bg-[#101017] border border-white/10 shadow-2xl p-1.5 overflow-hidden"
+                    >
+                      <button
+                        onClick={() => {
+                          handleMarkAllRead();
+                          setShowMoreMenu(
+                            false
+                          );
+                        }}
+                        disabled={
+                          totalUnreadCount ===
+                          0
+                        }
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 disabled:opacity-40 text-left"
+                      >
+                        <CheckCheck
+                          size={15}
+                          className="text-cyan-400"
+                        />
+
+                        <span className="text-[11px] font-bold">
+                          Mark all as read
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowNewChatModal(
+                            true
+                          );
+                          setShowMoreMenu(
+                            false
+                          );
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left"
+                      >
+                        <MessageSquare
+                          size={15}
+                          className="text-purple-400"
+                        />
+
+                        <span className="text-[11px] font-bold">
+                          New conversation
+                        </span>
+                      </button>
+                    </motion.div>
                   )}
-                </span>
-              )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-
-          {/* REFRESH */}
-
-          <button
-            onClick={() =>
-              fetchData(
-                currentUserId,
-                true
-              )
-            }
-            disabled={
-              isRefreshing
-            }
-            title="Refresh messages and activities"
-            className="p-2 bg-white/5 hover:bg-white/10 text-cyan-400 border border-cyan-500/20 rounded-xl text-xs font-bold transition-all active:scale-95"
-          >
-            <RefreshCw
-              size={16}
-              className={
-                isRefreshing
-                  ? "animate-spin text-cyan-300"
-                  : ""
-              }
-            />
-          </button>
-
-          {/* NEW CHAT */}
-
-          <button
-            onClick={() =>
-              setShowNewChatModal(
-                true
-              )
-            }
-            title="Start new direct message"
-            className="p-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1"
-          >
-            <Plus
-              size={16}
-              className="text-purple-400"
-            />
-
-            <span className="hidden sm:inline text-[11px] font-black uppercase">
-              New Chat
-            </span>
-          </button>
-
-          {/* MARK ALL */}
-
-          {totalUnreadCount >
-            0 && (
-            <button
-              onClick={
-                handleMarkAllRead
-              }
-              title="Mark all notifications and messages as read"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 shadow-[0_0_10px_rgba(6,182,212,0.2)]"
-            >
-              <CheckCheck
-                size={14}
-                className="text-cyan-400"
-              />
-
-              <span className="hidden sm:inline">
-                Mark All
-              </span>
-            </button>
-          )}
 
           {/* SEARCH */}
+          <AnimatePresence>
+            {showSearch && (
+              <motion.div
+                initial={{
+                  height: 0,
+                  opacity: 0,
+                }}
+                animate={{
+                  height: "auto",
+                  opacity: 1,
+                }}
+                exit={{
+                  height: 0,
+                  opacity: 0,
+                }}
+                className="overflow-hidden"
+              >
+                <div className="pt-3">
+                  <div className="relative">
+                    <Search
+                      size={15}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+                    />
 
-          <button
-            onClick={() =>
-              setShowSearch(
-                (previous) =>
-                  !previous
-              )
-            }
-            className={`p-2 rounded-xl border transition-all ${
-              showSearch
-                ? "bg-pink-500 text-white border-pink-400"
-                : "bg-white/5 text-zinc-400 border-white/10 hover:text-white"
-            }`}
-          >
-            <Search size={18} />
-          </button>
+                    <input
+                      value={
+                        searchQuery
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setSearchQuery(
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      placeholder="Search people, activities or messages..."
+                      autoFocus
+                      className="w-full h-10 rounded-xl bg-white/[0.04] border border-white/10 pl-9 pr-9 text-xs text-white placeholder-zinc-600 outline-none focus:border-cyan-500/50"
+                    />
+
+                    {searchQuery && (
+                      <button
+                        onClick={() =>
+                          setSearchQuery(
+                            ""
+                          )
+                        }
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+                      >
+                        <X
+                          size={14}
+                        />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </header>
 
       {/* =====================================================
-          SEARCH
+          MAIN
       ===================================================== */}
 
-      <AnimatePresence>
-        {showSearch && (
-          <motion.div
-            initial={{
-              height: 0,
-              opacity: 0,
-            }}
-            animate={{
-              height: "auto",
-              opacity: 1,
-            }}
-            exit={{
-              height: 0,
-              opacity: 0,
-            }}
-            className="px-4 py-2.5 bg-black/60 border-b border-cyan-500/20"
-          >
-            <div className="relative flex items-center">
-              <Search
-                size={16}
-                className="absolute left-3 text-zinc-400"
-              />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 pb-28">
 
-              <input
-                type="text"
-                value={
-                  searchQuery
-                }
-                onChange={(
-                  event
-                ) =>
-                  setSearchQuery(
-                    event.target
-                      .value
-                  )
-                }
-                placeholder="Search activities, users, messages..."
-                className="w-full bg-[#121218] border border-cyan-500/30 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 transition-colors"
-                autoFocus
-              />
+        {/* ===================================================
+            TOP STATUS
+        =================================================== */}
 
-              {searchQuery && (
-                <button
-                  onClick={() =>
-                    setSearchQuery(
-                      ""
-                    )
-                  }
-                  className="absolute right-3 text-zinc-400 hover:text-white"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <section className="mb-5">
+          <div className="rounded-3xl border border-white/5 bg-gradient-to-br from-white/[0.035] to-white/[0.015] p-5 relative overflow-hidden">
+            <div className="absolute -top-24 -right-24 w-52 h-52 rounded-full bg-cyan-500/10 blur-3xl" />
 
-      {/* =====================================================
-          CONTENT
-      ===================================================== */}
+            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CircleDot
+                    size={12}
+                    className={
+                      totalUnreadCount >
+                      0
+                        ? "text-pink-400"
+                        : "text-emerald-400"
+                    }
+                  />
 
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
+                  <span className="text-[9px] uppercase tracking-[2px] font-black text-zinc-500">
+                    Inbox overview
+                  </span>
+                </div>
 
-        {/* FILTERS */}
+                <h2 className="text-2xl sm:text-3xl font-black mt-2 tracking-tight">
+                  {totalUnreadCount >
+                  0
+                    ? `${totalUnreadCount} things need your attention`
+                    : "You're all caught up"}
+                </h2>
 
-        <div className="px-4 pt-4 pb-2">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-
-            {/* ALL */}
-
-            <button
-              onClick={() =>
-                setActiveFilter(
-                  "all"
-                )
-              }
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
-                activeFilter ===
-                "all"
-                  ? "bg-cyan-500 text-black border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.5)]"
-                  : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <span>All</span>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {lastFetchedAt
+                    ? `Updated ${formatDistanceToNow(
+                        lastFetchedAt,
+                        {
+                          addSuffix:
+                            true,
+                        }
+                      )}`
+                    : "Waiting for updates"}
+                </p>
+              </div>
 
               {totalUnreadCount >
                 0 && (
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                    activeFilter ===
-                    "all"
-                      ? "bg-black text-cyan-300"
-                      : "bg-pink-600 text-white"
-                  }`}
+                <button
+                  onClick={
+                    handleMarkAllRead
+                  }
+                  disabled={
+                    markingAllRead
+                  }
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-black uppercase tracking-wider hover:bg-cyan-500/20 transition-all disabled:opacity-50"
                 >
-                  {
-                    totalUnreadCount
-                  }
-                </span>
+                  {markingAllRead ? (
+                    <Loader2
+                      size={14}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <CheckCheck
+                      size={14}
+                    />
+                  )}
+
+                  {markingAllRead
+                    ? "Updating..."
+                    : "Mark all read"}
+                </button>
               )}
-            </button>
-
-            {/* LIKES */}
-
-            <button
-              onClick={() => {
-                setActiveFilter(
-                  "likes"
-                );
-
-                if (
-                  unreadLikes.length >
-                  0
-                ) {
-                  markCategoryAsRead(
-                    "likes"
-                  );
-                }
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
-                activeFilter ===
-                "likes"
-                  ? "bg-gradient-to-r from-pink-500 to-rose-600 text-white border-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.5)]"
-                  : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <Heart
-                size={14}
-                className={
-                  activeFilter ===
-                  "likes"
-                    ? "fill-white text-white"
-                    : "text-pink-500 fill-pink-500"
-                }
-              />
-
-              <span>
-                Likes
-              </span>
-
-              {unreadLikes.length >
-                0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-pink-500 text-white shadow animate-pulse">
-                  {
-                    unreadLikes.length
-                  }
-                </span>
-              )}
-            </button>
-
-            {/* COMMENTS */}
-
-            <button
-              onClick={() => {
-                setActiveFilter(
-                  "comments"
-                );
-
-                if (
-                  unreadComments.length >
-                  0
-                ) {
-                  markCategoryAsRead(
-                    "comments"
-                  );
-                }
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
-                activeFilter ===
-                "comments"
-                  ? "bg-cyan-400 text-black border-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.5)]"
-                  : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <MessageCircle
-                size={14}
-                className={
-                  activeFilter ===
-                  "comments"
-                    ? "fill-black text-black"
-                    : "text-cyan-400 fill-cyan-400"
-                }
-              />
-
-              <span>
-                Comments
-              </span>
-
-              {unreadComments.length >
-                0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-cyan-500 text-black shadow animate-pulse">
-                  {
-                    unreadComments.length
-                  }
-                </span>
-              )}
-            </button>
-
-            {/* MESSAGES */}
-
-            <button
-              onClick={() =>
-                setActiveFilter(
-                  "messages"
-                )
-              }
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
-                activeFilter ===
-                "messages"
-                  ? "bg-purple-500 text-white border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.5)]"
-                  : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <MessageSquare
-                size={14}
-                className={
-                  activeFilter ===
-                  "messages"
-                    ? "text-white fill-white"
-                    : "text-purple-400"
-                }
-              />
-
-              <span>
-                Messages
-              </span>
-
-              {unreadMessagesTotal >
-                0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-purple-500 text-white shadow animate-pulse">
-                  {
-                    unreadMessagesTotal
-                  }
-                </span>
-              )}
-            </button>
-
-            {/* FOLLOWERS */}
-
-            <button
-              onClick={() => {
-                setActiveFilter(
-                  "followers"
-                );
-
-                if (
-                  unreadFollowers.length >
-                  0
-                ) {
-                  markCategoryAsRead(
-                    "followers"
-                  );
-                }
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
-                activeFilter ===
-                "followers"
-                  ? "bg-blue-500 text-white border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
-                  : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <UserPlus
-                size={14}
-                className={
-                  activeFilter ===
-                  "followers"
-                    ? "text-white"
-                    : "text-blue-400"
-                }
-              />
-
-              <span>
-                Followers
-              </span>
-
-              {unreadFollowers.length >
-                0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-blue-500 text-white shadow animate-pulse">
-                  {
-                    unreadFollowers.length
-                  }
-                </span>
-              )}
-            </button>
+            </div>
           </div>
-        </div>
+        </section>
 
         {/* ===================================================
-            BENTO DASHBOARD
+            FILTER BAR
+        =================================================== */}
+
+        <section className="mb-5">
+          <div className="flex gap-2 overflow-x-auto inbox-hide-scrollbar pb-1">
+            {[
+              {
+                key: "all",
+                label: "All",
+                icon: (
+                  <Bell
+                    size={13}
+                  />
+                ),
+                count:
+                  totalUnreadCount,
+              },
+              {
+                key: "messages",
+                label: "Messages",
+                icon: (
+                  <MessageSquare
+                    size={13}
+                  />
+                ),
+                count:
+                  unreadMessagesTotal,
+              },
+              {
+                key: "followers",
+                label: "Followers",
+                icon: (
+                  <UserPlus
+                    size={13}
+                  />
+                ),
+                count:
+                  unreadFollowers.length,
+              },
+              {
+                key: "likes",
+                label: "Likes",
+                icon: (
+                  <Heart
+                    size={13}
+                  />
+                ),
+                count:
+                  unreadLikes.length,
+              },
+              {
+                key: "comments",
+                label: "Comments",
+                icon: (
+                  <MessageCircle
+                    size={13}
+                  />
+                ),
+                count:
+                  unreadComments.length,
+              },
+              {
+                key: "live",
+                label: "Live",
+                icon: (
+                  <Radio
+                    size={13}
+                  />
+                ),
+                count:
+                  liveInvites.length,
+              },
+            ].map(
+              (filter) => (
+                <button
+                  key={
+                    filter.key
+                  }
+                  onClick={() => {
+                    setActiveFilter(
+                      filter.key
+                    );
+
+                    if (
+                      [
+                        "followers",
+                        "likes",
+                        "comments",
+                      ].includes(
+                        filter.key
+                      )
+                    ) {
+                      if (
+                        filter.count >
+                        0
+                      ) {
+                        markCategoryAsRead(
+                          filter.key
+                        );
+                      }
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border shrink-0 text-[10px] font-black uppercase tracking-wider transition-all ${
+                    activeFilter ===
+                    filter.key
+                      ? "bg-white text-black border-white"
+                      : "bg-white/[0.035] text-zinc-500 border-white/10 hover:text-white hover:bg-white/[0.07]"
+                  }`}
+                >
+                  {filter.icon}
+
+                  {filter.label}
+
+                  {filter.count >
+                    0 && (
+                    <span
+                      className={`min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[8px] ${
+                        activeFilter ===
+                        filter.key
+                          ? "bg-black text-white"
+                          : "bg-pink-500 text-white"
+                      }`}
+                    >
+                      {filter.count >
+                      99
+                        ? "99+"
+                        : filter.count}
+                    </span>
+                  )}
+                </button>
+              )
+            )}
+          </div>
+        </section>
+
+        {/* ===================================================
+            CATEGORY DASHBOARD
         =================================================== */}
 
         {activeFilter ===
           "all" && (
-          <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <section className="mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
 
-            {/* LIKES */}
-
-            <div
-              onClick={() => {
-                setIsLikesPanelOpen(
-                  true
-                );
-
-                if (
-                  unreadLikes.length >
-                  0
-                ) {
-                  markCategoryAsRead(
-                    "likes"
-                  );
+              <CategoryCard
+                title="Messages"
+                subtitle="Direct chat previews"
+                count={
+                  unreadMessagesTotal
                 }
-              }}
-              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-pink-950/40 via-zinc-900 to-black border border-pink-500/30 cursor-pointer hover:border-pink-400/70 hover:shadow-[0_0_20px_rgba(236,72,153,0.25)] transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-9 h-9 bg-pink-500/20 text-pink-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Heart
-                    size={18}
-                    className="fill-pink-500 text-pink-500"
-                  />
-                </div>
-
-                {unreadLikes.length >
-                0 ? (
-                  <span className="bg-pink-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black shadow-[0_0_10px_rgba(236,72,153,0.8)] animate-pulse">
-                    {
-                      unreadLikes.length
-                    }{" "}
-                    New
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-zinc-500 font-bold">
-                    0 New
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <p className="text-xs font-black text-white group-hover:text-pink-300 transition-colors">
-                  Likes
-                </p>
-
-                <p className="text-[10px] text-zinc-400 font-medium">
-                  Video
-                  reactions
-                </p>
-              </div>
-            </div>
-
-            {/* COMMENTS */}
-
-            <div
-              onClick={() => {
-                setIsCommentsPanelOpen(
-                  true
-                );
-
-                if (
-                  unreadComments.length >
-                  0
-                ) {
-                  markCategoryAsRead(
-                    "comments"
-                  );
-                }
-              }}
-              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-cyan-950/40 via-zinc-900 to-black border border-cyan-500/30 cursor-pointer hover:border-cyan-400/70 hover:shadow-[0_0_20px_rgba(6,182,212,0.25)] transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-9 h-9 bg-cyan-500/20 text-cyan-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <MessageCircle
-                    size={18}
-                    className="fill-cyan-400 text-cyan-400"
-                  />
-                </div>
-
-                {unreadComments.length >
-                0 ? (
-                  <span className="bg-cyan-500 text-black px-2 py-0.5 rounded-full text-[10px] font-black shadow-[0_0_10px_rgba(6,182,212,0.8)] animate-pulse">
-                    {
-                      unreadComments.length
-                    }{" "}
-                    New
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-zinc-500 font-bold">
-                    0 New
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <p className="text-xs font-black text-white group-hover:text-cyan-300 transition-colors">
-                  Comments
-                </p>
-
-                <p className="text-[10px] text-zinc-400 font-medium">
-                  Video
-                  remarks
-                </p>
-              </div>
-            </div>
-
-            {/* MESSAGES */}
-
-            <div
-              onClick={() =>
-                setActiveFilter(
-                  "messages"
-                )
-              }
-              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-zinc-900 to-black border border-purple-500/30 cursor-pointer hover:border-purple-400/70 hover:shadow-[0_0_20px_rgba(168,85,247,0.25)] transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-9 h-9 bg-purple-500/20 text-purple-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                icon={
                   <MessageSquare
                     size={18}
                     className="text-purple-400"
                   />
-                </div>
-
-                {unreadMessagesTotal >
-                0 ? (
-                  <span className="bg-purple-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black shadow-[0_0_10px_rgba(168,85,247,0.8)] animate-pulse">
-                    {
-                      unreadMessagesTotal
-                    }{" "}
-                    New
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-zinc-500 font-bold">
-                    0 New
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <p className="text-xs font-black text-white group-hover:text-purple-300 transition-colors">
-                  Messages
-                </p>
-
-                <p className="text-[10px] text-zinc-400 font-medium">
-                  Direct
-                  chats
-                </p>
-              </div>
-            </div>
-
-            {/* FOLLOWERS */}
-
-            <div
-              onClick={() => {
-                setIsFollowerPanelOpen(
-                  true
-                );
-
-                if (
-                  unreadFollowers.length >
-                  0
-                ) {
-                  markCategoryAsRead(
-                    "followers"
-                  );
                 }
-              }}
-              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-blue-950/40 via-zinc-900 to-black border border-blue-500/30 cursor-pointer hover:border-blue-400/70 hover:shadow-[0_0_20px_rgba(59,130,246,0.25)] transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-9 h-9 bg-blue-500/20 text-blue-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                accent="from-purple-950/50 via-[#111018] to-black"
+                onClick={() =>
+                  setActiveFilter(
+                    "messages"
+                  )
+                }
+              />
+
+              <CategoryCard
+                title="Followers"
+                subtitle="New connections"
+                count={
+                  unreadFollowers.length
+                }
+                icon={
                   <UserPlus
                     size={18}
                     className="text-blue-400"
                   />
-                </div>
+                }
+                accent="from-blue-950/50 via-[#111018] to-black"
+                onClick={() => {
+                  setActiveFilter(
+                    "followers"
+                  );
 
-                {unreadFollowers.length >
-                0 ? (
-                  <span className="bg-blue-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black shadow-[0_0_10px_rgba(59,130,246,0.8)] animate-pulse">
-                    {
-                      unreadFollowers.length
-                    }{" "}
-                    New
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-zinc-500 font-bold">
-                    0 New
-                  </span>
-                )}
-              </div>
+                  if (
+                    unreadFollowers.length >
+                    0
+                  ) {
+                    markCategoryAsRead(
+                      "followers"
+                    );
+                  }
+                }}
+              />
 
-              <div>
-                <p className="text-xs font-black text-white group-hover:text-blue-300 transition-colors">
-                  Followers
-                </p>
+              <CategoryCard
+                title="Likes"
+                subtitle="Video reactions"
+                count={
+                  unreadLikes.length
+                }
+                icon={
+                  <Heart
+                    size={18}
+                    className="text-pink-500 fill-pink-500"
+                  />
+                }
+                accent="from-pink-950/50 via-[#111018] to-black"
+                onClick={() => {
+                  setActiveFilter(
+                    "likes"
+                  );
 
-                <p className="text-[10px] text-zinc-400 font-medium">
-                  Connections
-                </p>
-              </div>
+                  if (
+                    unreadLikes.length >
+                    0
+                  ) {
+                    markCategoryAsRead(
+                      "likes"
+                    );
+                  }
+                }}
+              />
+
+              <CategoryCard
+                title="Comments"
+                subtitle="Video conversations"
+                count={
+                  unreadComments.length
+                }
+                icon={
+                  <MessageCircle
+                    size={18}
+                    className="text-cyan-400"
+                  />
+                }
+                accent="from-cyan-950/50 via-[#111018] to-black"
+                onClick={() => {
+                  setActiveFilter(
+                    "comments"
+                  );
+
+                  if (
+                    unreadComments.length >
+                    0
+                  ) {
+                    markCategoryAsRead(
+                      "comments"
+                    );
+                  }
+                }}
+              />
             </div>
-          </div>
+          </section>
         )}
 
         {/* ===================================================
             LIVE STREAMS
         =================================================== */}
 
-        {liveStreams.length >
-          0 && (
-          <div className="flex gap-4 px-4 py-3 overflow-x-auto no-scrollbar border-b border-white/5">
-            {liveStreams.map(
-              (live) => (
-                <div
-                  key={
-                    live.id
-                  }
-                  onClick={() =>
-                    navigate(
-                      `/live/watch/${live.id}`
-                    )
-                  }
-                  className="flex flex-col items-center min-w-[72px] cursor-pointer group"
-                >
-                  <div className="relative p-[2.5px] rounded-full bg-gradient-to-tr from-cyan-400 via-pink-500 to-rose-500 shadow-[0_0_12px_rgba(236,72,153,0.5)] group-hover:scale-105 transition-transform">
-                    <img
-                      src={
-                        live
-                          .profiles
-                          ?.avatar_url ||
-                        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
-                      }
-                      crossOrigin="anonymous"
-                      referrerPolicy="no-referrer"
-                      className="w-[54px] h-[54px] rounded-full object-cover"
-                      alt=""
-                    />
+        {(
+          activeFilter ===
+            "all" ||
+          activeFilter ===
+            "live"
+        ) &&
+          liveStreams.length >
+            0 && (
+            <section className="mb-6">
+              <div className="flex items-center justify-between mb-2.5">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.9)]" />
 
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider shadow">
-                      Live
-                    </div>
+                    <h3 className="text-xs font-black uppercase tracking-[1.5px]">
+                      Live now
+                    </h3>
                   </div>
 
-                  <span className="text-[11px] font-bold mt-2 truncate w-16 text-center text-cyan-200">
-                    @
-                    {
-                      live
-                        .profiles
-                        ?.username
-                    }
-                  </span>
+                  <p className="text-[10px] text-zinc-600 mt-1">
+                    Creators currently broadcasting
+                  </p>
                 </div>
-              )
-            )}
-          </div>
-        )}
+
+                <span className="text-[9px] font-black text-rose-400 uppercase">
+                  {liveStreams.length}{" "}
+                  live
+                </span>
+              </div>
+
+              <div className="flex gap-4 overflow-x-auto inbox-hide-scrollbar pb-2">
+                {liveStreams.map(
+                  (live) => (
+                    <motion.button
+                      whileTap={{
+                        scale: 0.95,
+                      }}
+                      key={
+                        live.id
+                      }
+                      onClick={() =>
+                        navigate(
+                          `/live/watch/${live.id}`
+                        )
+                      }
+                      className="flex flex-col items-center min-w-[74px] group"
+                    >
+                      <div className="relative p-[2px] rounded-full bg-gradient-to-tr from-cyan-400 via-pink-500 to-rose-500 shadow-[0_0_14px_rgba(236,72,153,0.4)]">
+                        <img
+                          src={
+                            live
+                              .profiles
+                              ?.avatar_url ||
+                            `https://api.dicebear.com/7.x/avataaars/svg?seed=${live.id}`
+                          }
+                          crossOrigin="anonymous"
+                          referrerPolicy="no-referrer"
+                          className="w-14 h-14 rounded-full object-cover bg-zinc-900"
+                          alt=""
+                        />
+
+                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-rose-600 text-white text-[7px] font-black uppercase">
+                          Live
+                        </span>
+                      </div>
+
+                      <span className="mt-2 text-[10px] font-bold text-zinc-400 group-hover:text-white truncate max-w-[70px]">
+                        @
+                        {live
+                          .profiles
+                          ?.username ||
+                          "creator"}
+                      </span>
+                    </motion.button>
+                  )
+                )}
+              </div>
+            </section>
+          )}
 
         {/* ===================================================
             LIVE INVITES
         =================================================== */}
 
-        {liveInvites.length >
-          0 && (
-          <div className="px-4 pt-3 pb-2 space-y-2">
-            <div className="flex items-center gap-2 px-1">
-              <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+        {(
+          activeFilter ===
+            "all" ||
+          activeFilter ===
+            "live"
+        ) &&
+          liveInvites.length >
+            0 && (
+            <section className="mb-6">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
 
-              <h3 className="text-[11px] font-black uppercase tracking-wider text-cyan-300">
-                Live Co-Host
-                Invites (
-                {
-                  liveInvites.length
-                }
-                )
-              </h3>
-            </div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                    Co-host invitations
+                  </h3>
+                </div>
 
-            <div className="space-y-3">
-              {liveInvites.map(
-                (invite) => {
-                  const hostProfile =
-                    invite.stream
-                      ?.host;
+                <span className="text-[9px] font-black text-cyan-400">
+                  {liveInvites.length}{" "}
+                  pending
+                </span>
+              </div>
 
-                  const isVideo =
-                    invite.mode ===
-                      "video" ||
-                    !invite.mode;
+              <div className="space-y-3">
+                {liveInvites.map(
+                  (invite) => {
+                    const hostProfile =
+                      invite.stream
+                        ?.host;
 
-                  return (
-                    <div
-                      key={
-                        invite.id
-                      }
-                      className="bg-gradient-to-r from-cyan-950/40 via-zinc-900 to-pink-950/30 border border-cyan-500/40 p-4 rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.15)] space-y-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
+                    const isVideo =
+                      invite.mode ===
+                        "video" ||
+                      !invite.mode;
+
+                    return (
+                      <motion.div
+                        layout
+                        key={
+                          invite.id
+                        }
+                        className="rounded-3xl border border-cyan-500/20 bg-gradient-to-r from-cyan-950/30 via-[#0d0d13] to-pink-950/20 p-4"
+                      >
                         <div className="flex items-center gap-3">
-                          <div className="relative shrink-0">
+                          <div className="relative">
                             <img
                               src={
-                                hostProfile?.avatar_url ||
-                                "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+                                hostProfile
+                                  ?.avatar_url ||
+                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${invite.id}`
                               }
+                              className="w-12 h-12 rounded-full object-cover border border-cyan-400/40"
                               alt=""
-                              className="w-12 h-12 rounded-full object-cover border-2 border-cyan-400 p-0.5 shadow-md"
                             />
 
-                            <div className="absolute -bottom-1 -right-1 bg-pink-600 text-white p-1 rounded-full text-[10px] shadow">
+                            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-rose-500 border-2 border-[#0d0d13] flex items-center justify-center">
                               <Radio
-                                size={10}
-                                className="animate-pulse"
+                                size={
+                                  9
+                                }
+                                className="text-white"
                               />
-                            </div>
+                            </span>
                           </div>
 
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-xs font-black text-white">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-black truncate">
                                 @
-                                {hostProfile?.username ||
+                                {hostProfile
+                                  ?.username ||
                                   "Host"}
                               </p>
 
-                              <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 border border-pink-500/30 rounded text-[9px] font-black uppercase">
-                                Live Room
+                              <span className="text-[8px] uppercase font-black px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-400 border border-pink-500/20">
+                                Live
                               </span>
                             </div>
 
-                            <p className="text-[11px] text-cyan-200 font-medium mt-0.5">
-                              Invited you
-                              to co-host
-                              on{" "}
+                            <p className="text-[11px] text-zinc-500 mt-1">
+                              Invited you to join as{" "}
                               {isVideo
-                                ? "📹 Video"
-                                : "🎙️ Mic"}{" "}
-                              panel
+                                ? "video"
+                                : "audio"}{" "}
+                              co-host
                             </p>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex items-center gap-2 pt-2 border-t border-white/10">
-                        <button
-                          type="button"
-                          disabled={
-                            acceptingInviteId ===
-                            invite.id
-                          }
-                          onClick={() =>
-                            handleAcceptLiveInvite(
-                              invite
-                            )
-                          }
-                          className="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
-                        >
-                          {acceptingInviteId ===
-                          invite.id ? (
-                            <>
+                        <div className="flex gap-2 mt-4">
+                          <button
+                            type="button"
+                            disabled={
+                              acceptingInviteId ===
+                              invite.id
+                            }
+                            onClick={() =>
+                              handleAcceptLiveInvite(
+                                invite
+                              )
+                            }
+                            className="flex-1 h-10 rounded-xl bg-gradient-to-r from-cyan-500 to-pink-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {acceptingInviteId ===
+                            invite.id ? (
                               <Loader2
                                 size={
                                   14
                                 }
                                 className="animate-spin"
                               />
-
-                              Checking
-                              space...
-                            </>
-                          ) : (
-                            <>
+                            ) : (
                               <Sparkles
                                 size={
                                   14
                                 }
                               />
+                            )}
 
-                              Accept &
-                              Join
-                              Stage
-                            </>
-                          )}
-                        </button>
+                            {acceptingInviteId ===
+                            invite.id
+                              ? "Checking..."
+                              : "Accept & Join"}
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeclineLiveInvite(
-                              invite
-                            )
-                          }
-                          className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-zinc-300 font-bold text-xs rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1"
-                        >
-                          <X
-                            size={
-                              14
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeclineLiveInvite(
+                                invite
+                              )
                             }
-                          />
-
-                          Decline
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-              )}
-            </div>
-          </div>
-        )}
+                            className="h-10 px-4 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-[10px] font-black uppercase hover:text-white"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+                )}
+              </div>
+            </section>
+          )}
 
         {/* ===================================================
-            ACTIVITY FEED
+            ACTIVITY
         =================================================== */}
 
         {activeFilter !==
-          "messages" && (
-          <div className="px-4 pt-3 space-y-2">
-            <div className="flex items-center justify-between px-1 pb-1">
-              <h3 className="text-[11px] font-black text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Flame
-                  size={13}
-                  className="text-pink-500"
-                />
+          "messages" &&
+          activeFilter !==
+            "live" && (
+            <section className="mb-6">
+              <div className="flex items-center justify-between mb-2.5">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Flame
+                      size={14}
+                      className="text-pink-500"
+                    />
 
-                {activeFilter ===
-                "all"
-                  ? "Recent Activity"
-                  : `${activeFilter.toUpperCase()} Activity`}
-              </h3>
+                    <h3 className="text-xs font-black uppercase tracking-[1.5px]">
+                      {activeFilter ===
+                      "all"
+                        ? "Recent activity"
+                        : `${activeFilter} activity`}
+                    </h3>
+                  </div>
 
-              {filteredActivities.some(
-                (activity) =>
-                  !activity.is_read
-              ) && (
-                <button
-                  onClick={() =>
-                    markCategoryAsRead(
-                      activeFilter
-                    )
-                  }
-                  className="text-[10px] font-bold text-cyan-400 hover:underline flex items-center gap-1"
-                >
-                  <Check
-                    size={12}
-                  />
+                  <p className="text-[10px] text-zinc-600 mt-1">
+                    Social interactions and updates
+                  </p>
+                </div>
 
-                  Mark section
-                  read
-                </button>
-              )}
-            </div>
-
-            {filteredActivities.length ===
-            0 ? (
-              <div className="py-8 text-center bg-white/[0.02] border border-white/5 rounded-2xl">
-                <Bell
-                  size={24}
-                  className="text-zinc-600 mx-auto mb-1.5 opacity-60"
-                />
-
-                <p className="text-xs font-bold text-zinc-500">
-                  No activities
-                  found in
-                  this filter
-                </p>
+                {filteredActivities.some(
+                  (activity) =>
+                    !activity.is_read
+                ) && (
+                  <button
+                    onClick={() =>
+                      markCategoryAsRead(
+                        activeFilter ===
+                          "all"
+                          ? "all"
+                          : activeFilter
+                      )
+                    }
+                    className="text-[9px] font-black uppercase tracking-wider text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                  >
+                    <Check
+                      size={12}
+                    />
+                    Mark read
+                  </button>
+                )}
               </div>
-            ) : (
-              filteredActivities.map(
-                (item) => {
-                  const isFollowingBack =
-                    myFollows.has(
-                      item.actor_id
-                    );
 
-                  const isUnread =
-                    !item.is_read;
+              {filteredActivities.length ===
+              0 ? (
+                <EmptyState
+                  icon={
+                    <Bell
+                      size={28}
+                    />
+                  }
+                  title="No activity"
+                  description="Likes, comments, followers and other interactions will appear here."
+                />
+              ) : (
+                <div className="space-y-2">
+                  {filteredActivities.map(
+                    (item) => {
+                      const isUnread =
+                        !item.is_read;
 
-                  const isComment =
-                    item.type ===
-                      "comment" ||
-                    item.type ===
-                      "video_comments" ||
-                    item.type ===
-                      "video_comment";
+                      const actorId =
+                        item.actor_id ||
+                        item.actor?.id;
 
-                  return (
-                    <div
-                      key={
-                        item.id
-                      }
-                      onClick={(
-                        event
-                      ) =>
-                        handleActivityItemClick(
-                          item,
-                          event
-                        )
-                      }
-                      className={`flex items-center justify-between p-3.5 rounded-2xl transition-all cursor-pointer border ${
-                        isUnread
-                          ? "bg-gradient-to-r from-cyan-950/30 via-zinc-900 to-black border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                          : "bg-white/[0.03] border-white/5 hover:bg-white/[0.08]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                      const isFollowingBack =
+                        myFollows.has(
+                          actorId
+                        );
 
-                        {/* ACTOR */}
+                      const isComment =
+                        isCommentType(
+                          item.type
+                        );
 
-                        <div
-                          className="relative shrink-0 cursor-pointer group"
+                      return (
+                        <motion.div
+                          layout
+                          key={
+                            item.id
+                          }
                           onClick={(
                             event
                           ) =>
-                            handleActorProfileClick(
-                              item.actor_id ||
-                                item.actor
-                                  ?.id,
-                              item.id,
+                            handleActivityItemClick(
+                              item,
                               event
                             )
                           }
-                          title="View profile"
+                          className={`group flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
+                            isUnread
+                              ? "bg-gradient-to-r from-cyan-950/25 via-white/[0.025] to-pink-950/10 border-cyan-500/25"
+                              : "bg-white/[0.025] border-white/5 hover:bg-white/[0.05]"
+                          }`}
                         >
-                          {item.actor
-                            ?.avatar_url ? (
-                            <img
-                              src={
-                                item
-                                  .actor
-                                  .avatar_url
-                              }
-                              crossOrigin="anonymous"
-                              referrerPolicy="no-referrer"
-                              className="w-12 h-12 rounded-full object-cover border border-cyan-400/40 p-0.5 group-hover:border-cyan-300 transition-colors"
-                              alt=""
-                            />
-                          ) : (
-                            <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center border border-white/10 text-cyan-400 uppercase font-black text-xs group-hover:border-cyan-400 transition-colors">
-                              {item.actor?.username?.substring(
-                                0,
-                                2
-                              ) ||
-                                "??"}
-                            </div>
-                          )}
-
-                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/20 shadow">
-                            {getActivityIcon(
-                              item.type
+                          <div
+                            className="relative shrink-0"
+                            onClick={(
+                              event
+                            ) =>
+                              handleActorProfileClick(
+                                actorId,
+                                item.id,
+                                event
+                              )
+                            }
+                          >
+                            {item.actor
+                              ?.avatar_url ? (
+                              <img
+                                src={
+                                  item.actor
+                                    .avatar_url
+                                }
+                                crossOrigin="anonymous"
+                                referrerPolicy="no-referrer"
+                                className="w-11 h-11 rounded-full object-cover border border-white/10 group-hover:border-cyan-400/40"
+                                alt=""
+                              />
+                            ) : (
+                              <div className="w-11 h-11 rounded-full bg-zinc-900 border border-white/10 flex items-center justify-center text-cyan-400 text-[10px] font-black">
+                                {item.actor?.username?.substring(
+                                  0,
+                                  2
+                                ) ||
+                                  "??"}
+                              </div>
                             )}
+
+                            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-black border border-white/10 flex items-center justify-center">
+                              {getActivityIcon(
+                                item.type
+                              )}
+                            </span>
                           </div>
-                        </div>
 
-                        {/* DETAILS */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-[12px] font-black text-white truncate">
+                                @
+                                {item.actor
+                                  ?.username ||
+                                  "user"}
+                              </p>
 
-                        <div className="flex-1 min-w-0 pr-2">
-                          <div className="flex items-center gap-2">
-                            <p
+                              {isUnread && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-pink-500 shrink-0 shadow-[0_0_7px_rgba(236,72,153,1)]" />
+                              )}
+                            </div>
+
+                            <p className="text-[11px] text-zinc-500 truncate mt-0.5">
+                              {getActivityText(
+                                item
+                              )}
+                            </p>
+
+                            <p className="text-[9px] text-zinc-700 font-bold uppercase tracking-wider mt-1">
+                              {item.created_at
+                                ? formatDistanceToNow(
+                                    new Date(
+                                      item.created_at
+                                    ),
+                                    {
+                                      addSuffix:
+                                        true,
+                                    }
+                                  )
+                                : ""}
+                            </p>
+                          </div>
+
+                          {isFollowerType(
+                            item.type
+                          ) ? (
+                            <button
                               onClick={(
                                 event
                               ) =>
-                                handleActorProfileClick(
-                                  item.actor_id ||
-                                    item
-                                      .actor
-                                      ?.id,
-                                  item.id,
+                                handleFollowBack(
+                                  actorId,
                                   event
                                 )
                               }
-                              className="text-[13px] font-black text-white truncate hover:underline hover:text-cyan-300 transition-colors"
-                            >
-                              @
-                              {item.actor
-                                ?.username ||
-                                "user"}
-                            </p>
-
-                            {isUnread && (
-                              <span className="w-2 h-2 rounded-full bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,1)] shrink-0 animate-pulse" />
-                            )}
-                          </div>
-
-                          <p className="text-[12px] text-zinc-400 truncate mt-0.5">
-                            {getActivityText(
-                              item
-                            )}
-                          </p>
-
-                          <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-wider mt-1">
-                            {item.created_at
-                              ? formatDistanceToNow(
-                                  new Date(
-                                    item.created_at
-                                  ),
-                                  {
-                                    addSuffix:
-                                      true,
-                                  }
-                                )
-                              : ""}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* ACTION */}
-
-                      {(
-                        item.type ===
-                          "follow" ||
-                        item.type ===
-                          "user_follow"
-                      ) ? (
-                        <button
-                          onClick={(
-                            event
-                          ) =>
-                            handleFollowBack(
-                              item.actor_id,
-                              event
-                            )
-                          }
-                          disabled={
-                            isFollowingBack
-                          }
-                          className={`text-[11px] font-black px-3.5 py-1.5 rounded-xl transition-all shadow-md shrink-0 ${
-                            isFollowingBack
-                              ? "bg-zinc-800 text-zinc-400 border border-white/10 cursor-default"
-                              : "bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20 active:scale-95"
-                          }`}
-                        >
-                          {isFollowingBack
-                            ? "Friends"
-                            : "Follow Back"}
-                        </button>
-                      ) : item.video_id ||
-                        item.videos
-                          ?.id ? (
-                        <div
-                          onClick={(
-                            event
-                          ) =>
-                            handleVideoThumbnailClick(
-                              item.video_id ||
-                                item
-                                  .videos
-                                  ?.id,
-                              item.id,
-                              isComment,
-                              event
-                            )
-                          }
-                          className="w-12 h-14 rounded-xl bg-zinc-800 relative overflow-hidden border border-cyan-500/40 cursor-pointer flex items-center justify-center shrink-0 shadow-md group hover:border-cyan-400 hover:scale-105 transition-all"
-                          title="Click to view target video"
-                        >
-                          {item
-                            .videos
-                            ?.thumbnail_url ? (
-                            <img
-                              src={
-                                item
-                                  .videos
-                                  .thumbnail_url
+                              disabled={
+                                isFollowingBack
                               }
-                              crossOrigin="anonymous"
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                              alt=""
-                            />
+                              className={`px-3 py-1.5 rounded-xl text-[9px] font-black shrink-0 ${
+                                isFollowingBack
+                                  ? "bg-white/5 text-zinc-600 border border-white/5"
+                                  : "bg-pink-500 text-white shadow-lg shadow-pink-500/20"
+                              }`}
+                            >
+                              {isFollowingBack
+                                ? "Friends"
+                                : "Follow Back"}
+                            </button>
                           ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-cyan-950 to-pink-950 flex items-center justify-center">
-                              <Play
-                                size={
-                                  14
+                            (
+                              item.video_id ||
+                              item.videos
+                                ?.id
+                            ) && (
+                              <button
+                                onClick={(
+                                  event
+                                ) =>
+                                  handleVideoThumbnailClick(
+                                    item.video_id ||
+                                      item.videos
+                                        ?.id,
+                                    item.id,
+                                    isComment,
+                                    event
+                                  )
                                 }
-                                className="text-cyan-400 fill-cyan-400 opacity-80"
-                              />
-                            </div>
+                                className="w-10 h-12 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-zinc-900"
+                              >
+                                {item.videos
+                                  ?.thumbnail_url ? (
+                                  <img
+                                    src={
+                                      item
+                                        .videos
+                                        .thumbnail_url
+                                    }
+                                    crossOrigin="anonymous"
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-cover"
+                                    alt=""
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <Play
+                                      size={
+                                        13
+                                      }
+                                      className="text-cyan-400"
+                                    />
+                                  </div>
+                                )}
+                              </button>
+                            )
                           )}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                }
-              )
-            )}
-          </div>
-        )}
+                        </motion.div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
         {/* ===================================================
-            DIRECT MESSAGES
+            MESSAGE PREVIEWS
         =================================================== */}
 
         {(
@@ -4010,100 +4557,72 @@ const Inbox = () => {
           activeFilter ===
             "messages"
         ) && (
-          <div className="mt-5 px-4">
-            <div className="flex items-center justify-between mb-2.5 px-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-[11px] font-black text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+          <section>
+            <div className="flex items-center justify-between mb-2.5">
+              <div>
+                <div className="flex items-center gap-2">
                   <MessageSquare
-                    size={13}
-                    className="text-cyan-400"
+                    size={14}
+                    className="text-purple-400"
                   />
 
-                  Direct Messages (
-                  {
-                    filteredMessages.length
-                  }
+                  <h3 className="text-xs font-black uppercase tracking-[1.5px]">
+                    Messages
+                  </h3>
+                </div>
+
+                <p className="text-[10px] text-zinc-600 mt-1">
+                  Conversation previews
+                </p>
+              </div>
+
+              <button
+                onClick={() =>
+                  setShowNewChatModal(
+                    true
                   )
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {unreadMessagesTotal >
-                  0 && (
-                  <span className="text-[10px] font-black text-pink-400 bg-pink-500/10 border border-pink-500/30 px-2 py-0.5 rounded-full animate-pulse">
-                    {
-                      unreadMessagesTotal
-                    }{" "}
-                    unread
-                  </span>
-                )}
-
-                <button
-                  onClick={() =>
-                    setShowNewChatModal(
-                      true
-                    )
-                  }
-                  className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-lg active:scale-95 transition-all"
-                >
-                  <Plus
-                    size={12}
-                  />
-
-                  New Chat
-                </button>
-              </div>
+                }
+                className="flex items-center gap-1 text-[9px] uppercase font-black tracking-wider text-cyan-400"
+              >
+                <Plus
+                  size={12}
+                />
+                New
+              </button>
             </div>
 
             {filteredMessages.length ===
             0 ? (
-              <div className="py-10 text-center bg-white/[0.02] border border-white/5 rounded-2xl flex flex-col items-center justify-center px-4">
-                <div className="w-12 h-12 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-2">
+              <EmptyState
+                icon={
                   <MessageSquare
-                    size={22}
-                    className="text-purple-400"
+                    size={28}
                   />
-                </div>
-
-                <p className="text-sm font-black text-white">
-                  No
-                  Conversations
-                  Yet
-                </p>
-
-                <p className="text-xs text-zinc-500 mt-1 max-w-xs">
-                  Connect with
-                  friends, send
-                  voice notes,
-                  photos, and
-                  start chatting
-                  directly.
-                </p>
-
-                <button
-                  onClick={() =>
-                    setShowNewChatModal(
-                      true
-                    )
-                  }
-                  className="mt-3.5 px-4 py-2 bg-gradient-to-r from-cyan-500 to-pink-500 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 active:scale-95 transition-all flex items-center gap-1.5"
-                >
-                  <Plus
-                    size={14}
-                  />
-
-                  Start A
-                  Conversation
-                </button>
-              </div>
+                }
+                title="No conversations yet"
+                description="Start a conversation and your latest messages will appear here."
+                action={
+                  <button
+                    onClick={() =>
+                      setShowNewChatModal(
+                        true
+                      )
+                    }
+                    className="mt-4 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-500 text-black text-[9px] font-black uppercase tracking-wider"
+                  >
+                    Start conversation
+                  </button>
+                }
+              />
             ) : (
               <div className="space-y-2">
                 {filteredMessages.map(
                   (message) => {
                     const hasUnread =
                       (
-                        message.unreadCount ||
-                        0
+                        Number(
+                          message.unreadCount
+                        ) || 0
                       ) > 0;
 
                     const previewText =
@@ -4111,59 +4630,72 @@ const Inbox = () => {
                         message
                       );
 
+                    const peerId =
+                      message
+                        .displayProfile
+                        ?.id;
+
                     return (
-                      <div
+                      <motion.button
+                        layout
+                        whileTap={{
+                          scale: 0.99,
+                        }}
                         key={
                           message.id ||
-                          message
-                            .displayProfile
-                            ?.id
+                          peerId
                         }
                         onClick={() =>
                           handleOpenThread(
-                            message
-                              .displayProfile
-                              ?.id
+                            peerId
                           )
                         }
-                        className={`flex items-center gap-3.5 p-3.5 rounded-2xl cursor-pointer transition-all border ${
+                        className={`w-full text-left flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
                           hasUnread
-                            ? "bg-gradient-to-r from-purple-950/30 via-zinc-900 to-black border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                            : "bg-white/[0.03] border-white/5 hover:bg-white/[0.08]"
+                            ? "bg-gradient-to-r from-purple-950/30 via-white/[0.025] to-cyan-950/10 border-purple-500/25 shadow-[0_0_18px_rgba(168,85,247,0.08)]"
+                            : "bg-white/[0.025] border-white/5 hover:bg-white/[0.06]"
                         }`}
                       >
-
-                        {/* AVATAR */}
-
                         <div className="relative shrink-0">
                           <img
                             src={
                               message
                                 .displayProfile
                                 ?.avatar_url ||
-                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${message.displayProfile?.id}`
+                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${peerId}`
                             }
                             crossOrigin="anonymous"
                             referrerPolicy="no-referrer"
-                            className="w-[52px] h-[52px] rounded-full object-cover border-2 border-cyan-400/40 p-0.5 shadow-md"
+                            className="w-12 h-12 rounded-full object-cover border border-white/10"
                             alt=""
                           />
 
+                          {message
+                            .displayProfile
+                            ?.online && (
+                            <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-[#08080b] shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                          )}
+
                           {hasUnread && (
-                            <div className="absolute -top-1 -right-1 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-[10px] min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(244,63,94,0.9)] border-2 border-black animate-pulse">
-                              {
-                                message.unreadCount
-                              }
-                            </div>
+                            <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-pink-500 text-white text-[8px] font-black flex items-center justify-center border-2 border-[#08080b]">
+                              {message.unreadCount >
+                              99
+                                ? "99+"
+                                : message.unreadCount}
+                            </span>
                           )}
                         </div>
 
-                        {/* CONTENT */}
-
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-0.5">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <p className="text-[14px] font-black text-white truncate">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p
+                                className={`text-[13px] truncate ${
+                                  hasUnread
+                                    ? "font-black text-white"
+                                    : "font-bold text-zinc-300"
+                                }`}
+                              >
                                 @
                                 {message
                                   .displayProfile
@@ -4174,13 +4706,13 @@ const Inbox = () => {
                               {message
                                 .displayProfile
                                 ?.is_verified && (
-                                <span className="text-cyan-400 text-xs">
+                                <span className="text-cyan-400 text-[10px] shrink-0">
                                   ✓
                                 </span>
                               )}
                             </div>
 
-                            <span className="text-[10px] text-zinc-500 font-bold shrink-0">
+                            <span className="text-[9px] text-zinc-600 font-bold shrink-0">
                               {message.updated_at ||
                               message.created_at
                                 ? formatDistanceToNow(
@@ -4197,16 +4729,16 @@ const Inbox = () => {
                             </span>
                           </div>
 
-                          <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 mt-1">
                             <p
-                              className={`text-[12px] truncate ${
+                              className={`text-[11px] truncate flex-1 ${
                                 hasUnread
-                                  ? "text-cyan-200 font-bold"
-                                  : "text-zinc-400"
+                                  ? "text-purple-200 font-bold"
+                                  : "text-zinc-500"
                               }`}
                             >
                               {message.isFromMe && (
-                                <span className="text-zinc-500 font-semibold mr-1">
+                                <span className="text-zinc-600 mr-1">
                                   You:
                                 </span>
                               )}
@@ -4216,25 +4748,129 @@ const Inbox = () => {
                               }
                             </p>
 
-                            {hasUnread && (
-                              <span className="px-2 py-0.5 bg-pink-500/20 text-pink-400 border border-pink-500/30 rounded-md text-[9px] font-black uppercase tracking-wider shrink-0">
-                                {
-                                  message.unreadCount
-                                }{" "}
-                                New
-                              </span>
-                            )}
+                            <ChevronRight
+                              size={14}
+                              className="text-zinc-700 shrink-0"
+                            />
                           </div>
                         </div>
-                      </div>
+                      </motion.button>
                     );
                   }
                 )}
               </div>
             )}
-          </div>
+          </section>
         )}
-      </div>
+
+        {/* ===================================================
+            SUGGESTED PEOPLE
+        =================================================== */}
+
+        {activeFilter ===
+          "all" &&
+          suggestedUsers.length >
+            0 && (
+            <section className="mt-7">
+              <div className="flex items-center justify-between mb-2.5">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Users
+                      size={14}
+                      className="text-emerald-400"
+                    />
+
+                    <h3 className="text-xs font-black uppercase tracking-[1.5px]">
+                      People you may know
+                    </h3>
+                  </div>
+
+                  <p className="text-[10px] text-zinc-600 mt-1">
+                    Start a new conversation
+                  </p>
+                </div>
+
+                <button
+                  onClick={() =>
+                    setShowNewChatModal(
+                      true
+                    )
+                  }
+                  className="text-[9px] font-black uppercase text-cyan-400"
+                >
+                  See all
+                </button>
+              </div>
+
+              <div className="flex gap-2 overflow-x-auto inbox-hide-scrollbar">
+                {suggestedUsers
+                  .slice(
+                    0,
+                    8
+                  )
+                  .map(
+                    (user) => (
+                      <button
+                        key={
+                          user.id
+                        }
+                        onClick={() =>
+                          navigate(
+                            `/messaging?userId=${user.id}`
+                          )
+                        }
+                        className="min-w-[150px] p-3 rounded-2xl bg-white/[0.025] border border-white/5 hover:border-cyan-500/20 transition-all text-left"
+                      >
+                        <img
+                          src={
+                            user.avatar_url ||
+                            `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`
+                          }
+                          crossOrigin="anonymous"
+                          referrerPolicy="no-referrer"
+                          className="w-10 h-10 rounded-full object-cover border border-white/10"
+                          alt=""
+                        />
+
+                        <div className="mt-2">
+                          <div className="flex items-center gap-1">
+                            <p className="text-[11px] font-black text-white truncate">
+                              @
+                              {user.username ||
+                                "user"}
+                            </p>
+
+                            {user.is_verified && (
+                              <span className="text-cyan-400 text-[9px]">
+                                ✓
+                              </span>
+                            )}
+                          </div>
+
+                          {user.full_name && (
+                            <p className="text-[9px] text-zinc-600 truncate mt-0.5">
+                              {
+                                user.full_name
+                              }
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="mt-2 flex items-center gap-1 text-[8px] uppercase font-black text-cyan-400">
+                          <MessageSquare
+                            size={
+                              10
+                            }
+                          />
+                          Message
+                        </div>
+                      </button>
+                    )
+                  )}
+              </div>
+            </section>
+          )}
+      </main>
 
       {/* =====================================================
           NEW CHAT MODAL
@@ -4258,7 +4894,7 @@ const Inbox = () => {
                   false
                 )
               }
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[120]"
+              className="fixed inset-0 bg-black/80 backdrop-blur-md z-[120]"
             />
 
             <motion.div
@@ -4277,20 +4913,26 @@ const Inbox = () => {
                 scale: 0.95,
                 y: 20,
               }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-md max-h-[85vh] bg-[#0c0c12] border border-cyan-500/30 rounded-3xl z-[121] flex flex-col shadow-2xl overflow-hidden"
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[94%] max-w-md max-h-[85vh] bg-[#0c0c12] border border-cyan-500/20 rounded-3xl z-[121] flex flex-col shadow-2xl overflow-hidden"
             >
-              <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/40">
+              <div className="p-4 border-b border-white/10 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
                     <MessageSquare
                       size={16}
+                      className="text-purple-400"
                     />
                   </div>
 
-                  <h3 className="text-sm font-black uppercase tracking-wider text-white">
-                    Start Direct
-                    Message
-                  </h3>
+                  <div>
+                    <h3 className="text-sm font-black">
+                      New conversation
+                    </h3>
+
+                    <p className="text-[9px] text-zinc-600 uppercase tracking-wider">
+                      Choose someone to message
+                    </p>
+                  </div>
                 </div>
 
                 <button
@@ -4299,25 +4941,22 @@ const Inbox = () => {
                       false
                     )
                   }
-                  className="p-1.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                  className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-zinc-500 hover:text-white"
                 >
                   <X
-                    size={18}
+                    size={16}
                   />
                 </button>
               </div>
 
-              {/* SEARCH USERS */}
-
-              <div className="p-3 border-b border-white/10 bg-black/20">
-                <div className="relative flex items-center">
+              <div className="p-3 border-b border-white/10">
+                <div className="relative">
                   <Search
-                    size={15}
-                    className="absolute left-3 text-zinc-400"
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
                   />
 
                   <input
-                    type="text"
                     value={
                       newChatSearch
                     }
@@ -4325,47 +4964,36 @@ const Inbox = () => {
                       event
                     ) =>
                       setNewChatSearch(
-                        event.target
+                        event
+                          .target
                           .value
                       )
                     }
-                    placeholder="Search by username or name..."
-                    className="w-full bg-[#161622] border border-cyan-500/30 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                    placeholder="Search username or name..."
                     autoFocus
+                    className="w-full h-10 rounded-xl bg-white/[0.04] border border-white/10 pl-9 pr-4 text-xs outline-none focus:border-cyan-500/40"
                   />
-
-                  {newChatSearch && (
-                    <button
-                      onClick={() =>
-                        setNewChatSearch(
-                          ""
-                        )
-                      }
-                      className="absolute right-3 text-zinc-400 hover:text-white"
-                    >
-                      <X
-                        size={12}
-                      />
-                    </button>
-                  )}
                 </div>
               </div>
 
-              {/* USERS */}
-
-              <div className="flex-1 overflow-y-auto p-3 space-y-1.5 no-scrollbar max-h-[60vh]">
-                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400 px-2 py-1">
+              <div className="flex-1 overflow-y-auto inbox-scrollbar p-3 space-y-1.5">
+                <p className="text-[9px] uppercase font-black tracking-[2px] text-zinc-600 px-2 py-1">
                   {newChatSearch
-                    ? "Search Results"
-                    : "Suggested Users"}
+                    ? "Search results"
+                    : "Suggested people"}
                 </p>
 
                 {filteredSuggestedUsers.length ===
                 0 ? (
-                  <div className="py-8 text-center text-zinc-500 text-xs font-medium">
-                    No matching
-                    users found
-                  </div>
+                  <EmptyState
+                    icon={
+                      <Users
+                        size={26}
+                      />
+                    }
+                    title="No people found"
+                    description="Try another username or name."
+                  />
                 ) : (
                   filteredSuggestedUsers.map(
                     (user) => {
@@ -4375,7 +5003,7 @@ const Inbox = () => {
                         );
 
                       return (
-                        <div
+                        <button
                           key={
                             user.id
                           }
@@ -4392,61 +5020,57 @@ const Inbox = () => {
                               `/messaging?userId=${user.id}`
                             );
                           }}
-                          className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-white/5 border border-transparent hover:border-cyan-500/20 cursor-pointer transition-all group"
+                          className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 border border-transparent hover:border-cyan-500/15 transition-all text-left"
                         >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <img
-                              src={
-                                user.avatar_url ||
-                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`
-                              }
-                              crossOrigin="anonymous"
-                              referrerPolicy="no-referrer"
-                              className="w-10 h-10 rounded-full object-cover border border-cyan-500/30 group-hover:border-cyan-400 p-0.5"
-                              alt=""
-                            />
+                          <img
+                            src={
+                              user.avatar_url ||
+                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`
+                            }
+                            crossOrigin="anonymous"
+                            referrerPolicy="no-referrer"
+                            className="w-10 h-10 rounded-full object-cover border border-white/10"
+                            alt=""
+                          />
 
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-xs font-black text-white truncate group-hover:text-cyan-300 transition-colors">
-                                  @
-                                  {user.username ||
-                                    "user"}
-                                </p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-black text-white truncate">
+                                @
+                                {user.username ||
+                                  "user"}
+                              </p>
 
-                                {user.is_verified && (
-                                  <span className="text-cyan-400 text-[10px]">
-                                    ✓
-                                  </span>
-                                )}
-                              </div>
-
-                              {user.full_name && (
-                                <p className="text-[11px] text-zinc-400 truncate">
-                                  {
-                                    user.full_name
-                                  }
-                                </p>
+                              {user.is_verified && (
+                                <span className="text-cyan-400 text-[9px]">
+                                  ✓
+                                </span>
                               )}
                             </div>
-                          </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            {isFollowed && (
-                              <span className="text-[9px] font-black text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20 uppercase tracking-wider">
-                                Friend
-                              </span>
-                            )}
-
-                            <div className="p-2 rounded-xl bg-purple-500/10 group-hover:bg-purple-500 text-purple-400 group-hover:text-white transition-all">
-                              <Send
-                                size={
-                                  13
+                            {user.full_name && (
+                              <p className="text-[10px] text-zinc-500 truncate">
+                                {
+                                  user.full_name
                                 }
-                              />
-                            </div>
+                              </p>
+                            )}
                           </div>
-                        </div>
+
+                          {isFollowed && (
+                            <span className="text-[8px] font-black uppercase px-2 py-1 rounded-md bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                              Friend
+                            </span>
+                          )}
+
+                          <div className="w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
+                            <Send
+                              size={
+                                13
+                              }
+                            />
+                          </div>
+                        </button>
                       );
                     }
                   )
@@ -4458,7 +5082,7 @@ const Inbox = () => {
       </AnimatePresence>
 
       {/* =====================================================
-          DRAWERS
+          ACTIVITY DRAWERS
       ===================================================== */}
 
       <ActivityDrawer
@@ -4474,10 +5098,9 @@ const Inbox = () => {
         categoryKey="followers"
         data={activities.filter(
           (activity) =>
-            activity.type ===
-              "follow" ||
-            activity.type ===
-              "user_follow"
+            isFollowerType(
+              activity.type
+            )
         )}
       />
 
@@ -4494,12 +5117,9 @@ const Inbox = () => {
         categoryKey="likes"
         data={activities.filter(
           (activity) =>
-            activity.type ===
-              "like" ||
-            activity.type ===
-              "video_likes" ||
-            activity.type ===
-              "video_like"
+            isLikeType(
+              activity.type
+            )
         )}
       />
 
@@ -4516,12 +5136,9 @@ const Inbox = () => {
         categoryKey="comments"
         data={activities.filter(
           (activity) =>
-            activity.type ===
-              "comment" ||
-            activity.type ===
-              "video_comments" ||
-            activity.type ===
-              "video_comment"
+            isCommentType(
+              activity.type
+            )
         )}
       />
 
@@ -4538,10 +5155,15 @@ const Inbox = () => {
         categoryKey="activity"
         data={activities.filter(
           (activity) =>
-            activity.type !==
-              "follow" &&
-            activity.type !==
-              "user_follow"
+            !isFollowerType(
+              activity.type
+            ) &&
+            !isLikeType(
+              activity.type
+            ) &&
+            !isCommentType(
+              activity.type
+            )
         )}
       />
     </div>
