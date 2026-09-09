@@ -1,999 +1,1220 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+// src/pages/SettingsPage.jsx
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+
 import {
-  ArrowLeft,
-  Search,
-  X,
-  ChevronRight,
-  ChevronDown,
-  User,
-  ShieldCheck,
-  Shield,
-  Lock,
-  KeyRound,
-  Smartphone,
-  Bell,
-  Eye,
-  EyeOff,
-  Globe,
-  Languages,
-  Palette,
-  Database,
-  HardDrive,
-  Wallet,
-  CreditCard,
-  Banknote,
-  Coins,
-  BarChart3,
-  Video,
-  Radio,
-  CalendarClock,
-  FolderOpen,
-  Trophy,
-  Sparkles,
-  Bot,
-  Copyright,
-  MessageCircle,
-  MessagesSquare,
-  Users,
-  UserPlus,
-  Heart,
-  Download,
-  FileDown,
-  Link2,
-  Plug,
-  Accessibility,
-  LifeBuoy,
-  AlertTriangle,
-  FileText,
-  Settings2,
   Activity,
-  Server,
-  RefreshCw,
-  Wifi,
-  Trash2,
-  LogOut,
-  UserX,
-  UserRoundCog,
-  CheckCircle2,
-  CircleAlert,
-  Info,
-  Share2,
-  SlidersHorizontal,
-  Volume2,
-  Zap,
-  MousePointer2,
-  Moon,
-  Sun,
-  Monitor,
-  Fingerprint,
-  History,
-  BadgeCheck,
-  ShieldAlert,
-  Ban,
-  MessageSquareWarning,
-  Upload,
-  Image,
-  Music,
-  Archive,
-  Clock3,
-  Flag,
+  AlertTriangle,
+  ArrowLeft,
+  Award,
+  Bell,
+  Bot,
   BriefcaseBusiness,
-  Megaphone,
-  Target,
-  Gift,
-  CreditCard as PaymentCard,
-  FileSpreadsheet,
-  FileJson,
-  FileType2,
-  CloudDownload,
-  HardDriveDownload,
-  MoreHorizontal
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Cloud,
+  Code2,
+  Coins,
+  Copy,
+  Database,
+  Download,
+  Eye,
+  FileArchive,
+  FileText,
+  Globe,
+  HardDrive,
+  Image as ImageIcon,
+  KeyRound,
+  Languages,
+  LayoutDashboard,
+  Lock,
+  LogIn,
+  LogOut,
+  Mail,
+  MessageCircle,
+  Mic,
+  Moon,
+  MoreHorizontal,
+  Palette,
+  Pause,
+  Play,
+  Radio,
+  RefreshCw,
+  Search,
+  Send,
+  Settings2,
+  Shield,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  Sun,
+  Tag,
+  Trash2,
+  User,
+  UserCheck,
+  UserMinus,
+  Users,
+  Video,
+  Wallet,
+  Wifi,
+  X,
+  Zap,
 } from "lucide-react";
+
+import { motion, AnimatePresence } from "framer-motion";
 
 import { supabase } from "../supabaseClient";
 
-/*
-|--------------------------------------------------------------------------
-| APPLICATION CONFIG
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   CONSTANTS
+============================================================ */
 
-const APP_VERSION = "2.4.0-Beta";
-const APP_NAME = "Mpade Universe";
+const PROFILE_COLUMNS = [
+  "id",
+  "full_name",
+  "username",
+  "bio",
+  "district",
+  "interests",
+  "avatar_url",
+  "created_at",
+  "following_count",
+  "follower_count",
+  "total_likes",
+  "balance",
+  "total_tokens_earned",
+  "subscription_tier",
+  "phone_number",
+  "coins",
+  "cover_url",
+  "gender",
+  "dob",
+  "location",
+  "theme_preference",
+  "accent_color",
+  "profile_badges",
+  "layout_style",
+  "profile_video_url",
+  "social_links",
+  "payout_method",
+  "currency_preference",
+  "is_private",
+  "profile_music_url",
+  "status_message",
+  "verified_status",
+  "is_verified",
+  "online",
+  "display_name",
+  "is_online",
+  "account_status",
+  "nickname",
+  "name_pronunciation",
+  "profile_headline",
+  "pronouns",
+  "profile_category",
+  "account_type",
+  "creator_mode",
+  "profile_completion",
+  "profile_video_thumbnail_url",
+  "profile_video_enabled",
+  "profile_music_autoplay",
+  "profile_music_loop",
+  "avatar_position",
+  "cover_position",
+  "media_privacy",
+  "country",
+  "region",
+  "city",
+  "location_visibility",
+  "gps_sharing",
+  "relationship_status",
+  "occupation",
+  "education",
+  "school_university",
+  "skills",
+  "languages",
+  "birthday_visibility",
+  "gender_visibility",
+  "phone_visibility",
+  "custom_interests",
+  "interest_discovery",
+  "privacy_settings",
+  "verification_settings",
+  "financial_settings",
+  "creator_settings",
+  "appearance_settings",
+  "content_settings",
+  "discovery_settings",
+  "advanced_settings",
+  "sharing_settings",
+  "edit_settings",
+  "updated_at",
+  "pro_account",
+  "creator_category",
+  "creator_website",
+  "business_email",
+  "business_phone",
+  "creator_level",
+  "creator_xp",
+];
 
-/*
-|--------------------------------------------------------------------------
-| SETTINGS CATEGORIES
-|--------------------------------------------------------------------------
-*/
+const JSON_SETTING_COLUMNS = [
+  "privacy_settings",
+  "verification_settings",
+  "financial_settings",
+  "creator_settings",
+  "appearance_settings",
+  "content_settings",
+  "discovery_settings",
+  "advanced_settings",
+  "sharing_settings",
+  "edit_settings",
+];
+
+const DEFAULT_JSON_SETTINGS = {
+  privacy_settings: {
+    whoCanFollow: "everyone",
+    whoCanMessage: "everyone",
+    whoCanMention: "everyone",
+    whoCanTag: "everyone",
+    searchVisibility: true,
+    profileViews: true,
+    activityVisibility: true,
+    likeHistoryVisibility: "private",
+    followingVisibility: "public",
+    followerVisibility: "public",
+    onlineStatus: true,
+    lastActive: true,
+    commentFiltering: true,
+    hiddenWords: [],
+  },
+
+  verification_settings: {
+    emailVerified: false,
+    phoneVerified: false,
+    twoFactorEnabled: false,
+    authenticatorEnabled: false,
+    smsVerificationEnabled: false,
+    passkeysEnabled: false,
+    loginAlerts: true,
+    suspiciousLoginDetection: true,
+  },
+
+  financial_settings: {
+    defaultPayoutMethod: "Mobile Money",
+    autoPayout: false,
+    payoutSchedule: "manual",
+    minimumPayout: 0,
+    paymentVerified: false,
+  },
+
+  creator_settings: {
+    creatorDashboard: true,
+    analytics: true,
+    audienceInsights: true,
+    contentPerformance: true,
+    growthRecommendations: true,
+    earnings: true,
+    gifts: true,
+    subscriptions: true,
+    paidContent: false,
+    livestream: true,
+    scheduling: true,
+    mediaKit: false,
+    brandCollaboration: false,
+    aiRecommendations: true,
+    goals: true,
+  },
+
+  appearance_settings: {
+    theme: "neon",
+    accent: "#06b6d4",
+    density: "comfortable",
+    compactMode: false,
+    animations: true,
+    reduceMotion: false,
+    blur: true,
+    glass: true,
+    fontSize: "medium",
+    highContrast: false,
+  },
+
+  content_settings: {
+    defaultPrivacy: "public",
+    comments: true,
+    downloads: true,
+    duet: true,
+    stitch: true,
+    repost: true,
+    sharing: true,
+    ageRestriction: false,
+    sensitiveContent: false,
+    contentWarnings: true,
+    aiDisclosure: true,
+    autoplay: true,
+    autoplayWifi: true,
+    autoplayMobile: false,
+    uploadQuality: "high",
+    downloadQuality: "high",
+  },
+
+  discovery_settings: {
+    contactSync: false,
+    suggestAccount: true,
+    discoverability: true,
+    personalizedRecommendations: true,
+    interestDiscovery: true,
+  },
+
+  advanced_settings: {
+    backgroundSync: true,
+    diagnostics: false,
+    errorLogging: true,
+    autoRefresh: true,
+    offlineMode: true,
+  },
+
+  sharing_settings: {
+    allowExternalSharing: true,
+    allowProfileSharing: true,
+    allowVideoSharing: true,
+    allowMessageSharing: true,
+    showShareCount: true,
+  },
+
+  edit_settings: {
+    confirmBeforeDelete: true,
+    autosave: true,
+    showEditHistory: false,
+  },
+};
+
+/* ============================================================
+   SETTINGS CATEGORIES
+============================================================ */
 
 const SETTINGS_CATEGORIES = [
   {
     id: "account",
-    title: "Account",
-    description: "Manage your profile, account type and account lifecycle.",
+    title: "Account & Profile",
+    description: "Manage your identity, profile and account type",
     icon: User,
-    color: "text-cyan-400",
-    items: [
-      {
-        id: "account-information",
-        title: "Account Information",
-        description: "Username, name, profile, email, phone and account status.",
-        icon: User,
-        route: "/edit-profile"
-      },
-      {
-        id: "account-type",
-        title: "Account Type",
-        description: "Personal, creator, professional and business account modes.",
-        icon: UserRoundCog
-      },
-      {
-        id: "account-management",
-        title: "Account Management",
-        description: "Deactivate, delete, recover or download your account data.",
-        icon: Settings2,
-        danger: true
-      }
-    ]
+    color: "cyan",
+    keywords:
+      "username display name full name profile photo cover bio birthday gender location website phone email verification account type creator professional business",
   },
 
   {
     id: "security",
-    title: "Security & Privacy",
-    description: "Protect your account and control who can access you.",
+    title: "Security & Login",
+    description: "Protect your account and manage active devices",
     icon: ShieldCheck,
-    color: "text-emerald-400",
-    items: [
-      {
-        id: "security",
-        title: "Security",
-        description: "Password, 2FA, passkeys, login alerts and active sessions.",
-        icon: Shield,
-        route: "/settings/security"
-      },
-      {
-        id: "privacy",
-        title: "Privacy",
-        description: "Control profile visibility, activity and discoverability.",
-        icon: Eye
-      },
-      {
-        id: "blocked",
-        title: "Blocked & Restricted",
-        description: "Manage blocked, muted and restricted accounts.",
-        icon: Ban
-      },
-      {
-        id: "connected-apps",
-        title: "Connected Apps",
-        description: "OAuth applications, API access and permissions.",
-        icon: Plug,
-        route: "/settings/apps"
-      }
-    ]
+    color: "blue",
+    keywords:
+      "password security 2fa two factor authenticator sms passkey login alerts sessions devices recovery trusted logout",
   },
 
   {
-    id: "social",
-    title: "Content & Social",
-    description: "Control notifications, messages, comments and your audience.",
+    id: "privacy",
+    title: "Privacy",
+    description: "Control who can see and interact with you",
+    icon: Lock,
+    color: "purple",
+    keywords:
+      "private public followers messages mentions tags search visibility online profile views activity blocked muted restricted hidden words",
+  },
+
+  {
+    id: "notifications",
+    title: "Notifications",
+    description: "Control alerts, sounds and notification channels",
+    icon: Bell,
+    color: "red",
+    keywords:
+      "followers likes comments replies mentions shares reposts saves gifts live subscribers earnings payouts security push email sms vibration quiet hours",
+  },
+
+  {
+    id: "content",
+    title: "Content",
+    description: "Control publishing, playback and interaction permissions",
+    icon: Video,
+    color: "pink",
+    keywords:
+      "videos comments downloads duet stitch repost share upload quality autoplay age restriction sensitive ai copyright music",
+  },
+
+  {
+    id: "comments",
+    title: "Comments & Moderation",
+    description: "Manage comments, filters and moderation",
     icon: MessageCircle,
-    color: "text-pink-400",
-    items: [
-      {
-        id: "notifications",
-        title: "Notifications",
-        description: "Push, email, SMS, sounds, quiet hours and notification history.",
-        icon: Bell,
-        route: "/settings/notifications"
-      },
-      {
-        id: "content",
-        title: "Content Preferences",
-        description: "Default privacy, downloads, comments, uploads and content warnings.",
-        icon: Video,
-        route: "/settings/content"
-      },
-      {
-        id: "comments",
-        title: "Comments",
-        description: "Comment permissions, filters and moderation.",
-        icon: MessageSquareWarning,
-        route: "/settings/comments"
-      },
-      {
-        id: "messages",
-        title: "Messages",
-        description: "Message requests, groups, read receipts and privacy.",
-        icon: MessagesSquare,
-        route: "/settings/messages"
-      },
-      {
-        id: "followers",
-        title: "Followers & Audience",
-        description: "Follower requests, suggestions and discoverability.",
-        icon: Users
-      }
-    ]
+    color: "orange",
+    keywords:
+      "comments spam offensive hidden blocked words moderation manual filters notifications",
   },
 
   {
-    id: "experience",
-    title: "Experience",
-    description: "Customize performance, language, appearance and accessibility.",
-    icon: SlidersHorizontal,
-    color: "text-violet-400",
-    items: [
-      {
-        id: "data",
-        title: "Data & Storage",
-        description: "Data saver, autoplay, cache, downloads and storage usage.",
-        icon: Database,
-        route: "/settings/data"
-      },
-      {
-        id: "language",
-        title: "Language & Region",
-        description: "Language, translation, timezone, currency and regional formats.",
-        icon: Languages,
-        route: "/settings/language"
-      },
-      {
-        id: "appearance",
-        title: "Appearance",
-        description: "Theme, neon mode, density, animation and visual effects.",
-        icon: Palette,
-        route: "/settings/appearance"
-      },
-      {
-        id: "accessibility",
-        title: "Accessibility",
-        description: "Font size, contrast, captions, motion and touch controls.",
-        icon: Accessibility,
-        route: "/settings/accessibility"
-      }
-    ]
+    id: "messages",
+    title: "Messages",
+    description: "Control chats, requests and messaging privacy",
+    icon: Send,
+    color: "green",
+    keywords:
+      "messages requests groups read receipts typing notifications blocked muted who can message",
   },
 
   {
-    id: "creator",
-    title: "Creator",
-    description: "Creator tools, analytics, monetization and publishing.",
-    icon: Sparkles,
-    color: "text-cyan-300",
-    items: [
-      {
-        id: "creator-studio",
-        title: "Creator Studio",
-        description: "Manage your creator dashboard and professional profile.",
-        icon: BarChart3,
-        route: "/universe-tools"
-      },
-      {
-        id: "creator-analytics",
-        title: "Analytics",
-        description: "Audience, growth, content performance and earnings analytics.",
-        icon: Activity,
-        route: "/universe-tools"
-      },
-      {
-        id: "creator-monetization",
-        title: "Monetization",
-        description: "Creator fund, earnings, subscriptions, gifts and paid content.",
-        icon: Coins,
-        route: "/settings/creator/monetization"
-      },
-      {
-        id: "creator-gifts",
-        title: "Gifts",
-        description: "Gift earnings, received gifts and virtual items.",
-        icon: Gift,
-        route: "/settings/creator/gifts"
-      },
-      {
-        id: "creator-subscriptions",
-        title: "Subscriptions",
-        description: "Subscriber settings, payments and subscriber benefits.",
-        icon: BadgeCheck,
-        route: "/settings/creator/subscriptions"
-      },
-      {
-        id: "creator-live",
-        title: "Livestream",
-        description: "Live settings, moderation, gifts and live preferences.",
-        icon: Radio,
-        route: "/settings/creator/livestream"
-      },
-      {
-        id: "creator-scheduling",
-        title: "Scheduling",
-        description: "Schedule videos, lives and automatic publishing.",
-        icon: CalendarClock,
-        route: "/settings/creator/scheduling"
-      },
-      {
-        id: "creator-library",
-        title: "Content Library",
-        description: "Videos, drafts, thumbnails, audio and live recordings.",
-        icon: FolderOpen,
-        route: "/settings/creator/library"
-      },
-      {
-        id: "creator-progress",
-        title: "Goals & Achievements",
-        description: "Level, XP, badges, streaks, milestones and rewards.",
-        icon: Trophy,
-        route: "/settings/creator/progress"
-      },
-      {
-        id: "creator-ai",
-        title: "Creator AI",
-        description: "AI assistant, captions, scripts, hashtags and analysis.",
-        icon: Bot,
-        route: "/settings/ai"
-      },
-      {
-        id: "creator-brand",
-        title: "Brand & Collaborations",
-        description: "Campaigns, partnerships, media kit and sponsored content.",
-        icon: BriefcaseBusiness,
-        route: "/settings/creator/brand"
-      }
-    ]
+    id: "followers",
+    title: "Followers & Audience",
+    description: "Manage followers and discoverability",
+    icon: Users,
+    color: "emerald",
+    keywords:
+      "followers requests remove followers blocked restricted suggestions contact syncing friends discoverability",
+  },
+
+  {
+    id: "data",
+    title: "Data & Storage",
+    description: "Manage data usage, cache and stored content",
+    icon: Database,
+    color: "yellow",
+    keywords:
+      "data saver storage cache videos drafts images audio thumbnails recordings downloads offline autoplay quality",
+  },
+
+  {
+    id: "language",
+    title: "Language & Region",
+    description: "Language, timezone, country and regional formats",
+    icon: Languages,
+    color: "indigo",
+    keywords:
+      "language translation captions timezone Malawi currency MWK date format country region",
+  },
+
+  {
+    id: "appearance",
+    title: "Appearance",
+    description: "Customize the look and feel of Mpade Universe",
+    icon: Palette,
+    color: "fuchsia",
+    keywords:
+      "dark light system neon accent color compact density animation blur glass font contrast",
+  },
+
+  {
+    id: "accessibility",
+    title: "Accessibility",
+    description: "Make the app easier to see, hear and use",
+    icon: Eye,
+    color: "sky",
+    keywords:
+      "font size high contrast motion screen reader captions audio descriptions color blind touch targets",
   },
 
   {
     id: "payments",
     title: "Payments & Monetization",
-    description: "Wallet, payment methods, payouts and transactions.",
+    description: "Wallet, coins, earnings and payment methods",
     icon: Wallet,
-    color: "text-green-400",
-    items: [
-      {
-        id: "wallet",
-        title: "Wallet",
-        description: "Balance, coins, tokens, earnings and pending funds.",
-        icon: Wallet,
-        route: "/payouts"
-      },
-      {
-        id: "payment-methods",
-        title: "Payment Methods",
-        description: "TNM Mpamba, Airtel Money, bank and payout verification.",
-        icon: PaymentCard
-      },
-      {
-        id: "payouts",
-        title: "Payouts",
-        description: "Request payouts, limits, status and payout history.",
-        icon: Banknote,
-        route: "/payouts"
-      },
-      {
-        id: "transactions",
-        title: "Transactions",
-        description: "Purchases, gifts, coins, subscriptions and refunds.",
-        icon: CreditCard
-      }
-    ]
+    color: "green",
+    keywords:
+      "wallet balance coins tokens earnings payments purchases gifts subscriptions payout TNM Mpamba Airtel Money bank",
   },
 
   {
-    id: "safety",
-    title: "Safety & Legal",
-    description: "Copyright, content safety, rules and legal information.",
-    icon: ShieldAlert,
-    color: "text-red-400",
-    items: [
-      {
-        id: "copyright",
-        title: "Copyright",
-        description: "Claims, strikes, disputes, appeals and music rights.",
-        icon: Copyright,
-        route: "/settings/copyright"
-      },
-      {
-        id: "safety",
-        title: "Content Safety",
-        description: "Warnings, violations, removed and restricted content.",
-        icon: ShieldAlert
-      },
-      {
-        id: "guidelines",
-        title: "Community Guidelines",
-        description: "Rules for keeping Mpade Universe safe.",
-        icon: FileText
-      },
-      {
-        id: "privacy-policy",
-        title: "Privacy Policy",
-        description: "How Mpade Universe handles information.",
-        icon: Eye,
-        route: "/privacy"
-      },
-      {
-        id: "terms",
-        title: "Terms of Service",
-        description: "Terms and conditions for using the platform.",
-        icon: FileText
-      }
-    ]
+    id: "creator",
+    title: "Creator Settings",
+    description: "Creator tools, analytics and monetization",
+    icon: LayoutDashboard,
+    color: "cyan",
+    keywords:
+      "creator dashboard analytics audience performance growth earnings gifts subscriptions paid content livestream schedule library media kit",
+  },
+
+  {
+    id: "scheduling",
+    title: "Scheduling & Publishing",
+    description: "Manage scheduled videos and publishing",
+    icon: Play,
+    color: "violet",
+    keywords:
+      "scheduled videos lives publishing auto publish timezone calendar failed notifications",
+  },
+
+  {
+    id: "library",
+    title: "Content Library",
+    description: "Manage videos, drafts, recordings and deleted content",
+    icon: FileArchive,
+    color: "amber",
+    keywords:
+      "videos drafts images audio thumbnails live recordings archived deleted recently deleted recovery storage",
+  },
+
+  {
+    id: "progress",
+    title: "Creator Progress",
+    description: "Level, XP, achievements and goals",
+    icon: Award,
+    color: "yellow",
+    keywords:
+      "level xp achievements badges streaks milestones goals rewards leaderboard progress",
+  },
+
+  {
+    id: "brand",
+    title: "Brand & Collaborations",
+    description: "Business, campaigns and creator partnerships",
+    icon: BriefcaseBusiness,
+    color: "rose",
+    keywords:
+      "brand collaboration partnership sponsored campaigns media kit portfolio rate card business contact disclosure",
+  },
+
+  {
+    id: "copyright",
+    title: "Copyright & Safety",
+    description: "Copyright claims, safety and content violations",
+    icon: Shield,
+    color: "red",
+    keywords:
+      "copyright claims strikes disputes appeals music rights ownership ai disclosure community guidelines violations warnings",
   },
 
   {
     id: "ai",
-    title: "AI & Personalization",
-    description: "Manage AI features, recommendations and AI data usage.",
+    title: "AI Settings",
+    description: "AI assistant, recommendations and personalization",
     icon: Bot,
-    color: "text-fuchsia-400",
-    items: [
-      {
-        id: "ai-settings",
-        title: "AI Assistant",
-        description: "Assistant, recommendations and personalization.",
-        icon: Bot,
-        route: "/settings/ai"
-      },
-      {
-        id: "ai-content",
-        title: "AI Content Tools",
-        description: "Captions, scripts, hashtags, thumbnails and video analysis.",
-        icon: Sparkles
-      },
-      {
-        id: "ai-moderation",
-        title: "AI Moderation",
-        description: "Automated moderation and safety assistance.",
-        icon: ShieldCheck
-      },
-      {
-        id: "ai-data",
-        title: "AI Data Usage",
-        description: "Control how your activity is used for AI personalization.",
-        icon: Database
-      },
-      {
-        id: "ai-history",
-        title: "AI History",
-        description: "View or clear previous AI interactions.",
-        icon: History
-      }
-    ]
+    color: "violet",
+    keywords:
+      "ai assistant recommendations captions hashtags scripts thumbnails video analysis comment replies moderation personalization history",
   },
 
   {
-    id: "data-reports",
+    id: "reports",
     title: "Data & Reports",
-    description: "Export personal data, analytics and financial reports.",
-    icon: FileDown,
-    color: "text-blue-400",
-    items: [
-      {
-        id: "personal-data",
-        title: "Download My Data",
-        description: "Request an archive of your personal account data.",
-        icon: CloudDownload,
-        route: "/settings/reports"
-      },
-      {
-        id: "analytics-export",
-        title: "Export Analytics",
-        description: "Export creator analytics in supported formats.",
-        icon: BarChart3
-      },
-      {
-        id: "earnings-reports",
-        title: "Earnings Reports",
-        description: "Creator earnings and financial reports.",
-        icon: FileSpreadsheet
-      },
-      {
-        id: "creator-reports",
-        title: "Creator Reports",
-        description: "Monthly creator performance reports.",
-        icon: FileText
-      }
-    ]
+    description: "Export your data, analytics and financial reports",
+    icon: FileText,
+    color: "blue",
+    keywords:
+      "download personal data analytics videos earnings transactions followers reports csv json pdf archive",
+  },
+
+  {
+    id: "apps",
+    title: "Connected Apps",
+    description: "OAuth applications and third-party permissions",
+    icon: Code2,
+    color: "slate",
+    keywords:
+      "connected apps oauth authorized devices api permissions revoke third party",
   },
 
   {
     id: "support",
-    title: "Support",
-    description: "Get help, report issues and contact Mpade Universe.",
-    icon: LifeBuoy,
-    color: "text-zinc-300",
-    items: [
-      {
-        id: "help",
-        title: "Help Center",
-        description: "Find answers and guides.",
-        icon: LifeBuoy,
-        route: "/support"
-      },
-      {
-        id: "report",
-        title: "Report a Problem",
-        description: "Report account, content or technical problems.",
-        icon: Flag
-      },
-      {
-        id: "tickets",
-        title: "Support Tickets",
-        description: "View your previous support requests.",
-        icon: MessageCircle
-      },
-      {
-        id: "account-recovery",
-        title: "Account Recovery",
-        description: "Recover access to your account.",
-        icon: KeyRound
-      },
-      {
-        id: "safety-center",
-        title: "Safety Center",
-        description: "Safety resources and account protection.",
-        icon: ShieldCheck
-      },
-      {
-        id: "about",
-        title: `About ${APP_NAME}`,
-        description: "Application information and version details.",
-        icon: Smartphone,
-        route: "/about"
-      }
-    ]
+    title: "Support & Help",
+    description: "Help, reports, recovery and support tickets",
+    icon: CircleHelp,
+    color: "zinc",
+    keywords:
+      "help report problem account content copyright payments creator recovery safety terms privacy cookies contact tickets",
   },
 
   {
     id: "system",
-    title: "System",
-    description: "Diagnostics, connectivity, synchronization and application status.",
-    icon: Server,
-    color: "text-orange-400",
-    items: [
-      {
-        id: "diagnostics",
-        title: "Diagnostics",
-        description: "Connection, storage, synchronization and system diagnostics.",
-        icon: Activity
-      },
-      {
-        id: "server",
-        title: "Server Status",
-        description: "Database, storage, notifications and media-processing status.",
-        icon: Server
-      },
-      {
-        id: "sync",
-        title: "Sync & Network",
-        description: "Last sync, offline mode and background synchronization.",
-        icon: Wifi
-      },
-      {
-        id: "cache",
-        title: "Cache & Temporary Data",
-        description: "View and clear locally cached application data.",
-        icon: HardDrive
-      },
-      {
-        id: "about-system",
-        title: "App Information",
-        description: "Version, build and application environment.",
-        icon: Info
-      }
-    ]
-  }
+    title: "System & Diagnostics",
+    description: "App status, synchronization and diagnostics",
+    icon: Settings2,
+    color: "slate",
+    keywords:
+      "version build server database storage notifications media processing sync network offline diagnostics errors temporary data",
+  },
+
+  {
+    id: "exit",
+    title: "Account Exit",
+    description: "Logout, deactivate, delete and download before leaving",
+    icon: LogOut,
+    color: "red",
+    keywords:
+      "logout all devices deactivate delete account download data",
+  },
 ];
 
-/*
-|--------------------------------------------------------------------------
-| SMALL HELPERS
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   HELPERS
+============================================================ */
 
-const safeStorageSize = () => {
-  try {
-    let bytes = 0;
-
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-
-      if (!key) continue;
-
-      const value = localStorage.getItem(key) || "";
-
-      bytes += new Blob([key, value]).size;
-    }
-
-    for (let i = 0; i < sessionStorage.length; i += 1) {
-      const key = sessionStorage.key(i);
-
-      if (!key) continue;
-
-      const value = sessionStorage.getItem(key) || "";
-
-      bytes += new Blob([key, value]).size;
-    }
-
-    return bytes;
-  } catch {
-    return 0;
+function safeObject(value, fallback = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return fallback;
   }
-};
 
-const formatBytes = (bytes) => {
-  if (!bytes || bytes <= 0) return "0 B";
+  return value;
+}
 
-  const units = ["B", "KB", "MB", "GB"];
+function mergeSettings(profile) {
+  const result = {};
 
-  const index = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1
-  );
+  JSON_SETTING_COLUMNS.forEach((key) => {
+    result[key] = {
+      ...(DEFAULT_JSON_SETTINGS[key] || {}),
+      ...safeObject(profile?.[key]),
+    };
+  });
 
-  return `${(bytes / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-};
+  return result;
+}
 
-const getInitial = (value) => {
-  if (!value) return "U";
+function formatDate(value) {
+  if (!value) return "Not available";
 
-  return String(value)
-    .trim()
-    .charAt(0)
-    .toUpperCase();
-};
+  try {
+    return new Intl.DateTimeFormat("en-MW", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return "Not available";
+  }
+}
 
-/*
-|--------------------------------------------------------------------------
-| MAIN PAGE
-|--------------------------------------------------------------------------
-*/
+function formatMoney(value, currency = "MWK") {
+  const amount = Number(value || 0);
+
+  return new Intl.NumberFormat("en-MW", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function getSocialLink(profile, key) {
+  const links = safeObject(profile?.social_links);
+  return links[key] || "";
+}
+
+function setNestedValue(object, path, value) {
+  const result = { ...object };
+  let current = result;
+
+  const parts = path.split(".");
+
+  parts.forEach((part, index) => {
+    if (index === parts.length - 1) {
+      current[part] = value;
+    } else {
+      current[part] = {
+        ...(current[part] || {}),
+      };
+
+      current = current[part];
+    }
+  });
+
+  return result;
+}
+
+/* ============================================================
+   MAIN PAGE
+============================================================ */
 
 const SettingsPage = () => {
   const navigate = useNavigate();
 
-  const [activeCategory, setActiveCategory] = useState(null);
-  const [activeItem, setActiveItem] = useState(null);
-
-  const [search, setSearch] = useState("");
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-
+  const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [userEmail, setUserEmail] = useState("");
-  const [loadingProfile, setLoadingProfile] = useState(true);
 
-  const [cacheSize, setCacheSize] = useState(0);
-  const [clearingCache, setClearingCache] = useState(false);
+  const [settings, setSettings] = useState(DEFAULT_JSON_SETTINGS);
 
-  const [dataSaver, setDataSaver] = useState(() => {
-    try {
-      return localStorage.getItem("mpade_data_saver") === "true";
-    } catch {
-      return false;
-    }
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [search, setSearch] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [saveMessage, setSaveMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  const [storageInfo, setStorageInfo] = useState({
+    localStorage: 0,
+    sessionStorage: 0,
+    indexedDB: "Available",
   });
 
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      return localStorage.getItem("mpade_notifications") !== "false";
-    } catch {
-      return true;
-    }
-  });
-
-  const [onlineStatus, setOnlineStatus] = useState(() => {
-    try {
-      return localStorage.getItem("mpade_online_status") !== "false";
-    } catch {
-      return true;
-    }
-  });
-
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      return localStorage.getItem("mpade_theme") || "dark";
-    } catch {
-      return "dark";
-    }
-  });
-
-  /*
-  |--------------------------------------------------------------------------
-  | LOAD USER
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================
+     LOAD PROFILE
+  ========================================================== */
 
   const loadProfile = useCallback(async () => {
-    setLoadingProfile(true);
+    setLoading(true);
+    setErrorMessage("");
 
     try {
       const {
-        data: { user }
+        data: { user: authUser },
+        error: authError,
       } = await supabase.auth.getUser();
 
-      if (!user) {
-        setProfile(null);
-        setUserEmail("");
+      if (authError) throw authError;
+
+      if (!authUser) {
+        navigate("/login");
         return;
       }
 
-      setUserEmail(user.email || "");
+      setUser(authUser);
 
       const { data, error } = await supabase
         .from("profiles")
-        .select(`
-          id,
-          username,
-          display_name,
-          full_name,
-          avatar_url,
-          bio,
-          dob,
-          gender,
-          location,
-          district,
-          website,
-          follower_count,
-          following_count,
-          total_likes,
-          balance,
-          coins,
-          total_tokens_earned,
-          subscription_tier,
-          verified_status,
-          is_verified,
-          account_status,
-          currency_preference,
-          online,
-          is_online
-        `)
-        .eq("id", user.id)
+        .select(PROFILE_COLUMNS.join(","))
+        .eq("id", authUser.id)
         .maybeSingle();
 
-      if (!error) {
-        setProfile(data);
+      if (error) throw error;
+
+      if (!data) {
+        throw new Error("Your profile record could not be found.");
       }
+
+      setProfile(data);
+      setSettings(mergeSettings(data));
     } catch (error) {
-      console.error("Settings profile load error:", error);
+      console.error("Settings profile error:", error);
+
+      setErrorMessage(
+        error?.message ||
+          "Unable to load your settings. Please try again."
+      );
     } finally {
-      setLoadingProfile(false);
+      setLoading(false);
+    }
+  }, [navigate]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  /* ==========================================================
+     STORAGE
+  ========================================================== */
+
+  const calculateStorage = useCallback(() => {
+    try {
+      let local = 0;
+      let session = 0;
+
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        const value = localStorage.getItem(key);
+
+        local += (key?.length || 0) + (value?.length || 0);
+      }
+
+      for (let i = 0; i < sessionStorage.length; i += 1) {
+        const key = sessionStorage.key(i);
+        const value = sessionStorage.getItem(key);
+
+        session += (key?.length || 0) + (value?.length || 0);
+      }
+
+      setStorageInfo({
+        localStorage: local,
+        sessionStorage: session,
+        indexedDB: "Available",
+      });
+    } catch {
+      setStorageInfo({
+        localStorage: 0,
+        sessionStorage: 0,
+        indexedDB: "Unavailable",
+      });
     }
   }, []);
 
   useEffect(() => {
-    loadProfile();
-    setCacheSize(safeStorageSize());
-  }, [loadProfile]);
+    calculateStorage();
+  }, [calculateStorage]);
 
-  /*
-  |--------------------------------------------------------------------------
-  | PERSIST LOCAL PREFERENCES
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================
+     FILTERED CATEGORIES
+  ========================================================== */
 
-  useEffect(() => {
-    try {
-      localStorage.setItem("mpade_data_saver", String(dataSaver));
-    } catch {
-      // Storage may be unavailable.
-    }
-  }, [dataSaver]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("mpade_notifications", String(notifications));
-    } catch {
-      // Storage may be unavailable.
-    }
-  }, [notifications]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("mpade_online_status", String(onlineStatus));
-    } catch {
-      // Storage may be unavailable.
-    }
-  }, [onlineStatus]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("mpade_theme", darkMode);
-    } catch {
-      // Storage may be unavailable.
-    }
-  }, [darkMode]);
-
-  /*
-  |--------------------------------------------------------------------------
-  | SEARCH
-  |--------------------------------------------------------------------------
-  */
-
-  const searchResults = useMemo(() => {
+  const filteredCategories = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    if (!query) return [];
+    if (!query) return SETTINGS_CATEGORIES;
 
-    const results = [];
+    return SETTINGS_CATEGORIES.filter((category) => {
+      const searchable = [
+        category.title,
+        category.description,
+        category.keywords,
+      ]
+        .join(" ")
+        .toLowerCase();
 
-    SETTINGS_CATEGORIES.forEach((category) => {
-      category.items.forEach((item) => {
-        const haystack = [
-          category.title,
-          category.description,
-          item.title,
-          item.description
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        if (haystack.includes(query)) {
-          results.push({
-            ...item,
-            categoryId: category.id,
-            categoryTitle: category.title
-          });
-        }
-      });
+      return searchable.includes(query);
     });
-
-    return results;
   }, [search]);
 
-  /*
-  |--------------------------------------------------------------------------
-  | OPEN SETTING
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================
+     SAVE PROFILE COLUMN
+  ========================================================== */
 
-  const openSetting = (item, category) => {
-    if (item.route) {
-      navigate(item.route);
-      return;
-    }
+  const saveProfileFields = async (fields) => {
+    if (!profile?.id) return false;
 
-    setActiveCategory(category);
-    setActiveItem(item);
-  };
-
-  /*
-  |--------------------------------------------------------------------------
-  | CLEAR CACHE
-  |--------------------------------------------------------------------------
-  */
-
-  const clearCache = () => {
-    if (clearingCache) return;
-
-    setClearingCache(true);
+    setSaving(true);
+    setSaveMessage("");
+    setErrorMessage("");
 
     try {
-      const protectedKeys = [
-        "sb-",
-        "supabase",
-        "auth",
-        "mpade_data_saver",
-        "mpade_notifications",
-        "mpade_online_status",
-        "mpade_theme"
-      ];
+      const { data, error } = await supabase
+        .from("profiles")
+        .update(fields)
+        .eq("id", profile.id)
+        .select(PROFILE_COLUMNS.join(","))
+        .single();
 
-      Object.keys(localStorage).forEach((key) => {
-        const shouldKeep = protectedKeys.some((protectedKey) =>
-          key.toLowerCase().startsWith(protectedKey.toLowerCase())
-        );
+      if (error) throw error;
 
-        if (!shouldKeep) {
-          localStorage.removeItem(key);
-        }
-      });
+      setProfile(data);
+      setSettings(mergeSettings(data));
 
-      sessionStorage.clear();
+      setSaveMessage("Changes saved");
 
-      setCacheSize(safeStorageSize());
+      window.setTimeout(() => {
+        setSaveMessage("");
+      }, 2500);
+
+      return true;
     } catch (error) {
-      console.error("Cache clear error:", error);
+      console.error("Settings save error:", error);
+
+      setErrorMessage(
+        error?.message || "Unable to save your changes."
+      );
+
+      return false;
     } finally {
-      setTimeout(() => {
-        setClearingCache(false);
-      }, 500);
+      setSaving(false);
     }
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | LOGOUT
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================
+     UPDATE JSON SETTING
+  ========================================================== */
+
+  const updateJsonSetting = async (column, key, value) => {
+    const current = safeObject(settings[column]);
+
+    const next = {
+      ...current,
+      [key]: value,
+    };
+
+    const success = await saveProfileFields({
+      [column]: next,
+    });
+
+    if (success) {
+      setSettings((previous) => ({
+        ...previous,
+        [column]: next,
+      }));
+    }
+  };
+
+  /* ==========================================================
+     UPDATE PROFILE COLUMN
+  ========================================================== */
+
+  const updateProfile = async (column, value) => {
+    const success = await saveProfileFields({
+      [column]: value,
+    });
+
+    if (success) {
+      setProfile((previous) => ({
+        ...previous,
+        [column]: value,
+      }));
+    }
+  };
+
+  /* ==========================================================
+     LOGOUT
+  ========================================================== */
 
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
+    try {
+      const { error } = await supabase.auth.signOut();
 
-    if (!error) {
+      if (error) throw error;
+
       navigate("/");
-    } else {
-      console.error("Logout error:", error);
+    } catch (error) {
+      setErrorMessage(error?.message || "Unable to log out.");
     }
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | PROFILE DATA
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================
+     CLEAR TEMP DATA
+  ========================================================== */
 
-  const displayName =
-    profile?.display_name ||
-    profile?.full_name ||
-    profile?.username ||
-    "Mpade User";
+  const clearTemporaryData = () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
 
-  const username = profile?.username
-    ? `@${profile.username}`
-    : "No username";
+      calculateStorage();
 
-  const avatarLetter = getInitial(displayName);
+      setSaveMessage("Local temporary data cleared");
 
-  const verified =
-    profile?.is_verified === true ||
-    profile?.verified_status === true ||
-    profile?.verified_status === "verified";
+      window.setTimeout(() => {
+        setSaveMessage("");
+      }, 2500);
+    } catch (error) {
+      setErrorMessage(
+        error?.message || "Unable to clear temporary data."
+      );
+    }
+  };
 
-  /*
-  |--------------------------------------------------------------------------
-  | RENDER
-  |--------------------------------------------------------------------------
-  */
+  /* ==========================================================
+     SELECT CATEGORY
+  ========================================================== */
+
+  const openCategory = (id) => {
+    setActiveCategory(id);
+    setShowMobileMenu(false);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const activeCategoryObject = SETTINGS_CATEGORIES.find(
+    (category) => category.id === activeCategory
+  );
+
+  /* ==========================================================
+     LOADING
+  ========================================================== */
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full border-2 border-cyan-400/20 border-t-cyan-400 animate-spin" />
+
+          <div className="text-xs font-black uppercase tracking-[3px] text-zinc-500">
+            Loading Settings
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ==========================================================
+     ERROR
+  ========================================================== */
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <AlertTriangle className="mx-auto text-red-400 mb-5" size={42} />
+
+          <h1 className="text-xl font-black mb-3">
+            Settings unavailable
+          </h1>
+
+          <p className="text-sm text-zinc-500 mb-6">
+            {errorMessage ||
+              "We could not load your profile settings."}
+          </p>
+
+          <button
+            onClick={loadProfile}
+            className="px-6 py-3 rounded-xl bg-cyan-500 text-black font-black text-xs uppercase tracking-wider"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ==========================================================
+     RENDER
+  ========================================================== */
 
   return (
-    <div className="settings-page min-h-screen bg-[#030303] text-white font-sans">
-      {/* ================================================================
-          CUSTOM SCROLLBAR
-      ================================================================= */}
+    <div className="min-h-screen bg-black text-white overflow-x-hidden">
+      {/* ======================================================
+          BACKGROUND
+      ====================================================== */}
+
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full bg-cyan-500/[0.035] blur-[120px]" />
+
+        <div className="absolute top-[40%] -right-40 w-[500px] h-[500px] rounded-full bg-purple-500/[0.03] blur-[120px]" />
+      </div>
+
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
+      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-black/85 backdrop-blur-2xl">
+        <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="h-[72px] flex items-center gap-4">
+            <button
+              onClick={() => navigate(-1)}
+              className="w-10 h-10 rounded-xl border border-white/[0.07] bg-white/[0.025] hover:bg-white/[0.07] flex items-center justify-center transition"
+              aria-label="Go back"
+            >
+              <ArrowLeft size={19} />
+            </button>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Settings2 size={16} className="text-cyan-400" />
+
+                <h1 className="text-sm sm:text-base font-black uppercase tracking-[2px] truncate">
+                  Settings & Privacy
+                </h1>
+              </div>
+
+              <p className="hidden sm:block text-[10px] text-zinc-600 uppercase tracking-[2px] mt-1">
+                Mpade Universe Control Center
+              </p>
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              {saving && (
+                <div className="hidden sm:flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-500">
+                  <RefreshCw size={13} className="animate-spin" />
+                  Saving
+                </div>
+              )}
+
+              {saveMessage && (
+                <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase">
+                  <Check size={13} />
+                  {saveMessage}
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowMobileMenu((value) => !value)}
+                className="lg:hidden w-10 h-10 rounded-xl border border-white/[0.07] bg-white/[0.025] flex items-center justify-center"
+              >
+                <MoreHorizontal size={19} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ======================================================
+          MAIN
+      ====================================================== */}
+
+      <main className="relative max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 lg:py-8">
+        {/* ERROR BAR */}
+
+        <AnimatePresence>
+          {errorMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-5 p-4 rounded-2xl border border-red-500/20 bg-red-500/[0.07] flex items-start gap-3"
+            >
+              <AlertTriangle
+                size={18}
+                className="text-red-400 mt-0.5 shrink-0"
+              />
+
+              <div className="flex-1">
+                <div className="text-xs font-bold text-red-300">
+                  Settings error
+                </div>
+
+                <div className="text-[11px] text-red-400/70 mt-1">
+                  {errorMessage}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setErrorMessage("")}
+                className="text-zinc-500 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ====================================================
+            PROFILE SUMMARY
+        ==================================================== */}
+
+        <ProfileSummary
+          profile={profile}
+          user={user}
+          navigate={navigate}
+          onEditProfile={() => navigate("/edit-profile")}
+        />
+
+        {/* ====================================================
+            SEARCH
+        ==================================================== */}
+
+        <div className="mt-5 relative">
+          <Search
+            size={17}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600"
+          />
+
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search settings..."
+            className="w-full h-12 pl-11 pr-12 rounded-2xl border border-white/[0.07] bg-white/[0.025] focus:bg-white/[0.04] focus:border-cyan-500/30 outline-none text-sm text-white placeholder:text-zinc-700 transition"
+          />
+
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* ====================================================
+            MOBILE CATEGORY MENU
+        ==================================================== */}
+
+        <AnimatePresence>
+          {showMobileMenu && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:hidden overflow-hidden"
+            >
+              <div className="mt-4 p-2 rounded-2xl border border-white/[0.07] bg-[#080808]">
+                {filteredCategories.map((category) => (
+                  <CategoryButton
+                    key={category.id}
+                    category={category}
+                    active={activeCategory === category.id}
+                    onClick={() => openCategory(category.id)}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ====================================================
+            CONTENT GRID
+        ==================================================== */}
+
+        <div className="mt-6 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-6">
+          {/* DESKTOP SIDEBAR */}
+
+          <aside className="hidden lg:block">
+            <div className="sticky top-[92px] max-h-[calc(100vh-110px)] overflow-y-auto pr-2 settings-scroll">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#060606] p-2">
+                {filteredCategories.map((category) => (
+                  <CategoryButton
+                    key={category.id}
+                    category={category}
+                    active={activeCategory === category.id}
+                    onClick={() => openCategory(category.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          </aside>
+
+          {/* DETAIL AREA */}
+
+          <section className="min-w-0">
+            {!activeCategory ? (
+              <SettingsOverview
+                categories={filteredCategories}
+                profile={profile}
+                settings={settings}
+                storageInfo={storageInfo}
+                onOpen={openCategory}
+              />
+            ) : (
+              <SettingsDetail
+                category={activeCategoryObject}
+                profile={profile}
+                user={user}
+                settings={settings}
+                storageInfo={storageInfo}
+                saving={saving}
+                updateProfile={updateProfile}
+                updateJsonSetting={updateJsonSetting}
+                setSettings={setSettings}
+                clearTemporaryData={clearTemporaryData}
+                calculateStorage={calculateStorage}
+                onBack={() => setActiveCategory(null)}
+                onOpenCategory={openCategory}
+                onLogout={handleLogout}
+                navigate={navigate}
+              />
+            )}
+          </section>
+        </div>
+      </main>
+
+      {/* ======================================================
+          FOOTER
+      ====================================================== */}
+
+      <footer className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-4">
+        <div className="border-t border-white/[0.05] pt-7 flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div className="text-[10px] text-zinc-700 uppercase tracking-[2px]">
+            Mpade Universe
+          </div>
+
+          <div className="text-[10px] text-zinc-700">
+            {profile.account_status || "active"} •{" "}
+            {profile.subscription_tier || "Free"}
+          </div>
+        </div>
+      </footer>
 
       <style>{`
-        .settings-page {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(34,211,238,.45) rgba(255,255,255,.03);
-        }
-
-        .settings-page::-webkit-scrollbar {
-          width: 7px;
-          height: 7px;
-        }
-
-        .settings-page::-webkit-scrollbar-track {
-          background: rgba(255,255,255,.025);
-        }
-
-        .settings-page::-webkit-scrollbar-thumb {
-          background: linear-gradient(
-            180deg,
-            rgba(34,211,238,.75),
-            rgba(168,85,247,.65)
-          );
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,.08);
-        }
-
-        .settings-page::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(
-            180deg,
-            rgba(34,211,238,1),
-            rgba(168,85,247,.9)
-          );
-        }
-
-        .settings-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(34,211,238,.45) rgba(255,255,255,.03);
-        }
-
         .settings-scroll::-webkit-scrollbar {
-          width: 6px;
+          width: 5px;
         }
 
         .settings-scroll::-webkit-scrollbar-track {
@@ -1001,2702 +1222,4622 @@ const SettingsPage = () => {
         }
 
         .settings-scroll::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,.12);
+          background: rgba(255,255,255,0.12);
           border-radius: 999px;
         }
 
         .settings-scroll::-webkit-scrollbar-thumb:hover {
-          background: rgba(34,211,238,.45);
+          background: rgba(6,182,212,0.45);
+        }
+
+        .settings-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255,255,255,0.14) transparent;
         }
       `}</style>
+    </div>
+  );
+};
 
-      {/* ================================================================
-          HEADER
-      ================================================================= */}
+/* ============================================================
+   PROFILE SUMMARY
+============================================================ */
 
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-black/75 backdrop-blur-2xl">
-        <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025] text-zinc-300 transition hover:bg-white/[0.07] hover:text-white"
-            aria-label="Go back"
-          >
-            <ArrowLeft size={19} />
-          </button>
+const ProfileSummary = ({
+  profile,
+  user,
+  navigate,
+  onEditProfile,
+}) => {
+  const avatar =
+    profile.avatar_url ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      profile.display_name ||
+        profile.full_name ||
+        profile.username ||
+        "User"
+    )}&background=090909&color=06b6d4`;
 
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-sm font-black uppercase tracking-[2px] sm:text-base">
-                Settings & Privacy
-              </h1>
+  const username = profile.username
+    ? profile.username.startsWith("@")
+      ? profile.username
+      : `@${profile.username}`
+    : "@user";
 
-              <span className="hidden rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-cyan-300 sm:inline-flex">
-                Control Center
-              </span>
+  const completion = Math.max(
+    0,
+    Math.min(100, Number(profile.profile_completion || 0))
+  );
+
+  return (
+    <div className="rounded-3xl border border-white/[0.07] bg-[#070707] overflow-hidden">
+      <div className="h-28 sm:h-36 relative overflow-hidden">
+        {profile.cover_url ? (
+          <img
+            src={profile.cover_url}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-r from-cyan-500/[0.08] via-purple-500/[0.06] to-transparent" />
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-[#070707] via-transparent to-black/20" />
+      </div>
+
+      <div className="px-5 pb-5 -mt-8 relative">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+          <img
+            src={avatar}
+            alt=""
+            className="w-16 h-16 rounded-2xl border-2 border-black object-cover bg-zinc-900"
+          />
+
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-black truncate">
+                {profile.display_name ||
+                  profile.full_name ||
+                  "User"}
+              </h2>
+
+              {(profile.is_verified ||
+                profile.verified_status === "verified") && (
+                <ShieldCheck
+                  size={17}
+                  className="text-cyan-400"
+                />
+              )}
             </div>
 
-            <p className="mt-0.5 hidden text-[10px] text-zinc-600 sm:block">
-              Manage your Mpade Universe experience
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {username}
             </p>
           </div>
 
-          <button
-            onClick={() => setMobileSearchOpen((value) => !value)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025] text-zinc-400 transition hover:text-white lg:hidden"
-          >
-            <Search size={18} />
-          </button>
-        </div>
-
-        <AnimatePresence>
-          {mobileSearchOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden border-t border-white/[0.04] lg:hidden"
-            >
-              <div className="p-4">
-                <SearchBox
-                  value={search}
-                  onChange={setSearch}
-                  onClear={() => setSearch("")}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </header>
-
-      {/* ================================================================
-          MAIN
-      ================================================================= */}
-
-      <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-5 sm:px-6 lg:px-8">
-        {/* PROFILE HERO */}
-
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden rounded-[28px] border border-white/[0.07] bg-gradient-to-br from-white/[0.055] via-white/[0.02] to-cyan-500/[0.025] p-5 shadow-2xl sm:p-6"
-        >
-          <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-cyan-500/10 blur-[80px]" />
-          <div className="pointer-events-none absolute -bottom-28 left-1/3 h-56 w-56 rounded-full bg-purple-500/10 blur-[80px]" />
-
-          <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="relative shrink-0">
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt={displayName}
-                    className="h-16 w-16 rounded-[20px] border border-white/10 object-cover shadow-xl sm:h-20 sm:w-20"
-                  />
-                ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-cyan-400/20 bg-cyan-400/10 text-xl font-black text-cyan-300 shadow-xl sm:h-20 sm:w-20 sm:text-2xl">
-                    {avatarLetter}
-                  </div>
-                )}
-
-                {verified && (
-                  <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-4 border-[#080808] bg-cyan-400 text-black">
-                    <CheckCircle2 size={13} strokeWidth={3} />
-                  </span>
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="truncate text-xl font-black tracking-tight text-white sm:text-2xl">
-                    {loadingProfile ? "Loading..." : displayName}
-                  </h2>
-
-                  {verified && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-cyan-300">
-                      <BadgeCheck size={11} />
-                      Verified
-                    </span>
-                  )}
-                </div>
-
-                <p className="mt-1 text-xs font-medium text-zinc-500">
-                  {loadingProfile ? "Loading profile..." : username}
-                </p>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <MiniStat
-                    label="Followers"
-                    value={profile?.follower_count ?? 0}
-                  />
-                  <MiniStat
-                    label="Following"
-                    value={profile?.following_count ?? 0}
-                  />
-                  <MiniStat
-                    label="Likes"
-                    value={profile?.total_likes ?? 0}
-                  />
-                </div>
-              </div>
-            </div>
-
+          <div className="flex gap-2">
             <button
-              onClick={() => navigate("/edit-profile")}
-              className="flex items-center justify-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-[10px] font-black uppercase tracking-[1.5px] text-cyan-300 transition hover:bg-cyan-400/15"
+              onClick={onEditProfile}
+              className="px-4 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] text-[10px] font-black uppercase tracking-wider transition"
             >
-              <User size={15} />
               Edit Profile
             </button>
+
+            <button
+              onClick={() => navigate("/profile")}
+              className="px-4 py-2.5 rounded-xl bg-cyan-400 text-black text-[10px] font-black uppercase tracking-wider"
+            >
+              View Profile
+            </button>
           </div>
-        </motion.section>
-
-        {/* ================================================================
-            SEARCH DESKTOP
-        ================================================================= */}
-
-        <div className="mt-5 hidden lg:block">
-          <SearchBox
-            value={search}
-            onChange={setSearch}
-            onClear={() => setSearch("")}
-          />
         </div>
 
-        {/* ================================================================
-            SEARCH RESULTS
-        ================================================================= */}
-
-        <AnimatePresence mode="wait">
-          {search.trim() ? (
-            <motion.section
-              key="search"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mt-6"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[2px] text-cyan-400">
-                    Search Results
-                  </p>
-                  <h3 className="mt-1 text-lg font-black text-white">
-                    {searchResults.length} setting
-                    {searchResults.length === 1 ? "" : "s"} found
-                  </h3>
-                </div>
-
-                <button
-                  onClick={() => setSearch("")}
-                  className="rounded-lg px-3 py-2 text-[10px] font-bold text-zinc-500 hover:bg-white/5 hover:text-white"
-                >
-                  Clear
-                </button>
-              </div>
-
-              {searchResults.length > 0 ? (
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                  {searchResults.map((item) => (
-                    <SearchResult
-                      key={`${item.categoryId}-${item.id}`}
-                      item={item}
-                      onClick={() =>
-                        openSetting(
-                          item,
-                          SETTINGS_CATEGORIES.find(
-                            (category) => category.id === item.categoryId
-                          )
-                        )
-                      }
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={<Search size={24} />}
-                  title="No settings found"
-                  description="Try another keyword such as security, payout, creator, privacy or notifications."
-                />
-              )}
-            </motion.section>
-          ) : (
-            <motion.div
-              key="categories"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mt-6 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"
-            >
-              {/* ==========================================================
-                  LEFT CATEGORY NAV
-              =========================================================== */}
-
-              <aside className="hidden lg:block">
-                <div className="sticky top-[90px] rounded-[24px] border border-white/[0.06] bg-white/[0.018] p-2">
-                  <p className="px-3 pb-2 pt-2 text-[9px] font-black uppercase tracking-[2px] text-zinc-600">
-                    Settings
-                  </p>
-
-                  <div className="settings-scroll max-h-[calc(100vh-150px)] overflow-y-auto pr-1">
-                    {SETTINGS_CATEGORIES.map((category) => (
-                      <CategoryNavItem
-                        key={category.id}
-                        category={category}
-                        active={activeCategory?.id === category.id}
-                        onClick={() => {
-                          const element = document.getElementById(
-                            `settings-${category.id}`
-                          );
-
-                          if (element) {
-                            element.scrollIntoView({
-                              behavior: "smooth",
-                              block: "center"
-                            });
-                          }
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </aside>
-
-              {/* ==========================================================
-                  CATEGORY CONTENT
-              =========================================================== */}
-
-              <div className="min-w-0 space-y-7">
-                {SETTINGS_CATEGORIES.map((category, categoryIndex) => (
-                  <SettingsCategory
-                    key={category.id}
-                    category={category}
-                    index={categoryIndex}
-                    onOpen={(item) => openSetting(item, category)}
-                  />
-                ))}
-
-                {/* ========================================================
-                    DANGER ZONE
-                ========================================================= */}
-
-                <DangerZone
-                  onLogout={handleLogout}
-                  onDeactivate={() => {
-                    setActiveCategory({
-                      id: "account-management",
-                      title: "Account Management",
-                      description: ""
-                    });
-
-                    setActiveItem({
-                      id: "account-management",
-                      title: "Account Management",
-                      description:
-                        "Deactivate or permanently delete your account.",
-                      icon: UserX,
-                      danger: true
-                    });
-                  }}
-                />
-
-                {/* ========================================================
-                    SYSTEM FOOTER
-                ========================================================= */}
-
-                <SystemFooter
-                  version={APP_VERSION}
-                  cacheSize={cacheSize}
-                  clearingCache={clearingCache}
-                  onClearCache={clearCache}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
-
-      {/* ================================================================
-          DETAIL DRAWER
-      ================================================================= */}
-
-      <AnimatePresence>
-        {activeItem && (
-          <SettingDrawer
-            item={activeItem}
-            category={activeCategory}
-            profile={profile}
-            userEmail={userEmail}
-            dataSaver={dataSaver}
-            setDataSaver={setDataSaver}
-            notifications={notifications}
-            setNotifications={setNotifications}
-            onlineStatus={onlineStatus}
-            setOnlineStatus={setOnlineStatus}
-            darkMode={darkMode}
-            setDarkMode={setDarkMode}
-            onClose={() => {
-              setActiveItem(null);
-              setActiveCategory(null);
-            }}
-            onNavigate={navigate}
-            onClearCache={clearCache}
-            cacheSize={cacheSize}
-            clearingCache={clearingCache}
+        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <MiniStat
+            label="Followers"
+            value={profile.follower_count || 0}
           />
-        )}
-      </AnimatePresence>
+
+          <MiniStat
+            label="Following"
+            value={profile.following_count || 0}
+          />
+
+          <MiniStat
+            label="Likes"
+            value={profile.total_likes || 0}
+          />
+
+          <MiniStat
+            label="Profile"
+            value={`${completion}%`}
+          />
+        </div>
+      </div>
     </div>
   );
 };
 
-/*
-|--------------------------------------------------------------------------
-| SEARCH BOX
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   OVERVIEW
+============================================================ */
 
-const SearchBox = ({ value, onChange, onClear }) => {
+const SettingsOverview = ({
+  categories,
+  profile,
+  settings,
+  storageInfo,
+  onOpen,
+}) => {
   return (
-    <div className="relative">
-      <Search
-        size={18}
-        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600"
-      />
+    <div>
+      <div className="mb-6">
+        <div className="text-[10px] font-black uppercase tracking-[3px] text-cyan-400">
+          Control Center
+        </div>
 
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="Search settings..."
-        className="h-12 w-full rounded-2xl border border-white/[0.07] bg-white/[0.025] pl-11 pr-11 text-sm font-medium text-white outline-none placeholder:text-zinc-700 transition focus:border-cyan-400/30 focus:bg-white/[0.04]"
-      />
+        <h2 className="text-2xl sm:text-3xl font-black mt-2">
+          Settings for everything.
+        </h2>
 
-      {value && (
-        <button
-          onClick={onClear}
-          className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-600 hover:bg-white/5 hover:text-white"
-        >
-          <X size={15} />
-        </button>
-      )}
+        <p className="text-sm text-zinc-500 mt-2 max-w-2xl">
+          Manage your account, privacy, security, creator tools,
+          payments, content, AI, accessibility and more from one
+          place.
+        </p>
+      </div>
+
+      {/* QUICK CARDS */}
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+        <QuickCard
+          icon={<ShieldCheck size={18} />}
+          title="Security"
+          value={
+            settings.verification_settings.twoFactorEnabled
+              ? "2FA enabled"
+              : "Review security"
+          }
+          onClick={() => onOpen("security")}
+        />
+
+        <QuickCard
+          icon={<Lock size={18} />}
+          title="Privacy"
+          value={profile.is_private ? "Private" : "Public"}
+          onClick={() => onOpen("privacy")}
+        />
+
+        <QuickCard
+          icon={<Wallet size={18} />}
+          title="Wallet"
+          value={formatMoney(
+            profile.balance,
+            profile.currency_preference || "MWK"
+          )}
+          onClick={() => onOpen("payments")}
+        />
+
+        <QuickCard
+          icon={<Award size={18} />}
+          title="Creator"
+          value={`Level ${profile.creator_level || 1}`}
+          onClick={() => onOpen("progress")}
+        />
+      </div>
+
+      {/* ALL SETTINGS */}
+
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        {categories.map((category) => (
+          <OverviewCard
+            key={category.id}
+            category={category}
+            onClick={() => onOpen(category.id)}
+          />
+        ))}
+      </div>
+
+      {/* STORAGE */}
+
+      <div className="mt-6">
+        <StorageSummary
+          storageInfo={storageInfo}
+          onOpen={() => onOpen("data")}
+        />
+      </div>
     </div>
   );
 };
 
-/*
-|--------------------------------------------------------------------------
-| MINI STAT
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   DETAIL ROUTER
+============================================================ */
 
-const MiniStat = ({ label, value }) => (
-  <div className="rounded-lg border border-white/[0.05] bg-black/30 px-2.5 py-1.5">
-    <span className="text-[9px] font-black text-zinc-500">
-      {Number(value || 0).toLocaleString()}
-    </span>
-    <span className="ml-1 text-[8px] font-bold uppercase tracking-wide text-zinc-700">
-      {label}
-    </span>
-  </div>
-);
+const SettingsDetail = ({
+  category,
+  profile,
+  user,
+  settings,
+  storageInfo,
+  saving,
+  updateProfile,
+  updateJsonSetting,
+  setSettings,
+  clearTemporaryData,
+  calculateStorage,
+  onBack,
+  onOpenCategory,
+  onLogout,
+  navigate,
+}) => {
+  const props = {
+    profile,
+    user,
+    settings,
+    storageInfo,
+    saving,
+    updateProfile,
+    updateJsonSetting,
+    setSettings,
+    clearTemporaryData,
+    calculateStorage,
+    onOpenCategory,
+    navigate,
+  };
 
-/*
-|--------------------------------------------------------------------------
-| CATEGORY NAV ITEM
-|--------------------------------------------------------------------------
-*/
+  let content = null;
 
-const CategoryNavItem = ({ category, active, onClick }) => {
-  const Icon = category.icon;
+  switch (category?.id) {
+    case "account":
+      content = <AccountSettings {...props} />;
+      break;
+
+    case "security":
+      content = <SecuritySettings {...props} />;
+      break;
+
+    case "privacy":
+      content = <PrivacySettings {...props} />;
+      break;
+
+    case "notifications":
+      content = <NotificationSettings {...props} />;
+      break;
+
+    case "content":
+      content = <ContentSettings {...props} />;
+      break;
+
+    case "comments":
+      content = <CommentsSettings {...props} />;
+      break;
+
+    case "messages":
+      content = <MessagesSettings {...props} />;
+      break;
+
+    case "followers":
+      content = <FollowersSettings {...props} />;
+      break;
+
+    case "data":
+      content = <DataSettings {...props} />;
+      break;
+
+    case "language":
+      content = <LanguageSettings {...props} />;
+      break;
+
+    case "appearance":
+      content = <AppearanceSettings {...props} />;
+      break;
+
+    case "accessibility":
+      content = <AccessibilitySettings {...props} />;
+      break;
+
+    case "payments":
+      content = <PaymentSettings {...props} />;
+      break;
+
+    case "creator":
+      content = <CreatorSettings {...props} />;
+      break;
+
+    case "scheduling":
+      content = <SchedulingSettings {...props} />;
+      break;
+
+    case "library":
+      content = <LibrarySettings {...props} />;
+      break;
+
+    case "progress":
+      content = <ProgressSettings {...props} />;
+      break;
+
+    case "brand":
+      content = <BrandSettings {...props} />;
+      break;
+
+    case "copyright":
+      content = <CopyrightSettings {...props} />;
+      break;
+
+    case "ai":
+      content = <AISettings {...props} />;
+      break;
+
+    case "reports":
+      content = <ReportsSettings {...props} />;
+      break;
+
+    case "apps":
+      content = <ConnectedAppsSettings {...props} />;
+      break;
+
+    case "support":
+      content = <SupportSettings {...props} />;
+      break;
+
+    case "system":
+      content = <SystemSettings {...props} />;
+      break;
+
+    case "exit":
+      content = <ExitSettings {...props} onLogout={onLogout} />;
+      break;
+
+    default:
+      content = null;
+  }
 
   return (
-    <button
-      onClick={onClick}
-      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-        active
-          ? "bg-cyan-400/10 text-cyan-300"
-          : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
-      }`}
+    <motion.div
+      key={category?.id}
+      initial={{ opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.2 }}
     >
-      <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-          active
-            ? "border-cyan-400/20 bg-cyan-400/10"
-            : "border-white/[0.05] bg-white/[0.02]"
-        }`}
+      <button
+        onClick={onBack}
+        className="lg:hidden flex items-center gap-2 text-[10px] font-black uppercase tracking-[2px] text-zinc-500 hover:text-white mb-5"
       >
-        <Icon size={15} className={active ? "text-cyan-300" : category.color} />
-      </span>
+        <ArrowLeft size={14} />
+        All Settings
+      </button>
 
-      <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-wide">
-        {category.title}
-      </span>
-
-      <span className="text-[8px] font-bold text-zinc-700">
-        {category.items.length}
-      </span>
-    </button>
-  );
-};
-
-/*
-|--------------------------------------------------------------------------
-| SETTINGS CATEGORY
-|--------------------------------------------------------------------------
-*/
-
-const SettingsCategory = ({ category, index, onOpen }) => {
-  const Icon = category.icon;
-
-  return (
-    <motion.section
-      id={`settings-${category.id}`}
-      initial={{ opacity: 0, y: 15 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.05 }}
-      transition={{ delay: Math.min(index * 0.025, 0.2) }}
-    >
-      <div className="mb-3 flex items-end justify-between px-1">
+      <div className="mb-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025]">
-            <Icon size={17} className={category.color} />
+          <div className="w-11 h-11 rounded-2xl bg-cyan-400/[0.08] border border-cyan-400/10 flex items-center justify-center text-cyan-400">
+            <category.icon size={21} />
           </div>
 
           <div>
-            <h2 className="text-sm font-black uppercase tracking-[1.5px] text-white">
+            <h2 className="text-xl sm:text-2xl font-black">
               {category.title}
             </h2>
 
-            <p className="mt-0.5 max-w-xl text-[10px] leading-relaxed text-zinc-600">
+            <p className="text-xs text-zinc-600 mt-1">
               {category.description}
             </p>
           </div>
         </div>
-
-        <span className="hidden rounded-full border border-white/[0.05] bg-white/[0.02] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-zinc-700 sm:block">
-          {category.items.length} controls
-        </span>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {category.items.map((item, itemIndex) => (
-          <SettingCard
-            key={item.id}
-            item={item}
-            index={itemIndex}
-            onClick={() => onOpen(item)}
-          />
-        ))}
-      </div>
-    </motion.section>
-  );
-};
-
-/*
-|--------------------------------------------------------------------------
-| SETTING CARD
-|--------------------------------------------------------------------------
-*/
-
-const SettingCard = ({ item, index, onClick }) => {
-  const Icon = item.icon;
-
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 8 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ delay: Math.min(index * 0.025, 0.15) }}
-      whileTap={{ scale: 0.985 }}
-      onClick={onClick}
-      className={`group relative flex min-h-[104px] w-full items-center gap-3 overflow-hidden rounded-2xl border p-4 text-left transition-all ${
-        item.danger
-          ? "border-red-500/10 bg-red-500/[0.025] hover:border-red-500/25 hover:bg-red-500/[0.05]"
-          : "border-white/[0.055] bg-white/[0.018] hover:border-white/[0.12] hover:bg-white/[0.035]"
-      }`}
-    >
-      <div
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
-          item.danger
-            ? "border-red-500/10 bg-red-500/[0.07]"
-            : "border-white/[0.06] bg-black/40 group-hover:border-cyan-400/15"
-        }`}
-      >
-        <Icon
-          size={18}
-          className={
-            item.danger
-              ? "text-red-400"
-              : "text-zinc-400 transition group-hover:text-cyan-300"
-          }
-        />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <h3 className="truncate text-[12px] font-black text-zinc-200">
-            {item.title}
-          </h3>
-
-          {item.route && (
-            <span className="rounded-md bg-cyan-400/10 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-cyan-400">
-              Module
-            </span>
-          )}
-        </div>
-
-        <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-zinc-600">
-          {item.description}
-        </p>
-      </div>
-
-      <ChevronRight
-        size={16}
-        className="shrink-0 text-zinc-700 transition group-hover:translate-x-0.5 group-hover:text-zinc-400"
-      />
-    </motion.button>
-  );
-};
-
-/*
-|--------------------------------------------------------------------------
-| SEARCH RESULT
-|--------------------------------------------------------------------------
-*/
-
-const SearchResult = ({ item, onClick }) => {
-  const Icon = item.icon;
-
-  return (
-    <button
-      onClick={onClick}
-      className="group flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-left transition hover:border-cyan-400/20 hover:bg-cyan-400/[0.025]"
-    >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.05] bg-black">
-        <Icon size={17} className="text-cyan-300" />
-      </span>
-
-      <span className="min-w-0 flex-1">
-        <span className="block text-[12px] font-black text-zinc-200">
-          {item.title}
-        </span>
-
-        <span className="mt-1 block truncate text-[9px] text-zinc-600">
-          {item.categoryTitle}
-        </span>
-      </span>
-
-      <ChevronRight
-        size={15}
-        className="text-zinc-700 group-hover:text-cyan-300"
-      />
-    </button>
-  );
-};
-
-/*
-|--------------------------------------------------------------------------
-| SETTING DRAWER
-|--------------------------------------------------------------------------
-*/
-
-const SettingDrawer = ({
-  item,
-  category,
-  profile,
-  userEmail,
-  dataSaver,
-  setDataSaver,
-  notifications,
-  setNotifications,
-  onlineStatus,
-  setOnlineStatus,
-  darkMode,
-  setDarkMode,
-  onClose,
-  onNavigate,
-  onClearCache,
-  cacheSize,
-  clearingCache
-}) => {
-  const Icon = item.icon;
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-[100] flex justify-end"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      {/* BACKDROP */}
-
-      <motion.button
-        aria-label="Close settings"
-        onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/70 backdrop-blur-sm"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      />
-
-      {/* DRAWER */}
-
-      <motion.aside
-        initial={{ x: "100%" }}
-        animate={{ x: 0 }}
-        exit={{ x: "100%" }}
-        transition={{
-          type: "spring",
-          stiffness: 320,
-          damping: 32
-        }}
-        className="settings-scroll relative z-10 flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-white/[0.07] bg-[#070707] shadow-2xl"
-      >
-        {/* DRAWER HEADER */}
-
-        <div className="sticky top-0 z-20 border-b border-white/[0.06] bg-[#070707]/90 p-5 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025] text-zinc-400 hover:text-white"
-            >
-              <X size={17} />
-            </button>
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-400/15 bg-cyan-400/10">
-              <Icon size={18} className="text-cyan-300" />
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="text-[8px] font-black uppercase tracking-[2px] text-zinc-600">
-                {category?.title || "Settings"}
-              </p>
-
-              <h2 className="truncate text-sm font-black text-white">
-                {item.title}
-              </h2>
-            </div>
-          </div>
-        </div>
-
-        {/* DRAWER BODY */}
-
-        <div className="flex-1 p-5">
-          <SettingPanel
-            item={item}
-            profile={profile}
-            userEmail={userEmail}
-            dataSaver={dataSaver}
-            setDataSaver={setDataSaver}
-            notifications={notifications}
-            setNotifications={setNotifications}
-            onlineStatus={onlineStatus}
-            setOnlineStatus={setOnlineStatus}
-            darkMode={darkMode}
-            setDarkMode={setDarkMode}
-            onNavigate={onNavigate}
-            onClearCache={onClearCache}
-            cacheSize={cacheSize}
-            clearingCache={clearingCache}
-          />
-        </div>
-      </motion.aside>
+      {content}
     </motion.div>
   );
 };
 
-/*
-|--------------------------------------------------------------------------
-| SETTING PANEL
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   ACCOUNT SETTINGS
+============================================================ */
 
-const SettingPanel = ({
-  item,
+const AccountSettings = ({
   profile,
-  userEmail,
-  dataSaver,
-  setDataSaver,
-  notifications,
-  setNotifications,
-  onlineStatus,
-  setOnlineStatus,
-  darkMode,
-  setDarkMode,
-  onNavigate,
-  onClearCache,
-  cacheSize,
-  clearingCache
+  user,
+  navigate,
 }) => {
-  /*
-  |--------------------------------------------------------------------------
-  | ACCOUNT INFORMATION
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "account-information") {
-    return (
-      <PanelShell
-        title="Account Information"
-        description="Review the information associated with your Mpade Universe account."
-      >
-        <InfoGrid>
-          <InfoField label="Username" value={profile?.username || "Not set"} />
-          <InfoField
-            label="Display Name"
-            value={profile?.display_name || "Not set"}
-          />
-          <InfoField
-            label="Full Name"
-            value={profile?.full_name || "Not set"}
-          />
-          <InfoField label="Email" value={userEmail || "Not available"} />
-          <InfoField
-            label="Phone"
-            value="Configured through account security"
-          />
-          <InfoField
-            label="Date of Birth"
-            value={profile?.dob || "Not set"}
-          />
-          <InfoField label="Gender" value={profile?.gender || "Not set"} />
-          <InfoField
-            label="Location"
-            value={profile?.location || "Not set"}
-          />
-          <InfoField
-            label="District"
-            value={profile?.district || "Not set"}
-          />
-          <InfoField
-            label="Website"
-            value={profile?.website || "Not set"}
-          />
-          <InfoField
-            label="Account Status"
-            value={profile?.account_status || "Active"}
-          />
-          <InfoField
-            label="Verification"
-            value={
-              profile?.is_verified || profile?.verified_status
-                ? "Verified"
-                : "Not verified"
-            }
-          />
-        </InfoGrid>
-
-        <ActionButton
-          icon={<User size={16} />}
-          label="Edit Profile"
-          onClick={() => onNavigate("/edit-profile")}
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | ACCOUNT TYPE
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "account-type") {
-    return (
-      <PanelShell
-        title="Account Type"
-        description="Choose how you want to use Mpade Universe."
-      >
-        <div className="space-y-2">
-          <ChoiceCard
-            title="Personal"
-            description="Standard account for everyday social activity."
-            icon={<User size={18} />}
-            active={!profile?.subscription_tier}
-          />
-
-          <ChoiceCard
-            title="Creator"
-            description="Unlock creator-focused tools, analytics and monetization."
-            icon={<Sparkles size={18} />}
-          />
-
-          <ChoiceCard
-            title="Professional"
-            description="Advanced professional dashboard and audience tools."
-            icon={<BarChart3 size={18} />}
-          />
-
-          <ChoiceCard
-            title="Business"
-            description="Designed for brands, organizations and campaigns."
-            icon={<BriefcaseBusiness size={18} />}
-          />
-        </div>
-
-        <Notice
-          icon={<Info size={16} />}
-          title="Account switching"
-          description="The account-type backend can be connected to your profiles/account-type field when that module is available."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | SECURITY
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "security") {
-    return (
-      <PanelShell
-        title="Security"
-        description="Protect your account with stronger authentication and session controls."
-      >
-        <PanelLink
-          icon={<Lock />}
-          title="Password & Security"
-          description="Change your password and security preferences."
-          onClick={() => onNavigate("/settings/security")}
-        />
-
-        <PanelLink
-          icon={<Smartphone />}
-          title="Two-Factor Authentication"
-          description="Authenticator and SMS verification can be configured here."
-        />
-
-        <PanelLink
-          icon={<Fingerprint />}
-          title="Passkeys"
-          description="Use device-based authentication where supported."
-        />
-
-        <PanelLink
-          icon={<ShieldAlert />}
-          title="Login Alerts"
-          description="Get notified about suspicious or new login activity."
-        />
-
-        <PanelLink
-          icon={<History />}
-          title="Login History"
-          description="Review recent authentication activity."
-        />
-
-        <PanelLink
-          icon={<Smartphone />}
-          title="Active Sessions"
-          description="Review devices currently signed in to your account."
-        />
-
-        <PanelLink
-          icon={<LogOut />}
-          title="Log Out All Devices"
-          description="Sign out all active sessions."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | PRIVACY
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "privacy") {
-    return (
-      <PanelShell
-        title="Privacy"
-        description="Control who can see, contact and interact with you."
-      >
-        <PanelToggle
-          icon={<Eye />}
-          title="Public Profile"
-          description="Allow anyone to view your profile."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<UserPlus />}
-          title="Who Can Follow You"
-          description="Control who is allowed to follow your account."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<MessagesSquare />}
-          title="Who Can Message You"
-          description="Control direct-message access."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<AtSignFallback />}
-          title="Mentions & Tags"
-          description="Control who can mention or tag your account."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<Globe />}
-          title="Search Visibility"
-          description="Allow your account to appear in search and recommendations."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<EyeOff />}
-          title="Activity Visibility"
-          description="Control online, last-active and profile-view visibility."
-          active={onlineStatus}
-          onToggle={() => setOnlineStatus(!onlineStatus)}
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | BLOCKED
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "blocked") {
-    return (
-      <PanelShell
-        title="Blocked & Restricted"
-        description="Manage accounts and words you don't want interacting with you."
-      >
-        <PanelLink
-          icon={<Ban />}
-          title="Blocked Accounts"
-          description="Accounts you have blocked."
-        />
-
-        <PanelLink
-          icon={<EyeOff />}
-          title="Muted Accounts"
-          description="Accounts whose content you have muted."
-        />
-
-        <PanelLink
-          icon={<Shield />}
-          title="Restricted Accounts"
-          description="Accounts with limited interaction permissions."
-        />
-
-        <PanelLink
-          icon={<MessageSquareWarning />}
-          title="Hidden Words"
-          description="Filter comments and messages containing selected words."
-        />
-
-        <PanelLink
-          icon={<SlidersHorizontal />}
-          title="Comment Filters"
-          description="Automatically filter offensive or spam comments."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | NOTIFICATIONS
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "notifications") {
-    return (
-      <PanelShell
-        title="Notifications"
-        description="Control what Mpade Universe sends you and how it alerts you."
-      >
-        <PanelToggle
-          icon={<Bell />}
-          title="Notifications"
-          description="Enable or disable general notifications."
-          active={notifications}
-          onToggle={() => setNotifications(!notifications)}
-        />
-
-        <PanelLink
-          icon={<Heart />}
-          title="Social Notifications"
-          description="Followers, likes, comments, replies, shares, reposts and saves."
-        />
-
-        <PanelLink
-          icon={<Gift />}
-          title="Gifts & Earnings"
-          description="Gifts, creator fund, earnings and payout notifications."
-        />
-
-        <PanelLink
-          icon={<Radio />}
-          title="Live Notifications"
-          description="Live sessions, subscribers and live activity."
-        />
-
-        <PanelLink
-          icon={<Video />}
-          title="Content Notifications"
-          description="Video processing, publishing and scheduled content."
-        />
-
-        <PanelLink
-          icon={<ShieldAlert />}
-          title="Security Notifications"
-          description="Account security and suspicious activity alerts."
-        />
-
-        <PanelLink
-          icon={<Volume2 />}
-          title="Sounds & Vibration"
-          description="Notification sound and vibration preferences."
-        />
-
-        <PanelLink
-          icon={<Clock3 />}
-          title="Quiet Hours"
-          description="Silence notifications during selected periods."
-        />
-
-        <PanelLink
-          icon={<History />}
-          title="Notification History"
-          description="Review previous notifications."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | DATA
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "data") {
-    return (
-      <PanelShell
-        title="Data & Storage"
-        description="Reduce data usage and manage locally cached content."
-      >
-        <PanelToggle
-          icon={<Database />}
-          title="Data Saver"
-          description="Reduce video quality and bandwidth usage."
-          active={dataSaver}
-          onToggle={() => setDataSaver(!dataSaver)}
-        />
-
-        <PanelLink
-          icon={<Video />}
-          title="Video Quality"
-          description="Choose upload, playback and download quality."
-        />
-
-        <PanelLink
-          icon={<Zap />}
-          title="Autoplay"
-          description="Control autoplay on Wi-Fi and mobile data."
-        />
-
-        <PanelLink
-          icon={<Download />}
-          title="Background Downloads"
-          description="Manage offline and background downloads."
-        />
-
-        <PanelLink
-          icon={<HardDrive />}
-          title="Storage Usage"
-          description="Videos, drafts, thumbnails, audio, downloads and recordings."
-        />
-
-        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[1.5px] text-zinc-600">
-                Local cache
-              </p>
-              <p className="mt-1 text-xl font-black text-white">
-                {formatBytes(cacheSize)}
-              </p>
-            </div>
-
-            <HardDrive size={20} className="text-cyan-300" />
-          </div>
-
-          <button
-            onClick={onClearCache}
-            disabled={clearingCache}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition hover:bg-white/[0.06] disabled:opacity-50"
-          >
-            {clearingCache ? (
-              <>
-                <RefreshCw size={14} className="animate-spin" />
-                Clearing...
-              </>
-            ) : (
-              <>
-                <Trash2 size={14} />
-                Clear Cache
-              </>
-            )}
-          </button>
-        </div>
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | LANGUAGE
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "language") {
-    return (
-      <PanelShell
-        title="Language & Region"
-        description="Configure language, translation and regional preferences."
-      >
-        <SelectRow
-          icon={<Languages />}
-          title="App Language"
-          value="English"
-        />
-
-        <SelectRow
-          icon={<Globe />}
-          title="Country / Region"
-          value="Malawi"
-        />
-
-        <SelectRow
-          icon={<Clock3 />}
-          title="Timezone"
-          value="CAT — UTC+02:00"
-        />
-
-        <SelectRow
-          icon={<Banknote />}
-          title="Currency"
-          value={profile?.currency_preference || "MWK"}
-        />
-
-        <PanelToggle
-          icon={<Languages />}
-          title="Auto Translate"
-          description="Automatically translate supported content."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <SelectRow
-          icon={<MessageCircle />}
-          title="Caption Language"
-          value="English"
-        />
-
-        <SelectRow
-          icon={<SlidersHorizontal />}
-          title="Date & Number Format"
-          value="Regional"
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | APPEARANCE
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "appearance") {
-    return (
-      <PanelShell
-        title="Appearance"
-        description="Make Mpade Universe look and feel the way you want."
-      >
-        <div className="grid grid-cols-3 gap-2">
-          <ThemeButton
-            icon={<Moon />}
-            label="Dark"
-            active={darkMode === "dark"}
-            onClick={() => setDarkMode("dark")}
-          />
-
-          <ThemeButton
-            icon={<Sun />}
-            label="Light"
-            active={darkMode === "light"}
-            onClick={() => setDarkMode("light")}
-          />
-
-          <ThemeButton
-            icon={<Monitor />}
-            label="System"
-            active={darkMode === "system"}
-            onClick={() => setDarkMode("system")}
-          />
-        </div>
-
-        <PanelToggle
-          icon={<Sparkles />}
-          title="Neon Mode"
-          description="Enable Mpade Universe's futuristic neon visual treatment."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <SelectRow
-          icon={<Palette />}
-          title="Accent Color"
-          value="Cyan"
-        />
-
-        <SelectRow
-          icon={<SlidersHorizontal />}
-          title="Interface Density"
-          value="Comfortable"
-        />
-
-        <PanelToggle
-          icon={<Zap />}
-          title="Animations"
-          description="Enable interface animations."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<MousePointer2 />}
-          title="Reduce Motion"
-          description="Reduce animation and movement effects."
-          active={false}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<Eye />}
-          title="Glass & Blur"
-          description="Enable glassmorphism and backdrop blur effects."
-          active={true}
-          onToggle={() => {}}
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | ACCESSIBILITY
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "accessibility") {
-    return (
-      <PanelShell
-        title="Accessibility"
-        description="Customize Mpade Universe for easier viewing and interaction."
-      >
-        <SelectRow
-          icon={<Accessibility />}
-          title="Font Size"
-          value="Default"
-        />
-
-        <PanelToggle
-          icon={<Eye />}
-          title="High Contrast"
-          description="Increase contrast between interface elements."
-          active={false}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<MousePointer2 />}
-          title="Large Touch Targets"
-          description="Make buttons and interactive controls easier to tap."
-          active={false}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<Video />}
-          title="Captions"
-          description="Prefer captions when available."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<Volume2 />}
-          title="Audio Descriptions"
-          description="Use audio descriptions when available."
-          active={false}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<Palette />}
-          title="Color-Blind Friendly"
-          description="Use visual indicators that don't depend only on color."
-          active={false}
-          onToggle={() => {}}
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | PAYMENTS / WALLET
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    item.id === "wallet" ||
-    item.id === "payment-methods" ||
-    item.id === "payouts" ||
-    item.id === "transactions"
-  ) {
-    return (
-      <PanelShell
-        title={
-          item.id === "wallet"
-            ? "Wallet"
-            : item.id === "payment-methods"
-              ? "Payment Methods"
-              : item.id === "payouts"
-                ? "Payouts"
-                : "Transactions"
-        }
-        description={item.description}
-      >
-        {item.id === "wallet" && (
-          <>
-            <div className="grid grid-cols-2 gap-2">
-              <MoneyCard
-                label="Available"
-                value={profile?.balance ?? 0}
-                currency={profile?.currency_preference || "MWK"}
-              />
-
-              <MoneyCard
-                label="Coins"
-                value={profile?.coins ?? 0}
-                currency=""
-              />
-
-              <MoneyCard
-                label="Lifetime Earned"
-                value={profile?.total_tokens_earned ?? 0}
-                currency=""
-              />
-
-              <MoneyCard
-                label="Subscription"
-                value={profile?.subscription_tier || "Free"}
-                currency=""
-              />
-            </div>
-
-            <ActionButton
-              icon={<Wallet size={16} />}
-              label="Open Payouts"
-              onClick={() => onNavigate("/payouts")}
-            />
-          </>
-        )}
-
-        {item.id === "payment-methods" && (
-          <>
-            <PanelLink
-              icon={<Smartphone />}
-              title="TNM Mpamba"
-              description="Mobile-money payout method."
-            />
-
-            <PanelLink
-              icon={<Smartphone />}
-              title="Airtel Money"
-              description="Mobile-money payout method."
-            />
-
-            <PanelLink
-              icon={<Banknote />}
-              title="Bank Account"
-              description="Bank payout method."
-            />
-
-            <Notice
-              icon={<ShieldCheck />}
-              title="Payment verification"
-              description="Payment methods should be verified before they can receive payouts."
-            />
-          </>
-        )}
-
-        {item.id === "payouts" && (
-          <>
-            <PanelLink
-              icon={<Banknote />}
-              title="Request Payout"
-              description="Request an eligible payout from your available balance."
-              onClick={() => onNavigate("/payouts")}
-            />
-
-            <PanelLink
-              icon={<Clock3 />}
-              title="Pending Payouts"
-              description="View payouts currently being processed."
-            />
-
-            <PanelLink
-              icon={<CheckCircle2 />}
-              title="Completed Payouts"
-              description="View successfully completed payouts."
-            />
-
-            <PanelLink
-              icon={<AlertTriangle />}
-              title="Failed / Cancelled"
-              description="Review failed or cancelled payout requests."
-            />
-
-            <PanelLink
-              icon={<History />}
-              title="Payout History"
-              description="Review your complete payout history."
-            />
-          </>
-        )}
-
-        {item.id === "transactions" && (
-          <>
-            <PanelLink
-              icon={<CreditCard />}
-              title="Purchases"
-              description="Coins, subscriptions and platform purchases."
-            />
-
-            <PanelLink
-              icon={<Gift />}
-              title="Gifts"
-              description="Gift purchases and received gifts."
-            />
-
-            <PanelLink
-              icon={<Coins />}
-              title="Earnings"
-              description="Creator earnings and rewards."
-            />
-
-            <PanelLink
-              icon={<RefreshCw />}
-              title="Refunds"
-              description="Refund and reversal history."
-            />
-
-            <PanelLink
-              icon={<History />}
-              title="Transaction History"
-              description="Complete transaction history."
-            />
-          </>
-        )}
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | CREATOR
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    item.id.startsWith("creator-") ||
-    item.id === "creator-studio" ||
-    item.id === "creator-analytics"
-  ) {
-    return (
-      <PanelShell
-        title={item.title}
-        description={item.description}
-      >
-        <PanelLink
-          icon={<BarChart3 />}
-          title="Professional Dashboard"
-          description="Creator overview, audience and content performance."
-          onClick={() => onNavigate("/universe-tools")}
-        />
-
-        <PanelLink
-          icon={<Activity />}
-          title="Audience Analytics"
-          description="Follower growth, demographics and audience activity."
-        />
-
-        <PanelLink
-          icon={<Video />}
-          title="Content Performance"
-          description="Views, likes, comments, shares and retention."
-        />
-
-        <PanelLink
-          icon={<Coins />}
-          title="Creator Earnings"
-          description="Earnings, gifts, subscriptions and creator fund."
-        />
-
-        <PanelLink
-          icon={<CalendarClock />}
-          title="Content Scheduling"
-          description="Schedule videos and live broadcasts."
-          onClick={() => onNavigate("/settings/creator/scheduling")}
-        />
-
-        <PanelLink
-          icon={<Bot />}
-          title="Creator AI"
-          description="AI-powered creator assistance."
-          onClick={() => onNavigate("/settings/ai")}
-        />
-
-        <PanelLink
-          icon={<Trophy />}
-          title="Creator Progress"
-          description="XP, level, achievements and milestones."
-        />
-
-        <Notice
-          icon={<Sparkles />}
-          title="Creator ecosystem"
-          description="These controls are ready for integration with your Creator Studio, monetization, livestream and scheduling modules."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | AI
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    item.id.startsWith("ai-") ||
-    item.id === "ai-settings"
-  ) {
-    return (
-      <PanelShell
-        title={item.title}
-        description={item.description}
-      >
-        <PanelToggle
-          icon={<Bot />}
-          title="AI Assistant"
-          description="Enable the Mpade Universe AI assistant."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<Sparkles />}
-          title="AI Recommendations"
-          description="Use AI to personalize recommendations."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelLink
-          icon={<FileText />}
-          title="Caption Generator"
-          description="Generate captions for your content."
-        />
-
-        <PanelLink
-          icon={<HashIcon />}
-          title="Hashtag Suggestions"
-          description="Generate relevant hashtags."
-        />
-
-        <PanelLink
-          icon={<Image />}
-          title="Thumbnail Assistant"
-          description="Analyze and improve thumbnail choices."
-        />
-
-        <PanelLink
-          icon={<MessageCircle />}
-          title="Comment Replies"
-          description="Generate suggested replies to comments."
-        />
-
-        <PanelLink
-          icon={<History />}
-          title="AI History"
-          description="Review or clear AI interaction history."
-        />
-
-        <Notice
-          icon={<ShieldCheck />}
-          title="AI disclosure"
-          description="AI-generated or AI-assisted content should be clearly disclosed where required by your platform policies."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | COPYRIGHT / SAFETY
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    item.id === "copyright" ||
-    item.id === "safety" ||
-    item.id === "guidelines"
-  ) {
-    return (
-      <PanelShell
-        title={item.title}
-        description={item.description}
-      >
-        <PanelLink
-          icon={<Copyright />}
-          title="Copyright Status"
-          description="Review claims and copyright status."
-          onClick={() => onNavigate("/settings/copyright")}
-        />
-
-        <PanelLink
-          icon={<AlertTriangle />}
-          title="Content Warnings"
-          description="Review warnings applied to your content."
-        />
-
-        <PanelLink
-          icon={<Ban />}
-          title="Content Violations"
-          description="Review removed or restricted content."
-        />
-
-        <PanelLink
-          icon={<FileText />}
-          title="Disputes & Appeals"
-          description="Manage disputes and appeals."
-        />
-
-        <PanelLink
-          icon={<Music />}
-          title="Music Rights"
-          description="Review music and audio rights."
-        />
-
-        <PanelLink
-          icon={<ShieldCheck />}
-          title="Community Guidelines"
-          description="Review platform safety rules."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | CONTENT
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    item.id === "content" ||
-    item.id === "comments" ||
-    item.id === "messages" ||
-    item.id === "followers"
-  ) {
-    return (
-      <PanelShell
-        title={item.title}
-        description={item.description}
-      >
-        <PanelToggle
-          icon={<Eye />}
-          title="Default Public Content"
-          description="Use public visibility as your default content setting."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<MessageCircle />}
-          title="Allow Comments"
-          description="Allow viewers to comment on new content."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<Download />}
-          title="Allow Downloads"
-          description="Allow viewers to download supported content."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<Share2 />}
-          title="Allow Sharing"
-          description="Allow people to share your content."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelToggle
-          icon={<RepeatIcon />}
-          title="Allow Reposts"
-          description="Allow your content to be reposted."
-          active={true}
-          onToggle={() => {}}
-        />
-
-        <PanelLink
-          icon={<MessageSquareWarning />}
-          title="Comment Moderation"
-          description="Offensive words, spam and manual moderation."
-        />
-
-        <PanelLink
-          icon={<Users />}
-          title="Audience Controls"
-          description="Follower and audience permissions."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | REPORTS
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    item.id === "personal-data" ||
-    item.id === "analytics-export" ||
-    item.id === "earnings-reports" ||
-    item.id === "creator-reports"
-  ) {
-    return (
-      <PanelShell
-        title={item.title}
-        description={item.description}
-      >
-        <div className="grid gap-2 sm:grid-cols-3">
-          <ExportCard
-            icon={<FileSpreadsheet />}
-            title="CSV"
-          />
-
-          <ExportCard
-            icon={<FileJson />}
-            title="JSON"
-          />
-
-          <ExportCard
-            icon={<FileType2 />}
-            title="PDF"
-          />
-        </div>
-
-        <PanelLink
-          icon={<CloudDownload />}
-          title="Personal Data Archive"
-          description="Request a downloadable copy of your account information."
-        />
-
-        <PanelLink
-          icon={<BarChart3 />}
-          title="Analytics Export"
-          description="Export creator analytics."
-        />
-
-        <PanelLink
-          icon={<Coins />}
-          title="Financial Report"
-          description="Export earnings and transaction information."
-        />
-
-        <Notice
-          icon={<Info />}
-          title="Data export"
-          description="Large exports should be generated server-side and delivered through a secure download link rather than generated entirely in the browser."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | CONNECTED APPS
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "connected-apps") {
-    return (
-      <PanelShell
-        title="Connected Apps"
-        description="Review third-party applications and authorized access."
-      >
-        <PanelLink
-          icon={<Link2 />}
-          title="OAuth Applications"
-          description="Applications connected through OAuth."
-        />
-
-        <PanelLink
-          icon={<Smartphone />}
-          title="Authorized Devices"
-          description="Devices authorized to access your account."
-        />
-
-        <PanelLink
-          icon={<KeyRound />}
-          title="API Access"
-          description="Manage API keys and integrations."
-        />
-
-        <PanelLink
-          icon={<Shield />}
-          title="Permissions"
-          description="Review what connected applications can access."
-        />
-
-        <Notice
-          icon={<ShieldCheck />}
-          title="Security"
-          description="Only grant third-party applications the minimum permissions they require."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | CACHE
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "cache") {
-    return (
-      <PanelShell
-        title="Cache & Temporary Data"
-        description="Manage locally stored application data."
-      >
-        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
-          <p className="text-[9px] font-black uppercase tracking-[2px] text-zinc-600">
-            Local storage
-          </p>
-
-          <p className="mt-2 text-3xl font-black text-white">
-            {formatBytes(cacheSize)}
-          </p>
-
-          <p className="mt-1 text-[10px] text-zinc-600">
-            This represents browser-side storage available to this settings
-            module. Supabase storage usage is separate.
-          </p>
-
-          <button
-            onClick={onClearCache}
-            disabled={clearingCache}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-cyan-300 disabled:opacity-50"
-          >
-            {clearingCache ? (
-              <>
-                <RefreshCw size={14} className="animate-spin" />
-                Clearing...
-              </>
-            ) : (
-              <>
-                <Trash2 size={14} />
-                Clear Temporary Data
-              </>
-            )}
-          </button>
-        </div>
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | SYSTEM
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    item.id === "diagnostics" ||
-    item.id === "server" ||
-    item.id === "sync" ||
-    item.id === "about-system"
-  ) {
-    return (
-      <PanelShell
-        title={item.title}
-        description={item.description}
-      >
-        <StatusRow
-          icon={<Activity />}
-          title="Application"
-          value="Operational"
-          positive
-        />
-
-        <StatusRow
-          icon={<Wifi />}
-          title="Network"
-          value={navigator.onLine ? "Online" : "Offline"}
-          positive={navigator.onLine}
-        />
-
-        <StatusRow
-          icon={<Server />}
-          title="Supabase"
-          value="Connected through application"
-          positive
-        />
-
-        <StatusRow
-          icon={<HardDrive />}
-          title="Local Storage"
-          value={formatBytes(cacheSize)}
-          positive
-        />
-
-        <StatusRow
-          icon={<RefreshCw />}
-          title="Application Version"
-          value={APP_VERSION}
-          positive
-        />
-
-        <Notice
-          icon={<Info />}
-          title="Diagnostics"
-          description="Server-side health information should be populated from your actual monitoring/health endpoint instead of being hardcoded."
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | SUPPORT
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    item.id === "help" ||
-    item.id === "report" ||
-    item.id === "tickets" ||
-    item.id === "account-recovery" ||
-    item.id === "safety-center" ||
-    item.id === "about"
-  ) {
-    return (
-      <PanelShell
-        title={item.title}
-        description={item.description}
-      >
-        <PanelLink
-          icon={<LifeBuoy />}
-          title="Help Center"
-          description="Find guides and answers."
-          onClick={() => onNavigate("/support")}
-        />
-
-        <PanelLink
-          icon={<Flag />}
-          title="Report a Problem"
-          description="Report a technical or account issue."
-        />
-
-        <PanelLink
-          icon={<MessageCircle />}
-          title="Support Tickets"
-          description="Review previous requests."
-        />
-
-        <PanelLink
-          icon={<KeyRound />}
-          title="Account Recovery"
-          description="Recover access to your account."
-        />
-
-        <PanelLink
-          icon={<ShieldCheck />}
-          title="Safety Center"
-          description="Account and community safety information."
-        />
-
-        <PanelLink
-          icon={<FileText />}
-          title="Privacy Policy"
-          description="Read the privacy policy."
-          onClick={() => onNavigate("/privacy")}
-        />
-
-        <PanelLink
-          icon={<Smartphone />}
-          title={`About ${APP_NAME}`}
-          description={`Version ${APP_VERSION}`}
-          onClick={() => onNavigate("/about")}
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | ACCOUNT MANAGEMENT
-  |--------------------------------------------------------------------------
-  */
-
-  if (item.id === "account-management") {
-    return (
-      <PanelShell
-        title="Account Management"
-        description="Manage your account lifecycle. These actions require careful confirmation."
-      >
-        <PanelLink
-          icon={<Download />}
-          title="Download Account Information"
-          description="Create an archive before making major account changes."
-        />
-
-        <PanelLink
-          icon={<Archive />}
-          title="Transfer Data"
-          description="Prepare supported data for transfer."
-        />
-
-        <PanelLink
-          icon={<UserX />}
-          title="Deactivate Account"
-          description="Temporarily disable your account."
-          danger
-        />
-
-        <PanelLink
-          icon={<Trash2 />}
-          title="Delete Account"
-          description="Permanently delete your account and associated data."
-          danger
-        />
-
-        <Notice
-          icon={<AlertTriangle />}
-          title="Permanent action"
-          description="Account deletion should be connected to a secure server-side deletion workflow with confirmation and recovery safeguards."
-          danger
-        />
-      </PanelShell>
-    );
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | DEFAULT
-  |--------------------------------------------------------------------------
-  */
+  const social = safeObject(profile.social_links);
 
   return (
-    <PanelShell
-      title={item.title}
-      description={item.description}
-    >
-      <Notice
-        icon={<Settings2 />}
-        title="Module ready"
-        description="This settings module has been added to the new Settings Hub. Connect its controls to the corresponding backend feature when that module is implemented."
-      />
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Account information"
+        description="Your identity and account details"
+        icon={<User size={17} />}
+      >
+        <SettingInfo
+          label="Username"
+          value={
+            profile.username
+              ? `@${String(profile.username).replace(/^@/, "")}`
+              : "Not set"
+          }
+        />
 
-      <PanelLink
-        icon={<Settings2 />}
-        title="Open Full Settings Module"
-        description="Continue to the dedicated settings page when available."
-      />
-    </PanelShell>
+        <SettingInfo
+          label="Display name"
+          value={profile.display_name || "Not set"}
+        />
+
+        <SettingInfo
+          label="Full name"
+          value={profile.full_name || "Not set"}
+        />
+
+        <SettingInfo
+          label="Bio"
+          value={profile.bio || "No bio"}
+        />
+
+        <SettingInfo
+          label="Date of birth"
+          value={profile.dob || "Not set"}
+        />
+
+        <SettingInfo
+          label="Gender"
+          value={profile.gender || "Not set"}
+        />
+
+        <SettingInfo
+          label="Location"
+          value={profile.location || "Not set"}
+        />
+
+        <SettingInfo
+          label="District"
+          value={profile.district || "Not set"}
+        />
+
+        <SettingInfo
+          label="Country"
+          value={profile.country || "Malawi"}
+        />
+
+        <SettingInfo
+          label="Region"
+          value={profile.region || "Not set"}
+        />
+
+        <SettingInfo
+          label="City"
+          value={profile.city || "Not set"}
+        />
+
+        <SettingInfo
+          label="Phone"
+          value={profile.phone_number || "Not set"}
+        />
+
+        <SettingInfo
+          label="Email"
+          value={user?.email || "Not available"}
+        />
+
+        <SettingInfo
+          label="Account created"
+          value={formatDate(profile.created_at)}
+        />
+
+        <SettingInfo
+          label="Account ID"
+          value={profile.id}
+          copyable
+        />
+
+        <SettingInfo
+          label="Account status"
+          value={profile.account_status || "active"}
+        />
+
+        <SettingInfo
+          label="Verification"
+          value={
+            profile.is_verified ||
+            profile.verified_status === "verified"
+              ? "Verified"
+              : "Not verified"
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Profile details"
+        description="Advanced profile information"
+        icon={<ImageIcon size={17} />}
+      >
+        <SettingInfo
+          label="Profile headline"
+          value={profile.profile_headline || "Not set"}
+        />
+
+        <SettingInfo
+          label="Nickname"
+          value={profile.nickname || "Not set"}
+        />
+
+        <SettingInfo
+          label="Pronouns"
+          value={profile.pronouns || "Not set"}
+        />
+
+        <SettingInfo
+          label="Occupation"
+          value={profile.occupation || "Not set"}
+        />
+
+        <SettingInfo
+          label="Education"
+          value={profile.education || "Not set"}
+        />
+
+        <SettingInfo
+          label="School / University"
+          value={profile.school_university || "Not set"}
+        />
+
+        <SettingInfo
+          label="Skills"
+          value={profile.skills || "Not set"}
+        />
+
+        <SettingInfo
+          label="Languages"
+          value={profile.languages || "Not set"}
+        />
+
+        <SettingInfo
+          label="Relationship status"
+          value={profile.relationship_status || "Not set"}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Social links"
+        description="Connected public profile links"
+        icon={<Globe size={17} />}
+      >
+        <SettingInfo
+          label="Website"
+          value={social.website || "Not set"}
+        />
+
+        <SettingInfo
+          label="YouTube"
+          value={social.youtube || "Not set"}
+        />
+
+        <SettingInfo
+          label="WhatsApp"
+          value={social.whatsapp || "Not set"}
+        />
+
+        <SettingInfo
+          label="Instagram"
+          value={social.instagram || "Not set"}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Account type"
+        description="Choose how your account operates"
+        icon={<BriefcaseBusiness size={17} />}
+      >
+        <SettingInfo
+          label="Current account type"
+          value={profile.account_type || "personal"}
+        />
+
+        <SettingInfo
+          label="Creator mode"
+          value={profile.creator_mode ? "Enabled" : "Disabled"}
+        />
+
+        <SettingInfo
+          label="Professional account"
+          value={profile.pro_account ? "Enabled" : "Disabled"}
+        />
+
+        <SettingInfo
+          label="Creator category"
+          value={profile.creator_category || "Not set"}
+        />
+
+        <SettingInfo
+          label="Creator website"
+          value={profile.creator_website || "Not set"}
+        />
+
+        <SettingInfo
+          label="Business email"
+          value={profile.business_email || "Not set"}
+        />
+
+        <SettingInfo
+          label="Business phone"
+          value={profile.business_phone || "Not set"}
+        />
+
+        <div className="pt-3 flex flex-wrap gap-2">
+          <ActionButton
+            onClick={() => navigate("/edit-profile")}
+            icon={<User size={14} />}
+          >
+            Edit Profile
+          </ActionButton>
+
+          <ActionButton
+            onClick={() => navigate("/universe-tools")}
+            icon={<LayoutDashboard size={14} />}
+          >
+            Professional Dashboard
+          </ActionButton>
+        </div>
+      </SettingsPanel>
+    </div>
   );
 };
 
-/*
-|--------------------------------------------------------------------------
-| PANEL SHELL
-|--------------------------------------------------------------------------
-*/
+/* ============================================================
+   SECURITY
+============================================================ */
 
-const PanelShell = ({ title, description, children }) => (
-  <div className="space-y-4">
-    <div>
-      <h3 className="text-xl font-black tracking-tight text-white">
-        {title}
-      </h3>
+const SecuritySettings = ({
+  profile,
+  settings,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const verification = settings.verification_settings;
 
-      <p className="mt-1 text-xs leading-relaxed text-zinc-600">
-        {description}
-      </p>
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Password & authentication"
+        description="Manage the credentials used to protect your account"
+        icon={<KeyRound size={17} />}
+      >
+        <NavigationRow
+          icon={<Lock size={17} />}
+          title="Change password"
+          description="Update your account password"
+          onClick={() => navigate("/settings/security/password")}
+        />
+
+        <NavigationRow
+          icon={<Mail size={17} />}
+          title="Forgot password"
+          description="Recover access to your account"
+          onClick={() => navigate("/forgot-password")}
+        />
+
+        <NavigationRow
+          icon={<ShieldCheck size={17} />}
+          title="Email verification"
+          description="Verify your email address"
+          badge={
+            verification.emailVerified ? "Verified" : "Not verified"
+          }
+          onClick={() =>
+            navigate("/settings/security/email-verification")
+          }
+        />
+
+        <NavigationRow
+          icon={<Smartphone size={17} />}
+          title="Phone verification"
+          description="Verify your phone number"
+          badge={
+            verification.phoneVerified
+              ? "Verified"
+              : profile.phone_number
+              ? "Available"
+              : "Phone not set"
+          }
+          onClick={() =>
+            navigate("/settings/security/phone-verification")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Two-factor authentication"
+        description="Additional protection when signing in"
+        icon={<Shield size={17} />}
+      >
+        <ToggleRow
+          icon={<ShieldCheck size={17} />}
+          title="Two-factor authentication"
+          description="Require an additional verification step"
+          value={verification.twoFactorEnabled}
+          onChange={(value) =>
+            updateJsonSetting(
+              "verification_settings",
+              "twoFactorEnabled",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          icon={<Smartphone size={17} />}
+          title="SMS verification"
+          description="Use your verified phone for security codes"
+          value={verification.smsVerificationEnabled}
+          onChange={(value) =>
+            updateJsonSetting(
+              "verification_settings",
+              "smsVerificationEnabled",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          icon={<KeyRound size={17} />}
+          title="Authenticator app"
+          description="Use an authenticator application"
+          value={verification.authenticatorEnabled}
+          onChange={(value) =>
+            updateJsonSetting(
+              "verification_settings",
+              "authenticatorEnabled",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          icon={<LogIn size={17} />}
+          title="Passkeys"
+          description="Passwordless sign-in using supported devices"
+          value={verification.passkeysEnabled}
+          onChange={(value) =>
+            updateJsonSetting(
+              "verification_settings",
+              "passkeysEnabled",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Login protection"
+        description="Monitor suspicious activity and account access"
+        icon={<Activity size={17} />}
+      >
+        <ToggleRow
+          icon={<Bell size={17} />}
+          title="Login alerts"
+          description="Receive notifications about new logins"
+          value={verification.loginAlerts}
+          onChange={(value) =>
+            updateJsonSetting(
+              "verification_settings",
+              "loginAlerts",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          icon={<AlertTriangle size={17} />}
+          title="Suspicious login detection"
+          description="Detect unusual login activity"
+          value={verification.suspiciousLoginDetection}
+          onChange={(value) =>
+            updateJsonSetting(
+              "verification_settings",
+              "suspiciousLoginDetection",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          icon={<LogIn size={17} />}
+          title="Login history"
+          description="Review recent account access"
+          badge="Backend"
+          onClick={() => navigate("/settings/security/login-history")}
+        />
+
+        <NavigationRow
+          icon={<Smartphone size={17} />}
+          title="Active sessions"
+          description="View devices currently signed in"
+          badge="Backend"
+          onClick={() =>
+            navigate("/settings/security/sessions")
+          }
+        />
+
+        <NavigationRow
+          icon={<ShieldCheck size={17} />}
+          title="Trusted devices"
+          description="Manage devices you trust"
+          badge="Backend"
+          onClick={() =>
+            navigate("/settings/security/devices")
+          }
+        />
+
+        <NavigationRow
+          icon={<KeyRound size={17} />}
+          title="Recovery options"
+          description="Recovery email and phone"
+          onClick={() =>
+            navigate("/settings/security/recovery")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Connected applications"
+        description="Applications with access to your account"
+        icon={<Code2 size={17} />}
+      >
+        <NavigationRow
+          icon={<Code2 size={17} />}
+          title="Connected apps"
+          description="OAuth and third-party access"
+          onClick={() => navigate("/settings/apps")}
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   PRIVACY
+============================================================ */
+
+const PrivacySettings = ({
+  profile,
+  settings,
+  updateProfile,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const privacy = settings.privacy_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Account visibility"
+        description="Choose whether your account is public or private"
+        icon={<Lock size={17} />}
+      >
+        <ToggleRow
+          icon={<Lock size={17} />}
+          title="Private account"
+          description="Only approved people can follow you"
+          value={Boolean(profile.is_private)}
+          onChange={(value) =>
+            updateProfile("is_private", value)
+          }
+        />
+
+        <SelectRow
+          title="Media privacy"
+          description="Default visibility for profile media"
+          value={profile.media_privacy || "public"}
+          options={[
+            ["public", "Public"],
+            ["followers", "Followers"],
+            ["private", "Private"],
+          ]}
+          onChange={(value) =>
+            updateProfile("media_privacy", value)
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Who can interact with you"
+        description="Control followers, messages, mentions and tags"
+        icon={<Users size={17} />}
+      >
+        <SelectRow
+          title="Who can follow you"
+          value={privacy.whoCanFollow}
+          options={[
+            ["everyone", "Everyone"],
+            ["followers", "People you follow"],
+            ["approved", "Approved people"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "whoCanFollow",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Who can message you"
+          value={privacy.whoCanMessage}
+          options={[
+            ["everyone", "Everyone"],
+            ["followers", "Followers"],
+            ["nobody", "Nobody"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "whoCanMessage",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Who can mention you"
+          value={privacy.whoCanMention}
+          options={[
+            ["everyone", "Everyone"],
+            ["followers", "Followers"],
+            ["nobody", "Nobody"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "whoCanMention",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Who can tag you"
+          value={privacy.whoCanTag}
+          options={[
+            ["everyone", "Everyone"],
+            ["followers", "Followers"],
+            ["nobody", "Nobody"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "whoCanTag",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Visibility"
+        description="Control what other people can discover"
+        icon={<Eye size={17} />}
+      >
+        <ToggleRow
+          title="Search visibility"
+          description="Allow your account to appear in search"
+          value={privacy.searchVisibility}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "searchVisibility",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Profile views"
+          description="Allow profile-view activity"
+          value={privacy.profileViews}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "profileViews",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Activity visibility"
+          description="Show selected activity to others"
+          value={privacy.activityVisibility}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "activityVisibility",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Online status"
+          description="Show when you are online"
+          value={privacy.onlineStatus}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "onlineStatus",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Last active"
+          description="Show when you were last active"
+          value={privacy.lastActive}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "lastActive",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Following visibility"
+          value={privacy.followingVisibility}
+          options={[
+            ["public", "Public"],
+            ["followers", "Followers"],
+            ["private", "Private"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "followingVisibility",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Follower visibility"
+          value={privacy.followerVisibility}
+          options={[
+            ["public", "Public"],
+            ["followers", "Followers"],
+            ["private", "Private"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "followerVisibility",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Personal information visibility"
+        description="Choose who can see sensitive profile fields"
+        icon={<User size={17} />}
+      >
+        <SelectRow
+          title="Birthday"
+          value={profile.birthday_visibility || "private"}
+          options={[
+            ["public", "Public"],
+            ["followers", "Followers"],
+            ["private", "Private"],
+          ]}
+          onChange={(value) =>
+            updateProfile("birthday_visibility", value)
+          }
+        />
+
+        <SelectRow
+          title="Gender"
+          value={profile.gender_visibility || "private"}
+          options={[
+            ["public", "Public"],
+            ["followers", "Followers"],
+            ["private", "Private"],
+          ]}
+          onChange={(value) =>
+            updateProfile("gender_visibility", value)
+          }
+        />
+
+        <SelectRow
+          title="Phone"
+          value={profile.phone_visibility || "private"}
+          options={[
+            ["public", "Public"],
+            ["followers", "Followers"],
+            ["private", "Private"],
+          ]}
+          onChange={(value) =>
+            updateProfile("phone_visibility", value)
+          }
+        />
+
+        <SelectRow
+          title="Location"
+          value={profile.location_visibility || "district"}
+          options={[
+            ["public", "Public"],
+            ["district", "District"],
+            ["city", "City"],
+            ["private", "Private"],
+          ]}
+          onChange={(value) =>
+            updateProfile("location_visibility", value)
+          }
+        />
+
+        <ToggleRow
+          title="GPS sharing"
+          description="Allow precise location sharing when supported"
+          value={Boolean(profile.gps_sharing)}
+          onChange={(value) =>
+            updateProfile("gps_sharing", value)
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Privacy lists"
+        description="Manage accounts and words you don't want to see"
+        icon={<UserMinus size={17} />}
+      >
+        <NavigationRow
+          icon={<UserMinus size={17} />}
+          title="Blocked accounts"
+          description="Accounts you have blocked"
+          onClick={() => navigate("/settings/privacy/blocked")}
+        />
+
+        <NavigationRow
+          icon={<Pause size={17} />}
+          title="Muted accounts"
+          description="Accounts whose content you have muted"
+          onClick={() => navigate("/settings/privacy/muted")}
+        />
+
+        <NavigationRow
+          icon={<Shield size={17} />}
+          title="Restricted accounts"
+          description="Accounts with limited interaction"
+          onClick={() =>
+            navigate("/settings/privacy/restricted")
+          }
+        />
+
+        <NavigationRow
+          icon={<AlertTriangle size={17} />}
+          title="Hidden words"
+          description="Words and phrases filtered from your experience"
+          onClick={() =>
+            navigate("/settings/privacy/hidden-words")
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   NOTIFICATIONS
+============================================================ */
+
+const NotificationSettings = ({
+  settings,
+  updateJsonSetting,
+}) => {
+  const notificationDefaults = {
+    followers: true,
+    likes: true,
+    comments: true,
+    replies: true,
+    mentions: true,
+    shares: true,
+    reposts: true,
+    saves: true,
+    gifts: true,
+    live: true,
+    subscribers: true,
+    subscriptionPayments: true,
+    creatorFund: true,
+    earnings: true,
+    payouts: true,
+    videoProcessing: true,
+    videoPublishing: true,
+    scheduledPublishing: true,
+    copyright: true,
+    contentWarnings: true,
+    accountSecurity: true,
+    system: true,
+    push: true,
+    email: true,
+    sms: false,
+    inApp: true,
+    sounds: true,
+    vibration: true,
+    quietHours: false,
+  };
+
+  const notification =
+    settings.advanced_settings.notifications ||
+    notificationDefaults;
+
+  const update = (key, value) => {
+    updateJsonSetting(
+      "advanced_settings",
+      "notifications",
+      {
+        ...notification,
+        [key]: value,
+      }
+    );
+  };
+
+  const categories = [
+    ["followers", "Followers"],
+    ["likes", "Likes"],
+    ["comments", "Comments"],
+    ["replies", "Replies"],
+    ["mentions", "Mentions"],
+    ["shares", "Shares"],
+    ["reposts", "Reposts"],
+    ["saves", "Saves"],
+    ["gifts", "Gifts"],
+    ["live", "Live"],
+    ["subscribers", "Subscribers"],
+    ["subscriptionPayments", "Subscription payments"],
+    ["creatorFund", "Creator fund"],
+    ["earnings", "Earnings"],
+    ["payouts", "Payouts"],
+    ["videoProcessing", "Video processing"],
+    ["videoPublishing", "Video publishing"],
+    ["scheduledPublishing", "Scheduled publishing"],
+    ["copyright", "Copyright"],
+    ["contentWarnings", "Content warnings"],
+    ["accountSecurity", "Account security"],
+    ["system", "System"],
+  ];
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Notification channels"
+        description="Choose where notifications are delivered"
+        icon={<Bell size={17} />}
+      >
+        {[
+          ["push", "Push notifications"],
+          ["email", "Email notifications"],
+          ["sms", "SMS notifications"],
+          ["inApp", "In-app notifications"],
+          ["sounds", "Notification sounds"],
+          ["vibration", "Vibration"],
+        ].map(([key, title]) => (
+          <ToggleRow
+            key={key}
+            title={title}
+            value={Boolean(notification[key])}
+            onChange={(value) => update(key, value)}
+          />
+        ))}
+
+        <ToggleRow
+          title="Quiet hours"
+          description="Temporarily reduce notification interruptions"
+          value={Boolean(notification.quietHours)}
+          onChange={(value) => update("quietHours", value)}
+        />
+
+        <NavigationRow
+          icon={<Bell size={17} />}
+          title="Notification history"
+          description="Review notifications you've received"
+          onClick={() => {}}
+        />
+
+        <ActionButton
+          onClick={() => {}}
+          icon={<Check size={14} />}
+        >
+          Mark All as Read
+        </ActionButton>
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Activity notifications"
+        description="Choose which activity generates alerts"
+        icon={<Activity size={17} />}
+      >
+        {categories.map(([key, title]) => (
+          <ToggleRow
+            key={key}
+            title={title}
+            value={Boolean(notification[key])}
+            onChange={(value) => update(key, value)}
+          />
+        ))}
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   CONTENT
+============================================================ */
+
+const ContentSettings = ({
+  settings,
+  updateJsonSetting,
+}) => {
+  const content = settings.content_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Default publishing"
+        description="Defaults applied when you publish content"
+        icon={<Video size={17} />}
+      >
+        <SelectRow
+          title="Default video privacy"
+          value={content.defaultPrivacy}
+          options={[
+            ["public", "Public"],
+            ["followers", "Followers"],
+            ["private", "Private"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "defaultPrivacy",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Upload quality"
+          value={content.uploadQuality}
+          options={[
+            ["low", "Low"],
+            ["medium", "Medium"],
+            ["high", "High"],
+            ["original", "Original"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "uploadQuality",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Download quality"
+          value={content.downloadQuality}
+          options={[
+            ["low", "Low"],
+            ["medium", "Medium"],
+            ["high", "High"],
+            ["original", "Original"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "downloadQuality",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Interaction permissions"
+        description="Control what other people can do with your content"
+        icon={<Users size={17} />}
+      >
+        {[
+          ["comments", "Comments"],
+          ["downloads", "Downloads"],
+          ["duet", "Duet"],
+          ["stitch", "Stitch"],
+          ["repost", "Repost"],
+          ["sharing", "Sharing"],
+        ].map(([key, title]) => (
+          <ToggleRow
+            key={key}
+            title={title}
+            value={Boolean(content[key])}
+            onChange={(value) =>
+              updateJsonSetting(
+                "content_settings",
+                key,
+                value
+              )
+            }
+          />
+        ))}
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Safety & disclosure"
+        description="Control content safety settings"
+        icon={<Shield size={17} />}
+      >
+        <ToggleRow
+          title="Age restriction"
+          value={content.ageRestriction}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "ageRestriction",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Sensitive content"
+          description="Control exposure to sensitive content"
+          value={content.sensitiveContent}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "sensitiveContent",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Content warnings"
+          value={content.contentWarnings}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "contentWarnings",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="AI disclosure"
+          description="Disclose AI-assisted content when appropriate"
+          value={content.aiDisclosure}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "aiDisclosure",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Playback"
+        description="Control video autoplay and mobile data usage"
+        icon={<Play size={17} />}
+      >
+        <ToggleRow
+          title="Autoplay"
+          value={content.autoplay}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "autoplay",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Autoplay on Wi-Fi"
+          value={content.autoplayWifi}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "autoplayWifi",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Autoplay on mobile data"
+          value={content.autoplayMobile}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "autoplayMobile",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   COMMENTS
+============================================================ */
+
+const CommentsSettings = ({
+  settings,
+  updateJsonSetting,
+}) => {
+  const content = settings.content_settings;
+  const privacy = settings.privacy_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Comment controls"
+        description="Control who can comment and how comments appear"
+        icon={<MessageCircle size={17} />}
+      >
+        <ToggleRow
+          title="Allow comments"
+          value={Boolean(content.comments)}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "comments",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Automatic comment filtering"
+          value={Boolean(privacy.commentFiltering)}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "commentFiltering",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          icon={<AlertTriangle size={17} />}
+          title="Blocked words"
+          description="Hide comments containing selected words"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          icon={<Shield size={17} />}
+          title="Manual moderation"
+          description="Review comments before they appear"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          icon={<Bell size={17} />}
+          title="Comment notifications"
+          description="Manage comment activity notifications"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Moderation tools"
+        description="Tools for managing unwanted comments"
+        icon={<Shield size={17} />}
+      >
+        <NavigationRow
+          title="Hidden comments"
+          description="View comments hidden by filters"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          title="Spam comments"
+          description="Review comments detected as spam"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          title="Offensive content"
+          description="Review comments flagged as offensive"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   MESSAGES
+============================================================ */
+
+const MessagesSettings = ({
+  settings,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const privacy = settings.privacy_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Messaging permissions"
+        description="Control who can contact you"
+        icon={<Send size={17} />}
+      >
+        <SelectRow
+          title="Who can message you"
+          value={privacy.whoCanMessage}
+          options={[
+            ["everyone", "Everyone"],
+            ["followers", "Followers"],
+            ["nobody", "Nobody"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "privacy_settings",
+              "whoCanMessage",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          icon={<Mail size={17} />}
+          title="Message requests"
+          description="Manage messages from people you don't follow"
+          onClick={() => navigate("/messages/requests")}
+        />
+
+        <NavigationRow
+          icon={<Users size={17} />}
+          title="Group messages"
+          description="Control group conversation invitations"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Chat experience"
+        description="Control read receipts and typing indicators"
+        icon={<MessageCircle size={17} />}
+      >
+        <ToggleRow
+          title="Read receipts"
+          value={
+            settings.advanced_settings.readReceipts !== false
+          }
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "readReceipts",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Typing indicators"
+          value={
+            settings.advanced_settings.typingIndicators !== false
+          }
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "typingIndicators",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Message notifications"
+          value={
+            settings.advanced_settings.messageNotifications !==
+            false
+          }
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "messageNotifications",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Message privacy"
+        description="Accounts you've muted or blocked"
+        icon={<Shield size={17} />}
+      >
+        <NavigationRow
+          title="Blocked accounts"
+          onClick={() =>
+            navigate("/settings/privacy/blocked")
+          }
+        />
+
+        <NavigationRow
+          title="Muted accounts"
+          onClick={() =>
+            navigate("/settings/privacy/muted")
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   FOLLOWERS
+============================================================ */
+
+const FollowersSettings = ({
+  settings,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const discovery = settings.discovery_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Follower management"
+        description="Manage how people follow and discover you"
+        icon={<Users size={17} />}
+      >
+        <NavigationRow
+          icon={<UserCheck size={17} />}
+          title="Follow requests"
+          description="Review pending requests"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          icon={<UserMinus size={17} />}
+          title="Remove followers"
+          description="Remove accounts without blocking them"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          icon={<Shield size={17} />}
+          title="Blocked & restricted"
+          description="Manage restricted accounts"
+          onClick={() =>
+            navigate("/settings/privacy/restricted")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Discoverability"
+        description="Control how people find your account"
+        icon={<Globe size={17} />}
+      >
+        <ToggleRow
+          title="Account discoverability"
+          value={discovery.discoverability}
+          onChange={(value) =>
+            updateJsonSetting(
+              "discovery_settings",
+              "discoverability",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Account suggestions"
+          description="Allow your account to appear in suggestions"
+          value={discovery.suggestAccount}
+          onChange={(value) =>
+            updateJsonSetting(
+              "discovery_settings",
+              "suggestAccount",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Contact syncing"
+          description="Find friends from your contacts"
+          value={discovery.contactSync}
+          onChange={(value) =>
+            updateJsonSetting(
+              "discovery_settings",
+              "contactSync",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Personalized recommendations"
+          value={discovery.personalizedRecommendations}
+          onChange={(value) =>
+            updateJsonSetting(
+              "discovery_settings",
+              "personalizedRecommendations",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   DATA
+============================================================ */
+
+const DataSettings = ({
+  settings,
+  updateJsonSetting,
+  storageInfo,
+  clearTemporaryData,
+  calculateStorage,
+  navigate,
+}) => {
+  const content = settings.content_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Data saver"
+        description="Reduce mobile data usage"
+        icon={<Wifi size={17} />}
+      >
+        <ToggleRow
+          title="Data saver"
+          description="Reduce video quality and background data usage"
+          value={
+            settings.advanced_settings.dataSaver || false
+          }
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "dataSaver",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Upload quality"
+          value={content.uploadQuality}
+          options={[
+            ["low", "Low"],
+            ["medium", "Medium"],
+            ["high", "High"],
+            ["original", "Original"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "uploadQuality",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Download quality"
+          value={content.downloadQuality}
+          options={[
+            ["low", "Low"],
+            ["medium", "Medium"],
+            ["high", "High"],
+            ["original", "Original"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "content_settings",
+              "downloadQuality",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <StorageSummary
+        storageInfo={storageInfo}
+        onOpen={() => {}}
+        detailed
+      />
+
+      <SettingsPanel
+        title="Stored content"
+        description="Manage content stored locally or in your account"
+        icon={<HardDrive size={17} />}
+      >
+        <NavigationRow
+          icon={<Video size={17} />}
+          title="Videos"
+          description="Uploaded and locally stored videos"
+          onClick={() => navigate("/settings/library/videos")}
+        />
+
+        <NavigationRow
+          icon={<FileText size={17} />}
+          title="Drafts"
+          description="Unpublished content"
+          onClick={() => navigate("/settings/library/drafts")}
+        />
+
+        <NavigationRow
+          icon={<ImageIcon size={17} />}
+          title="Images & thumbnails"
+          description="Images and generated thumbnails"
+          onClick={() =>
+            navigate("/settings/library/images")
+          }
+        />
+
+        <NavigationRow
+          icon={<Mic size={17} />}
+          title="Audio"
+          description="Audio and music files"
+          onClick={() => navigate("/settings/library/audio")}
+        />
+
+        <NavigationRow
+          icon={<Radio size={17} />}
+          title="Live recordings"
+          description="Saved livestream recordings"
+          onClick={() =>
+            navigate("/settings/library/live-recordings")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Temporary data"
+        description="Clear locally stored temporary information"
+        icon={<Trash2 size={17} />}
+      >
+        <ActionButton
+          danger
+          onClick={clearTemporaryData}
+          icon={<Trash2 size={14} />}
+        >
+          Clear Temporary Data
+        </ActionButton>
+
+        <ActionButton
+          onClick={calculateStorage}
+          icon={<RefreshCw size={14} />}
+        >
+          Recalculate Storage
+        </ActionButton>
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   LANGUAGE
+============================================================ */
+
+const LanguageSettings = ({
+  settings,
+  updateJsonSetting,
+  profile,
+  updateProfile,
+}) => {
+  const advanced = settings.advanced_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Language"
+        description="Choose the languages used by the application"
+        icon={<Languages size={17} />}
+      >
+        <SelectRow
+          title="App language"
+          value={advanced.appLanguage || "English"}
+          options={[
+            ["English", "English"],
+            ["Chichewa", "Chichewa"],
+            ["Tumbuka", "Tumbuka"],
+            ["French", "French"],
+            ["Portuguese", "Portuguese"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "appLanguage",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Content language"
+          value={advanced.contentLanguage || "English"}
+          options={[
+            ["English", "English"],
+            ["Chichewa", "Chichewa"],
+            ["Tumbuka", "Tumbuka"],
+            ["French", "French"],
+            ["Portuguese", "Portuguese"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "contentLanguage",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Automatic translation"
+          value={advanced.autoTranslate !== false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "autoTranslate",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Caption language"
+          value={advanced.captionLanguage || "English"}
+          options={[
+            ["English", "English"],
+            ["Chichewa", "Chichewa"],
+            ["Tumbuka", "Tumbuka"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "captionLanguage",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Region"
+        description="Regional preferences for the platform"
+        icon={<Globe size={17} />}
+      >
+        <SettingInfo
+          label="Country"
+          value={profile.country || "Malawi"}
+        />
+
+        <SettingInfo
+          label="Currency"
+          value={profile.currency_preference || "MWK"}
+        />
+
+        <SelectRow
+          title="Currency preference"
+          value={profile.currency_preference || "MWK"}
+          options={[
+            ["MWK", "MWK — Malawi Kwacha"],
+            ["USD", "USD — US Dollar"],
+            ["ZAR", "ZAR — South African Rand"],
+            ["GBP", "GBP — British Pound"],
+            ["EUR", "EUR — Euro"],
+          ]}
+          onChange={(value) =>
+            updateProfile("currency_preference", value)
+          }
+        />
+
+        <SelectRow
+          title="Timezone"
+          value={advanced.timezone || "Africa/Blantyre"}
+          options={[
+            ["Africa/Blantyre", "Africa/Blantyre (CAT)"],
+            ["UTC", "UTC"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "timezone",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Date format"
+          value={advanced.dateFormat || "DD/MM/YYYY"}
+          options={[
+            ["DD/MM/YYYY", "DD/MM/YYYY"],
+            ["MM/DD/YYYY", "MM/DD/YYYY"],
+            ["YYYY-MM-DD", "YYYY-MM-DD"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "dateFormat",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Number format"
+          value={advanced.numberFormat || "local"}
+          options={[
+            ["local", "Local"],
+            ["international", "International"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "numberFormat",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   APPEARANCE
+============================================================ */
+
+const AppearanceSettings = ({
+  profile,
+  settings,
+  updateProfile,
+  updateJsonSetting,
+}) => {
+  const appearance = settings.appearance_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Theme"
+        description="Choose the visual appearance of the application"
+        icon={<Palette size={17} />}
+      >
+        <SelectRow
+          title="Theme"
+          value={profile.theme_preference || "neon"}
+          options={[
+            ["dark", "Dark"],
+            ["light", "Light"],
+            ["system", "System"],
+            ["neon", "Neon"],
+          ]}
+          onChange={(value) =>
+            updateProfile("theme_preference", value)
+          }
+        />
+
+        <SelectRow
+          title="Density"
+          value={appearance.density}
+          options={[
+            ["compact", "Compact"],
+            ["comfortable", "Comfortable"],
+            ["spacious", "Spacious"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "density",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Compact mode"
+          value={appearance.compactMode}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "compactMode",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Animations"
+          value={appearance.animations}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "animations",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Reduce motion"
+          value={appearance.reduceMotion}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "reduceMotion",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Glass effects"
+          value={appearance.glass}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "glass",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Blur effects"
+          value={appearance.blur}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "blur",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Accent color"
+        description="Customize your interface accent"
+        icon={<Sparkles size={17} />}
+      >
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+          {[
+            "#06b6d4",
+            "#8b5cf6",
+            "#ec4899",
+            "#22c55e",
+            "#f59e0b",
+            "#ef4444",
+            "#3b82f6",
+            "#ffffff",
+          ].map((color) => (
+            <button
+              key={color}
+              onClick={() =>
+                updateProfile("accent_color", color)
+              }
+              className={`h-10 rounded-xl border transition ${
+                profile.accent_color === color
+                  ? "border-white"
+                  : "border-white/10"
+              }`}
+              style={{ backgroundColor: color }}
+              aria-label={`Accent ${color}`}
+            />
+          ))}
+        </div>
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Typography"
+        description="Control text readability"
+        icon={<FileText size={17} />}
+      >
+        <SelectRow
+          title="Font size"
+          value={appearance.fontSize}
+          options={[
+            ["small", "Small"],
+            ["medium", "Medium"],
+            ["large", "Large"],
+            ["xlarge", "Extra large"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "fontSize",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="High contrast"
+          value={appearance.highContrast}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "highContrast",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   ACCESSIBILITY
+============================================================ */
+
+const AccessibilitySettings = ({
+  settings,
+  updateJsonSetting,
+}) => {
+  const appearance = settings.appearance_settings;
+  const advanced = settings.advanced_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Visual accessibility"
+        description="Make the interface easier to see"
+        icon={<Eye size={17} />}
+      >
+        <SelectRow
+          title="Font size"
+          value={appearance.fontSize}
+          options={[
+            ["small", "Small"],
+            ["medium", "Medium"],
+            ["large", "Large"],
+            ["xlarge", "Extra large"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "fontSize",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="High contrast"
+          value={appearance.highContrast}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "highContrast",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Reduce motion"
+          value={appearance.reduceMotion}
+          onChange={(value) =>
+            updateJsonSetting(
+              "appearance_settings",
+              "reduceMotion",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Color-blind-friendly mode"
+          value={advanced.colorBlindFriendly || false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "colorBlindFriendly",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Audio & media accessibility"
+        description="Improve accessibility for video and audio"
+        icon={<Mic size={17} />}
+      >
+        <ToggleRow
+          title="Captions"
+          value={advanced.captions !== false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "captions",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Audio descriptions"
+          value={advanced.audioDescriptions || false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "audioDescriptions",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Screen reader optimization"
+          value={advanced.screenReader || false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "screenReader",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Touch & interaction"
+        description="Make controls easier to interact with"
+        icon={<Smartphone size={17} />}
+      >
+        <SelectRow
+          title="Touch target size"
+          value={advanced.touchTargetSize || "normal"}
+          options={[
+            ["small", "Small"],
+            ["normal", "Normal"],
+            ["large", "Large"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "touchTargetSize",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   PAYMENTS
+============================================================ */
+
+const PaymentSettings = ({
+  profile,
+  settings,
+  updateProfile,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const financial = settings.financial_settings;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <FinanceCard
+          title="Balance"
+          value={formatMoney(
+            profile.balance,
+            profile.currency_preference || "MWK"
+          )}
+          icon={<Wallet size={18} />}
+        />
+
+        <FinanceCard
+          title="Coins"
+          value={Number(profile.coins || 0).toLocaleString()}
+          icon={<Coins size={18} />}
+        />
+
+        <FinanceCard
+          title="Tokens earned"
+          value={Number(
+            profile.total_tokens_earned || 0
+          ).toLocaleString()}
+          icon={<Sparkles size={18} />}
+        />
+      </div>
+
+      <SettingsPanel
+        title="Wallet"
+        description="Your creator financial summary"
+        icon={<Wallet size={17} />}
+      >
+        <SettingInfo
+          label="Available balance"
+          value={formatMoney(
+            profile.balance,
+            profile.currency_preference || "MWK"
+          )}
+        />
+
+        <SettingInfo
+          label="Coins"
+          value={Number(profile.coins || 0).toLocaleString()}
+        />
+
+        <SettingInfo
+          label="Lifetime tokens"
+          value={Number(
+            profile.total_tokens_earned || 0
+          ).toLocaleString()}
+        />
+
+        <SettingInfo
+          label="Subscription tier"
+          value={profile.subscription_tier || "Free"}
+        />
+
+        <div className="flex flex-wrap gap-2 pt-3">
+          <ActionButton
+            onClick={() => navigate("/payouts")}
+            icon={<Wallet size={14} />}
+          >
+            Open Payouts
+          </ActionButton>
+
+          <ActionButton
+            onClick={() => navigate("/settings/payments/transactions")}
+            icon={<FileText size={14} />}
+          >
+            Transactions
+          </ActionButton>
+        </div>
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Payment methods"
+        description="Manage your supported payout methods"
+        icon={<Smartphone size={17} />}
+      >
+        <SelectRow
+          title="Default payout method"
+          value={
+            profile.payout_method || financial.defaultPayoutMethod
+          }
+          options={[
+            ["Mobile Money", "Mobile Money"],
+            ["TNM Mpamba", "TNM Mpamba"],
+            ["Airtel Money", "Airtel Money"],
+            ["Bank", "Bank"],
+          ]}
+          onChange={(value) =>
+            updateProfile("payout_method", value)
+          }
+        />
+
+        <SelectRow
+          title="Currency"
+          value={profile.currency_preference || "MWK"}
+          options={[
+            ["MWK", "MWK"],
+            ["USD", "USD"],
+            ["ZAR", "ZAR"],
+            ["GBP", "GBP"],
+            ["EUR", "EUR"],
+          ]}
+          onChange={(value) =>
+            updateProfile("currency_preference", value)
+          }
+        />
+
+        <ToggleRow
+          title="Payment verification"
+          description="Mark your payout configuration as verified"
+          value={financial.paymentVerified}
+          onChange={(value) =>
+            updateJsonSetting(
+              "financial_settings",
+              "paymentVerified",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Payouts"
+        description="Control how creator earnings are withdrawn"
+        icon={<Wallet size={17} />}
+      >
+        <SettingInfo
+          label="Minimum payout"
+          value={
+            financial.minimumPayout
+              ? formatMoney(
+                  financial.minimumPayout,
+                  profile.currency_preference || "MWK"
+                )
+              : "Platform default"
+          }
+        />
+
+        <ToggleRow
+          title="Automatic payouts"
+          value={financial.autoPayout}
+          onChange={(value) =>
+            updateJsonSetting(
+              "financial_settings",
+              "autoPayout",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Payout schedule"
+          value={financial.payoutSchedule}
+          options={[
+            ["manual", "Manual"],
+            ["weekly", "Weekly"],
+            ["monthly", "Monthly"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "financial_settings",
+              "payoutSchedule",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          title="Payout history"
+          description="Pending, completed, failed and cancelled payouts"
+          onClick={() => navigate("/payouts")}
+        />
+
+        <NavigationRow
+          title="Transaction history"
+          description="Payments, purchases, gifts and refunds"
+          onClick={() =>
+            navigate("/settings/payments/transactions")
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   CREATOR
+============================================================ */
+
+const CreatorSettings = ({
+  profile,
+  settings,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const creator = settings.creator_settings;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <FinanceCard
+          title="Creator level"
+          value={`Level ${profile.creator_level || 1}`}
+          icon={<Award size={18} />}
+        />
+
+        <FinanceCard
+          title="XP"
+          value={Number(profile.creator_xp || 0).toLocaleString()}
+          icon={<Zap size={18} />}
+        />
+
+        <FinanceCard
+          title="Followers"
+          value={Number(
+            profile.follower_count || 0
+          ).toLocaleString()}
+          icon={<Users size={18} />}
+        />
+
+        <FinanceCard
+          title="Likes"
+          value={Number(
+            profile.total_likes || 0
+          ).toLocaleString()}
+          icon={<Sparkles size={18} />}
+        />
+      </div>
+
+      <SettingsPanel
+        title="Creator dashboard"
+        description="Creator tools and professional controls"
+        icon={<LayoutDashboard size={17} />}
+      >
+        <ToggleRow
+          title="Creator dashboard"
+          value={creator.creatorDashboard}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "creatorDashboard",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Analytics"
+          value={creator.analytics}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "analytics",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Audience insights"
+          value={creator.audienceInsights}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "audienceInsights",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Content performance"
+          value={creator.contentPerformance}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "contentPerformance",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Growth recommendations"
+          value={creator.growthRecommendations}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "growthRecommendations",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Creator monetization"
+        description="Features related to earning from your audience"
+        icon={<Wallet size={17} />}
+      >
+        {[
+          ["earnings", "Earnings"],
+          ["gifts", "Gifts"],
+          ["subscriptions", "Subscriptions"],
+          ["paidContent", "Paid content"],
+        ].map(([key, title]) => (
+          <ToggleRow
+            key={key}
+            title={title}
+            value={Boolean(creator[key])}
+            onChange={(value) =>
+              updateJsonSetting(
+                "creator_settings",
+                key,
+                value
+              )
+            }
+          />
+        ))}
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Creator tools"
+        description="Publishing, livestream and content tools"
+        icon={<Sparkles size={17} />}
+      >
+        <ToggleRow
+          title="Livestream"
+          value={creator.livestream}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "livestream",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Scheduling"
+          value={creator.scheduling}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "scheduling",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Media kit"
+          value={creator.mediaKit}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "mediaKit",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Brand collaboration"
+          value={creator.brandCollaboration}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "brandCollaboration",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          title="Creator analytics"
+          description="Open detailed performance analytics"
+          onClick={() => navigate("/universe-tools")}
+        />
+
+        <NavigationRow
+          title="Live Center"
+          description="Manage livestreams"
+          onClick={() => navigate("/live-universe")}
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   SCHEDULING
+============================================================ */
+
+const SchedulingSettings = ({
+  settings,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const creator = settings.creator_settings;
+  const advanced = settings.advanced_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Scheduling"
+        description="Manage scheduled videos and livestreams"
+        icon={<Play size={17} />}
+      >
+        <ToggleRow
+          title="Scheduling enabled"
+          value={creator.scheduling}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "scheduling",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Auto publishing"
+          value={advanced.autoPublishing || false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "autoPublishing",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Publishing notifications"
+          value={advanced.publishingNotifications !== false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "publishingNotifications",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Failed publishing notifications"
+          value={advanced.failedPublishingNotifications !== false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "failedPublishingNotifications",
+              value
+            )
+          }
+        />
+
+        <SelectRow
+          title="Publishing timezone"
+          value={advanced.timezone || "Africa/Blantyre"}
+          options={[
+            ["Africa/Blantyre", "Africa/Blantyre (CAT)"],
+            ["UTC", "UTC"],
+          ]}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "timezone",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Calendar"
+        description="Scheduled publishing workspace"
+        icon={<FileText size={17} />}
+      >
+        <NavigationRow
+          title="Scheduled videos"
+          description="View and manage scheduled videos"
+          onClick={() =>
+            navigate("/settings/creator/scheduling/videos")
+          }
+        />
+
+        <NavigationRow
+          title="Scheduled livestreams"
+          description="View and manage scheduled lives"
+          onClick={() =>
+            navigate("/settings/creator/scheduling/lives")
+          }
+        />
+
+        <NavigationRow
+          title="Publishing calendar"
+          description="View your creator publishing calendar"
+          onClick={() =>
+            navigate("/settings/creator/scheduling/calendar")
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   LIBRARY
+============================================================ */
+
+const LibrarySettings = ({ navigate }) => {
+  const rows = [
+    ["Videos", "Uploaded videos", "/settings/library/videos"],
+    ["Drafts", "Unpublished content", "/settings/library/drafts"],
+    ["Images", "Images and graphics", "/settings/library/images"],
+    ["Audio", "Audio and music", "/settings/library/audio"],
+    [
+      "Thumbnails",
+      "Generated and uploaded thumbnails",
+      "/settings/library/thumbnails",
+    ],
+    [
+      "Live recordings",
+      "Saved livestream recordings",
+      "/settings/library/live-recordings",
+    ],
+    [
+      "Archived",
+      "Archived content",
+      "/settings/library/archived",
+    ],
+    [
+      "Recently deleted",
+      "Recoverable deleted content",
+      "/settings/library/recently-deleted",
+    ],
+  ];
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Content library"
+        description="Everything you've uploaded or created"
+        icon={<FileArchive size={17} />}
+      >
+        {rows.map(([title, description, path]) => (
+          <NavigationRow
+            key={title}
+            title={title}
+            description={description}
+            onClick={() => navigate(path)}
+          />
+        ))}
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Recovery"
+        description="Recover recently deleted content when available"
+        icon={<RefreshCw size={17} />}
+      >
+        <NavigationRow
+          title="Recently deleted"
+          description="Content still within the recovery period"
+          onClick={() =>
+            navigate("/settings/library/recently-deleted")
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   PROGRESS
+============================================================ */
+
+const ProgressSettings = ({
+  profile,
+  settings,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const creator = settings.creator_settings;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-3xl border border-white/[0.07] bg-[#070707] p-5 sm:p-7">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-yellow-400/[0.08] border border-yellow-400/10 flex items-center justify-center text-yellow-400">
+            <Award size={25} />
+          </div>
+
+          <div>
+            <div className="text-[10px] uppercase tracking-[3px] text-zinc-600">
+              Creator Progress
+            </div>
+
+            <div className="text-2xl font-black mt-1">
+              Level {profile.creator_level || 1}
+            </div>
+
+            <div className="text-xs text-zinc-500">
+              {Number(profile.creator_xp || 0).toLocaleString()} XP
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+            <div
+              className="h-full bg-cyan-400 rounded-full"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Number(profile.creator_xp || 0) % 100
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <SettingsPanel
+        title="Progress"
+        description="Track milestones and achievements"
+        icon={<Award size={17} />}
+      >
+        <NavigationRow
+          title="Achievements"
+          description="View earned achievements"
+          onClick={() =>
+            navigate("/settings/creator/achievements")
+          }
+        />
+
+        <NavigationRow
+          title="Badges"
+          description="View your profile badges"
+          onClick={() =>
+            navigate("/settings/creator/badges")
+          }
+        />
+
+        <NavigationRow
+          title="Streaks"
+          description="Track creator activity streaks"
+          onClick={() =>
+            navigate("/settings/creator/streaks")
+          }
+        />
+
+        <NavigationRow
+          title="Milestones"
+          description="Creator milestones"
+          onClick={() =>
+            navigate("/settings/creator/milestones")
+          }
+        />
+
+        <NavigationRow
+          title="Leaderboard"
+          description="Compare creator progress"
+          onClick={() =>
+            navigate("/settings/creator/leaderboard")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Goals"
+        description="Creator goals and recommendations"
+        icon={<Zap size={17} />}
+      >
+        <ToggleRow
+          title="Creator goals"
+          value={creator.goals}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "goals",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          title="Manage goals"
+          description="Set and track your creator goals"
+          onClick={() =>
+            navigate("/settings/creator/goals")
+          }
+        />
+
+        <NavigationRow
+          title="Rewards"
+          description="Available creator rewards"
+          onClick={() =>
+            navigate("/settings/creator/rewards")
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   BRAND
+============================================================ */
+
+const BrandSettings = ({
+  profile,
+  settings,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const creator = settings.creator_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Business profile"
+        description="Professional information for collaborations"
+        icon={<BriefcaseBusiness size={17} />}
+      >
+        <SettingInfo
+          label="Creator category"
+          value={profile.creator_category || "Not set"}
+        />
+
+        <SettingInfo
+          label="Creator website"
+          value={profile.creator_website || "Not set"}
+        />
+
+        <SettingInfo
+          label="Business email"
+          value={profile.business_email || "Not set"}
+        />
+
+        <SettingInfo
+          label="Business phone"
+          value={profile.business_phone || "Not set"}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Brand collaboration"
+        description="Manage commercial creator opportunities"
+        icon={<BriefcaseBusiness size={17} />}
+      >
+        <ToggleRow
+          title="Brand collaborations"
+          value={creator.brandCollaboration}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "brandCollaboration",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Media kit"
+          value={creator.mediaKit}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "mediaKit",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          title="Brand requests"
+          description="Incoming collaboration requests"
+          onClick={() =>
+            navigate("/settings/brand/requests")
+          }
+        />
+
+        <NavigationRow
+          title="Partnership requests"
+          description="Manage partnership opportunities"
+          onClick={() =>
+            navigate("/settings/brand/partnerships")
+          }
+        />
+
+        <NavigationRow
+          title="Campaigns"
+          description="Active and completed campaigns"
+          onClick={() =>
+            navigate("/settings/brand/campaigns")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Creator business tools"
+        description="Professional materials and pricing"
+        icon={<FileText size={17} />}
+      >
+        <NavigationRow
+          title="Media kit"
+          description="Create and manage your media kit"
+          onClick={() =>
+            navigate("/settings/brand/media-kit")
+          }
+        />
+
+        <NavigationRow
+          title="Portfolio"
+          description="Showcase your best work"
+          onClick={() =>
+            navigate("/settings/brand/portfolio")
+          }
+        />
+
+        <NavigationRow
+          title="Rate card"
+          description="Set your collaboration rates"
+          onClick={() =>
+            navigate("/settings/brand/rate-card")
+          }
+        />
+
+        <NavigationRow
+          title="Campaign analytics"
+          description="Track campaign performance"
+          onClick={() =>
+            navigate("/settings/brand/analytics")
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   COPYRIGHT
+============================================================ */
+
+const CopyrightSettings = ({ navigate }) => {
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Copyright status"
+        description="Review ownership and copyright activity"
+        icon={<ShieldCheck size={17} />}
+      >
+        <NavigationRow
+          title="Copyright status"
+          description="Current status of your account"
+          onClick={() =>
+            navigate("/settings/copyright/status")
+          }
+        />
+
+        <NavigationRow
+          title="Claims"
+          description="Copyright claims involving your content"
+          onClick={() =>
+            navigate("/settings/copyright/claims")
+          }
+        />
+
+        <NavigationRow
+          title="Strikes"
+          description="Copyright strikes and their status"
+          onClick={() =>
+            navigate("/settings/copyright/strikes")
+          }
+        />
+
+        <NavigationRow
+          title="Disputes & appeals"
+          description="Manage copyright disputes"
+          onClick={() =>
+            navigate("/settings/copyright/disputes")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Rights"
+        description="Manage ownership and music rights"
+        icon={<FileText size={17} />}
+      >
+        <NavigationRow
+          title="Content ownership"
+          description="Review ownership of your content"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          title="Music rights"
+          description="Music usage and licensing information"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          title="AI disclosure"
+          description="Manage AI-assisted content disclosures"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Safety"
+        description="Community safety and content enforcement"
+        icon={<Shield size={17} />}
+      >
+        <NavigationRow
+          title="Community guidelines"
+          description="Rules for content and interactions"
+          onClick={() => navigate("/community-guidelines")}
+        />
+
+        <NavigationRow
+          title="Content violations"
+          description="Review warnings and restrictions"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          title="Removed content"
+          description="Content removed from your account"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   AI
+============================================================ */
+
+const AISettings = ({
+  settings,
+  updateJsonSetting,
+  navigate,
+}) => {
+  const creator = settings.creator_settings;
+  const advanced = settings.advanced_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="AI assistant"
+        description="Configure AI-powered tools across Mpade Universe"
+        icon={<Bot size={17} />}
+      >
+        <NavigationRow
+          icon={<Bot size={17} />}
+          title="AI Assistant"
+          description="Open your AI assistant"
+          onClick={() => navigate("/ai")}
+        />
+
+        <ToggleRow
+          title="AI recommendations"
+          description="Use AI to personalize recommendations"
+          value={creator.aiRecommendations}
+          onChange={(value) =>
+            updateJsonSetting(
+              "creator_settings",
+              "aiRecommendations",
+              value
+            )
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Creator AI tools"
+        description="AI tools for creating and managing content"
+        icon={<Sparkles size={17} />}
+      >
+        <NavigationRow
+          title="Captions"
+          description="Generate captions"
+          onClick={() => navigate("/ai/captions")}
+        />
+
+        <NavigationRow
+          title="Hashtags"
+          description="Generate relevant hashtags"
+          onClick={() => navigate("/ai/hashtags")}
+        />
+
+        <NavigationRow
+          title="Scripts"
+          description="Generate video scripts"
+          onClick={() => navigate("/ai/scripts")}
+        />
+
+        <NavigationRow
+          title="Thumbnails"
+          description="AI thumbnail tools"
+          onClick={() => navigate("/ai/thumbnails")}
+        />
+
+        <NavigationRow
+          title="Video analysis"
+          description="Analyze creator content"
+          onClick={() => navigate("/ai/video-analysis")}
+        />
+
+        <NavigationRow
+          title="Comment replies"
+          description="Generate suggested replies"
+          onClick={() => navigate("/ai/comment-replies")}
+        />
+
+        <NavigationRow
+          title="AI moderation"
+          description="AI-assisted moderation"
+          onClick={() => navigate("/ai/moderation")}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="AI privacy"
+        description="Control how AI interacts with your data"
+        icon={<Lock size={17} />}
+      >
+        <ToggleRow
+          title="Personalization"
+          value={advanced.aiPersonalization !== false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "aiPersonalization",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="AI data usage"
+          description="Allow supported AI features to use activity data"
+          value={advanced.aiDataUsage !== false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "aiDataUsage",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="AI disclosure"
+          value={advanced.aiDisclosure !== false}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "aiDisclosure",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          title="AI history"
+          description="Review previous AI interactions"
+          onClick={() => navigate("/settings/ai/history")}
+        />
+
+        <NavigationRow
+          title="Clear AI history"
+          description="Remove stored AI interaction history"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   REPORTS
+============================================================ */
+
+const ReportsSettings = ({ navigate }) => {
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Download your information"
+        description="Export a copy of your Mpade Universe data"
+        icon={<Download size={17} />}
+      >
+        <NavigationRow
+          icon={<FileArchive size={17} />}
+          title="Personal data"
+          description="Profile, settings and account information"
+          onClick={() =>
+            navigate("/settings/reports/personal-data")
+          }
+        />
+
+        <NavigationRow
+          icon={<Video size={17} />}
+          title="Videos"
+          description="Export your uploaded video information"
+          onClick={() =>
+            navigate("/settings/reports/videos")
+          }
+        />
+
+        <NavigationRow
+          icon={<Users size={17} />}
+          title="Followers"
+          description="Export follower information"
+          onClick={() =>
+            navigate("/settings/reports/followers")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Creator reports"
+        description="Download analytics and creator reports"
+        icon={<LayoutDashboard size={17} />}
+      >
+        <NavigationRow
+          title="Analytics report"
+          description="Creator performance data"
+          onClick={() =>
+            navigate("/settings/reports/analytics")
+          }
+        />
+
+        <NavigationRow
+          title="Earnings report"
+          description="Creator earnings information"
+          onClick={() =>
+            navigate("/settings/reports/earnings")
+          }
+        />
+
+        <NavigationRow
+          title="Transaction report"
+          description="Payments and transactions"
+          onClick={() =>
+            navigate("/settings/reports/transactions")
+          }
+        />
+
+        <NavigationRow
+          title="Monthly creator report"
+          description="Monthly creator summary"
+          onClick={() =>
+            navigate("/settings/reports/monthly")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Export formats"
+        description="Supported data formats"
+        icon={<FileText size={17} />}
+      >
+        <div className="flex flex-wrap gap-2">
+          <Badge>CSV</Badge>
+          <Badge>JSON</Badge>
+          <Badge>PDF</Badge>
+          <Badge>Archive</Badge>
+        </div>
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   CONNECTED APPS
+============================================================ */
+
+const ConnectedAppsSettings = ({ navigate }) => {
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Connected applications"
+        description="Third-party services authorized to access your account"
+        icon={<Code2 size={17} />}
+      >
+        <NavigationRow
+          title="Connected apps"
+          description="View applications linked to your account"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          title="OAuth access"
+          description="Manage OAuth authorizations"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          title="Authorized devices"
+          description="Devices authorized for account access"
+          onClick={() =>
+            navigate("/settings/security/devices")
+          }
+        />
+
+        <NavigationRow
+          title="API access"
+          description="Manage API credentials and permissions"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Permissions"
+        description="Control third-party access"
+        icon={<Shield size={17} />}
+      >
+        <NavigationRow
+          title="Third-party permissions"
+          description="Review data permissions"
+          onClick={() => {}}
+        />
+
+        <NavigationRow
+          title="Revoke access"
+          description="Remove access from connected services"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   SUPPORT
+============================================================ */
+
+const SupportSettings = ({ navigate }) => {
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Help"
+        description="Find answers and assistance"
+        icon={<CircleHelp size={17} />}
+      >
+        <NavigationRow
+          icon={<CircleHelp size={17} />}
+          title="Help Center"
+          description="Find answers to common questions"
+          onClick={() => navigate("/support")}
+        />
+
+        <NavigationRow
+          title="Report a problem"
+          description="Tell us about an issue"
+          onClick={() => navigate("/support/report")}
+        />
+
+        <NavigationRow
+          title="Report content"
+          description="Report content that violates guidelines"
+          onClick={() => navigate("/support/report-content")}
+        />
+
+        <NavigationRow
+          title="Account recovery"
+          description="Get help recovering your account"
+          onClick={() => navigate("/support/recovery")}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Specialized support"
+        description="Get help with specific areas"
+        icon={<Shield size={17} />}
+      >
+        <NavigationRow
+          title="Copyright support"
+          onClick={() =>
+            navigate("/support/copyright")
+          }
+        />
+
+        <NavigationRow
+          title="Payments support"
+          onClick={() =>
+            navigate("/support/payments")
+          }
+        />
+
+        <NavigationRow
+          title="Creator support"
+          onClick={() =>
+            navigate("/support/creator")
+          }
+        />
+
+        <NavigationRow
+          title="Safety Center"
+          onClick={() =>
+            navigate("/support/safety")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Legal"
+        description="Policies and legal information"
+        icon={<FileText size={17} />}
+      >
+        <NavigationRow
+          title="Community Guidelines"
+          onClick={() =>
+            navigate("/community-guidelines")
+          }
+        />
+
+        <NavigationRow
+          title="Terms of Service"
+          onClick={() => navigate("/terms")}
+        />
+
+        <NavigationRow
+          title="Privacy Policy"
+          onClick={() => navigate("/privacy")}
+        />
+
+        <NavigationRow
+          title="Cookie Policy"
+          onClick={() => navigate("/cookies")}
+        />
+
+        <NavigationRow
+          title="About Mpade Universe"
+          onClick={() => navigate("/about")}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Support tickets"
+        description="Track your support requests"
+        icon={<FileText size={17} />}
+      >
+        <NavigationRow
+          title="My tickets"
+          description="View open and previous support tickets"
+          onClick={() => navigate("/support/tickets")}
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   SYSTEM
+============================================================ */
+
+const SystemSettings = ({
+  settings,
+  updateJsonSetting,
+  storageInfo,
+  calculateStorage,
+  clearTemporaryData,
+}) => {
+  const advanced = settings.advanced_settings;
+
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Application"
+        description="Information about this installation"
+        icon={<Settings2 size={17} />}
+      >
+        <SettingInfo
+          label="App version"
+          value="2.4.0-Beta"
+        />
+
+        <SettingInfo
+          label="Build"
+          value="Production"
+        />
+
+        <SettingInfo
+          label="Platform"
+          value="Web / Vite"
+        />
+
+        <SettingInfo
+          label="Database"
+          value="Supabase"
+        />
+
+        <SettingInfo
+          label="Storage"
+          value="Supabase Storage"
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Synchronization"
+        description="Background and network behavior"
+        icon={<RefreshCw size={17} />}
+      >
+        <ToggleRow
+          title="Auto refresh"
+          value={advanced.autoRefresh}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "autoRefresh",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Background sync"
+          value={advanced.backgroundSync}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "backgroundSync",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Offline mode"
+          value={advanced.offlineMode}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "offlineMode",
+              value
+            )
+          }
+        />
+
+        <SettingInfo
+          label="Last local calculation"
+          value={new Date().toLocaleString()}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Diagnostics"
+        description="Troubleshooting tools"
+        icon={<Activity size={17} />}
+      >
+        <ToggleRow
+          title="Diagnostics"
+          description="Enable diagnostic information"
+          value={advanced.diagnostics}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "diagnostics",
+              value
+            )
+          }
+        />
+
+        <ToggleRow
+          title="Error logging"
+          description="Allow client-side error logging"
+          value={advanced.errorLogging}
+          onChange={(value) =>
+            updateJsonSetting(
+              "advanced_settings",
+              "errorLogging",
+              value
+            )
+          }
+        />
+
+        <NavigationRow
+          title="Error logs"
+          description="View available diagnostic logs"
+          onClick={() => {}}
+        />
+
+        <StorageSummary
+          storageInfo={storageInfo}
+          onOpen={() => {}}
+        />
+
+        <div className="flex flex-wrap gap-2 pt-2">
+          <ActionButton
+            onClick={calculateStorage}
+            icon={<RefreshCw size={14} />}
+          >
+            Refresh Diagnostics
+          </ActionButton>
+
+          <ActionButton
+            danger
+            onClick={clearTemporaryData}
+            icon={<Trash2 size={14} />}
+          >
+            Clear Temp Data
+          </ActionButton>
+        </div>
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Service architecture"
+        description="Live infrastructure is separate from Settings"
+        icon={<Cloud size={17} />}
+      >
+        <StatusRow
+          label="Supabase"
+          status="Connected"
+        />
+
+        <StatusRow
+          label="Profile service"
+          status="Connected"
+        />
+
+        <StatusRow
+          label="Socket.IO"
+          status="Live module"
+          muted
+        />
+
+        <StatusRow
+          label="Media processing"
+          status="Backend dependent"
+          muted
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   EXIT
+============================================================ */
+
+const ExitSettings = ({
+  navigate,
+  onLogout,
+}) => {
+  return (
+    <div className="space-y-5">
+      <SettingsPanel
+        title="Before leaving"
+        description="Protect your data before deactivating or deleting"
+        icon={<Download size={17} />}
+      >
+        <NavigationRow
+          icon={<Download size={17} />}
+          title="Download your information"
+          description="Get a copy of your data before leaving"
+          onClick={() => navigate("/settings/reports")}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Sign out"
+        description="End your current session"
+        icon={<LogOut size={17} />}
+      >
+        <ActionButton
+          onClick={onLogout}
+          icon={<LogOut size={14} />}
+        >
+          Log Out
+        </ActionButton>
+
+        <NavigationRow
+          title="Log out all devices"
+          description="End sessions on every authorized device"
+          badge="Backend"
+          onClick={() => {}}
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Deactivate account"
+        description="Temporarily disable your account"
+        icon={<Pause size={17} />}
+      >
+        <NavigationRow
+          title="Deactivate account"
+          description="Temporarily hide your account and content"
+          onClick={() =>
+            navigate("/settings/account/deactivate")
+          }
+        />
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="Delete account"
+        description="Permanently remove your account and associated data"
+        icon={<Trash2 size={17} />}
+        danger
+      >
+        <NavigationRow
+          title="Delete account"
+          description="This action requires confirmation"
+          danger
+          onClick={() =>
+            navigate("/settings/account/delete")
+          }
+        />
+      </SettingsPanel>
+    </div>
+  );
+};
+
+/* ============================================================
+   UI COMPONENTS
+============================================================ */
+
+const MiniStat = ({ label, value }) => (
+  <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-3">
+    <div className="text-[9px] uppercase tracking-[2px] text-zinc-700">
+      {label}
     </div>
 
-    <div className="space-y-2">{children}</div>
+    <div className="text-sm font-black text-zinc-200 mt-1 truncate">
+      {value}
+    </div>
   </div>
 );
 
-/*
-|--------------------------------------------------------------------------
-| PANEL LINK
-|--------------------------------------------------------------------------
-*/
-
-const PanelLink = ({
+const QuickCard = ({
   icon,
   title,
-  description,
+  value,
   onClick,
-  danger = false
+}) => (
+  <button
+    onClick={onClick}
+    className="text-left rounded-2xl border border-white/[0.06] bg-[#070707] hover:bg-white/[0.035] hover:border-white/[0.11] p-4 transition group"
+  >
+    <div className="w-9 h-9 rounded-xl bg-cyan-400/[0.07] border border-cyan-400/10 text-cyan-400 flex items-center justify-center">
+      {icon}
+    </div>
+
+    <div className="text-[9px] uppercase tracking-[2px] text-zinc-700 mt-4">
+      {title}
+    </div>
+
+    <div className="text-xs font-black text-zinc-300 mt-1 group-hover:text-white">
+      {value}
+    </div>
+  </button>
+);
+
+const OverviewCard = ({
+  category,
+  onClick,
 }) => {
+  const Icon = category.icon;
+
   return (
     <button
       onClick={onClick}
-      className={`group flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
-        danger
-          ? "border-red-500/10 bg-red-500/[0.025] hover:border-red-500/25 hover:bg-red-500/[0.05]"
-          : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.11] hover:bg-white/[0.035]"
-      }`}
+      className="group text-left rounded-2xl border border-white/[0.06] bg-[#070707] hover:bg-[#0b0b0b] hover:border-cyan-400/20 p-5 transition"
     >
-      <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
-          danger
-            ? "border-red-500/10 bg-red-500/[0.06] text-red-400"
-            : "border-white/[0.05] bg-black text-zinc-400 group-hover:text-cyan-300"
-        }`}
-      >
-        {React.cloneElement(icon, { size: 17 })}
-      </span>
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl bg-white/[0.025] border border-white/[0.06] flex items-center justify-center text-zinc-400 group-hover:text-cyan-400 group-hover:border-cyan-400/20 transition">
+          <Icon size={18} />
+        </div>
 
-      <span className="min-w-0 flex-1">
-        <span
-          className={`block text-[12px] font-black ${
-            danger ? "text-red-300" : "text-zinc-200"
-          }`}
-        >
-          {title}
-        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-black text-zinc-200 group-hover:text-white">
+            {category.title}
+          </h3>
 
-        <span className="mt-1 block text-[10px] leading-relaxed text-zinc-600">
-          {description}
-        </span>
-      </span>
+          <p className="text-[11px] leading-relaxed text-zinc-600 mt-1">
+            {category.description}
+          </p>
+        </div>
 
-      <ChevronRight
-        size={16}
-        className="shrink-0 text-zinc-700 group-hover:text-zinc-400"
-      />
+        <ChevronRight
+          size={16}
+          className="text-zinc-700 group-hover:text-cyan-400 transition"
+        />
+      </div>
     </button>
   );
 };
 
-/*
-|--------------------------------------------------------------------------
-| PANEL TOGGLE
-|--------------------------------------------------------------------------
-*/
-
-const PanelToggle = ({
-  icon,
-  title,
-  description,
+const CategoryButton = ({
+  category,
   active,
-  onToggle
+  onClick,
 }) => {
+  const Icon = category.icon;
+
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.05] bg-black text-zinc-400">
-        {React.cloneElement(icon, { size: 17 })}
-      </span>
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition ${
+        active
+          ? "bg-cyan-400/[0.08] border border-cyan-400/10 text-cyan-300"
+          : "border border-transparent text-zinc-500 hover:text-white hover:bg-white/[0.035]"
+      }`}
+    >
+      <Icon
+        size={16}
+        className={
+          active ? "text-cyan-400" : "text-zinc-600"
+        }
+      />
 
       <div className="min-w-0 flex-1">
-        <p className="text-[12px] font-black text-zinc-200">{title}</p>
-
-        <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
-          {description}
-        </p>
+        <div className="text-[11px] font-bold truncate">
+          {category.title}
+        </div>
       </div>
 
-      <button
-        onClick={onToggle}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-          active ? "bg-cyan-400" : "bg-zinc-800"
-        }`}
-        aria-label={title}
-      >
-        <motion.span
-          animate={{
-            x: active ? 22 : 4
-          }}
-          className="absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-lg"
+      {active && (
+        <ChevronRight
+          size={14}
+          className="text-cyan-400"
         />
-      </button>
+      )}
+    </button>
+  );
+};
+
+const SettingsPanel = ({
+  title,
+  description,
+  icon,
+  children,
+  danger = false,
+}) => (
+  <div
+    className={`rounded-2xl border ${
+      danger
+        ? "border-red-500/15"
+        : "border-white/[0.06]"
+    } bg-[#070707] overflow-hidden`}
+  >
+    <div className="px-5 py-4 border-b border-white/[0.05]">
+      <div className="flex items-center gap-3">
+        <div
+          className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+            danger
+              ? "bg-red-500/[0.08] text-red-400"
+              : "bg-white/[0.025] text-zinc-400"
+          }`}
+        >
+          {icon}
+        </div>
+
+        <div>
+          <h3 className="text-sm font-black text-zinc-200">
+            {title}
+          </h3>
+
+          {description && (
+            <p className="text-[10px] text-zinc-600 mt-0.5">
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+
+    <div>{children}</div>
+  </div>
+);
+
+const SettingInfo = ({
+  label,
+  value,
+  copyable = false,
+}) => {
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(value));
+    } catch {
+      // Clipboard permissions may be unavailable.
+    }
+  };
+
+  return (
+    <div className="flex items-start justify-between gap-5 px-5 py-4 border-b border-white/[0.04] last:border-b-0">
+      <div className="text-[11px] text-zinc-600">
+        {label}
+      </div>
+
+      <div className="flex items-center gap-2 text-right max-w-[65%]">
+        <div className="text-xs text-zinc-300 break-words">
+          {value || "Not set"}
+        </div>
+
+        {copyable && (
+          <button
+            onClick={handleCopy}
+            className="text-zinc-600 hover:text-cyan-400"
+            title="Copy"
+          >
+            <Copy size={13} />
+          </button>
+        )}
+      </div>
     </div>
   );
 };
 
-/*
-|--------------------------------------------------------------------------
-| CHOICE CARD
-|--------------------------------------------------------------------------
-*/
-
-const ChoiceCard = ({ title, description, icon, active = false }) => (
-  <button
-    className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
-      active
-        ? "border-cyan-400/25 bg-cyan-400/[0.06]"
-        : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12]"
-    }`}
-  >
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-cyan-300">
-      {icon}
-    </span>
-
-    <span className="min-w-0 flex-1">
-      <span className="block text-[12px] font-black text-zinc-200">
-        {title}
-      </span>
-
-      <span className="mt-1 block text-[10px] text-zinc-600">
-        {description}
-      </span>
-    </span>
-
-    {active && (
-      <CheckCircle2 size={18} className="text-cyan-300" />
+const ToggleRow = ({
+  icon,
+  title,
+  description,
+  value,
+  onChange,
+}) => (
+  <div className="flex items-center gap-4 px-5 py-4 border-b border-white/[0.04] last:border-b-0">
+    {icon && (
+      <div className="text-zinc-500 shrink-0">
+        {icon}
+      </div>
     )}
-  </button>
-);
 
-/*
-|--------------------------------------------------------------------------
-| SELECT ROW
-|--------------------------------------------------------------------------
-*/
-
-const SelectRow = ({ icon, title, value }) => (
-  <button className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-left">
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-zinc-400">
-      {React.cloneElement(icon, { size: 17 })}
-    </span>
-
-    <span className="min-w-0 flex-1">
-      <span className="block text-[12px] font-black text-zinc-200">
+    <div className="flex-1 min-w-0">
+      <div className="text-xs font-bold text-zinc-300">
         {title}
-      </span>
+      </div>
 
-      <span className="mt-1 block text-[10px] text-zinc-600">
-        {value}
-      </span>
-    </span>
-
-    <ChevronDown size={15} className="text-zinc-700" />
-  </button>
-);
-
-/*
-|--------------------------------------------------------------------------
-| THEME BUTTON
-|--------------------------------------------------------------------------
-*/
-
-const ThemeButton = ({ icon, label, active, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`flex flex-col items-center justify-center gap-2 rounded-2xl border p-4 transition ${
-      active
-        ? "border-cyan-400/25 bg-cyan-400/[0.07] text-cyan-300"
-        : "border-white/[0.06] bg-white/[0.02] text-zinc-500 hover:text-zinc-200"
-    }`}
-  >
-    {React.cloneElement(icon, { size: 18 })}
-    <span className="text-[9px] font-black uppercase tracking-wider">
-      {label}
-    </span>
-  </button>
-);
-
-/*
-|--------------------------------------------------------------------------
-| MONEY CARD
-|--------------------------------------------------------------------------
-*/
-
-const MoneyCard = ({ label, value, currency }) => (
-  <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-    <p className="text-[8px] font-black uppercase tracking-[1.5px] text-zinc-600">
-      {label}
-    </p>
-
-    <p className="mt-2 break-words text-lg font-black text-white">
-      {typeof value === "number"
-        ? value.toLocaleString()
-        : String(value || "0")}
-    </p>
-
-    {currency && (
-      <p className="mt-0.5 text-[9px] font-bold text-cyan-400">
-        {currency}
-      </p>
-    )}
-  </div>
-);
-
-/*
-|--------------------------------------------------------------------------
-| EXPORT CARD
-|--------------------------------------------------------------------------
-*/
-
-const ExportCard = ({ icon, title }) => (
-  <button className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-zinc-500 transition hover:border-cyan-400/20 hover:text-cyan-300">
-    {React.cloneElement(icon, { size: 20 })}
-    <span className="text-[9px] font-black uppercase tracking-wider">
-      {title}
-    </span>
-  </button>
-);
-
-/*
-|--------------------------------------------------------------------------
-| STATUS ROW
-|--------------------------------------------------------------------------
-*/
-
-const StatusRow = ({ icon, title, value, positive }) => (
-  <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-zinc-400">
-      {React.cloneElement(icon, { size: 17 })}
-    </span>
-
-    <div className="min-w-0 flex-1">
-      <p className="text-[12px] font-black text-zinc-200">{title}</p>
-      <p className="mt-1 truncate text-[10px] text-zinc-600">{value}</p>
+      {description && (
+        <div className="text-[10px] text-zinc-600 mt-1 leading-relaxed">
+          {description}
+        </div>
+      )}
     </div>
 
-    <span
-      className={`h-2 w-2 rounded-full ${
-        positive ? "bg-emerald-400" : "bg-red-400"
+    <button
+      onClick={() => onChange(!value)}
+      role="switch"
+      aria-checked={value}
+      className={`w-11 h-6 rounded-full p-1 transition shrink-0 ${
+        value
+          ? "bg-cyan-400"
+          : "bg-zinc-800 border border-white/[0.07]"
       }`}
-    />
+    >
+      <motion.div
+        animate={{
+          x: value ? 20 : 0,
+        }}
+        className="w-4 h-4 rounded-full bg-white shadow"
+      />
+    </button>
   </div>
 );
 
-/*
-|--------------------------------------------------------------------------
-| INFO GRID
-|--------------------------------------------------------------------------
-*/
+const SelectRow = ({
+  title,
+  description,
+  value,
+  options,
+  onChange,
+}) => (
+  <div className="flex items-center justify-between gap-5 px-5 py-4 border-b border-white/[0.04] last:border-b-0">
+    <div className="min-w-0 flex-1">
+      <div className="text-xs font-bold text-zinc-300">
+        {title}
+      </div>
 
-const InfoGrid = ({ children }) => (
-  <div className="grid grid-cols-2 gap-2">{children}</div>
-);
+      {description && (
+        <div className="text-[10px] text-zinc-600 mt-1">
+          {description}
+        </div>
+      )}
+    </div>
 
-const InfoField = ({ label, value }) => (
-  <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
-    <p className="text-[8px] font-black uppercase tracking-[1.2px] text-zinc-700">
-      {label}
-    </p>
+    <div className="relative shrink-0">
+      <select
+        value={value ?? ""}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        className="appearance-none min-w-[130px] max-w-[190px] bg-black border border-white/[0.08] rounded-xl pl-3 pr-8 py-2 text-[11px] text-zinc-300 outline-none focus:border-cyan-400/30"
+      >
+        {options.map(([optionValue, label]) => (
+          <option
+            key={optionValue}
+            value={optionValue}
+          >
+            {label}
+          </option>
+        ))}
+      </select>
 
-    <p className="mt-1 break-words text-[11px] font-bold text-zinc-300">
-      {value}
-    </p>
+      <ChevronDown
+        size={13}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none"
+      />
+    </div>
   </div>
 );
 
-/*
-|--------------------------------------------------------------------------
-| ACTION BUTTON
-|--------------------------------------------------------------------------
-*/
-
-const ActionButton = ({ icon, label, onClick }) => (
+const NavigationRow = ({
+  icon,
+  title,
+  description,
+  badge,
+  danger = false,
+  onClick,
+}) => (
   <button
     onClick={onClick}
-    className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-black transition hover:bg-cyan-300"
-  >
-    {icon}
-    {label}
-  </button>
-);
-
-/*
-|--------------------------------------------------------------------------
-| NOTICE
-|--------------------------------------------------------------------------
-*/
-
-const Notice = ({ icon, title, description, danger = false }) => (
-  <div
-    className={`rounded-2xl border p-4 ${
+    className={`w-full flex items-center gap-4 px-5 py-4 text-left border-b border-white/[0.04] last:border-b-0 transition ${
       danger
-        ? "border-red-500/15 bg-red-500/[0.04]"
-        : "border-cyan-400/10 bg-cyan-400/[0.025]"
+        ? "hover:bg-red-500/[0.05]"
+        : "hover:bg-white/[0.025]"
     }`}
   >
-    <div className="flex gap-3">
-      <span
-        className={`mt-0.5 ${
-          danger ? "text-red-400" : "text-cyan-300"
-        }`}
+    {icon && (
+      <div
+        className={
+          danger ? "text-red-400" : "text-zinc-500"
+        }
       >
         {icon}
-      </span>
-
-      <div>
-        <p
-          className={`text-[11px] font-black ${
-            danger ? "text-red-300" : "text-cyan-300"
-          }`}
-        >
-          {title}
-        </p>
-
-        <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
-          {description}
-        </p>
       </div>
+    )}
+
+    <div className="flex-1 min-w-0">
+      <div
+        className={`text-xs font-bold ${
+          danger ? "text-red-400" : "text-zinc-300"
+        }`}
+      >
+        {title}
+      </div>
+
+      {description && (
+        <div className="text-[10px] text-zinc-600 mt-1 leading-relaxed">
+          {description}
+        </div>
+      )}
     </div>
-  </div>
+
+    {badge && (
+      <span className="px-2 py-1 rounded-md bg-white/[0.04] text-[9px] uppercase tracking-wider text-zinc-600">
+        {badge}
+      </span>
+    )}
+
+    <ChevronRight
+      size={16}
+      className="text-zinc-700 shrink-0"
+    />
+  </button>
 );
 
-/*
-|--------------------------------------------------------------------------
-| EMPTY STATE
-|--------------------------------------------------------------------------
-*/
+const ActionButton = ({
+  children,
+  onClick,
+  icon,
+  danger = false,
+}) => (
+  <button
+    onClick={onClick}
+    className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition ${
+      danger
+        ? "border-red-500/20 bg-red-500/[0.06] text-red-400 hover:bg-red-500/[0.12]"
+        : "border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:bg-white/[0.07] hover:text-white"
+    }`}
+  >
+    {icon}
+    {children}
+  </button>
+);
 
-const EmptyState = ({ icon, title, description }) => (
-  <div className="rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.015] p-10 text-center">
-    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.025] text-zinc-600">
+const FinanceCard = ({
+  title,
+  value,
+  icon,
+}) => (
+  <div className="rounded-2xl border border-white/[0.06] bg-[#070707] p-4">
+    <div className="w-9 h-9 rounded-xl bg-cyan-400/[0.07] text-cyan-400 flex items-center justify-center">
       {icon}
     </div>
 
-    <h3 className="mt-4 text-sm font-black text-zinc-300">{title}</h3>
+    <div className="text-[9px] text-zinc-700 uppercase tracking-[2px] mt-4">
+      {title}
+    </div>
 
-    <p className="mx-auto mt-2 max-w-md text-[10px] leading-relaxed text-zinc-600">
-      {description}
-    </p>
+    <div className="text-sm font-black text-zinc-200 mt-1">
+      {value}
+    </div>
   </div>
 );
 
-/*
-|--------------------------------------------------------------------------
-| DANGER ZONE
-|--------------------------------------------------------------------------
-*/
-
-const DangerZone = ({ onLogout, onDeactivate }) => (
-  <section className="rounded-[24px] border border-red-500/10 bg-red-500/[0.025] p-5">
-    <div className="flex items-start gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-500/10 bg-red-500/[0.06]">
-        <AlertTriangle size={17} className="text-red-400" />
-      </div>
-
-      <div>
-        <h2 className="text-sm font-black uppercase tracking-[1.5px] text-red-300">
-          Account Exit
-        </h2>
-
-        <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
-          Sign out, deactivate or permanently delete your Mpade Universe
-          account.
-        </p>
-      </div>
-    </div>
-
-    <div className="mt-4 grid gap-2 sm:grid-cols-2">
-      <button
-        onClick={onLogout}
-        className="flex items-center justify-center gap-2 rounded-xl border border-red-500/15 bg-red-500/[0.06] py-3 text-[10px] font-black uppercase tracking-widest text-red-300 transition hover:bg-red-500/[0.1]"
-      >
-        <LogOut size={15} />
-        Log Out
-      </button>
-
-      <button
-        onClick={onDeactivate}
-        className="flex items-center justify-center gap-2 rounded-xl border border-red-500/15 bg-red-500/[0.03] py-3 text-[10px] font-black uppercase tracking-widest text-red-400 transition hover:bg-red-500/[0.08]"
-      >
-        <UserX size={15} />
-        Account Management
-      </button>
-    </div>
-  </section>
+const Badge = ({ children }) => (
+  <span className="px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.025] text-[10px] font-black uppercase tracking-wider text-zinc-500">
+    {children}
+  </span>
 );
 
-/*
-|--------------------------------------------------------------------------
-| SYSTEM FOOTER
-|--------------------------------------------------------------------------
-*/
-
-const SystemFooter = ({
-  version,
-  cacheSize,
-  clearingCache,
-  onClearCache
+const StatusRow = ({
+  label,
+  status,
+  muted = false,
 }) => (
-  <section className="pb-6">
-    <div className="rounded-[24px] border border-white/[0.05] bg-white/[0.015] p-5">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <SystemFooterItem
-          icon={<Smartphone />}
-          label="Application"
-          value={APP_NAME}
-        />
-
-        <SystemFooterItem
-          icon={<RefreshCw />}
-          label="Version"
-          value={version}
-        />
-
-        <SystemFooterItem
-          icon={<HardDrive />}
-          label="Local Cache"
-          value={formatBytes(cacheSize)}
-        />
-      </div>
-
-      <button
-        onClick={onClearCache}
-        disabled={clearingCache}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.06] bg-black/30 py-3 text-[9px] font-black uppercase tracking-[1.5px] text-zinc-500 transition hover:text-white disabled:opacity-50"
-      >
-        {clearingCache ? (
-          <>
-            <RefreshCw size={13} className="animate-spin" />
-            Clearing temporary data
-          </>
-        ) : (
-          <>
-            <Trash2 size={13} />
-            Free up space
-          </>
-        )}
-      </button>
-
-      <p className="mt-5 text-center text-[8px] font-black uppercase tracking-[2px] text-zinc-800">
-        {APP_NAME} • {version} • Settings & Privacy
-      </p>
-    </div>
-  </section>
-);
-
-/*
-|--------------------------------------------------------------------------
-| SYSTEM FOOTER ITEM
-|--------------------------------------------------------------------------
-*/
-
-const SystemFooterItem = ({ icon, label, value }) => (
-  <div className="flex items-center gap-3 rounded-xl border border-white/[0.04] bg-black/20 p-3">
-    <span className="text-zinc-700">
-      {React.cloneElement(icon, { size: 15 })}
+  <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.04] last:border-b-0">
+    <span className="text-xs text-zinc-500">
+      {label}
     </span>
 
-    <div className="min-w-0">
-      <p className="text-[7px] font-black uppercase tracking-[1.5px] text-zinc-700">
-        {label}
-      </p>
+    <span
+      className={`flex items-center gap-2 text-[10px] font-bold ${
+        muted ? "text-zinc-600" : "text-emerald-400"
+      }`}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${
+          muted ? "bg-zinc-700" : "bg-emerald-400"
+        }`}
+      />
 
-      <p className="mt-1 truncate text-[9px] font-bold text-zinc-500">
-        {value}
-      </p>
-    </div>
+      {status}
+    </span>
   </div>
 );
 
-/*
-|--------------------------------------------------------------------------
-| ICON FALLBACKS
-|--------------------------------------------------------------------------
-|
-| These are deliberately tiny local components so the settings page does
-| not depend on icon names that may not exist in the installed lucide
-| version.
-|--------------------------------------------------------------------------
-*/
+const StorageSummary = ({
+  storageInfo,
+  onOpen,
+  detailed = false,
+}) => {
+  const localKB = (
+    Number(storageInfo?.localStorage || 0) / 1024
+  ).toFixed(1);
 
-const AtSignFallback = ({ size = 17 }) => (
-  <span
-    style={{
-      width: size,
-      height: size,
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontWeight: 900,
-      fontSize: size * 0.8
-    }}
-  >
-    @
-  </span>
-);
+  const sessionKB = (
+    Number(storageInfo?.sessionStorage || 0) / 1024
+  ).toFixed(1);
 
-const HashIcon = ({ size = 17 }) => (
-  <span
-    style={{
-      width: size,
-      height: size,
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontWeight: 900,
-      fontSize: size * 0.8
-    }}
-  >
-    #
-  </span>
-);
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-[#070707] p-5">
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl bg-yellow-400/[0.07] text-yellow-400 flex items-center justify-center">
+          <HardDrive size={18} />
+        </div>
 
-const RepeatIcon = ({ size = 17 }) => (
-  <span
-    style={{
-      width: size,
-      height: size,
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontWeight: 900,
-      fontSize: size * 0.75
-    }}
-  >
-    ↻
-  </span>
-);
+        <div className="flex-1">
+          <div className="text-sm font-black">
+            Storage
+          </div>
+
+          <div className="text-[10px] text-zinc-600 mt-1">
+            Browser storage currently measurable by this app
+          </div>
+        </div>
+
+        <button
+          onClick={onOpen}
+          className="text-zinc-600 hover:text-white"
+        >
+          <ChevronRight size={17} />
+        </button>
+      </div>
+
+      <div className="grid sm:grid-cols-3 gap-2 mt-5">
+        <MiniStat
+          label="Local storage"
+          value={`${localKB} KB`}
+        />
+
+        <MiniStat
+          label="Session storage"
+          value={`${sessionKB} KB`}
+        />
+
+        <MiniStat
+          label="IndexedDB"
+          value={storageInfo?.indexedDB || "Unknown"}
+        />
+      </div>
+
+      {detailed && (
+        <div className="mt-4 text-[10px] leading-relaxed text-zinc-700">
+          Browser storage is only part of your total Mpade Universe
+          storage. Server-side videos, images, audio, drafts and
+          recordings should be calculated from their respective
+          storage/database records rather than displayed as fake
+          hardcoded values.
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default SettingsPage;
