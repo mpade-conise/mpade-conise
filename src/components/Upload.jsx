@@ -112,7 +112,7 @@ import confetti from "canvas-confetti";
 
 import { supabase } from "../lib/supabaseClient";
 
-import AIFilters from "./AIFilters";
+import AIFilters from "../pages/Live/Shared/AIFilters";
 
 /* ============================================================
    CONSTANTS
