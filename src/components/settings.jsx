@@ -12,56 +12,81 @@ import { useNavigate } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
+  Archive,
   ArrowLeft,
   Award,
+  BarChart3,
   Bell,
   Bot,
   BriefcaseBusiness,
+  CalendarDays,
+  Camera,
   Check,
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  ClipboardList,
   Cloud,
-  Code2,
   Coins,
   Copy,
+  CreditCard,
   Database,
   Download,
+  Edit3,
   Eye,
+  EyeOff,
   FileArchive,
   FileText,
+  Fingerprint,
+  Flag,
+  Folder,
   Globe,
   HardDrive,
-  Image as ImageIcon,
+  Headphones,
+  Heart,
+  HelpCircle,
+  History,
+  Image,
+  Info,
   KeyRound,
   Languages,
-  LayoutDashboard,
+  LayoutGrid,
+  Link2,
+  ListFilter,
   Lock,
   LogIn,
   LogOut,
   Mail,
   MessageCircle,
+  MessageSquare,
   Mic,
   Moon,
   MoreHorizontal,
+  Music,
+  Network,
   Palette,
-  Pause,
+  PauseCircle,
+  Phone,
   Play,
-  Radio,
   RefreshCw,
+  Save,
   Search,
-  Send,
+  Server,
   Settings2,
   Shield,
+  ShieldAlert,
   ShieldCheck,
   Smartphone,
   Sparkles,
+  Star,
   Sun,
   Tag,
   Trash2,
+  Upload,
   User,
   UserCheck,
   UserMinus,
+  UserPlus,
   Users,
   Video,
   Wallet,
@@ -76,2365 +101,364 @@ import { supabase } from "../supabaseClient";
 
 /* ============================================================
    CONSTANTS
-============================================================ */
+   ============================================================ */
 
-const PROFILE_COLUMNS = [
-  "id",
-  "full_name",
-  "username",
-  "bio",
-  "district",
-  "interests",
-  "avatar_url",
-  "created_at",
-  "following_count",
-  "follower_count",
-  "total_likes",
-  "balance",
-  "total_tokens_earned",
-  "subscription_tier",
-  "phone_number",
-  "coins",
-  "cover_url",
-  "gender",
-  "dob",
-  "location",
-  "theme_preference",
-  "accent_color",
-  "profile_badges",
-  "layout_style",
-  "profile_video_url",
-  "social_links",
-  "payout_method",
-  "currency_preference",
-  "is_private",
-  "profile_music_url",
-  "status_message",
-  "verified_status",
-  "is_verified",
-  "online",
-  "display_name",
-  "is_online",
-  "account_status",
-  "nickname",
-  "name_pronunciation",
-  "profile_headline",
-  "pronouns",
-  "profile_category",
-  "account_type",
-  "creator_mode",
-  "profile_completion",
-  "profile_video_thumbnail_url",
-  "profile_video_enabled",
-  "profile_music_autoplay",
-  "profile_music_loop",
-  "avatar_position",
-  "cover_position",
-  "media_privacy",
-  "country",
-  "region",
-  "city",
-  "location_visibility",
-  "gps_sharing",
-  "relationship_status",
-  "occupation",
-  "education",
-  "school_university",
-  "skills",
-  "languages",
-  "birthday_visibility",
-  "gender_visibility",
-  "phone_visibility",
-  "custom_interests",
-  "interest_discovery",
-  "privacy_settings",
-  "verification_settings",
-  "financial_settings",
-  "creator_settings",
-  "appearance_settings",
-  "content_settings",
-  "discovery_settings",
-  "advanced_settings",
-  "sharing_settings",
-  "edit_settings",
-  "updated_at",
-  "pro_account",
-  "creator_category",
-  "creator_website",
-  "business_email",
-  "business_phone",
-  "creator_level",
-  "creator_xp",
-];
+const APP_VERSION = "2.4.0-Beta";
 
-const JSON_SETTING_COLUMNS = [
-  "privacy_settings",
-  "verification_settings",
-  "financial_settings",
-  "creator_settings",
-  "appearance_settings",
-  "content_settings",
-  "discovery_settings",
-  "advanced_settings",
-  "sharing_settings",
-  "edit_settings",
-];
+const MALAWI_TIMEZONE = "Africa/Blantyre";
 
-const DEFAULT_JSON_SETTINGS = {
-  privacy_settings: {
-    whoCanFollow: "everyone",
-    whoCanMessage: "everyone",
-    whoCanMention: "everyone",
-    whoCanTag: "everyone",
-    searchVisibility: true,
-    profileViews: true,
-    activityVisibility: true,
-    likeHistoryVisibility: "private",
-    followingVisibility: "public",
-    followerVisibility: "public",
-    onlineStatus: true,
-    lastActive: true,
-    commentFiltering: true,
-    hiddenWords: [],
-  },
-
-  verification_settings: {
-    emailVerified: false,
-    phoneVerified: false,
-    twoFactorEnabled: false,
-    authenticatorEnabled: false,
-    smsVerificationEnabled: false,
-    passkeysEnabled: false,
-    loginAlerts: true,
-    suspiciousLoginDetection: true,
-  },
-
-  financial_settings: {
-    defaultPayoutMethod: "Mobile Money",
-    autoPayout: false,
-    payoutSchedule: "manual",
-    minimumPayout: 0,
-    paymentVerified: false,
-  },
-
-  creator_settings: {
-    creatorDashboard: true,
-    analytics: true,
-    audienceInsights: true,
-    contentPerformance: true,
-    growthRecommendations: true,
-    earnings: true,
-    gifts: true,
-    subscriptions: true,
-    paidContent: false,
-    livestream: true,
-    scheduling: true,
-    mediaKit: false,
-    brandCollaboration: false,
-    aiRecommendations: true,
-    goals: true,
-  },
-
-  appearance_settings: {
-    theme: "neon",
-    accent: "#06b6d4",
-    density: "comfortable",
-    compactMode: false,
-    animations: true,
-    reduceMotion: false,
-    blur: true,
-    glass: true,
-    fontSize: "medium",
-    highContrast: false,
-  },
-
-  content_settings: {
-    defaultPrivacy: "public",
-    comments: true,
-    downloads: true,
-    duet: true,
-    stitch: true,
-    repost: true,
-    sharing: true,
-    ageRestriction: false,
-    sensitiveContent: false,
-    contentWarnings: true,
-    aiDisclosure: true,
-    autoplay: true,
-    autoplayWifi: true,
-    autoplayMobile: false,
-    uploadQuality: "high",
-    downloadQuality: "high",
-  },
-
-  discovery_settings: {
-    contactSync: false,
-    suggestAccount: true,
-    discoverability: true,
-    personalizedRecommendations: true,
-    interestDiscovery: true,
-  },
-
-  advanced_settings: {
-    backgroundSync: true,
-    diagnostics: false,
-    errorLogging: true,
-    autoRefresh: true,
-    offlineMode: true,
-  },
-
-  sharing_settings: {
-    allowExternalSharing: true,
-    allowProfileSharing: true,
-    allowVideoSharing: true,
-    allowMessageSharing: true,
-    showShareCount: true,
-  },
-
-  edit_settings: {
-    confirmBeforeDelete: true,
-    autosave: true,
-    showEditHistory: false,
-  },
+const DEFAULT_SOCIAL_LINKS = {
+  website: "",
+  youtube: "",
+  whatsapp: "",
+  instagram: "",
 };
 
-/* ============================================================
-   SETTINGS CATEGORIES
-============================================================ */
+const DEFAULT_JSON_SETTINGS = {
+  privacy: {},
+  verification: {},
+  financial: {},
+  creator: {},
+  appearance: {},
+  content: {},
+  discovery: {},
+  advanced: {},
+  sharing: {},
+  edit: {},
+};
 
-const SETTINGS_CATEGORIES = [
+const SETTINGS_SECTIONS = [
   {
     id: "account",
-    title: "Account & Profile",
-    description: "Manage your identity, profile and account type",
+    title: "Account",
+    description: "Profile, account type and account management",
     icon: User,
-    color: "cyan",
-    keywords:
-      "username display name full name profile photo cover bio birthday gender location website phone email verification account type creator professional business",
+    color: "text-cyan-400",
+    bg: "bg-cyan-400/10",
   },
-
   {
     id: "security",
-    title: "Security & Login",
-    description: "Protect your account and manage active devices",
+    title: "Security",
+    description: "Password, verification, sessions and devices",
     icon: ShieldCheck,
-    color: "blue",
-    keywords:
-      "password security 2fa two factor authenticator sms passkey login alerts sessions devices recovery trusted logout",
+    color: "text-blue-400",
+    bg: "bg-blue-400/10",
   },
-
-  {
-    id: "privacy",
-    title: "Privacy",
-    description: "Control who can see and interact with you",
-    icon: Lock,
-    color: "purple",
-    keywords:
-      "private public followers messages mentions tags search visibility online profile views activity blocked muted restricted hidden words",
-  },
-
   {
     id: "notifications",
     title: "Notifications",
-    description: "Control alerts, sounds and notification channels",
+    description: "Control how Mpade Universe alerts you",
     icon: Bell,
-    color: "red",
-    keywords:
-      "followers likes comments replies mentions shares reposts saves gifts live subscribers earnings payouts security push email sms vibration quiet hours",
+    color: "text-red-400",
+    bg: "bg-red-400/10",
   },
-
+  {
+    id: "privacy",
+    title: "Privacy",
+    description: "Control visibility, interactions and discovery",
+    icon: Lock,
+    color: "text-purple-400",
+    bg: "bg-purple-400/10",
+  },
   {
     id: "content",
     title: "Content",
-    description: "Control publishing, playback and interaction permissions",
+    description: "Video, comments, downloads and sharing",
     icon: Video,
-    color: "pink",
-    keywords:
-      "videos comments downloads duet stitch repost share upload quality autoplay age restriction sensitive ai copyright music",
+    color: "text-pink-400",
+    bg: "bg-pink-400/10",
   },
-
   {
     id: "comments",
-    title: "Comments & Moderation",
-    description: "Manage comments, filters and moderation",
+    title: "Comments & Messages",
+    description: "Moderation, comments and direct messages",
     icon: MessageCircle,
-    color: "orange",
-    keywords:
-      "comments spam offensive hidden blocked words moderation manual filters notifications",
+    color: "text-green-400",
+    bg: "bg-green-400/10",
   },
-
-  {
-    id: "messages",
-    title: "Messages",
-    description: "Control chats, requests and messaging privacy",
-    icon: Send,
-    color: "green",
-    keywords:
-      "messages requests groups read receipts typing notifications blocked muted who can message",
-  },
-
   {
     id: "followers",
     title: "Followers & Audience",
-    description: "Manage followers and discoverability",
+    description: "Followers, requests and discoverability",
     icon: Users,
-    color: "emerald",
-    keywords:
-      "followers requests remove followers blocked restricted suggestions contact syncing friends discoverability",
+    color: "text-yellow-400",
+    bg: "bg-yellow-400/10",
   },
-
   {
     id: "data",
     title: "Data & Storage",
-    description: "Manage data usage, cache and stored content",
+    description: "Data usage, cache and storage",
     icon: Database,
-    color: "yellow",
-    keywords:
-      "data saver storage cache videos drafts images audio thumbnails recordings downloads offline autoplay quality",
+    color: "text-orange-400",
+    bg: "bg-orange-400/10",
   },
-
   {
     id: "language",
     title: "Language & Region",
-    description: "Language, timezone, country and regional formats",
+    description: "Language, timezone and regional preferences",
     icon: Languages,
-    color: "indigo",
-    keywords:
-      "language translation captions timezone Malawi currency MWK date format country region",
+    color: "text-teal-400",
+    bg: "bg-teal-400/10",
   },
-
   {
     id: "appearance",
     title: "Appearance",
-    description: "Customize the look and feel of Mpade Universe",
+    description: "Theme, neon mode, animation and display",
     icon: Palette,
-    color: "fuchsia",
-    keywords:
-      "dark light system neon accent color compact density animation blur glass font contrast",
+    color: "text-fuchsia-400",
+    bg: "bg-fuchsia-400/10",
   },
-
-  {
-    id: "accessibility",
-    title: "Accessibility",
-    description: "Make the app easier to see, hear and use",
-    icon: Eye,
-    color: "sky",
-    keywords:
-      "font size high contrast motion screen reader captions audio descriptions color blind touch targets",
-  },
-
   {
     id: "payments",
     title: "Payments & Monetization",
-    description: "Wallet, coins, earnings and payment methods",
+    description: "Wallet, coins, earnings and payouts",
     icon: Wallet,
-    color: "green",
-    keywords:
-      "wallet balance coins tokens earnings payments purchases gifts subscriptions payout TNM Mpamba Airtel Money bank",
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
   },
-
   {
     id: "creator",
     title: "Creator Settings",
-    description: "Creator tools, analytics and monetization",
-    icon: LayoutDashboard,
-    color: "cyan",
-    keywords:
-      "creator dashboard analytics audience performance growth earnings gifts subscriptions paid content livestream schedule library media kit",
+    description: "Creator tools, analytics and growth",
+    icon: Sparkles,
+    color: "text-cyan-300",
+    bg: "bg-cyan-300/10",
   },
-
   {
     id: "scheduling",
-    title: "Scheduling & Publishing",
-    description: "Manage scheduled videos and publishing",
-    icon: Play,
-    color: "violet",
-    keywords:
-      "scheduled videos lives publishing auto publish timezone calendar failed notifications",
+    title: "Scheduling",
+    description: "Scheduled videos, lives and publishing",
+    icon: CalendarDays,
+    color: "text-indigo-400",
+    bg: "bg-indigo-400/10",
   },
-
   {
     id: "library",
     title: "Content Library",
-    description: "Manage videos, drafts, recordings and deleted content",
-    icon: FileArchive,
-    color: "amber",
-    keywords:
-      "videos drafts images audio thumbnails live recordings archived deleted recently deleted recovery storage",
+    description: "Videos, drafts, audio and recordings",
+    icon: Folder,
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
   },
-
   {
     id: "progress",
     title: "Creator Progress",
     description: "Level, XP, achievements and goals",
     icon: Award,
-    color: "yellow",
-    keywords:
-      "level xp achievements badges streaks milestones goals rewards leaderboard progress",
+    color: "text-yellow-300",
+    bg: "bg-yellow-300/10",
   },
-
   {
     id: "brand",
     title: "Brand & Collaborations",
-    description: "Business, campaigns and creator partnerships",
+    description: "Media kit, partnerships and campaigns",
     icon: BriefcaseBusiness,
-    color: "rose",
-    keywords:
-      "brand collaboration partnership sponsored campaigns media kit portfolio rate card business contact disclosure",
+    color: "text-violet-400",
+    bg: "bg-violet-400/10",
   },
-
-  {
-    id: "copyright",
-    title: "Copyright & Safety",
-    description: "Copyright claims, safety and content violations",
-    icon: Shield,
-    color: "red",
-    keywords:
-      "copyright claims strikes disputes appeals music rights ownership ai disclosure community guidelines violations warnings",
-  },
-
   {
     id: "ai",
     title: "AI Settings",
-    description: "AI assistant, recommendations and personalization",
+    description: "Assistant, recommendations and AI data",
     icon: Bot,
-    color: "violet",
-    keywords:
-      "ai assistant recommendations captions hashtags scripts thumbnails video analysis comment replies moderation personalization history",
+    color: "text-sky-400",
+    bg: "bg-sky-400/10",
   },
-
+  {
+    id: "copyright",
+    title: "Copyright & Safety",
+    description: "Claims, strikes, appeals and safety",
+    icon: ShieldAlert,
+    color: "text-rose-400",
+    bg: "bg-rose-400/10",
+  },
   {
     id: "reports",
     title: "Data & Reports",
-    description: "Export your data, analytics and financial reports",
-    icon: FileText,
-    color: "blue",
-    keywords:
-      "download personal data analytics videos earnings transactions followers reports csv json pdf archive",
+    description: "Export your data and reports",
+    icon: FileArchive,
+    color: "text-lime-400",
+    bg: "bg-lime-400/10",
   },
-
   {
     id: "apps",
     title: "Connected Apps",
-    description: "OAuth applications and third-party permissions",
-    icon: Code2,
-    color: "slate",
-    keywords:
-      "connected apps oauth authorized devices api permissions revoke third party",
+    description: "OAuth, devices and permissions",
+    icon: Link2,
+    color: "text-blue-300",
+    bg: "bg-blue-300/10",
   },
-
+  {
+    id: "accessibility",
+    title: "Accessibility",
+    description: "Display, captions and accessibility",
+    icon: Headphones,
+    color: "text-orange-300",
+    bg: "bg-orange-300/10",
+  },
   {
     id: "support",
-    title: "Support & Help",
-    description: "Help, reports, recovery and support tickets",
+    title: "Support",
+    description: "Help, reports and account recovery",
     icon: CircleHelp,
-    color: "zinc",
-    keywords:
-      "help report problem account content copyright payments creator recovery safety terms privacy cookies contact tickets",
+    color: "text-zinc-300",
+    bg: "bg-white/5",
   },
-
   {
     id: "system",
-    title: "System & Diagnostics",
-    description: "App status, synchronization and diagnostics",
-    icon: Settings2,
-    color: "slate",
-    keywords:
-      "version build server database storage notifications media processing sync network offline diagnostics errors temporary data",
+    title: "System",
+    description: "App, server, sync and diagnostics",
+    icon: Server,
+    color: "text-zinc-300",
+    bg: "bg-white/5",
   },
-
   {
     id: "exit",
     title: "Account Exit",
-    description: "Logout, deactivate, delete and download before leaving",
+    description: "Logout, deactivate or delete account",
     icon: LogOut,
-    color: "red",
-    keywords:
-      "logout all devices deactivate delete account download data",
+    color: "text-red-400",
+    bg: "bg-red-400/10",
   },
 ];
 
 /* ============================================================
    HELPERS
-============================================================ */
+   ============================================================ */
 
-function safeObject(value, fallback = {}) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return fallback;
+function formatMoney(value, currency = "MWK") {
+  const numeric = Number(value || 0);
+
+  try {
+    return new Intl.NumberFormat("en-MW", {
+      style: "currency",
+      currency: currency || "MWK",
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${currency || "MWK"} ${numeric.toFixed(2)}`;
   }
-
-  return value;
 }
 
-function mergeSettings(profile) {
-  const result = {};
-
-  JSON_SETTING_COLUMNS.forEach((key) => {
-    result[key] = {
-      ...(DEFAULT_JSON_SETTINGS[key] || {}),
-      ...safeObject(profile?.[key]),
-    };
-  });
-
-  return result;
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(Number(value || 0));
 }
 
 function formatDate(value) {
   if (!value) return "Not available";
 
-  try {
-    return new Intl.DateTimeFormat("en-MW", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }).format(new Date(value));
-  } catch {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
     return "Not available";
+  }
+
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function safeJson(value, fallback = {}) {
+  if (!value) return fallback;
+
+  if (typeof value === "object") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
   }
 }
 
-function formatMoney(value, currency = "MWK") {
-  const amount = Number(value || 0);
-
-  return new Intl.NumberFormat("en-MW", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
+function mergeJson(defaults, value) {
+  return {
+    ...defaults,
+    ...safeJson(value, {}),
+  };
 }
 
-function getSocialLink(profile, key) {
-  const links = safeObject(profile?.social_links);
-  return links[key] || "";
+function getInitials(profile) {
+  const name =
+    profile?.display_name ||
+    profile?.full_name ||
+    profile?.username ||
+    "M";
+
+  return name
+    .replace("@", "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }
 
-function setNestedValue(object, path, value) {
-  const result = { ...object };
-  let current = result;
+function getSocialLinks(profile) {
+  return {
+    ...DEFAULT_SOCIAL_LINKS,
+    ...safeJson(profile?.social_links, {}),
+  };
+}
 
-  const parts = path.split(".");
+function calculateBrowserStorage() {
+  let localStorageBytes = 0;
 
-  parts.forEach((part, index) => {
-    if (index === parts.length - 1) {
-      current[part] = value;
-    } else {
-      current[part] = {
-        ...(current[part] || {}),
-      };
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      const value = key ? localStorage.getItem(key) || "" : "";
 
-      current = current[part];
+      localStorageBytes += new Blob([
+        key || "",
+        value,
+      ]).size;
     }
-  });
+  } catch {
+    localStorageBytes = 0;
+  }
 
-  return result;
+  return {
+    localStorageBytes,
+  };
+}
+
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1
+  );
+
+  return `${(bytes / Math.pow(1024, index)).toFixed(
+    index === 0 ? 0 : 2
+  )} ${units[index]}`;
 }
 
 /* ============================================================
-   MAIN PAGE
-============================================================ */
+   MAIN COMPONENT
+   ============================================================ */
 
 const SettingsPage = () => {
   const navigate = useNavigate();
 
-  const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-
-  const [settings, setSettings] = useState(DEFAULT_JSON_SETTINGS);
-
-  const [activeCategory, setActiveCategory] = useState(null);
-  const [search, setSearch] = useState("");
+  const [user, setUser] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [saveMessage, setSaveMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [activeSection, setActiveSection] = useState(null);
+  const [search, setSearch] = useState("");
 
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [dataSaver, setDataSaver] = useState(false);
 
-  const [storageInfo, setStorageInfo] = useState({
-    localStorage: 0,
-    sessionStorage: 0,
-    indexedDB: "Available",
-  });
-
-  /* ==========================================================
-     LOAD PROFILE
-  ========================================================== */
-
-  const loadProfile = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage("");
-
-    try {
-      const {
-        data: { user: authUser },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError) throw authError;
-
-      if (!authUser) {
-        navigate("/login");
-        return;
-      }
-
-      setUser(authUser);
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select(PROFILE_COLUMNS.join(","))
-        .eq("id", authUser.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (!data) {
-        throw new Error("Your profile record could not be found.");
-      }
-
-      setProfile(data);
-      setSettings(mergeSettings(data));
-    } catch (error) {
-      console.error("Settings profile error:", error);
-
-      setErrorMessage(
-        error?.message ||
-          "Unable to load your settings. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [navigate]);
-
-  useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
-
-  /* ==========================================================
-     STORAGE
-  ========================================================== */
-
-  const calculateStorage = useCallback(() => {
-    try {
-      let local = 0;
-      let session = 0;
-
-      for (let i = 0; i < localStorage.length; i += 1) {
-        const key = localStorage.key(i);
-        const value = localStorage.getItem(key);
-
-        local += (key?.length || 0) + (value?.length || 0);
-      }
-
-      for (let i = 0; i < sessionStorage.length; i += 1) {
-        const key = sessionStorage.key(i);
-        const value = sessionStorage.getItem(key);
-
-        session += (key?.length || 0) + (value?.length || 0);
-      }
-
-      setStorageInfo({
-        localStorage: local,
-        sessionStorage: session,
-        indexedDB: "Available",
-      });
-    } catch {
-      setStorageInfo({
-        localStorage: 0,
-        sessionStorage: 0,
-        indexedDB: "Unavailable",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    calculateStorage();
-  }, [calculateStorage]);
-
-  /* ==========================================================
-     FILTERED CATEGORIES
-  ========================================================== */
-
-  const filteredCategories = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    if (!query) return SETTINGS_CATEGORIES;
-
-    return SETTINGS_CATEGORIES.filter((category) => {
-      const searchable = [
-        category.title,
-        category.description,
-        category.keywords,
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return searchable.includes(query);
-    });
-  }, [search]);
-
-  /* ==========================================================
-     SAVE PROFILE COLUMN
-  ========================================================== */
-
-  const saveProfileFields = async (fields) => {
-    if (!profile?.id) return false;
-
-    setSaving(true);
-    setSaveMessage("");
-    setErrorMessage("");
-
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .update(fields)
-        .eq("id", profile.id)
-        .select(PROFILE_COLUMNS.join(","))
-        .single();
-
-      if (error) throw error;
-
-      setProfile(data);
-      setSettings(mergeSettings(data));
-
-      setSaveMessage("Changes saved");
-
-      window.setTimeout(() => {
-        setSaveMessage("");
-      }, 2500);
-
-      return true;
-    } catch (error) {
-      console.error("Settings save error:", error);
-
-      setErrorMessage(
-        error?.message || "Unable to save your changes."
-      );
-
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  /* ==========================================================
-     UPDATE JSON SETTING
-  ========================================================== */
-
-  const updateJsonSetting = async (column, key, value) => {
-    const current = safeObject(settings[column]);
-
-    const next = {
-      ...current,
-      [key]: value,
-    };
-
-    const success = await saveProfileFields({
-      [column]: next,
-    });
-
-    if (success) {
-      setSettings((previous) => ({
-        ...previous,
-        [column]: next,
-      }));
-    }
-  };
-
-  /* ==========================================================
-     UPDATE PROFILE COLUMN
-  ========================================================== */
-
-  const updateProfile = async (column, value) => {
-    const success = await saveProfileFields({
-      [column]: value,
-    });
-
-    if (success) {
-      setProfile((previous) => ({
-        ...previous,
-        [column]: value,
-      }));
-    }
-  };
-
-  /* ==========================================================
-     LOGOUT
-  ========================================================== */
-
-  const handleLogout = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-
-      if (error) throw error;
-
-      navigate("/");
-    } catch (error) {
-      setErrorMessage(error?.message || "Unable to log out.");
-    }
-  };
-
-  /* ==========================================================
-     CLEAR TEMP DATA
-  ========================================================== */
-
-  const clearTemporaryData = () => {
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-
-      calculateStorage();
-
-      setSaveMessage("Local temporary data cleared");
-
-      window.setTimeout(() => {
-        setSaveMessage("");
-      }, 2500);
-    } catch (error) {
-      setErrorMessage(
-        error?.message || "Unable to clear temporary data."
-      );
-    }
-  };
-
-  /* ==========================================================
-     SELECT CATEGORY
-  ========================================================== */
-
-  const openCategory = (id) => {
-    setActiveCategory(id);
-    setShowMobileMenu(false);
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  };
-
-  const activeCategoryObject = SETTINGS_CATEGORIES.find(
-    (category) => category.id === activeCategory
-  );
-
-  /* ==========================================================
-     LOADING
-  ========================================================== */
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-2 border-cyan-400/20 border-t-cyan-400 animate-spin" />
-
-          <div className="text-xs font-black uppercase tracking-[3px] text-zinc-500">
-            Loading Settings
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ==========================================================
-     ERROR
-  ========================================================== */
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
-        <div className="max-w-md text-center">
-          <AlertTriangle className="mx-auto text-red-400 mb-5" size={42} />
-
-          <h1 className="text-xl font-black mb-3">
-            Settings unavailable
-          </h1>
-
-          <p className="text-sm text-zinc-500 mb-6">
-            {errorMessage ||
-              "We could not load your profile settings."}
-          </p>
-
-          <button
-            onClick={loadProfile}
-            className="px-6 py-3 rounded-xl bg-cyan-500 text-black font-black text-xs uppercase tracking-wider"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  /* ==========================================================
-     RENDER
-  ========================================================== */
-
-  return (
-    <div className="min-h-screen bg-black text-white overflow-x-hidden">
-      {/* ======================================================
-          BACKGROUND
-      ====================================================== */}
-
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full bg-cyan-500/[0.035] blur-[120px]" />
-
-        <div className="absolute top-[40%] -right-40 w-[500px] h-[500px] rounded-full bg-purple-500/[0.03] blur-[120px]" />
-      </div>
-
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-black/85 backdrop-blur-2xl">
-        <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="h-[72px] flex items-center gap-4">
-            <button
-              onClick={() => navigate(-1)}
-              className="w-10 h-10 rounded-xl border border-white/[0.07] bg-white/[0.025] hover:bg-white/[0.07] flex items-center justify-center transition"
-              aria-label="Go back"
-            >
-              <ArrowLeft size={19} />
-            </button>
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Settings2 size={16} className="text-cyan-400" />
-
-                <h1 className="text-sm sm:text-base font-black uppercase tracking-[2px] truncate">
-                  Settings & Privacy
-                </h1>
-              </div>
-
-              <p className="hidden sm:block text-[10px] text-zinc-600 uppercase tracking-[2px] mt-1">
-                Mpade Universe Control Center
-              </p>
-            </div>
-
-            <div className="ml-auto flex items-center gap-2">
-              {saving && (
-                <div className="hidden sm:flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-500">
-                  <RefreshCw size={13} className="animate-spin" />
-                  Saving
-                </div>
-              )}
-
-              {saveMessage && (
-                <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase">
-                  <Check size={13} />
-                  {saveMessage}
-                </div>
-              )}
-
-              <button
-                onClick={() => setShowMobileMenu((value) => !value)}
-                className="lg:hidden w-10 h-10 rounded-xl border border-white/[0.07] bg-white/[0.025] flex items-center justify-center"
-              >
-                <MoreHorizontal size={19} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* ======================================================
-          MAIN
-      ====================================================== */}
-
-      <main className="relative max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-5 lg:py-8">
-        {/* ERROR BAR */}
-
-        <AnimatePresence>
-          {errorMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-5 p-4 rounded-2xl border border-red-500/20 bg-red-500/[0.07] flex items-start gap-3"
-            >
-              <AlertTriangle
-                size={18}
-                className="text-red-400 mt-0.5 shrink-0"
-              />
-
-              <div className="flex-1">
-                <div className="text-xs font-bold text-red-300">
-                  Settings error
-                </div>
-
-                <div className="text-[11px] text-red-400/70 mt-1">
-                  {errorMessage}
-                </div>
-              </div>
-
-              <button
-                onClick={() => setErrorMessage("")}
-                className="text-zinc-500 hover:text-white"
-              >
-                <X size={16} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ====================================================
-            PROFILE SUMMARY
-        ==================================================== */}
-
-        <ProfileSummary
-          profile={profile}
-          user={user}
-          navigate={navigate}
-          onEditProfile={() => navigate("/edit-profile")}
-        />
-
-        {/* ====================================================
-            SEARCH
-        ==================================================== */}
-
-        <div className="mt-5 relative">
-          <Search
-            size={17}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600"
-          />
-
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search settings..."
-            className="w-full h-12 pl-11 pr-12 rounded-2xl border border-white/[0.07] bg-white/[0.025] focus:bg-white/[0.04] focus:border-cyan-500/30 outline-none text-sm text-white placeholder:text-zinc-700 transition"
-          />
-
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white"
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
-
-        {/* ====================================================
-            MOBILE CATEGORY MENU
-        ==================================================== */}
-
-        <AnimatePresence>
-          {showMobileMenu && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="lg:hidden overflow-hidden"
-            >
-              <div className="mt-4 p-2 rounded-2xl border border-white/[0.07] bg-[#080808]">
-                {filteredCategories.map((category) => (
-                  <CategoryButton
-                    key={category.id}
-                    category={category}
-                    active={activeCategory === category.id}
-                    onClick={() => openCategory(category.id)}
-                  />
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ====================================================
-            CONTENT GRID
-        ==================================================== */}
-
-        <div className="mt-6 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-6">
-          {/* DESKTOP SIDEBAR */}
-
-          <aside className="hidden lg:block">
-            <div className="sticky top-[92px] max-h-[calc(100vh-110px)] overflow-y-auto pr-2 settings-scroll">
-              <div className="rounded-2xl border border-white/[0.06] bg-[#060606] p-2">
-                {filteredCategories.map((category) => (
-                  <CategoryButton
-                    key={category.id}
-                    category={category}
-                    active={activeCategory === category.id}
-                    onClick={() => openCategory(category.id)}
-                  />
-                ))}
-              </div>
-            </div>
-          </aside>
-
-          {/* DETAIL AREA */}
-
-          <section className="min-w-0">
-            {!activeCategory ? (
-              <SettingsOverview
-                categories={filteredCategories}
-                profile={profile}
-                settings={settings}
-                storageInfo={storageInfo}
-                onOpen={openCategory}
-              />
-            ) : (
-              <SettingsDetail
-                category={activeCategoryObject}
-                profile={profile}
-                user={user}
-                settings={settings}
-                storageInfo={storageInfo}
-                saving={saving}
-                updateProfile={updateProfile}
-                updateJsonSetting={updateJsonSetting}
-                setSettings={setSettings}
-                clearTemporaryData={clearTemporaryData}
-                calculateStorage={calculateStorage}
-                onBack={() => setActiveCategory(null)}
-                onOpenCategory={openCategory}
-                onLogout={handleLogout}
-                navigate={navigate}
-              />
-            )}
-          </section>
-        </div>
-      </main>
-
-      {/* ======================================================
-          FOOTER
-      ====================================================== */}
-
-      <footer className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-4">
-        <div className="border-t border-white/[0.05] pt-7 flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <div className="text-[10px] text-zinc-700 uppercase tracking-[2px]">
-            Mpade Universe
-          </div>
-
-          <div className="text-[10px] text-zinc-700">
-            {profile.account_status || "active"} •{" "}
-            {profile.subscription_tier || "Free"}
-          </div>
-        </div>
-      </footer>
-
-      <style>{`
-        .settings-scroll::-webkit-scrollbar {
-          width: 5px;
-        }
-
-        .settings-scroll::-webkit-scrollbar-track {
-          background: transparent;
-        }
-
-        .settings-scroll::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.12);
-          border-radius: 999px;
-        }
-
-        .settings-scroll::-webkit-scrollbar-thumb:hover {
-          background: rgba(6,182,212,0.45);
-        }
-
-        .settings-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(255,255,255,0.14) transparent;
-        }
-      `}</style>
-    </div>
-  );
-};
-
-/* ============================================================
-   PROFILE SUMMARY
-============================================================ */
-
-const ProfileSummary = ({
-  profile,
-  user,
-  navigate,
-  onEditProfile,
-}) => {
-  const avatar =
-    profile.avatar_url ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      profile.display_name ||
-        profile.full_name ||
-        profile.username ||
-        "User"
-    )}&background=090909&color=06b6d4`;
-
-  const username = profile.username
-    ? profile.username.startsWith("@")
-      ? profile.username
-      : `@${profile.username}`
-    : "@user";
-
-  const completion = Math.max(
-    0,
-    Math.min(100, Number(profile.profile_completion || 0))
-  );
-
-  return (
-    <div className="rounded-3xl border border-white/[0.07] bg-[#070707] overflow-hidden">
-      <div className="h-28 sm:h-36 relative overflow-hidden">
-        {profile.cover_url ? (
-          <img
-            src={profile.cover_url}
-            alt=""
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-r from-cyan-500/[0.08] via-purple-500/[0.06] to-transparent" />
-        )}
-
-        <div className="absolute inset-0 bg-gradient-to-t from-[#070707] via-transparent to-black/20" />
-      </div>
-
-      <div className="px-5 pb-5 -mt-8 relative">
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-          <img
-            src={avatar}
-            alt=""
-            className="w-16 h-16 rounded-2xl border-2 border-black object-cover bg-zinc-900"
-          />
-
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-black truncate">
-                {profile.display_name ||
-                  profile.full_name ||
-                  "User"}
-              </h2>
-
-              {(profile.is_verified ||
-                profile.verified_status === "verified") && (
-                <ShieldCheck
-                  size={17}
-                  className="text-cyan-400"
-                />
-              )}
-            </div>
-
-            <p className="text-xs text-zinc-500 mt-0.5">
-              {username}
-            </p>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={onEditProfile}
-              className="px-4 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] text-[10px] font-black uppercase tracking-wider transition"
-            >
-              Edit Profile
-            </button>
-
-            <button
-              onClick={() => navigate("/profile")}
-              className="px-4 py-2.5 rounded-xl bg-cyan-400 text-black text-[10px] font-black uppercase tracking-wider"
-            >
-              View Profile
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <MiniStat
-            label="Followers"
-            value={profile.follower_count || 0}
-          />
-
-          <MiniStat
-            label="Following"
-            value={profile.following_count || 0}
-          />
-
-          <MiniStat
-            label="Likes"
-            value={profile.total_likes || 0}
-          />
-
-          <MiniStat
-            label="Profile"
-            value={`${completion}%`}
-          />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ============================================================
-   OVERVIEW
-============================================================ */
-
-const SettingsOverview = ({
-  categories,
-  profile,
-  settings,
-  storageInfo,
-  onOpen,
-}) => {
-  return (
-    <div>
-      <div className="mb-6">
-        <div className="text-[10px] font-black uppercase tracking-[3px] text-cyan-400">
-          Control Center
-        </div>
-
-        <h2 className="text-2xl sm:text-3xl font-black mt-2">
-          Settings for everything.
-        </h2>
-
-        <p className="text-sm text-zinc-500 mt-2 max-w-2xl">
-          Manage your account, privacy, security, creator tools,
-          payments, content, AI, accessibility and more from one
-          place.
-        </p>
-      </div>
-
-      {/* QUICK CARDS */}
-
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
-        <QuickCard
-          icon={<ShieldCheck size={18} />}
-          title="Security"
-          value={
-            settings.verification_settings.twoFactorEnabled
-              ? "2FA enabled"
-              : "Review security"
-          }
-          onClick={() => onOpen("security")}
-        />
-
-        <QuickCard
-          icon={<Lock size={18} />}
-          title="Privacy"
-          value={profile.is_private ? "Private" : "Public"}
-          onClick={() => onOpen("privacy")}
-        />
-
-        <QuickCard
-          icon={<Wallet size={18} />}
-          title="Wallet"
-          value={formatMoney(
-            profile.balance,
-            profile.currency_preference || "MWK"
-          )}
-          onClick={() => onOpen("payments")}
-        />
-
-        <QuickCard
-          icon={<Award size={18} />}
-          title="Creator"
-          value={`Level ${profile.creator_level || 1}`}
-          onClick={() => onOpen("progress")}
-        />
-      </div>
-
-      {/* ALL SETTINGS */}
-
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {categories.map((category) => (
-          <OverviewCard
-            key={category.id}
-            category={category}
-            onClick={() => onOpen(category.id)}
-          />
-        ))}
-      </div>
-
-      {/* STORAGE */}
-
-      <div className="mt-6">
-        <StorageSummary
-          storageInfo={storageInfo}
-          onOpen={() => onOpen("data")}
-        />
-      </div>
-    </div>
-  );
-};
-
-/* ============================================================
-   DETAIL ROUTER
-============================================================ */
-
-const SettingsDetail = ({
-  category,
-  profile,
-  user,
-  settings,
-  storageInfo,
-  saving,
-  updateProfile,
-  updateJsonSetting,
-  setSettings,
-  clearTemporaryData,
-  calculateStorage,
-  onBack,
-  onOpenCategory,
-  onLogout,
-  navigate,
-}) => {
-  const props = {
-    profile,
-    user,
-    settings,
-    storageInfo,
-    saving,
-    updateProfile,
-    updateJsonSetting,
-    setSettings,
-    clearTemporaryData,
-    calculateStorage,
-    onOpenCategory,
-    navigate,
-  };
-
-  let content = null;
-
-  switch (category?.id) {
-    case "account":
-      content = <AccountSettings {...props} />;
-      break;
-
-    case "security":
-      content = <SecuritySettings {...props} />;
-      break;
-
-    case "privacy":
-      content = <PrivacySettings {...props} />;
-      break;
-
-    case "notifications":
-      content = <NotificationSettings {...props} />;
-      break;
-
-    case "content":
-      content = <ContentSettings {...props} />;
-      break;
-
-    case "comments":
-      content = <CommentsSettings {...props} />;
-      break;
-
-    case "messages":
-      content = <MessagesSettings {...props} />;
-      break;
-
-    case "followers":
-      content = <FollowersSettings {...props} />;
-      break;
-
-    case "data":
-      content = <DataSettings {...props} />;
-      break;
-
-    case "language":
-      content = <LanguageSettings {...props} />;
-      break;
-
-    case "appearance":
-      content = <AppearanceSettings {...props} />;
-      break;
-
-    case "accessibility":
-      content = <AccessibilitySettings {...props} />;
-      break;
-
-    case "payments":
-      content = <PaymentSettings {...props} />;
-      break;
-
-    case "creator":
-      content = <CreatorSettings {...props} />;
-      break;
-
-    case "scheduling":
-      content = <SchedulingSettings {...props} />;
-      break;
-
-    case "library":
-      content = <LibrarySettings {...props} />;
-      break;
-
-    case "progress":
-      content = <ProgressSettings {...props} />;
-      break;
-
-    case "brand":
-      content = <BrandSettings {...props} />;
-      break;
-
-    case "copyright":
-      content = <CopyrightSettings {...props} />;
-      break;
-
-    case "ai":
-      content = <AISettings {...props} />;
-      break;
-
-    case "reports":
-      content = <ReportsSettings {...props} />;
-      break;
-
-    case "apps":
-      content = <ConnectedAppsSettings {...props} />;
-      break;
-
-    case "support":
-      content = <SupportSettings {...props} />;
-      break;
-
-    case "system":
-      content = <SystemSettings {...props} />;
-      break;
-
-    case "exit":
-      content = <ExitSettings {...props} onLogout={onLogout} />;
-      break;
-
-    default:
-      content = null;
-  }
-
-  return (
-    <motion.div
-      key={category?.id}
-      initial={{ opacity: 0, x: 12 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.2 }}
-    >
-      <button
-        onClick={onBack}
-        className="lg:hidden flex items-center gap-2 text-[10px] font-black uppercase tracking-[2px] text-zinc-500 hover:text-white mb-5"
-      >
-        <ArrowLeft size={14} />
-        All Settings
-      </button>
-
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-cyan-400/[0.08] border border-cyan-400/10 flex items-center justify-center text-cyan-400">
-            <category.icon size={21} />
-          </div>
-
-          <div>
-            <h2 className="text-xl sm:text-2xl font-black">
-              {category.title}
-            </h2>
-
-            <p className="text-xs text-zinc-600 mt-1">
-              {category.description}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {content}
-    </motion.div>
-  );
-};
-
-/* ============================================================
-   ACCOUNT SETTINGS
-============================================================ */
-
-const AccountSettings = ({
-  profile,
-  user,
-  navigate,
-}) => {
-  const social = safeObject(profile.social_links);
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Account information"
-        description="Your identity and account details"
-        icon={<User size={17} />}
-      >
-        <SettingInfo
-          label="Username"
-          value={
-            profile.username
-              ? `@${String(profile.username).replace(/^@/, "")}`
-              : "Not set"
-          }
-        />
-
-        <SettingInfo
-          label="Display name"
-          value={profile.display_name || "Not set"}
-        />
-
-        <SettingInfo
-          label="Full name"
-          value={profile.full_name || "Not set"}
-        />
-
-        <SettingInfo
-          label="Bio"
-          value={profile.bio || "No bio"}
-        />
-
-        <SettingInfo
-          label="Date of birth"
-          value={profile.dob || "Not set"}
-        />
-
-        <SettingInfo
-          label="Gender"
-          value={profile.gender || "Not set"}
-        />
-
-        <SettingInfo
-          label="Location"
-          value={profile.location || "Not set"}
-        />
-
-        <SettingInfo
-          label="District"
-          value={profile.district || "Not set"}
-        />
-
-        <SettingInfo
-          label="Country"
-          value={profile.country || "Malawi"}
-        />
-
-        <SettingInfo
-          label="Region"
-          value={profile.region || "Not set"}
-        />
-
-        <SettingInfo
-          label="City"
-          value={profile.city || "Not set"}
-        />
-
-        <SettingInfo
-          label="Phone"
-          value={profile.phone_number || "Not set"}
-        />
-
-        <SettingInfo
-          label="Email"
-          value={user?.email || "Not available"}
-        />
-
-        <SettingInfo
-          label="Account created"
-          value={formatDate(profile.created_at)}
-        />
-
-        <SettingInfo
-          label="Account ID"
-          value={profile.id}
-          copyable
-        />
-
-        <SettingInfo
-          label="Account status"
-          value={profile.account_status || "active"}
-        />
-
-        <SettingInfo
-          label="Verification"
-          value={
-            profile.is_verified ||
-            profile.verified_status === "verified"
-              ? "Verified"
-              : "Not verified"
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Profile details"
-        description="Advanced profile information"
-        icon={<ImageIcon size={17} />}
-      >
-        <SettingInfo
-          label="Profile headline"
-          value={profile.profile_headline || "Not set"}
-        />
-
-        <SettingInfo
-          label="Nickname"
-          value={profile.nickname || "Not set"}
-        />
-
-        <SettingInfo
-          label="Pronouns"
-          value={profile.pronouns || "Not set"}
-        />
-
-        <SettingInfo
-          label="Occupation"
-          value={profile.occupation || "Not set"}
-        />
-
-        <SettingInfo
-          label="Education"
-          value={profile.education || "Not set"}
-        />
-
-        <SettingInfo
-          label="School / University"
-          value={profile.school_university || "Not set"}
-        />
-
-        <SettingInfo
-          label="Skills"
-          value={profile.skills || "Not set"}
-        />
-
-        <SettingInfo
-          label="Languages"
-          value={profile.languages || "Not set"}
-        />
-
-        <SettingInfo
-          label="Relationship status"
-          value={profile.relationship_status || "Not set"}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Social links"
-        description="Connected public profile links"
-        icon={<Globe size={17} />}
-      >
-        <SettingInfo
-          label="Website"
-          value={social.website || "Not set"}
-        />
-
-        <SettingInfo
-          label="YouTube"
-          value={social.youtube || "Not set"}
-        />
-
-        <SettingInfo
-          label="WhatsApp"
-          value={social.whatsapp || "Not set"}
-        />
-
-        <SettingInfo
-          label="Instagram"
-          value={social.instagram || "Not set"}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Account type"
-        description="Choose how your account operates"
-        icon={<BriefcaseBusiness size={17} />}
-      >
-        <SettingInfo
-          label="Current account type"
-          value={profile.account_type || "personal"}
-        />
-
-        <SettingInfo
-          label="Creator mode"
-          value={profile.creator_mode ? "Enabled" : "Disabled"}
-        />
-
-        <SettingInfo
-          label="Professional account"
-          value={profile.pro_account ? "Enabled" : "Disabled"}
-        />
-
-        <SettingInfo
-          label="Creator category"
-          value={profile.creator_category || "Not set"}
-        />
-
-        <SettingInfo
-          label="Creator website"
-          value={profile.creator_website || "Not set"}
-        />
-
-        <SettingInfo
-          label="Business email"
-          value={profile.business_email || "Not set"}
-        />
-
-        <SettingInfo
-          label="Business phone"
-          value={profile.business_phone || "Not set"}
-        />
-
-        <div className="pt-3 flex flex-wrap gap-2">
-          <ActionButton
-            onClick={() => navigate("/edit-profile")}
-            icon={<User size={14} />}
-          >
-            Edit Profile
-          </ActionButton>
-
-          <ActionButton
-            onClick={() => navigate("/universe-tools")}
-            icon={<LayoutDashboard size={14} />}
-          >
-            Professional Dashboard
-          </ActionButton>
-        </div>
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   SECURITY
-============================================================ */
-
-const SecuritySettings = ({
-  profile,
-  settings,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const verification = settings.verification_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Password & authentication"
-        description="Manage the credentials used to protect your account"
-        icon={<KeyRound size={17} />}
-      >
-        <NavigationRow
-          icon={<Lock size={17} />}
-          title="Change password"
-          description="Update your account password"
-          onClick={() => navigate("/settings/security/password")}
-        />
-
-        <NavigationRow
-          icon={<Mail size={17} />}
-          title="Forgot password"
-          description="Recover access to your account"
-          onClick={() => navigate("/forgot-password")}
-        />
-
-        <NavigationRow
-          icon={<ShieldCheck size={17} />}
-          title="Email verification"
-          description="Verify your email address"
-          badge={
-            verification.emailVerified ? "Verified" : "Not verified"
-          }
-          onClick={() =>
-            navigate("/settings/security/email-verification")
-          }
-        />
-
-        <NavigationRow
-          icon={<Smartphone size={17} />}
-          title="Phone verification"
-          description="Verify your phone number"
-          badge={
-            verification.phoneVerified
-              ? "Verified"
-              : profile.phone_number
-              ? "Available"
-              : "Phone not set"
-          }
-          onClick={() =>
-            navigate("/settings/security/phone-verification")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Two-factor authentication"
-        description="Additional protection when signing in"
-        icon={<Shield size={17} />}
-      >
-        <ToggleRow
-          icon={<ShieldCheck size={17} />}
-          title="Two-factor authentication"
-          description="Require an additional verification step"
-          value={verification.twoFactorEnabled}
-          onChange={(value) =>
-            updateJsonSetting(
-              "verification_settings",
-              "twoFactorEnabled",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          icon={<Smartphone size={17} />}
-          title="SMS verification"
-          description="Use your verified phone for security codes"
-          value={verification.smsVerificationEnabled}
-          onChange={(value) =>
-            updateJsonSetting(
-              "verification_settings",
-              "smsVerificationEnabled",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          icon={<KeyRound size={17} />}
-          title="Authenticator app"
-          description="Use an authenticator application"
-          value={verification.authenticatorEnabled}
-          onChange={(value) =>
-            updateJsonSetting(
-              "verification_settings",
-              "authenticatorEnabled",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          icon={<LogIn size={17} />}
-          title="Passkeys"
-          description="Passwordless sign-in using supported devices"
-          value={verification.passkeysEnabled}
-          onChange={(value) =>
-            updateJsonSetting(
-              "verification_settings",
-              "passkeysEnabled",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Login protection"
-        description="Monitor suspicious activity and account access"
-        icon={<Activity size={17} />}
-      >
-        <ToggleRow
-          icon={<Bell size={17} />}
-          title="Login alerts"
-          description="Receive notifications about new logins"
-          value={verification.loginAlerts}
-          onChange={(value) =>
-            updateJsonSetting(
-              "verification_settings",
-              "loginAlerts",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          icon={<AlertTriangle size={17} />}
-          title="Suspicious login detection"
-          description="Detect unusual login activity"
-          value={verification.suspiciousLoginDetection}
-          onChange={(value) =>
-            updateJsonSetting(
-              "verification_settings",
-              "suspiciousLoginDetection",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          icon={<LogIn size={17} />}
-          title="Login history"
-          description="Review recent account access"
-          badge="Backend"
-          onClick={() => navigate("/settings/security/login-history")}
-        />
-
-        <NavigationRow
-          icon={<Smartphone size={17} />}
-          title="Active sessions"
-          description="View devices currently signed in"
-          badge="Backend"
-          onClick={() =>
-            navigate("/settings/security/sessions")
-          }
-        />
-
-        <NavigationRow
-          icon={<ShieldCheck size={17} />}
-          title="Trusted devices"
-          description="Manage devices you trust"
-          badge="Backend"
-          onClick={() =>
-            navigate("/settings/security/devices")
-          }
-        />
-
-        <NavigationRow
-          icon={<KeyRound size={17} />}
-          title="Recovery options"
-          description="Recovery email and phone"
-          onClick={() =>
-            navigate("/settings/security/recovery")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Connected applications"
-        description="Applications with access to your account"
-        icon={<Code2 size={17} />}
-      >
-        <NavigationRow
-          icon={<Code2 size={17} />}
-          title="Connected apps"
-          description="OAuth and third-party access"
-          onClick={() => navigate("/settings/apps")}
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   PRIVACY
-============================================================ */
-
-const PrivacySettings = ({
-  profile,
-  settings,
-  updateProfile,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const privacy = settings.privacy_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Account visibility"
-        description="Choose whether your account is public or private"
-        icon={<Lock size={17} />}
-      >
-        <ToggleRow
-          icon={<Lock size={17} />}
-          title="Private account"
-          description="Only approved people can follow you"
-          value={Boolean(profile.is_private)}
-          onChange={(value) =>
-            updateProfile("is_private", value)
-          }
-        />
-
-        <SelectRow
-          title="Media privacy"
-          description="Default visibility for profile media"
-          value={profile.media_privacy || "public"}
-          options={[
-            ["public", "Public"],
-            ["followers", "Followers"],
-            ["private", "Private"],
-          ]}
-          onChange={(value) =>
-            updateProfile("media_privacy", value)
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Who can interact with you"
-        description="Control followers, messages, mentions and tags"
-        icon={<Users size={17} />}
-      >
-        <SelectRow
-          title="Who can follow you"
-          value={privacy.whoCanFollow}
-          options={[
-            ["everyone", "Everyone"],
-            ["followers", "People you follow"],
-            ["approved", "Approved people"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "whoCanFollow",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Who can message you"
-          value={privacy.whoCanMessage}
-          options={[
-            ["everyone", "Everyone"],
-            ["followers", "Followers"],
-            ["nobody", "Nobody"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "whoCanMessage",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Who can mention you"
-          value={privacy.whoCanMention}
-          options={[
-            ["everyone", "Everyone"],
-            ["followers", "Followers"],
-            ["nobody", "Nobody"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "whoCanMention",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Who can tag you"
-          value={privacy.whoCanTag}
-          options={[
-            ["everyone", "Everyone"],
-            ["followers", "Followers"],
-            ["nobody", "Nobody"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "whoCanTag",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Visibility"
-        description="Control what other people can discover"
-        icon={<Eye size={17} />}
-      >
-        <ToggleRow
-          title="Search visibility"
-          description="Allow your account to appear in search"
-          value={privacy.searchVisibility}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "searchVisibility",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Profile views"
-          description="Allow profile-view activity"
-          value={privacy.profileViews}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "profileViews",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Activity visibility"
-          description="Show selected activity to others"
-          value={privacy.activityVisibility}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "activityVisibility",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Online status"
-          description="Show when you are online"
-          value={privacy.onlineStatus}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "onlineStatus",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Last active"
-          description="Show when you were last active"
-          value={privacy.lastActive}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "lastActive",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Following visibility"
-          value={privacy.followingVisibility}
-          options={[
-            ["public", "Public"],
-            ["followers", "Followers"],
-            ["private", "Private"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "followingVisibility",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Follower visibility"
-          value={privacy.followerVisibility}
-          options={[
-            ["public", "Public"],
-            ["followers", "Followers"],
-            ["private", "Private"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "followerVisibility",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Personal information visibility"
-        description="Choose who can see sensitive profile fields"
-        icon={<User size={17} />}
-      >
-        <SelectRow
-          title="Birthday"
-          value={profile.birthday_visibility || "private"}
-          options={[
-            ["public", "Public"],
-            ["followers", "Followers"],
-            ["private", "Private"],
-          ]}
-          onChange={(value) =>
-            updateProfile("birthday_visibility", value)
-          }
-        />
-
-        <SelectRow
-          title="Gender"
-          value={profile.gender_visibility || "private"}
-          options={[
-            ["public", "Public"],
-            ["followers", "Followers"],
-            ["private", "Private"],
-          ]}
-          onChange={(value) =>
-            updateProfile("gender_visibility", value)
-          }
-        />
-
-        <SelectRow
-          title="Phone"
-          value={profile.phone_visibility || "private"}
-          options={[
-            ["public", "Public"],
-            ["followers", "Followers"],
-            ["private", "Private"],
-          ]}
-          onChange={(value) =>
-            updateProfile("phone_visibility", value)
-          }
-        />
-
-        <SelectRow
-          title="Location"
-          value={profile.location_visibility || "district"}
-          options={[
-            ["public", "Public"],
-            ["district", "District"],
-            ["city", "City"],
-            ["private", "Private"],
-          ]}
-          onChange={(value) =>
-            updateProfile("location_visibility", value)
-          }
-        />
-
-        <ToggleRow
-          title="GPS sharing"
-          description="Allow precise location sharing when supported"
-          value={Boolean(profile.gps_sharing)}
-          onChange={(value) =>
-            updateProfile("gps_sharing", value)
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Privacy lists"
-        description="Manage accounts and words you don't want to see"
-        icon={<UserMinus size={17} />}
-      >
-        <NavigationRow
-          icon={<UserMinus size={17} />}
-          title="Blocked accounts"
-          description="Accounts you have blocked"
-          onClick={() => navigate("/settings/privacy/blocked")}
-        />
-
-        <NavigationRow
-          icon={<Pause size={17} />}
-          title="Muted accounts"
-          description="Accounts whose content you have muted"
-          onClick={() => navigate("/settings/privacy/muted")}
-        />
-
-        <NavigationRow
-          icon={<Shield size={17} />}
-          title="Restricted accounts"
-          description="Accounts with limited interaction"
-          onClick={() =>
-            navigate("/settings/privacy/restricted")
-          }
-        />
-
-        <NavigationRow
-          icon={<AlertTriangle size={17} />}
-          title="Hidden words"
-          description="Words and phrases filtered from your experience"
-          onClick={() =>
-            navigate("/settings/privacy/hidden-words")
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   NOTIFICATIONS
-============================================================ */
-
-const NotificationSettings = ({
-  settings,
-  updateJsonSetting,
-}) => {
-  const notificationDefaults = {
+  const [notificationSettings, setNotificationSettings] = useState({
     followers: true,
     likes: true,
     comments: true,
@@ -2446,16 +470,16 @@ const NotificationSettings = ({
     gifts: true,
     live: true,
     subscribers: true,
-    subscriptionPayments: true,
+    payments: true,
     creatorFund: true,
     earnings: true,
     payouts: true,
     videoProcessing: true,
-    videoPublishing: true,
-    scheduledPublishing: true,
+    publishing: true,
+    scheduling: true,
     copyright: true,
-    contentWarnings: true,
-    accountSecurity: true,
+    warnings: true,
+    security: true,
     system: true,
     push: true,
     email: true,
@@ -2464,3241 +488,1367 @@ const NotificationSettings = ({
     sounds: true,
     vibration: true,
     quietHours: false,
+  });
+
+  const [privacySettings, setPrivacySettings] = useState({});
+
+  const [contentSettings, setContentSettings] = useState({});
+
+  const [appearanceSettings, setAppearanceSettings] = useState({
+    theme: "neon",
+    neon: true,
+    density: "comfortable",
+    animations: true,
+    reduceMotion: false,
+    blur: true,
+    glass: true,
+    fontSize: "medium",
+    highContrast: false,
+  });
+
+  const [accessibilitySettings, setAccessibilitySettings] = useState({
+    fontSize: "medium",
+    highContrast: false,
+    reduceMotion: false,
+    captions: true,
+    audioDescriptions: false,
+    colorBlindFriendly: false,
+    largeTouchTargets: false,
+    screenReader: false,
+  });
+
+  const [storage, setStorage] = useState({
+    localStorageBytes: 0,
+  });
+
+  const [statusMessage, setStatusMessage] = useState("");
+
+  /* ==========================================================
+     LOAD PROFILE
+     ========================================================== */
+
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const {
+        data: {
+          user: currentUser,
+        },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!currentUser) {
+        navigate("/");
+        return;
+      }
+
+      setUser(currentUser);
+
+      /*
+       * IMPORTANT:
+       * We use select("*") because the actual profiles schema
+       * supplied by the developer contains many settings fields.
+       * This avoids the previous 400 caused by requesting columns
+       * that did not exist in the old query.
+       */
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        setProfile({
+          id: currentUser.id,
+          username:
+            currentUser.user_metadata?.username ||
+            currentUser.email?.split("@")[0] ||
+            "user",
+          display_name:
+            currentUser.user_metadata?.display_name ||
+            "Mpade User",
+          account_status: "active",
+          currency_preference: "MWK",
+          theme_preference: "neon",
+          accent_color: "#06b6d4",
+        });
+
+        return;
+      }
+
+      setProfile(data);
+
+      setPrivacySettings(
+        mergeJson(DEFAULT_JSON_SETTINGS.privacy, data.privacy_settings)
+      );
+
+      setContentSettings(
+        mergeJson(DEFAULT_JSON_SETTINGS.content, data.content_settings)
+      );
+
+      const loadedAppearance = mergeJson(
+        DEFAULT_JSON_SETTINGS.appearance,
+        data.appearance_settings
+      );
+
+      setAppearanceSettings((previous) => ({
+        ...previous,
+        ...loadedAppearance,
+        theme:
+          loadedAppearance.theme ||
+          data.theme_preference ||
+          previous.theme,
+      }));
+
+      setDataSaver(
+        Boolean(
+          safeJson(data.advanced_settings, {}).dataSaver ??
+            safeJson(data.content_settings, {}).dataSaver ??
+            false
+        )
+      );
+    } catch (error) {
+      console.error("Settings profile loading error:", error);
+
+      setStatusMessage(
+        error?.message ||
+          "Unable to load your profile settings."
+      );
+    } finally {
+      setStorage(calculateBrowserStorage());
+      setLoading(false);
+    }
+  }, [navigate]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  /* ==========================================================
+     PROFILE SAVE
+     ========================================================== */
+
+  const updateProfile = useCallback(
+    async (updates, message = "Settings saved") => {
+      if (!user?.id) return false;
+
+      setSaving(true);
+      setStatusMessage("");
+
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .update(updates)
+          .eq("id", user.id)
+          .select("*")
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (data) {
+          setProfile(data);
+        } else {
+          setProfile((previous) => ({
+            ...previous,
+            ...updates,
+          }));
+        }
+
+        setStatusMessage(message);
+
+        window.setTimeout(() => {
+          setStatusMessage("");
+        }, 2500);
+
+        return true;
+      } catch (error) {
+        console.error("Settings update error:", error);
+
+        setStatusMessage(
+          error?.message ||
+            "Unable to save this setting."
+        );
+
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [user?.id]
+  );
+
+  /* ==========================================================
+     JSON SETTING SAVE
+     ========================================================== */
+
+  const saveJsonSetting = useCallback(
+    async (column, value, message = "Settings saved") => {
+      return updateProfile(
+        {
+          [column]: value,
+        },
+        message
+      );
+    },
+    [updateProfile]
+  );
+
+  /* ==========================================================
+     APPEARANCE
+     ========================================================== */
+
+  const updateAppearance = async (key, value) => {
+    const next = {
+      ...appearanceSettings,
+      [key]: value,
+    };
+
+    setAppearanceSettings(next);
+
+    await updateProfile({
+      theme_preference:
+        key === "theme"
+          ? value
+          : next.theme,
+
+      accent_color:
+        key === "accentColor"
+          ? value
+          : profile?.accent_color || "#06b6d4",
+
+      appearance_settings: next,
+    });
   };
 
-  const notification =
-    settings.advanced_settings.notifications ||
-    notificationDefaults;
+  /* ==========================================================
+     PRIVACY
+     ========================================================== */
 
-  const update = (key, value) => {
-    updateJsonSetting(
+  const updatePrivacy = async (key, value) => {
+    const next = {
+      ...privacySettings,
+      [key]: value,
+    };
+
+    setPrivacySettings(next);
+
+    await updateProfile({
+      is_private:
+        key === "privateAccount"
+          ? Boolean(value)
+          : profile?.is_private,
+
+      privacy_settings: next,
+    });
+  };
+
+  /* ==========================================================
+     CONTENT
+     ========================================================== */
+
+  const updateContent = async (key, value) => {
+    const next = {
+      ...contentSettings,
+      [key]: value,
+    };
+
+    setContentSettings(next);
+
+    await updateProfile({
+      content_settings: next,
+    });
+  };
+
+  /* ==========================================================
+     DATA SAVER
+     ========================================================== */
+
+  const toggleDataSaver = async () => {
+    const next = !dataSaver;
+
+    setDataSaver(next);
+
+    const advanced = mergeJson(
+      DEFAULT_JSON_SETTINGS.advanced,
+      profile?.advanced_settings
+    );
+
+    await updateProfile({
+      advanced_settings: {
+        ...advanced,
+        dataSaver: next,
+      },
+    });
+  };
+
+  /* ==========================================================
+     ACCESSIBILITY
+     ========================================================== */
+
+  const updateAccessibility = (key, value) => {
+    const next = {
+      ...accessibilitySettings,
+      [key]: value,
+    };
+
+    setAccessibilitySettings(next);
+
+    saveJsonSetting(
       "advanced_settings",
-      "notifications",
       {
-        ...notification,
-        [key]: value,
+        ...safeJson(profile?.advanced_settings, {}),
+        accessibility: next,
       }
     );
   };
 
-  const categories = [
-    ["followers", "Followers"],
-    ["likes", "Likes"],
-    ["comments", "Comments"],
-    ["replies", "Replies"],
-    ["mentions", "Mentions"],
-    ["shares", "Shares"],
-    ["reposts", "Reposts"],
-    ["saves", "Saves"],
-    ["gifts", "Gifts"],
-    ["live", "Live"],
-    ["subscribers", "Subscribers"],
-    ["subscriptionPayments", "Subscription payments"],
-    ["creatorFund", "Creator fund"],
-    ["earnings", "Earnings"],
-    ["payouts", "Payouts"],
-    ["videoProcessing", "Video processing"],
-    ["videoPublishing", "Video publishing"],
-    ["scheduledPublishing", "Scheduled publishing"],
-    ["copyright", "Copyright"],
-    ["contentWarnings", "Content warnings"],
-    ["accountSecurity", "Account security"],
-    ["system", "System"],
-  ];
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Notification channels"
-        description="Choose where notifications are delivered"
-        icon={<Bell size={17} />}
-      >
-        {[
-          ["push", "Push notifications"],
-          ["email", "Email notifications"],
-          ["sms", "SMS notifications"],
-          ["inApp", "In-app notifications"],
-          ["sounds", "Notification sounds"],
-          ["vibration", "Vibration"],
-        ].map(([key, title]) => (
-          <ToggleRow
-            key={key}
-            title={title}
-            value={Boolean(notification[key])}
-            onChange={(value) => update(key, value)}
-          />
-        ))}
-
-        <ToggleRow
-          title="Quiet hours"
-          description="Temporarily reduce notification interruptions"
-          value={Boolean(notification.quietHours)}
-          onChange={(value) => update("quietHours", value)}
-        />
-
-        <NavigationRow
-          icon={<Bell size={17} />}
-          title="Notification history"
-          description="Review notifications you've received"
-          onClick={() => {}}
-        />
-
-        <ActionButton
-          onClick={() => {}}
-          icon={<Check size={14} />}
-        >
-          Mark All as Read
-        </ActionButton>
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Activity notifications"
-        description="Choose which activity generates alerts"
-        icon={<Activity size={17} />}
-      >
-        {categories.map(([key, title]) => (
-          <ToggleRow
-            key={key}
-            title={title}
-            value={Boolean(notification[key])}
-            onChange={(value) => update(key, value)}
-          />
-        ))}
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   CONTENT
-============================================================ */
-
-const ContentSettings = ({
-  settings,
-  updateJsonSetting,
-}) => {
-  const content = settings.content_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Default publishing"
-        description="Defaults applied when you publish content"
-        icon={<Video size={17} />}
-      >
-        <SelectRow
-          title="Default video privacy"
-          value={content.defaultPrivacy}
-          options={[
-            ["public", "Public"],
-            ["followers", "Followers"],
-            ["private", "Private"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "defaultPrivacy",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Upload quality"
-          value={content.uploadQuality}
-          options={[
-            ["low", "Low"],
-            ["medium", "Medium"],
-            ["high", "High"],
-            ["original", "Original"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "uploadQuality",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Download quality"
-          value={content.downloadQuality}
-          options={[
-            ["low", "Low"],
-            ["medium", "Medium"],
-            ["high", "High"],
-            ["original", "Original"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "downloadQuality",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Interaction permissions"
-        description="Control what other people can do with your content"
-        icon={<Users size={17} />}
-      >
-        {[
-          ["comments", "Comments"],
-          ["downloads", "Downloads"],
-          ["duet", "Duet"],
-          ["stitch", "Stitch"],
-          ["repost", "Repost"],
-          ["sharing", "Sharing"],
-        ].map(([key, title]) => (
-          <ToggleRow
-            key={key}
-            title={title}
-            value={Boolean(content[key])}
-            onChange={(value) =>
-              updateJsonSetting(
-                "content_settings",
-                key,
-                value
-              )
-            }
-          />
-        ))}
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Safety & disclosure"
-        description="Control content safety settings"
-        icon={<Shield size={17} />}
-      >
-        <ToggleRow
-          title="Age restriction"
-          value={content.ageRestriction}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "ageRestriction",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Sensitive content"
-          description="Control exposure to sensitive content"
-          value={content.sensitiveContent}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "sensitiveContent",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Content warnings"
-          value={content.contentWarnings}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "contentWarnings",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="AI disclosure"
-          description="Disclose AI-assisted content when appropriate"
-          value={content.aiDisclosure}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "aiDisclosure",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Playback"
-        description="Control video autoplay and mobile data usage"
-        icon={<Play size={17} />}
-      >
-        <ToggleRow
-          title="Autoplay"
-          value={content.autoplay}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "autoplay",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Autoplay on Wi-Fi"
-          value={content.autoplayWifi}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "autoplayWifi",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Autoplay on mobile data"
-          value={content.autoplayMobile}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "autoplayMobile",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   COMMENTS
-============================================================ */
-
-const CommentsSettings = ({
-  settings,
-  updateJsonSetting,
-}) => {
-  const content = settings.content_settings;
-  const privacy = settings.privacy_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Comment controls"
-        description="Control who can comment and how comments appear"
-        icon={<MessageCircle size={17} />}
-      >
-        <ToggleRow
-          title="Allow comments"
-          value={Boolean(content.comments)}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "comments",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Automatic comment filtering"
-          value={Boolean(privacy.commentFiltering)}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "commentFiltering",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          icon={<AlertTriangle size={17} />}
-          title="Blocked words"
-          description="Hide comments containing selected words"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          icon={<Shield size={17} />}
-          title="Manual moderation"
-          description="Review comments before they appear"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          icon={<Bell size={17} />}
-          title="Comment notifications"
-          description="Manage comment activity notifications"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Moderation tools"
-        description="Tools for managing unwanted comments"
-        icon={<Shield size={17} />}
-      >
-        <NavigationRow
-          title="Hidden comments"
-          description="View comments hidden by filters"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          title="Spam comments"
-          description="Review comments detected as spam"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          title="Offensive content"
-          description="Review comments flagged as offensive"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   MESSAGES
-============================================================ */
-
-const MessagesSettings = ({
-  settings,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const privacy = settings.privacy_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Messaging permissions"
-        description="Control who can contact you"
-        icon={<Send size={17} />}
-      >
-        <SelectRow
-          title="Who can message you"
-          value={privacy.whoCanMessage}
-          options={[
-            ["everyone", "Everyone"],
-            ["followers", "Followers"],
-            ["nobody", "Nobody"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "privacy_settings",
-              "whoCanMessage",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          icon={<Mail size={17} />}
-          title="Message requests"
-          description="Manage messages from people you don't follow"
-          onClick={() => navigate("/messages/requests")}
-        />
-
-        <NavigationRow
-          icon={<Users size={17} />}
-          title="Group messages"
-          description="Control group conversation invitations"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Chat experience"
-        description="Control read receipts and typing indicators"
-        icon={<MessageCircle size={17} />}
-      >
-        <ToggleRow
-          title="Read receipts"
-          value={
-            settings.advanced_settings.readReceipts !== false
-          }
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "readReceipts",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Typing indicators"
-          value={
-            settings.advanced_settings.typingIndicators !== false
-          }
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "typingIndicators",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Message notifications"
-          value={
-            settings.advanced_settings.messageNotifications !==
-            false
-          }
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "messageNotifications",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Message privacy"
-        description="Accounts you've muted or blocked"
-        icon={<Shield size={17} />}
-      >
-        <NavigationRow
-          title="Blocked accounts"
-          onClick={() =>
-            navigate("/settings/privacy/blocked")
-          }
-        />
-
-        <NavigationRow
-          title="Muted accounts"
-          onClick={() =>
-            navigate("/settings/privacy/muted")
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   FOLLOWERS
-============================================================ */
-
-const FollowersSettings = ({
-  settings,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const discovery = settings.discovery_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Follower management"
-        description="Manage how people follow and discover you"
-        icon={<Users size={17} />}
-      >
-        <NavigationRow
-          icon={<UserCheck size={17} />}
-          title="Follow requests"
-          description="Review pending requests"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          icon={<UserMinus size={17} />}
-          title="Remove followers"
-          description="Remove accounts without blocking them"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          icon={<Shield size={17} />}
-          title="Blocked & restricted"
-          description="Manage restricted accounts"
-          onClick={() =>
-            navigate("/settings/privacy/restricted")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Discoverability"
-        description="Control how people find your account"
-        icon={<Globe size={17} />}
-      >
-        <ToggleRow
-          title="Account discoverability"
-          value={discovery.discoverability}
-          onChange={(value) =>
-            updateJsonSetting(
-              "discovery_settings",
-              "discoverability",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Account suggestions"
-          description="Allow your account to appear in suggestions"
-          value={discovery.suggestAccount}
-          onChange={(value) =>
-            updateJsonSetting(
-              "discovery_settings",
-              "suggestAccount",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Contact syncing"
-          description="Find friends from your contacts"
-          value={discovery.contactSync}
-          onChange={(value) =>
-            updateJsonSetting(
-              "discovery_settings",
-              "contactSync",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Personalized recommendations"
-          value={discovery.personalizedRecommendations}
-          onChange={(value) =>
-            updateJsonSetting(
-              "discovery_settings",
-              "personalizedRecommendations",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   DATA
-============================================================ */
-
-const DataSettings = ({
-  settings,
-  updateJsonSetting,
-  storageInfo,
-  clearTemporaryData,
-  calculateStorage,
-  navigate,
-}) => {
-  const content = settings.content_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Data saver"
-        description="Reduce mobile data usage"
-        icon={<Wifi size={17} />}
-      >
-        <ToggleRow
-          title="Data saver"
-          description="Reduce video quality and background data usage"
-          value={
-            settings.advanced_settings.dataSaver || false
-          }
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "dataSaver",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Upload quality"
-          value={content.uploadQuality}
-          options={[
-            ["low", "Low"],
-            ["medium", "Medium"],
-            ["high", "High"],
-            ["original", "Original"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "uploadQuality",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Download quality"
-          value={content.downloadQuality}
-          options={[
-            ["low", "Low"],
-            ["medium", "Medium"],
-            ["high", "High"],
-            ["original", "Original"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "content_settings",
-              "downloadQuality",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <StorageSummary
-        storageInfo={storageInfo}
-        onOpen={() => {}}
-        detailed
-      />
-
-      <SettingsPanel
-        title="Stored content"
-        description="Manage content stored locally or in your account"
-        icon={<HardDrive size={17} />}
-      >
-        <NavigationRow
-          icon={<Video size={17} />}
-          title="Videos"
-          description="Uploaded and locally stored videos"
-          onClick={() => navigate("/settings/library/videos")}
-        />
-
-        <NavigationRow
-          icon={<FileText size={17} />}
-          title="Drafts"
-          description="Unpublished content"
-          onClick={() => navigate("/settings/library/drafts")}
-        />
-
-        <NavigationRow
-          icon={<ImageIcon size={17} />}
-          title="Images & thumbnails"
-          description="Images and generated thumbnails"
-          onClick={() =>
-            navigate("/settings/library/images")
-          }
-        />
-
-        <NavigationRow
-          icon={<Mic size={17} />}
-          title="Audio"
-          description="Audio and music files"
-          onClick={() => navigate("/settings/library/audio")}
-        />
-
-        <NavigationRow
-          icon={<Radio size={17} />}
-          title="Live recordings"
-          description="Saved livestream recordings"
-          onClick={() =>
-            navigate("/settings/library/live-recordings")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Temporary data"
-        description="Clear locally stored temporary information"
-        icon={<Trash2 size={17} />}
-      >
-        <ActionButton
-          danger
-          onClick={clearTemporaryData}
-          icon={<Trash2 size={14} />}
-        >
-          Clear Temporary Data
-        </ActionButton>
-
-        <ActionButton
-          onClick={calculateStorage}
-          icon={<RefreshCw size={14} />}
-        >
-          Recalculate Storage
-        </ActionButton>
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   LANGUAGE
-============================================================ */
-
-const LanguageSettings = ({
-  settings,
-  updateJsonSetting,
-  profile,
-  updateProfile,
-}) => {
-  const advanced = settings.advanced_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Language"
-        description="Choose the languages used by the application"
-        icon={<Languages size={17} />}
-      >
-        <SelectRow
-          title="App language"
-          value={advanced.appLanguage || "English"}
-          options={[
-            ["English", "English"],
-            ["Chichewa", "Chichewa"],
-            ["Tumbuka", "Tumbuka"],
-            ["French", "French"],
-            ["Portuguese", "Portuguese"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "appLanguage",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Content language"
-          value={advanced.contentLanguage || "English"}
-          options={[
-            ["English", "English"],
-            ["Chichewa", "Chichewa"],
-            ["Tumbuka", "Tumbuka"],
-            ["French", "French"],
-            ["Portuguese", "Portuguese"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "contentLanguage",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Automatic translation"
-          value={advanced.autoTranslate !== false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "autoTranslate",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Caption language"
-          value={advanced.captionLanguage || "English"}
-          options={[
-            ["English", "English"],
-            ["Chichewa", "Chichewa"],
-            ["Tumbuka", "Tumbuka"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "captionLanguage",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Region"
-        description="Regional preferences for the platform"
-        icon={<Globe size={17} />}
-      >
-        <SettingInfo
-          label="Country"
-          value={profile.country || "Malawi"}
-        />
-
-        <SettingInfo
-          label="Currency"
-          value={profile.currency_preference || "MWK"}
-        />
-
-        <SelectRow
-          title="Currency preference"
-          value={profile.currency_preference || "MWK"}
-          options={[
-            ["MWK", "MWK — Malawi Kwacha"],
-            ["USD", "USD — US Dollar"],
-            ["ZAR", "ZAR — South African Rand"],
-            ["GBP", "GBP — British Pound"],
-            ["EUR", "EUR — Euro"],
-          ]}
-          onChange={(value) =>
-            updateProfile("currency_preference", value)
-          }
-        />
-
-        <SelectRow
-          title="Timezone"
-          value={advanced.timezone || "Africa/Blantyre"}
-          options={[
-            ["Africa/Blantyre", "Africa/Blantyre (CAT)"],
-            ["UTC", "UTC"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "timezone",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Date format"
-          value={advanced.dateFormat || "DD/MM/YYYY"}
-          options={[
-            ["DD/MM/YYYY", "DD/MM/YYYY"],
-            ["MM/DD/YYYY", "MM/DD/YYYY"],
-            ["YYYY-MM-DD", "YYYY-MM-DD"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "dateFormat",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Number format"
-          value={advanced.numberFormat || "local"}
-          options={[
-            ["local", "Local"],
-            ["international", "International"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "numberFormat",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   APPEARANCE
-============================================================ */
-
-const AppearanceSettings = ({
-  profile,
-  settings,
-  updateProfile,
-  updateJsonSetting,
-}) => {
-  const appearance = settings.appearance_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Theme"
-        description="Choose the visual appearance of the application"
-        icon={<Palette size={17} />}
-      >
-        <SelectRow
-          title="Theme"
-          value={profile.theme_preference || "neon"}
-          options={[
-            ["dark", "Dark"],
-            ["light", "Light"],
-            ["system", "System"],
-            ["neon", "Neon"],
-          ]}
-          onChange={(value) =>
-            updateProfile("theme_preference", value)
-          }
-        />
-
-        <SelectRow
-          title="Density"
-          value={appearance.density}
-          options={[
-            ["compact", "Compact"],
-            ["comfortable", "Comfortable"],
-            ["spacious", "Spacious"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "density",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Compact mode"
-          value={appearance.compactMode}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "compactMode",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Animations"
-          value={appearance.animations}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "animations",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Reduce motion"
-          value={appearance.reduceMotion}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "reduceMotion",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Glass effects"
-          value={appearance.glass}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "glass",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Blur effects"
-          value={appearance.blur}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "blur",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Accent color"
-        description="Customize your interface accent"
-        icon={<Sparkles size={17} />}
-      >
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-          {[
-            "#06b6d4",
-            "#8b5cf6",
-            "#ec4899",
-            "#22c55e",
-            "#f59e0b",
-            "#ef4444",
-            "#3b82f6",
-            "#ffffff",
-          ].map((color) => (
-            <button
-              key={color}
-              onClick={() =>
-                updateProfile("accent_color", color)
-              }
-              className={`h-10 rounded-xl border transition ${
-                profile.accent_color === color
-                  ? "border-white"
-                  : "border-white/10"
-              }`}
-              style={{ backgroundColor: color }}
-              aria-label={`Accent ${color}`}
+  /* ==========================================================
+     LOGOUT
+     ========================================================== */
+
+  const handleLogout = async () => {
+    try {
+      setSaving(true);
+
+      const { error } = await supabase.auth.signOut();
+
+      if (error) throw error;
+
+      navigate("/");
+    } catch (error) {
+      console.error("Logout error:", error);
+
+      setStatusMessage(
+        error?.message || "Unable to log out."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ==========================================================
+     CLEAR LOCAL DATA
+     ========================================================== */
+
+  const clearLocalData = () => {
+    try {
+      const protectedKeys = [
+        "supabase.auth.token",
+      ];
+
+      const keysToRemove = [];
+
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+
+        if (
+          key &&
+          !protectedKeys.some((protectedKey) =>
+            key.includes(protectedKey)
+          )
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+
+      keysToRemove.forEach((key) => {
+        localStorage.removeItem(key);
+      });
+
+      setStorage(calculateBrowserStorage());
+
+      setStatusMessage(
+        "Temporary local data cleared."
+      );
+
+      window.setTimeout(() => {
+        setStatusMessage("");
+      }, 2500);
+    } catch (error) {
+      console.error("Clear local data error:", error);
+
+      setStatusMessage(
+        "Unable to clear local data."
+      );
+    }
+  };
+
+  /* ==========================================================
+     SEARCH
+     ========================================================== */
+
+  const filteredSections = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) {
+      return SETTINGS_SECTIONS;
+    }
+
+    return SETTINGS_SECTIONS.filter((section) => {
+      return (
+        section.title.toLowerCase().includes(query) ||
+        section.description.toLowerCase().includes(query)
+      );
+    });
+  }, [search]);
+
+  /* ==========================================================
+     OPEN SECTION
+     ========================================================== */
+
+  const openSection = (id) => {
+    setActiveSection(id);
+
+    window.setTimeout(() => {
+      document
+        .getElementById(`settings-section-${id}`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+    }, 50);
+  };
+
+  /* ==========================================================
+     LOADING
+     ========================================================== */
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-14 h-14 rounded-full border-2 border-cyan-500/20 border-t-cyan-400 animate-spin" />
+
+            <Sparkles
+              size={18}
+              className="absolute inset-0 m-auto text-cyan-400"
             />
-          ))}
-        </div>
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Typography"
-        description="Control text readability"
-        icon={<FileText size={17} />}
-      >
-        <SelectRow
-          title="Font size"
-          value={appearance.fontSize}
-          options={[
-            ["small", "Small"],
-            ["medium", "Medium"],
-            ["large", "Large"],
-            ["xlarge", "Extra large"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "fontSize",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="High contrast"
-          value={appearance.highContrast}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "highContrast",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   ACCESSIBILITY
-============================================================ */
-
-const AccessibilitySettings = ({
-  settings,
-  updateJsonSetting,
-}) => {
-  const appearance = settings.appearance_settings;
-  const advanced = settings.advanced_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Visual accessibility"
-        description="Make the interface easier to see"
-        icon={<Eye size={17} />}
-      >
-        <SelectRow
-          title="Font size"
-          value={appearance.fontSize}
-          options={[
-            ["small", "Small"],
-            ["medium", "Medium"],
-            ["large", "Large"],
-            ["xlarge", "Extra large"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "fontSize",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="High contrast"
-          value={appearance.highContrast}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "highContrast",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Reduce motion"
-          value={appearance.reduceMotion}
-          onChange={(value) =>
-            updateJsonSetting(
-              "appearance_settings",
-              "reduceMotion",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Color-blind-friendly mode"
-          value={advanced.colorBlindFriendly || false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "colorBlindFriendly",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Audio & media accessibility"
-        description="Improve accessibility for video and audio"
-        icon={<Mic size={17} />}
-      >
-        <ToggleRow
-          title="Captions"
-          value={advanced.captions !== false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "captions",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Audio descriptions"
-          value={advanced.audioDescriptions || false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "audioDescriptions",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Screen reader optimization"
-          value={advanced.screenReader || false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "screenReader",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Touch & interaction"
-        description="Make controls easier to interact with"
-        icon={<Smartphone size={17} />}
-      >
-        <SelectRow
-          title="Touch target size"
-          value={advanced.touchTargetSize || "normal"}
-          options={[
-            ["small", "Small"],
-            ["normal", "Normal"],
-            ["large", "Large"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "touchTargetSize",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   PAYMENTS
-============================================================ */
-
-const PaymentSettings = ({
-  profile,
-  settings,
-  updateProfile,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const financial = settings.financial_settings;
-
-  return (
-    <div className="space-y-5">
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <FinanceCard
-          title="Balance"
-          value={formatMoney(
-            profile.balance,
-            profile.currency_preference || "MWK"
-          )}
-          icon={<Wallet size={18} />}
-        />
-
-        <FinanceCard
-          title="Coins"
-          value={Number(profile.coins || 0).toLocaleString()}
-          icon={<Coins size={18} />}
-        />
-
-        <FinanceCard
-          title="Tokens earned"
-          value={Number(
-            profile.total_tokens_earned || 0
-          ).toLocaleString()}
-          icon={<Sparkles size={18} />}
-        />
-      </div>
-
-      <SettingsPanel
-        title="Wallet"
-        description="Your creator financial summary"
-        icon={<Wallet size={17} />}
-      >
-        <SettingInfo
-          label="Available balance"
-          value={formatMoney(
-            profile.balance,
-            profile.currency_preference || "MWK"
-          )}
-        />
-
-        <SettingInfo
-          label="Coins"
-          value={Number(profile.coins || 0).toLocaleString()}
-        />
-
-        <SettingInfo
-          label="Lifetime tokens"
-          value={Number(
-            profile.total_tokens_earned || 0
-          ).toLocaleString()}
-        />
-
-        <SettingInfo
-          label="Subscription tier"
-          value={profile.subscription_tier || "Free"}
-        />
-
-        <div className="flex flex-wrap gap-2 pt-3">
-          <ActionButton
-            onClick={() => navigate("/payouts")}
-            icon={<Wallet size={14} />}
-          >
-            Open Payouts
-          </ActionButton>
-
-          <ActionButton
-            onClick={() => navigate("/settings/payments/transactions")}
-            icon={<FileText size={14} />}
-          >
-            Transactions
-          </ActionButton>
-        </div>
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Payment methods"
-        description="Manage your supported payout methods"
-        icon={<Smartphone size={17} />}
-      >
-        <SelectRow
-          title="Default payout method"
-          value={
-            profile.payout_method || financial.defaultPayoutMethod
-          }
-          options={[
-            ["Mobile Money", "Mobile Money"],
-            ["TNM Mpamba", "TNM Mpamba"],
-            ["Airtel Money", "Airtel Money"],
-            ["Bank", "Bank"],
-          ]}
-          onChange={(value) =>
-            updateProfile("payout_method", value)
-          }
-        />
-
-        <SelectRow
-          title="Currency"
-          value={profile.currency_preference || "MWK"}
-          options={[
-            ["MWK", "MWK"],
-            ["USD", "USD"],
-            ["ZAR", "ZAR"],
-            ["GBP", "GBP"],
-            ["EUR", "EUR"],
-          ]}
-          onChange={(value) =>
-            updateProfile("currency_preference", value)
-          }
-        />
-
-        <ToggleRow
-          title="Payment verification"
-          description="Mark your payout configuration as verified"
-          value={financial.paymentVerified}
-          onChange={(value) =>
-            updateJsonSetting(
-              "financial_settings",
-              "paymentVerified",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Payouts"
-        description="Control how creator earnings are withdrawn"
-        icon={<Wallet size={17} />}
-      >
-        <SettingInfo
-          label="Minimum payout"
-          value={
-            financial.minimumPayout
-              ? formatMoney(
-                  financial.minimumPayout,
-                  profile.currency_preference || "MWK"
-                )
-              : "Platform default"
-          }
-        />
-
-        <ToggleRow
-          title="Automatic payouts"
-          value={financial.autoPayout}
-          onChange={(value) =>
-            updateJsonSetting(
-              "financial_settings",
-              "autoPayout",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Payout schedule"
-          value={financial.payoutSchedule}
-          options={[
-            ["manual", "Manual"],
-            ["weekly", "Weekly"],
-            ["monthly", "Monthly"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "financial_settings",
-              "payoutSchedule",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          title="Payout history"
-          description="Pending, completed, failed and cancelled payouts"
-          onClick={() => navigate("/payouts")}
-        />
-
-        <NavigationRow
-          title="Transaction history"
-          description="Payments, purchases, gifts and refunds"
-          onClick={() =>
-            navigate("/settings/payments/transactions")
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   CREATOR
-============================================================ */
-
-const CreatorSettings = ({
-  profile,
-  settings,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const creator = settings.creator_settings;
-
-  return (
-    <div className="space-y-5">
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <FinanceCard
-          title="Creator level"
-          value={`Level ${profile.creator_level || 1}`}
-          icon={<Award size={18} />}
-        />
-
-        <FinanceCard
-          title="XP"
-          value={Number(profile.creator_xp || 0).toLocaleString()}
-          icon={<Zap size={18} />}
-        />
-
-        <FinanceCard
-          title="Followers"
-          value={Number(
-            profile.follower_count || 0
-          ).toLocaleString()}
-          icon={<Users size={18} />}
-        />
-
-        <FinanceCard
-          title="Likes"
-          value={Number(
-            profile.total_likes || 0
-          ).toLocaleString()}
-          icon={<Sparkles size={18} />}
-        />
-      </div>
-
-      <SettingsPanel
-        title="Creator dashboard"
-        description="Creator tools and professional controls"
-        icon={<LayoutDashboard size={17} />}
-      >
-        <ToggleRow
-          title="Creator dashboard"
-          value={creator.creatorDashboard}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "creatorDashboard",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Analytics"
-          value={creator.analytics}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "analytics",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Audience insights"
-          value={creator.audienceInsights}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "audienceInsights",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Content performance"
-          value={creator.contentPerformance}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "contentPerformance",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Growth recommendations"
-          value={creator.growthRecommendations}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "growthRecommendations",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Creator monetization"
-        description="Features related to earning from your audience"
-        icon={<Wallet size={17} />}
-      >
-        {[
-          ["earnings", "Earnings"],
-          ["gifts", "Gifts"],
-          ["subscriptions", "Subscriptions"],
-          ["paidContent", "Paid content"],
-        ].map(([key, title]) => (
-          <ToggleRow
-            key={key}
-            title={title}
-            value={Boolean(creator[key])}
-            onChange={(value) =>
-              updateJsonSetting(
-                "creator_settings",
-                key,
-                value
-              )
-            }
-          />
-        ))}
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Creator tools"
-        description="Publishing, livestream and content tools"
-        icon={<Sparkles size={17} />}
-      >
-        <ToggleRow
-          title="Livestream"
-          value={creator.livestream}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "livestream",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Scheduling"
-          value={creator.scheduling}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "scheduling",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Media kit"
-          value={creator.mediaKit}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "mediaKit",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Brand collaboration"
-          value={creator.brandCollaboration}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "brandCollaboration",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          title="Creator analytics"
-          description="Open detailed performance analytics"
-          onClick={() => navigate("/universe-tools")}
-        />
-
-        <NavigationRow
-          title="Live Center"
-          description="Manage livestreams"
-          onClick={() => navigate("/live-universe")}
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   SCHEDULING
-============================================================ */
-
-const SchedulingSettings = ({
-  settings,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const creator = settings.creator_settings;
-  const advanced = settings.advanced_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Scheduling"
-        description="Manage scheduled videos and livestreams"
-        icon={<Play size={17} />}
-      >
-        <ToggleRow
-          title="Scheduling enabled"
-          value={creator.scheduling}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "scheduling",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Auto publishing"
-          value={advanced.autoPublishing || false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "autoPublishing",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Publishing notifications"
-          value={advanced.publishingNotifications !== false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "publishingNotifications",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Failed publishing notifications"
-          value={advanced.failedPublishingNotifications !== false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "failedPublishingNotifications",
-              value
-            )
-          }
-        />
-
-        <SelectRow
-          title="Publishing timezone"
-          value={advanced.timezone || "Africa/Blantyre"}
-          options={[
-            ["Africa/Blantyre", "Africa/Blantyre (CAT)"],
-            ["UTC", "UTC"],
-          ]}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "timezone",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Calendar"
-        description="Scheduled publishing workspace"
-        icon={<FileText size={17} />}
-      >
-        <NavigationRow
-          title="Scheduled videos"
-          description="View and manage scheduled videos"
-          onClick={() =>
-            navigate("/settings/creator/scheduling/videos")
-          }
-        />
-
-        <NavigationRow
-          title="Scheduled livestreams"
-          description="View and manage scheduled lives"
-          onClick={() =>
-            navigate("/settings/creator/scheduling/lives")
-          }
-        />
-
-        <NavigationRow
-          title="Publishing calendar"
-          description="View your creator publishing calendar"
-          onClick={() =>
-            navigate("/settings/creator/scheduling/calendar")
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   LIBRARY
-============================================================ */
-
-const LibrarySettings = ({ navigate }) => {
-  const rows = [
-    ["Videos", "Uploaded videos", "/settings/library/videos"],
-    ["Drafts", "Unpublished content", "/settings/library/drafts"],
-    ["Images", "Images and graphics", "/settings/library/images"],
-    ["Audio", "Audio and music", "/settings/library/audio"],
-    [
-      "Thumbnails",
-      "Generated and uploaded thumbnails",
-      "/settings/library/thumbnails",
-    ],
-    [
-      "Live recordings",
-      "Saved livestream recordings",
-      "/settings/library/live-recordings",
-    ],
-    [
-      "Archived",
-      "Archived content",
-      "/settings/library/archived",
-    ],
-    [
-      "Recently deleted",
-      "Recoverable deleted content",
-      "/settings/library/recently-deleted",
-    ],
-  ];
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Content library"
-        description="Everything you've uploaded or created"
-        icon={<FileArchive size={17} />}
-      >
-        {rows.map(([title, description, path]) => (
-          <NavigationRow
-            key={title}
-            title={title}
-            description={description}
-            onClick={() => navigate(path)}
-          />
-        ))}
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Recovery"
-        description="Recover recently deleted content when available"
-        icon={<RefreshCw size={17} />}
-      >
-        <NavigationRow
-          title="Recently deleted"
-          description="Content still within the recovery period"
-          onClick={() =>
-            navigate("/settings/library/recently-deleted")
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   PROGRESS
-============================================================ */
-
-const ProgressSettings = ({
-  profile,
-  settings,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const creator = settings.creator_settings;
-
-  return (
-    <div className="space-y-5">
-      <div className="rounded-3xl border border-white/[0.07] bg-[#070707] p-5 sm:p-7">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-yellow-400/[0.08] border border-yellow-400/10 flex items-center justify-center text-yellow-400">
-            <Award size={25} />
           </div>
 
-          <div>
-            <div className="text-[10px] uppercase tracking-[3px] text-zinc-600">
-              Creator Progress
+          <p className="text-[10px] font-black uppercase tracking-[3px] text-zinc-500">
+            Loading settings
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ==========================================================
+     PROFILE VALUES
+     ========================================================== */
+
+  const socialLinks = getSocialLinks(profile);
+
+  const currency =
+    profile?.currency_preference ||
+    "MWK";
+
+  const creatorLevel =
+    Number(profile?.creator_level || 1);
+
+  const creatorXP =
+    Number(profile?.creator_xp || 0);
+
+  const profileCompletion =
+    Number(profile?.profile_completion || 0);
+
+  const verified =
+    Boolean(
+      profile?.is_verified ||
+        profile?.verified_status === "verified"
+    );
+
+  const accountType =
+    profile?.account_type ||
+    "personal";
+
+  const accountStatus =
+    profile?.account_status ||
+    "active";
+
+  /* ==========================================================
+     RENDER
+     ========================================================== */
+
+  return (
+    <div className="h-screen overflow-hidden bg-black text-white font-sans">
+      {/* ======================================================
+          PAGE SHELL
+      ====================================================== */}
+
+      <div className="h-full flex flex-col">
+        {/* ====================================================
+            HEADER
+        ==================================================== */}
+
+        <header className="shrink-0 sticky top-0 z-50 border-b border-white/10 bg-black/90 backdrop-blur-2xl">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+            <div className="min-h-[72px] flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="w-10 h-10 shrink-0 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] flex items-center justify-center transition"
+                aria-label="Go back"
+              >
+                <ArrowLeft size={20} />
+              </button>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-sm sm:text-base font-black uppercase tracking-[2px] truncate">
+                    Settings & Privacy
+                  </h1>
+
+                  <span className="hidden sm:inline-flex text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md bg-cyan-400/10 text-cyan-400 border border-cyan-400/20">
+                    Hub
+                  </span>
+                </div>
+
+                <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-wider mt-1">
+                  Manage your Mpade Universe experience
+                </p>
+              </div>
+
+              {saving && (
+                <RefreshCw
+                  size={17}
+                  className="text-cyan-400 animate-spin"
+                />
+              )}
             </div>
 
-            <div className="text-2xl font-black mt-1">
-              Level {profile.creator_level || 1}
-            </div>
+            {/* SEARCH */}
 
-            <div className="text-xs text-zinc-500">
-              {Number(profile.creator_xp || 0).toLocaleString()} XP
+            <div className="pb-4">
+              <div className="relative">
+                <Search
+                  size={17}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600"
+                />
+
+                <input
+                  value={search}
+                  onChange={(event) =>
+                    setSearch(event.target.value)
+                  }
+                  placeholder="Search settings..."
+                  className="w-full h-12 rounded-2xl border border-white/10 bg-white/[0.035] pl-11 pr-12 text-sm text-white outline-none placeholder:text-zinc-700 focus:border-cyan-400/40 focus:bg-white/[0.05] transition"
+                />
+
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        </header>
 
-        <div className="mt-6">
-          <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
-            <div
-              className="h-full bg-cyan-400 rounded-full"
-              style={{
-                width: `${Math.min(
-                  100,
-                  Number(profile.creator_xp || 0) % 100
-                )}%`,
+        {/* ====================================================
+            STATUS MESSAGE
+        ==================================================== */}
+
+        <AnimatePresence>
+          {statusMessage && (
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: -10,
               }}
-            />
-          </div>
-        </div>
-      </div>
-
-      <SettingsPanel
-        title="Progress"
-        description="Track milestones and achievements"
-        icon={<Award size={17} />}
-      >
-        <NavigationRow
-          title="Achievements"
-          description="View earned achievements"
-          onClick={() =>
-            navigate("/settings/creator/achievements")
-          }
-        />
-
-        <NavigationRow
-          title="Badges"
-          description="View your profile badges"
-          onClick={() =>
-            navigate("/settings/creator/badges")
-          }
-        />
-
-        <NavigationRow
-          title="Streaks"
-          description="Track creator activity streaks"
-          onClick={() =>
-            navigate("/settings/creator/streaks")
-          }
-        />
-
-        <NavigationRow
-          title="Milestones"
-          description="Creator milestones"
-          onClick={() =>
-            navigate("/settings/creator/milestones")
-          }
-        />
-
-        <NavigationRow
-          title="Leaderboard"
-          description="Compare creator progress"
-          onClick={() =>
-            navigate("/settings/creator/leaderboard")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Goals"
-        description="Creator goals and recommendations"
-        icon={<Zap size={17} />}
-      >
-        <ToggleRow
-          title="Creator goals"
-          value={creator.goals}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "goals",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          title="Manage goals"
-          description="Set and track your creator goals"
-          onClick={() =>
-            navigate("/settings/creator/goals")
-          }
-        />
-
-        <NavigationRow
-          title="Rewards"
-          description="Available creator rewards"
-          onClick={() =>
-            navigate("/settings/creator/rewards")
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   BRAND
-============================================================ */
-
-const BrandSettings = ({
-  profile,
-  settings,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const creator = settings.creator_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Business profile"
-        description="Professional information for collaborations"
-        icon={<BriefcaseBusiness size={17} />}
-      >
-        <SettingInfo
-          label="Creator category"
-          value={profile.creator_category || "Not set"}
-        />
-
-        <SettingInfo
-          label="Creator website"
-          value={profile.creator_website || "Not set"}
-        />
-
-        <SettingInfo
-          label="Business email"
-          value={profile.business_email || "Not set"}
-        />
-
-        <SettingInfo
-          label="Business phone"
-          value={profile.business_phone || "Not set"}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Brand collaboration"
-        description="Manage commercial creator opportunities"
-        icon={<BriefcaseBusiness size={17} />}
-      >
-        <ToggleRow
-          title="Brand collaborations"
-          value={creator.brandCollaboration}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "brandCollaboration",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Media kit"
-          value={creator.mediaKit}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "mediaKit",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          title="Brand requests"
-          description="Incoming collaboration requests"
-          onClick={() =>
-            navigate("/settings/brand/requests")
-          }
-        />
-
-        <NavigationRow
-          title="Partnership requests"
-          description="Manage partnership opportunities"
-          onClick={() =>
-            navigate("/settings/brand/partnerships")
-          }
-        />
-
-        <NavigationRow
-          title="Campaigns"
-          description="Active and completed campaigns"
-          onClick={() =>
-            navigate("/settings/brand/campaigns")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Creator business tools"
-        description="Professional materials and pricing"
-        icon={<FileText size={17} />}
-      >
-        <NavigationRow
-          title="Media kit"
-          description="Create and manage your media kit"
-          onClick={() =>
-            navigate("/settings/brand/media-kit")
-          }
-        />
-
-        <NavigationRow
-          title="Portfolio"
-          description="Showcase your best work"
-          onClick={() =>
-            navigate("/settings/brand/portfolio")
-          }
-        />
-
-        <NavigationRow
-          title="Rate card"
-          description="Set your collaboration rates"
-          onClick={() =>
-            navigate("/settings/brand/rate-card")
-          }
-        />
-
-        <NavigationRow
-          title="Campaign analytics"
-          description="Track campaign performance"
-          onClick={() =>
-            navigate("/settings/brand/analytics")
-          }
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   COPYRIGHT
-============================================================ */
-
-const CopyrightSettings = ({ navigate }) => {
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Copyright status"
-        description="Review ownership and copyright activity"
-        icon={<ShieldCheck size={17} />}
-      >
-        <NavigationRow
-          title="Copyright status"
-          description="Current status of your account"
-          onClick={() =>
-            navigate("/settings/copyright/status")
-          }
-        />
-
-        <NavigationRow
-          title="Claims"
-          description="Copyright claims involving your content"
-          onClick={() =>
-            navigate("/settings/copyright/claims")
-          }
-        />
-
-        <NavigationRow
-          title="Strikes"
-          description="Copyright strikes and their status"
-          onClick={() =>
-            navigate("/settings/copyright/strikes")
-          }
-        />
-
-        <NavigationRow
-          title="Disputes & appeals"
-          description="Manage copyright disputes"
-          onClick={() =>
-            navigate("/settings/copyright/disputes")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Rights"
-        description="Manage ownership and music rights"
-        icon={<FileText size={17} />}
-      >
-        <NavigationRow
-          title="Content ownership"
-          description="Review ownership of your content"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          title="Music rights"
-          description="Music usage and licensing information"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          title="AI disclosure"
-          description="Manage AI-assisted content disclosures"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Safety"
-        description="Community safety and content enforcement"
-        icon={<Shield size={17} />}
-      >
-        <NavigationRow
-          title="Community guidelines"
-          description="Rules for content and interactions"
-          onClick={() => navigate("/community-guidelines")}
-        />
-
-        <NavigationRow
-          title="Content violations"
-          description="Review warnings and restrictions"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          title="Removed content"
-          description="Content removed from your account"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   AI
-============================================================ */
-
-const AISettings = ({
-  settings,
-  updateJsonSetting,
-  navigate,
-}) => {
-  const creator = settings.creator_settings;
-  const advanced = settings.advanced_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="AI assistant"
-        description="Configure AI-powered tools across Mpade Universe"
-        icon={<Bot size={17} />}
-      >
-        <NavigationRow
-          icon={<Bot size={17} />}
-          title="AI Assistant"
-          description="Open your AI assistant"
-          onClick={() => navigate("/ai")}
-        />
-
-        <ToggleRow
-          title="AI recommendations"
-          description="Use AI to personalize recommendations"
-          value={creator.aiRecommendations}
-          onChange={(value) =>
-            updateJsonSetting(
-              "creator_settings",
-              "aiRecommendations",
-              value
-            )
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Creator AI tools"
-        description="AI tools for creating and managing content"
-        icon={<Sparkles size={17} />}
-      >
-        <NavigationRow
-          title="Captions"
-          description="Generate captions"
-          onClick={() => navigate("/ai/captions")}
-        />
-
-        <NavigationRow
-          title="Hashtags"
-          description="Generate relevant hashtags"
-          onClick={() => navigate("/ai/hashtags")}
-        />
-
-        <NavigationRow
-          title="Scripts"
-          description="Generate video scripts"
-          onClick={() => navigate("/ai/scripts")}
-        />
-
-        <NavigationRow
-          title="Thumbnails"
-          description="AI thumbnail tools"
-          onClick={() => navigate("/ai/thumbnails")}
-        />
-
-        <NavigationRow
-          title="Video analysis"
-          description="Analyze creator content"
-          onClick={() => navigate("/ai/video-analysis")}
-        />
-
-        <NavigationRow
-          title="Comment replies"
-          description="Generate suggested replies"
-          onClick={() => navigate("/ai/comment-replies")}
-        />
-
-        <NavigationRow
-          title="AI moderation"
-          description="AI-assisted moderation"
-          onClick={() => navigate("/ai/moderation")}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="AI privacy"
-        description="Control how AI interacts with your data"
-        icon={<Lock size={17} />}
-      >
-        <ToggleRow
-          title="Personalization"
-          value={advanced.aiPersonalization !== false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "aiPersonalization",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="AI data usage"
-          description="Allow supported AI features to use activity data"
-          value={advanced.aiDataUsage !== false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "aiDataUsage",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="AI disclosure"
-          value={advanced.aiDisclosure !== false}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "aiDisclosure",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          title="AI history"
-          description="Review previous AI interactions"
-          onClick={() => navigate("/settings/ai/history")}
-        />
-
-        <NavigationRow
-          title="Clear AI history"
-          description="Remove stored AI interaction history"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   REPORTS
-============================================================ */
-
-const ReportsSettings = ({ navigate }) => {
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Download your information"
-        description="Export a copy of your Mpade Universe data"
-        icon={<Download size={17} />}
-      >
-        <NavigationRow
-          icon={<FileArchive size={17} />}
-          title="Personal data"
-          description="Profile, settings and account information"
-          onClick={() =>
-            navigate("/settings/reports/personal-data")
-          }
-        />
-
-        <NavigationRow
-          icon={<Video size={17} />}
-          title="Videos"
-          description="Export your uploaded video information"
-          onClick={() =>
-            navigate("/settings/reports/videos")
-          }
-        />
-
-        <NavigationRow
-          icon={<Users size={17} />}
-          title="Followers"
-          description="Export follower information"
-          onClick={() =>
-            navigate("/settings/reports/followers")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Creator reports"
-        description="Download analytics and creator reports"
-        icon={<LayoutDashboard size={17} />}
-      >
-        <NavigationRow
-          title="Analytics report"
-          description="Creator performance data"
-          onClick={() =>
-            navigate("/settings/reports/analytics")
-          }
-        />
-
-        <NavigationRow
-          title="Earnings report"
-          description="Creator earnings information"
-          onClick={() =>
-            navigate("/settings/reports/earnings")
-          }
-        />
-
-        <NavigationRow
-          title="Transaction report"
-          description="Payments and transactions"
-          onClick={() =>
-            navigate("/settings/reports/transactions")
-          }
-        />
-
-        <NavigationRow
-          title="Monthly creator report"
-          description="Monthly creator summary"
-          onClick={() =>
-            navigate("/settings/reports/monthly")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Export formats"
-        description="Supported data formats"
-        icon={<FileText size={17} />}
-      >
-        <div className="flex flex-wrap gap-2">
-          <Badge>CSV</Badge>
-          <Badge>JSON</Badge>
-          <Badge>PDF</Badge>
-          <Badge>Archive</Badge>
-        </div>
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   CONNECTED APPS
-============================================================ */
-
-const ConnectedAppsSettings = ({ navigate }) => {
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Connected applications"
-        description="Third-party services authorized to access your account"
-        icon={<Code2 size={17} />}
-      >
-        <NavigationRow
-          title="Connected apps"
-          description="View applications linked to your account"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          title="OAuth access"
-          description="Manage OAuth authorizations"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          title="Authorized devices"
-          description="Devices authorized for account access"
-          onClick={() =>
-            navigate("/settings/security/devices")
-          }
-        />
-
-        <NavigationRow
-          title="API access"
-          description="Manage API credentials and permissions"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Permissions"
-        description="Control third-party access"
-        icon={<Shield size={17} />}
-      >
-        <NavigationRow
-          title="Third-party permissions"
-          description="Review data permissions"
-          onClick={() => {}}
-        />
-
-        <NavigationRow
-          title="Revoke access"
-          description="Remove access from connected services"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   SUPPORT
-============================================================ */
-
-const SupportSettings = ({ navigate }) => {
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Help"
-        description="Find answers and assistance"
-        icon={<CircleHelp size={17} />}
-      >
-        <NavigationRow
-          icon={<CircleHelp size={17} />}
-          title="Help Center"
-          description="Find answers to common questions"
-          onClick={() => navigate("/support")}
-        />
-
-        <NavigationRow
-          title="Report a problem"
-          description="Tell us about an issue"
-          onClick={() => navigate("/support/report")}
-        />
-
-        <NavigationRow
-          title="Report content"
-          description="Report content that violates guidelines"
-          onClick={() => navigate("/support/report-content")}
-        />
-
-        <NavigationRow
-          title="Account recovery"
-          description="Get help recovering your account"
-          onClick={() => navigate("/support/recovery")}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Specialized support"
-        description="Get help with specific areas"
-        icon={<Shield size={17} />}
-      >
-        <NavigationRow
-          title="Copyright support"
-          onClick={() =>
-            navigate("/support/copyright")
-          }
-        />
-
-        <NavigationRow
-          title="Payments support"
-          onClick={() =>
-            navigate("/support/payments")
-          }
-        />
-
-        <NavigationRow
-          title="Creator support"
-          onClick={() =>
-            navigate("/support/creator")
-          }
-        />
-
-        <NavigationRow
-          title="Safety Center"
-          onClick={() =>
-            navigate("/support/safety")
-          }
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Legal"
-        description="Policies and legal information"
-        icon={<FileText size={17} />}
-      >
-        <NavigationRow
-          title="Community Guidelines"
-          onClick={() =>
-            navigate("/community-guidelines")
-          }
-        />
-
-        <NavigationRow
-          title="Terms of Service"
-          onClick={() => navigate("/terms")}
-        />
-
-        <NavigationRow
-          title="Privacy Policy"
-          onClick={() => navigate("/privacy")}
-        />
-
-        <NavigationRow
-          title="Cookie Policy"
-          onClick={() => navigate("/cookies")}
-        />
-
-        <NavigationRow
-          title="About Mpade Universe"
-          onClick={() => navigate("/about")}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Support tickets"
-        description="Track your support requests"
-        icon={<FileText size={17} />}
-      >
-        <NavigationRow
-          title="My tickets"
-          description="View open and previous support tickets"
-          onClick={() => navigate("/support/tickets")}
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   SYSTEM
-============================================================ */
-
-const SystemSettings = ({
-  settings,
-  updateJsonSetting,
-  storageInfo,
-  calculateStorage,
-  clearTemporaryData,
-}) => {
-  const advanced = settings.advanced_settings;
-
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Application"
-        description="Information about this installation"
-        icon={<Settings2 size={17} />}
-      >
-        <SettingInfo
-          label="App version"
-          value="2.4.0-Beta"
-        />
-
-        <SettingInfo
-          label="Build"
-          value="Production"
-        />
-
-        <SettingInfo
-          label="Platform"
-          value="Web / Vite"
-        />
-
-        <SettingInfo
-          label="Database"
-          value="Supabase"
-        />
-
-        <SettingInfo
-          label="Storage"
-          value="Supabase Storage"
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Synchronization"
-        description="Background and network behavior"
-        icon={<RefreshCw size={17} />}
-      >
-        <ToggleRow
-          title="Auto refresh"
-          value={advanced.autoRefresh}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "autoRefresh",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Background sync"
-          value={advanced.backgroundSync}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "backgroundSync",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Offline mode"
-          value={advanced.offlineMode}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "offlineMode",
-              value
-            )
-          }
-        />
-
-        <SettingInfo
-          label="Last local calculation"
-          value={new Date().toLocaleString()}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Diagnostics"
-        description="Troubleshooting tools"
-        icon={<Activity size={17} />}
-      >
-        <ToggleRow
-          title="Diagnostics"
-          description="Enable diagnostic information"
-          value={advanced.diagnostics}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "diagnostics",
-              value
-            )
-          }
-        />
-
-        <ToggleRow
-          title="Error logging"
-          description="Allow client-side error logging"
-          value={advanced.errorLogging}
-          onChange={(value) =>
-            updateJsonSetting(
-              "advanced_settings",
-              "errorLogging",
-              value
-            )
-          }
-        />
-
-        <NavigationRow
-          title="Error logs"
-          description="View available diagnostic logs"
-          onClick={() => {}}
-        />
-
-        <StorageSummary
-          storageInfo={storageInfo}
-          onOpen={() => {}}
-        />
-
-        <div className="flex flex-wrap gap-2 pt-2">
-          <ActionButton
-            onClick={calculateStorage}
-            icon={<RefreshCw size={14} />}
-          >
-            Refresh Diagnostics
-          </ActionButton>
-
-          <ActionButton
-            danger
-            onClick={clearTemporaryData}
-            icon={<Trash2 size={14} />}
-          >
-            Clear Temp Data
-          </ActionButton>
-        </div>
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Service architecture"
-        description="Live infrastructure is separate from Settings"
-        icon={<Cloud size={17} />}
-      >
-        <StatusRow
-          label="Supabase"
-          status="Connected"
-        />
-
-        <StatusRow
-          label="Profile service"
-          status="Connected"
-        />
-
-        <StatusRow
-          label="Socket.IO"
-          status="Live module"
-          muted
-        />
-
-        <StatusRow
-          label="Media processing"
-          status="Backend dependent"
-          muted
-        />
-      </SettingsPanel>
-    </div>
-  );
-};
-
-/* ============================================================
-   EXIT
-============================================================ */
-
-const ExitSettings = ({
-  navigate,
-  onLogout,
-}) => {
-  return (
-    <div className="space-y-5">
-      <SettingsPanel
-        title="Before leaving"
-        description="Protect your data before deactivating or deleting"
-        icon={<Download size={17} />}
-      >
-        <NavigationRow
-          icon={<Download size={17} />}
-          title="Download your information"
-          description="Get a copy of your data before leaving"
-          onClick={() => navigate("/settings/reports")}
-        />
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Sign out"
-        description="End your current session"
-        icon={<LogOut size={17} />}
-      >
-        <ActionButton
-          onClick={onLogout}
-          icon={<LogOut size={14} />}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              exit={{
+                opacity: 0,
+                y: -10,
+              }}
+              className="fixed top-24 right-4 z-[100] max-w-sm"
+            >
+              <div className="flex items-start gap-3 rounded-2xl border border-cyan-400/20 bg-zinc-950/95 backdrop-blur-xl px-4 py-3 shadow-2xl">
+                <Check
+                  size={17}
+                  className="mt-0.5 shrink-0 text-cyan-400"
+                />
+
+                <p className="text-xs text-zinc-300">
+                  {statusMessage}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ====================================================
+            SCROLLABLE CONTENT
+        ==================================================== */}
+
+        <main
+          className="
+            flex-1
+            overflow-y-auto
+            overflow-x-hidden
+            overscroll-contain
+            scrollbar-thin
+            scrollbar-thumb-cyan-500/40
+            scrollbar-track-white/5
+            pb-16
+          "
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor:
+              "rgba(6,182,212,.45) rgba(255,255,255,.04)",
+          }}
         >
-          Log Out
-        </ActionButton>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+            {/* ==================================================
+                PROFILE CARD
+            ================================================== */}
 
-        <NavigationRow
-          title="Log out all devices"
-          description="End sessions on every authorized device"
-          badge="Backend"
-          onClick={() => {}}
-        />
-      </SettingsPanel>
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: 10,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.015] mb-8"
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(6,182,212,.13),transparent_40%)] pointer-events-none" />
 
-      <SettingsPanel
-        title="Deactivate account"
-        description="Temporarily disable your account"
-        icon={<Pause size={17} />}
-      >
-        <NavigationRow
-          title="Deactivate account"
-          description="Temporarily hide your account and content"
-          onClick={() =>
-            navigate("/settings/account/deactivate")
-          }
-        />
-      </SettingsPanel>
+              <div className="relative p-5 sm:p-6">
+                <div className="flex flex-col sm:flex-row gap-5 sm:items-center">
+                  {/* AVATAR */}
 
-      <SettingsPanel
-        title="Delete account"
-        description="Permanently remove your account and associated data"
-        icon={<Trash2 size={17} />}
-        danger
-      >
-        <NavigationRow
-          title="Delete account"
-          description="This action requires confirmation"
-          danger
-          onClick={() =>
-            navigate("/settings/account/delete")
-          }
-        />
-      </SettingsPanel>
+                  <div className="relative shrink-0">
+                    {profile?.avatar_url ? (
+                      <img
+                        src={profile.avatar_url}
+                        alt=""
+                        className="w-20 h-20 rounded-3xl object-cover border border-white/10"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 rounded-3xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-2xl font-black text-cyan-400">
+                        {getInitials(profile)}
+                      </div>
+                    )}
+
+                    {verified && (
+                      <div className="absolute -right-2 -bottom-2 w-7 h-7 rounded-full bg-cyan-500 border-4 border-black flex items-center justify-center">
+                        <Check
+                          size={13}
+                          strokeWidth={4}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* USER */}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-xl font-black truncate">
+                        {profile?.display_name ||
+                          profile?.full_name ||
+                          profile?.username ||
+                          "Mpade User"}
+                      </h2>
+
+                      {verified && (
+                        <span className="text-[8px] uppercase font-black tracking-widest text-cyan-400 bg-cyan-400/10 px-2 py-1 rounded-md">
+                          Verified
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-zinc-500 mt-1">
+                      @{String(
+                        profile?.username || "user"
+                      ).replace(/^@/, "")}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <StatusPill
+                        icon={<User size={11} />}
+                        text={accountType}
+                      />
+
+                      <StatusPill
+                        icon={
+                          <Activity size={11} />
+                        }
+                        text={accountStatus}
+                      />
+
+                      <StatusPill
+                        icon={<Globe size={11} />}
+                        text={
+                          profile?.country ||
+                          "Malawi"
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* EDIT */}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate("/edit-profile")
+                    }
+                    className="self-start sm:self-center flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-[10px] font-black uppercase tracking-widest transition"
+                  >
+                    <Edit3 size={14} />
+                    Edit profile
+                  </button>
+                </div>
+
+                {/* PROFILE STATS */}
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-6">
+                  <MiniStat
+                    label="Followers"
+                    value={formatNumber(
+                      profile?.follower_count
+                    )}
+                  />
+
+                  <MiniStat
+                    label="Following"
+                    value={formatNumber(
+                      profile?.following_count
+                    )}
+                  />
+
+                  <MiniStat
+                    label="Likes"
+                    value={formatNumber(
+                      profile?.total_likes
+                    )}
+                  />
+
+                  <MiniStat
+                    label="Completion"
+                    value={`${profileCompletion}%`}
+                  />
+                </div>
+              </div>
+            </motion.div>
+
+            {/* ==================================================
+                SEARCH RESULT COUNT
+            ================================================== */}
+
+            {search && (
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[10px] uppercase tracking-[2px] font-black text-zinc-600">
+                  {filteredSections.length} settings sections
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="text-[10px] uppercase tracking-widest font-black text-cyan-400"
+                >
+                  Clear search
+                </button>
+              </div>
+            )}
+
+            {/* ==================================================
+                SETTINGS GRID
+            ================================================== */}
+
+            {!search && (
+              <div className="mb-8">
+                <SectionTitle
+                  title="All settings"
+                  description="Everything you need to manage your Universe account"
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {SETTINGS_SECTIONS.map(
+                    (section) => (
+                      <SettingsCategoryCard
+                        key={section.id}
+                        section={section}
+                        active={
+                          activeSection ===
+                          section.id
+                        }
+                        onClick={() =>
+                          openSection(
+                            section.id
+                          )
+                        }
+                      />
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ==================================================
+                INDIVIDUAL SECTIONS
+            ================================================== */}
+
+            <div className="space-y-8">
+              {filteredSections.map((section) => (
+                <section
+                  key={section.id}
+                  id={`settings-section-${section.id}`}
+                  className="scroll-mt-32"
+                >
+                  <SectionTitle
+                    title={section.title}
+                    description={
+                      section.description
+                    }
+                  />
+
+                  <div className="rounded-3xl border border-white/10 bg-[#080808] overflow-hidden">
+                    {section.id === "account" && (
+                      <AccountSection
+                        profile={profile}
+                        socialLinks={socialLinks}
+                        creatorLevel={
+                          creatorLevel
+                        }
+                        creatorXP={creatorXP}
+                        profileCompletion={
+                          profileCompletion
+                        }
+                        verified={verified}
+                        onUpdate={updateProfile}
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "security" && (
+                      <SecuritySection
+                        profile={profile}
+                        user={user}
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id ===
+                      "notifications" && (
+                      <NotificationsSection
+                        settings={
+                          notificationSettings
+                        }
+                        setSettings={
+                          setNotificationSettings
+                        }
+                        onSave={() =>
+                          saveJsonSetting(
+                            "advanced_settings",
+                            {
+                              ...safeJson(
+                                profile?.advanced_settings,
+                                {}
+                              ),
+                              notifications:
+                                notificationSettings,
+                            }
+                          )
+                        }
+                      />
+                    )}
+
+                    {section.id === "privacy" && (
+                      <PrivacySection
+                        profile={profile}
+                        settings={
+                          privacySettings
+                        }
+                        onUpdate={
+                          updatePrivacy
+                        }
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "content" && (
+                      <ContentSection
+                        settings={
+                          contentSettings
+                        }
+                        onUpdate={
+                          updateContent
+                        }
+                      />
+                    )}
+
+                    {section.id === "comments" && (
+                      <CommentsMessagesSection
+                        profile={profile}
+                        navigate={navigate}
+                        onUpdate={
+                          updateContent
+                        }
+                      />
+                    )}
+
+                    {section.id ===
+                      "followers" && (
+                      <FollowersSection
+                        profile={profile}
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "data" && (
+                      <DataStorageSection
+                        profile={profile}
+                        dataSaver={dataSaver}
+                        toggleDataSaver={
+                          toggleDataSaver
+                        }
+                        storage={storage}
+                        refreshStorage={() =>
+                          setStorage(
+                            calculateBrowserStorage()
+                          )
+                        }
+                        clearLocalData={
+                          clearLocalData
+                        }
+                      />
+                    )}
+
+                    {section.id ===
+                      "language" && (
+                      <LanguageRegionSection
+                        profile={profile}
+                        onUpdate={
+                          updateProfile
+                        }
+                      />
+                    )}
+
+                    {section.id ===
+                      "appearance" && (
+                      <AppearanceSection
+                        settings={
+                          appearanceSettings
+                        }
+                        onUpdate={
+                          updateAppearance
+                        }
+                      />
+                    )}
+
+                    {section.id ===
+                      "payments" && (
+                      <PaymentsSection
+                        profile={profile}
+                        currency={currency}
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "creator" && (
+                      <CreatorSection
+                        profile={profile}
+                        creatorLevel={
+                          creatorLevel
+                        }
+                        creatorXP={creatorXP}
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id ===
+                      "scheduling" && (
+                      <SchedulingSection
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "library" && (
+                      <LibrarySection
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id ===
+                      "progress" && (
+                      <CreatorProgressSection
+                        profile={profile}
+                        level={creatorLevel}
+                        xp={creatorXP}
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "brand" && (
+                      <BrandSection
+                        profile={profile}
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "ai" && (
+                      <AISection
+                        profile={profile}
+                        navigate={navigate}
+                        onUpdate={
+                          updateProfile
+                        }
+                      />
+                    )}
+
+                    {section.id ===
+                      "copyright" && (
+                      <CopyrightSafetySection
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "reports" && (
+                      <ReportsSection
+                        profile={profile}
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "apps" && (
+                      <ConnectedAppsSection
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id ===
+                      "accessibility" && (
+                      <AccessibilitySection
+                        settings={
+                          accessibilitySettings
+                        }
+                        onUpdate={
+                          updateAccessibility
+                        }
+                      />
+                    )}
+
+                    {section.id === "support" && (
+                      <SupportSection
+                        navigate={navigate}
+                      />
+                    )}
+
+                    {section.id === "system" && (
+                      <SystemSection
+                        profile={profile}
+                        storage={storage}
+                        refresh={
+                          loadProfile
+                        }
+                      />
+                    )}
+
+                    {section.id === "exit" && (
+                      <AccountExitSection
+                        navigate={navigate}
+                        onLogout={
+                          handleLogout
+                        }
+                      />
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            {/* ==================================================
+                FOOTER
+            ================================================== */}
+
+            <div className="py-12 text-center">
+              <div className="inline-flex items-center gap-2 text-zinc-700">
+                <Sparkles size={13} />
+                <span className="text-[9px] font-black uppercase tracking-[3px]">
+                  Mpade Universe
+                </span>
+              </div>
+
+              <p className="text-[9px] text-zinc-800 font-bold uppercase tracking-widest mt-2">
+                v{APP_VERSION} • {MALAWI_TIMEZONE}
+              </p>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 };
 
 /* ============================================================
-   UI COMPONENTS
-============================================================ */
+   SHARED UI
+   ============================================================ */
 
-const MiniStat = ({ label, value }) => (
-  <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-3">
-    <div className="text-[9px] uppercase tracking-[2px] text-zinc-700">
-      {label}
-    </div>
+const SectionTitle = ({
+  title,
+  description,
+}) => (
+  <div className="mb-3 px-1">
+    <h2 className="text-xs font-black uppercase tracking-[2.5px] text-zinc-300">
+      {title}
+    </h2>
 
-    <div className="text-sm font-black text-zinc-200 mt-1 truncate">
-      {value}
-    </div>
+    <p className="text-[10px] text-zinc-600 mt-1">
+      {description}
+    </p>
   </div>
 );
 
-const QuickCard = ({
+const StatusPill = ({
   icon,
-  title,
-  value,
-  onClick,
+  text,
 }) => (
-  <button
-    onClick={onClick}
-    className="text-left rounded-2xl border border-white/[0.06] bg-[#070707] hover:bg-white/[0.035] hover:border-white/[0.11] p-4 transition group"
-  >
-    <div className="w-9 h-9 rounded-xl bg-cyan-400/[0.07] border border-cyan-400/10 text-cyan-400 flex items-center justify-center">
-      {icon}
-    </div>
-
-    <div className="text-[9px] uppercase tracking-[2px] text-zinc-700 mt-4">
-      {title}
-    </div>
-
-    <div className="text-xs font-black text-zinc-300 mt-1 group-hover:text-white">
-      {value}
-    </div>
-  </button>
+  <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.035] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-zinc-500">
+    {icon}
+    {text}
+  </span>
 );
 
-const OverviewCard = ({
-  category,
+const MiniStat = ({
+  label,
+  value,
+}) => (
+  <div className="rounded-xl border border-white/5 bg-black/30 p-3">
+    <p className="text-[8px] font-black uppercase tracking-widest text-zinc-700">
+      {label}
+    </p>
+
+    <p className="text-sm font-black text-zinc-300 mt-1">
+      {value}
+    </p>
+  </div>
+);
+
+const SettingsCategoryCard = ({
+  section,
+  active,
   onClick,
 }) => {
-  const Icon = category.icon;
+  const Icon = section.icon;
 
   return (
-    <button
+    <motion.button
+      type="button"
+      whileTap={{
+        scale: 0.98,
+      }}
       onClick={onClick}
-      className="group text-left rounded-2xl border border-white/[0.06] bg-[#070707] hover:bg-[#0b0b0b] hover:border-cyan-400/20 p-5 transition"
+      className={`text-left rounded-2xl border p-4 transition-all ${
+        active
+          ? "border-cyan-400/30 bg-cyan-400/[0.06]"
+          : "border-white/8 bg-white/[0.025] hover:bg-white/[0.05] hover:border-white/15"
+      }`}
     >
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-white/[0.025] border border-white/[0.06] flex items-center justify-center text-zinc-400 group-hover:text-cyan-400 group-hover:border-cyan-400/20 transition">
+      <div className="flex items-start gap-3">
+        <div
+          className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${section.bg} ${section.color}`}
+        >
           <Icon size={18} />
         </div>
 
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-black text-zinc-200 group-hover:text-white">
-            {category.title}
-          </h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-[11px] font-black uppercase tracking-wider text-zinc-300">
+              {section.title}
+            </h3>
 
-          <p className="text-[11px] leading-relaxed text-zinc-600 mt-1">
-            {category.description}
+            <ChevronRight
+              size={15}
+              className="text-zinc-700"
+            />
+          </div>
+
+          <p className="text-[9px] text-zinc-600 leading-relaxed mt-1">
+            {section.description}
           </p>
         </div>
-
-        <ChevronRight
-          size={16}
-          className="text-zinc-700 group-hover:text-cyan-400 transition"
-        />
       </div>
-    </button>
+    </motion.button>
   );
 };
 
-const CategoryButton = ({
-  category,
-  active,
-  onClick,
-}) => {
-  const Icon = category.icon;
-
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition ${
-        active
-          ? "bg-cyan-400/[0.08] border border-cyan-400/10 text-cyan-300"
-          : "border border-transparent text-zinc-500 hover:text-white hover:bg-white/[0.035]"
-      }`}
-    >
-      <Icon
-        size={16}
-        className={
-          active ? "text-cyan-400" : "text-zinc-600"
-        }
-      />
-
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-bold truncate">
-          {category.title}
-        </div>
-      </div>
-
-      {active && (
-        <ChevronRight
-          size={14}
-          className="text-cyan-400"
-        />
-      )}
-    </button>
-  );
-};
-
-const SettingsPanel = ({
+const SettingRow = ({
+  icon,
   title,
   description,
-  icon,
-  children,
+  right,
+  onClick,
   danger = false,
+  border = true,
+  disabled = false,
 }) => (
   <div
-    className={`rounded-2xl border ${
-      danger
-        ? "border-red-500/15"
-        : "border-white/[0.06]"
-    } bg-[#070707] overflow-hidden`}
-  >
-    <div className="px-5 py-4 border-b border-white/[0.05]">
-      <div className="flex items-center gap-3">
-        <div
-          className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-            danger
-              ? "bg-red-500/[0.08] text-red-400"
-              : "bg-white/[0.025] text-zinc-400"
-          }`}
-        >
-          {icon}
-        </div>
-
-        <div>
-          <h3 className="text-sm font-black text-zinc-200">
-            {title}
-          </h3>
-
-          {description && (
-            <p className="text-[10px] text-zinc-600 mt-0.5">
-              {description}
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-
-    <div>{children}</div>
-  </div>
-);
-
-const SettingInfo = ({
-  label,
-  value,
-  copyable = false,
-}) => {
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(String(value));
-    } catch {
-      // Clipboard permissions may be unavailable.
+    onClick={
+      disabled || !onClick
+        ? undefined
+        : onClick
     }
-  };
-
-  return (
-    <div className="flex items-start justify-between gap-5 px-5 py-4 border-b border-white/[0.04] last:border-b-0">
-      <div className="text-[11px] text-zinc-600">
-        {label}
-      </div>
-
-      <div className="flex items-center gap-2 text-right max-w-[65%]">
-        <div className="text-xs text-zinc-300 break-words">
-          {value || "Not set"}
-        </div>
-
-        {copyable && (
-          <button
-            onClick={handleCopy}
-            className="text-zinc-600 hover:text-cyan-400"
-            title="Copy"
-          >
-            <Copy size={13} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const ToggleRow = ({
-  icon,
-  title,
-  description,
-  value,
-  onChange,
-}) => (
-  <div className="flex items-center gap-4 px-5 py-4 border-b border-white/[0.04] last:border-b-0">
-    {icon && (
-      <div className="text-zinc-500 shrink-0">
-        {icon}
-      </div>
-    )}
-
-    <div className="flex-1 min-w-0">
-      <div className="text-xs font-bold text-zinc-300">
-        {title}
-      </div>
-
-      {description && (
-        <div className="text-[10px] text-zinc-600 mt-1 leading-relaxed">
-          {description}
-        </div>
-      )}
-    </div>
-
-    <button
-      onClick={() => onChange(!value)}
-      role="switch"
-      aria-checked={value}
-      className={`w-11 h-6 rounded-full p-1 transition shrink-0 ${
-        value
-          ? "bg-cyan-400"
-          : "bg-zinc-800 border border-white/[0.07]"
+    className={`flex items-center gap-3 p-4 sm:p-5 ${
+      border
+        ? "border-b border-white/5"
+        : ""
+    } ${
+      onClick && !disabled
+        ? "cursor-pointer hover:bg-white/[0.025]"
+        : ""
+    } ${
+      disabled
+        ? "opacity-50"
+        : ""
+    } transition-colors`}
+  >
+    <div
+      className={`w-10 h-10 shrink-0 rounded-xl border border-white/5 bg-black flex items-center justify-center ${
+        danger
+          ? "text-red-400"
+          : "text-zinc-400"
       }`}
     >
-      <motion.div
-        animate={{
-          x: value ? 20 : 0,
-        }}
-        className="w-4 h-4 rounded-full bg-white shadow"
-      />
-    </button>
-  </div>
-);
+      {icon}
+    </div>
 
-const SelectRow = ({
-  title,
-  description,
-  value,
-  options,
-  onChange,
-}) => (
-  <div className="flex items-center justify-between gap-5 px-5 py-4 border-b border-white/[0.04] last:border-b-0">
     <div className="min-w-0 flex-1">
-      <div className="text-xs font-bold text-zinc-300">
-        {title}
-      </div>
-
-      {description && (
-        <div className="text-[10px] text-zinc-600 mt-1">
-          {description}
-        </div>
-      )}
-    </div>
-
-    <div className="relative shrink-0">
-      <select
-        value={value ?? ""}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
-        className="appearance-none min-w-[130px] max-w-[190px] bg-black border border-white/[0.08] rounded-xl pl-3 pr-8 py-2 text-[11px] text-zinc-300 outline-none focus:border-cyan-400/30"
-      >
-        {options.map(([optionValue, label]) => (
-          <option
-            key={optionValue}
-            value={optionValue}
-          >
-            {label}
-          </option>
-        ))}
-      </select>
-
-      <ChevronDown
-        size={13}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none"
-      />
-    </div>
-  </div>
-);
-
-const NavigationRow = ({
-  icon,
-  title,
-  description,
-  badge,
-  danger = false,
-  onClick,
-}) => (
-  <button
-    onClick={onClick}
-    className={`w-full flex items-center gap-4 px-5 py-4 text-left border-b border-white/[0.04] last:border-b-0 transition ${
-      danger
-        ? "hover:bg-red-500/[0.05]"
-        : "hover:bg-white/[0.025]"
-    }`}
-  >
-    {icon && (
-      <div
-        className={
-          danger ? "text-red-400" : "text-zinc-500"
-        }
-      >
-        {icon}
-      </div>
-    )}
-
-    <div className="flex-1 min-w-0">
-      <div
-        className={`text-xs font-bold ${
-          danger ? "text-red-400" : "text-zinc-300"
+      <h3
+        className={`text-[11px] sm:text-xs font-bold ${
+          danger
+            ? "text-red-400"
+            : "text-zinc-300"
         }`}
       >
         {title}
-      </div>
+      </h3>
 
       {description && (
-        <div className="text-[10px] text-zinc-600 mt-1 leading-relaxed">
+        <p className="text-[9px] sm:text-[10px] text-zinc-600 leading-relaxed mt-1">
           {description}
-        </div>
+        </p>
       )}
     </div>
 
-    {badge && (
-      <span className="px-2 py-1 rounded-md bg-white/[0.04] text-[9px] uppercase tracking-wider text-zinc-600">
-        {badge}
-      </span>
+    {right && (
+      <div className="shrink-0">
+        {right}
+      </div>
     )}
+  </div>
+);
 
-    <ChevronRight
-      size={16}
-      className="text-zinc-700 shrink-0"
+const Toggle = ({
+  active,
+  onChange,
+  disabled = false,
+}) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={(event) => {
+      event.stopPropagation();
+      onChange?.(!active);
+    }}
+    className={`relative w-11 h-6 rounded-full transition-all ${
+      active
+        ? "bg-cyan-500"
+        : "bg-zinc-800"
+    } ${
+      disabled
+        ? "opacity-40 cursor-not-allowed"
+        : ""
+    }`}
+    aria-pressed={active}
+  >
+    <motion.span
+      animate={{
+        x: active ? 22 : 3,
+      }}
+      transition={{
+        type: "spring",
+        stiffness: 500,
+        damping: 30,
+      }}
+      className="absolute top-1 left-0 w-4 h-4 rounded-full bg-white shadow-lg"
     />
   </button>
+);
+
+const Badge = ({
+  children,
+  tone = "default",
+}) => {
+  const tones = {
+    default:
+      "bg-white/5 text-zinc-500 border-white/10",
+    cyan:
+      "bg-cyan-400/10 text-cyan-400 border-cyan-400/20",
+    green:
+      "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
+    yellow:
+      "bg-yellow-400/10 text-yellow-400 border-yellow-400/20",
+    red:
+      "bg-red-400/10 text-red-400 border-red-400/20",
+  };
+
+  return (
+    <span
+      className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-wider ${tones[tone]}`}
+    >
+      {children}
+    </span>
+  );
+};
+
+const SelectBox = ({
+  value,
+  onChange,
+  options,
+}) => (
+  <select
+    value={value || ""}
+    onChange={(event) =>
+      onChange(event.target.value)
+    }
+    className="max-w-[150px] bg-black border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-zinc-300 outline-none"
+  >
+    {options.map((option) => (
+      <option
+        key={option.value}
+        value={option.value}
+      >
+        {option.label}
+      </option>
+    ))}
+  </select>
 );
 
 const ActionButton = ({
@@ -5708,11 +1858,12 @@ const ActionButton = ({
   danger = false,
 }) => (
   <button
+    type="button"
     onClick={onClick}
-    className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition ${
+    className={`inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-[9px] font-black uppercase tracking-widest transition ${
       danger
-        ? "border-red-500/20 bg-red-500/[0.06] text-red-400 hover:bg-red-500/[0.12]"
-        : "border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:bg-white/[0.07] hover:text-white"
+        ? "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+        : "border-white/10 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08]"
     }`}
   >
     {icon}
@@ -5720,124 +1871,3713 @@ const ActionButton = ({
   </button>
 );
 
-const FinanceCard = ({
-  title,
-  value,
-  icon,
+const ComingSoon = ({
+  text = "Backend configuration required",
 }) => (
-  <div className="rounded-2xl border border-white/[0.06] bg-[#070707] p-4">
-    <div className="w-9 h-9 rounded-xl bg-cyan-400/[0.07] text-cyan-400 flex items-center justify-center">
-      {icon}
-    </div>
-
-    <div className="text-[9px] text-zinc-700 uppercase tracking-[2px] mt-4">
-      {title}
-    </div>
-
-    <div className="text-sm font-black text-zinc-200 mt-1">
-      {value}
-    </div>
-  </div>
+  <Badge>{text}</Badge>
 );
 
-const Badge = ({ children }) => (
-  <span className="px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.025] text-[10px] font-black uppercase tracking-wider text-zinc-500">
-    {children}
-  </span>
-);
+/* ============================================================
+   ACCOUNT
+   ============================================================ */
 
-const StatusRow = ({
-  label,
-  status,
-  muted = false,
-}) => (
-  <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.04] last:border-b-0">
-    <span className="text-xs text-zinc-500">
-      {label}
-    </span>
-
-    <span
-      className={`flex items-center gap-2 text-[10px] font-bold ${
-        muted ? "text-zinc-600" : "text-emerald-400"
-      }`}
-    >
-      <span
-        className={`w-1.5 h-1.5 rounded-full ${
-          muted ? "bg-zinc-700" : "bg-emerald-400"
-        }`}
+const AccountSection = ({
+  profile,
+  socialLinks,
+  creatorLevel,
+  creatorXP,
+  profileCompletion,
+  verified,
+  onUpdate,
+  navigate,
+}) => {
+  return (
+    <div>
+      <SettingRow
+        icon={<User size={18} />}
+        title="Account Information"
+        description="Username, display name, full name, bio, profile media, birthday and contact information."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        onClick={() =>
+          navigate("/edit-profile")
+        }
       />
 
-      {status}
-    </span>
-  </div>
-);
+      <SettingRow
+        icon={<Camera size={18} />}
+        title="Profile Photo & Cover"
+        description="Manage your avatar and cover image."
+        right={
+          <div className="flex gap-2">
+            {profile?.avatar_url && (
+              <img
+                src={profile.avatar_url}
+                alt=""
+                className="w-8 h-8 rounded-lg object-cover"
+              />
+            )}
 
-const StorageSummary = ({
-  storageInfo,
-  onOpen,
-  detailed = false,
-}) => {
-  const localKB = (
-    Number(storageInfo?.localStorage || 0) / 1024
-  ).toFixed(1);
-
-  const sessionKB = (
-    Number(storageInfo?.sessionStorage || 0) / 1024
-  ).toFixed(1);
-
-  return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#070707] p-5">
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-yellow-400/[0.07] text-yellow-400 flex items-center justify-center">
-          <HardDrive size={18} />
-        </div>
-
-        <div className="flex-1">
-          <div className="text-sm font-black">
-            Storage
+            {profile?.cover_url && (
+              <img
+                src={profile.cover_url}
+                alt=""
+                className="w-8 h-8 rounded-lg object-cover"
+              />
+            )}
           </div>
+        }
+        onClick={() =>
+          navigate("/edit-profile")
+        }
+      />
 
-          <div className="text-[10px] text-zinc-600 mt-1">
-            Browser storage currently measurable by this app
+      <SettingRow
+        icon={<AtSignIcon />}
+        title="Username"
+        description={`@${String(
+          profile?.username || "not set"
+        ).replace(/^@/, "")}`}
+      />
+
+      <SettingRow
+        icon={<UserCheck size={18} />}
+        title="Account Type"
+        description="Personal, creator, professional or business account."
+        right={
+          <SelectBox
+            value={
+              profile?.account_type ||
+              "personal"
+            }
+            onChange={(value) =>
+              onUpdate({
+                account_type: value,
+              })
+            }
+            options={[
+              {
+                value: "personal",
+                label: "Personal",
+              },
+              {
+                value: "creator",
+                label: "Creator",
+              },
+              {
+                value: "professional",
+                label: "Professional",
+              },
+              {
+                value: "business",
+                label: "Business",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Sparkles size={18} />}
+        title="Creator Mode"
+        description="Enable creator tools and creator-focused experiences."
+        right={
+          <Toggle
+            active={Boolean(
+              profile?.creator_mode
+            )}
+            onChange={(value) =>
+              onUpdate({
+                creator_mode: value,
+              })
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<BarChart3 size={18} />}
+        title="Professional Dashboard"
+        description="Analytics, audience, performance and growth tools."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        onClick={() =>
+          navigate("/universe-tools")
+        }
+      />
+
+      <SettingRow
+        icon={<ShieldCheck size={18} />}
+        title="Verification"
+        description={
+          verified
+            ? "Your account is verified."
+            : "Your account is not currently verified."
+        }
+        right={
+          <Badge
+            tone={
+              verified
+                ? "cyan"
+                : "default"
+            }
+          >
+            {verified
+              ? "Verified"
+              : "Not verified"}
+          </Badge>
+        }
+      />
+
+      <SettingRow
+        icon={<Award size={18} />}
+        title="Creator Level & XP"
+        description="Your current creator progression."
+        right={
+          <div className="text-right">
+            <p className="text-xs font-black text-yellow-400">
+              Level {creatorLevel}
+            </p>
+
+            <p className="text-[8px] text-zinc-600">
+              {formatNumber(
+                creatorXP
+              )}{" "}
+              XP
+            </p>
           </div>
-        </div>
+        }
+      />
 
-        <button
-          onClick={onOpen}
-          className="text-zinc-600 hover:text-white"
-        >
-          <ChevronRight size={17} />
-        </button>
-      </div>
+      <SettingRow
+        icon={<Zap size={18} />}
+        title="Profile Completion"
+        description="Complete more profile information to improve your profile."
+        right={
+          <div className="w-24">
+            <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-cyan-400 rounded-full"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    profileCompletion
+                  )}%`,
+                }}
+              />
+            </div>
 
-      <div className="grid sm:grid-cols-3 gap-2 mt-5">
-        <MiniStat
-          label="Local storage"
-          value={`${localKB} KB`}
-        />
+            <p className="text-[8px] text-zinc-600 text-right mt-1">
+              {profileCompletion}%
+            </p>
+          </div>
+        }
+      />
 
-        <MiniStat
-          label="Session storage"
-          value={`${sessionKB} KB`}
-        />
+      <SettingRow
+        icon={<Mail size={18} />}
+        title="Email"
+        description={
+          profile?.email ||
+          "Managed through authentication"
+        }
+        right={
+          <Badge
+            tone={
+              profile?.email
+                ? "green"
+                : "default"
+            }
+          >
+            {profile?.email
+              ? "Available"
+              : "Auth"}
+          </Badge>
+        }
+      />
 
-        <MiniStat
-          label="IndexedDB"
-          value={storageInfo?.indexedDB || "Unknown"}
-        />
-      </div>
+      <SettingRow
+        icon={<Phone size={18} />}
+        title="Phone Number"
+        description={
+          profile?.phone_number ||
+          "No phone number added"
+        }
+      />
 
-      {detailed && (
-        <div className="mt-4 text-[10px] leading-relaxed text-zinc-700">
-          Browser storage is only part of your total Mpade Universe
-          storage. Server-side videos, images, audio, drafts and
-          recordings should be calculated from their respective
-          storage/database records rather than displayed as fake
-          hardcoded values.
-        </div>
-      )}
+      <SettingRow
+        icon={<MapPinIcon />}
+        title="Location"
+        description={[
+          profile?.city,
+          profile?.district,
+          profile?.region,
+          profile?.country,
+        ]
+          .filter(Boolean)
+          .join(", ") ||
+          "No location set"}
+      />
+
+      <SettingRow
+        icon={<Globe size={18} />}
+        title="Website & Social Links"
+        description={
+          socialLinks.website ||
+          socialLinks.instagram ||
+          socialLinks.youtube ||
+          "No social links added"
+        }
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<CalendarDays size={18} />}
+        title="Account Created"
+        description={formatDate(
+          profile?.created_at
+        )}
+      />
+
+      <SettingRow
+        icon={<Fingerprint size={18} />}
+        title="Account ID"
+        description={
+          profile?.id || "Unavailable"
+        }
+      />
+
+      <SettingRow
+        icon={<Settings2 size={18} />}
+        title="Account Status"
+        description="Current state of your account."
+        right={
+          <Badge
+            tone={
+              profile?.account_status ===
+              "active"
+                ? "green"
+                : "default"
+            }
+          >
+            {profile?.account_status ||
+              "unknown"}
+          </Badge>
+        }
+        border={false}
+      />
     </div>
   );
 };
+
+/* ============================================================
+   SECURITY
+   ============================================================ */
+
+const SecuritySection = ({
+  profile,
+  user,
+  navigate,
+}) => {
+  return (
+    <div>
+      <SettingRow
+        icon={<KeyRound size={18} />}
+        title="Change Password"
+        description="Update the password used to access your account."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        onClick={() =>
+          navigate("/settings/security")
+        }
+      />
+
+      <SettingRow
+        icon={<Mail size={18} />}
+        title="Email Verification"
+        description={
+          user?.email_confirmed_at
+            ? "Your email address is verified."
+            : "Your email address still needs verification."
+        }
+        right={
+          <Badge
+            tone={
+              user?.email_confirmed_at
+                ? "green"
+                : "yellow"
+            }
+          >
+            {user?.email_confirmed_at
+              ? "Verified"
+              : "Pending"}
+          </Badge>
+        }
+      />
+
+      <SettingRow
+        icon={<Phone size={18} />}
+        title="Phone Verification"
+        description={
+          profile?.phone_number
+            ? "A phone number is associated with your profile."
+            : "Add a phone number for recovery and verification."
+        }
+        right={
+          <ComingSoon text="Verification" />
+        }
+      />
+
+      <SettingRow
+        icon={<ShieldCheck size={18} />}
+        title="Two-Factor Authentication"
+        description="Add another security layer when signing in."
+        right={
+          <ComingSoon text="Not configured" />
+        }
+      />
+
+      <SettingRow
+        icon={<Smartphone size={18} />}
+        title="Authenticator App"
+        description="Use an authenticator application for verification codes."
+        right={
+          <ComingSoon text="Not configured" />
+        }
+      />
+
+      <SettingRow
+        icon={<MessageSquare size={18} />}
+        title="SMS Verification"
+        description="Use SMS as a verification method."
+        right={
+          <ComingSoon text="Not configured" />
+        }
+      />
+
+      <SettingRow
+        icon={<Fingerprint size={18} />}
+        title="Passkeys"
+        description="Passwordless authentication using supported devices."
+        right={
+          <ComingSoon text="Not configured" />
+        }
+      />
+
+      <SettingRow
+        icon={<AlertTriangle size={18} />}
+        title="Login Alerts"
+        description="Receive alerts when a new login is detected."
+        right={
+          <Toggle
+            active={true}
+            onChange={() => {}}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<ShieldAlert size={18} />}
+        title="Suspicious Login Detection"
+        description="Security monitoring for unusual account activity."
+        right={
+          <Badge tone="green">
+            Protected
+          </Badge>
+        }
+      />
+
+      <SettingRow
+        icon={<History size={18} />}
+        title="Login History"
+        description="Review recent account login events."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        onClick={() =>
+          navigate("/settings/security")
+        }
+      />
+
+      <SettingRow
+        icon={<Smartphone size={18} />}
+        title="Active Sessions"
+        description="Review devices currently signed into your account."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        onClick={() =>
+          navigate("/settings/security")
+        }
+      />
+
+      <SettingRow
+        icon={<LogOut size={18} />}
+        title="Logout All Devices"
+        description="End sessions across your devices."
+        right={
+          <ComingSoon text="Security action" />
+        }
+      />
+
+      <SettingRow
+        icon={<Shield size={18} />}
+        title="Trusted Devices"
+        description="Manage devices you trust for future sign-ins."
+        right={
+          <ComingSoon text="Not configured" />
+        }
+      />
+
+      <SettingRow
+        icon={<Mail size={18} />}
+        title="Recovery Email / Phone"
+        description="Recovery contact information for your account."
+        right={
+          <ComingSoon text="Configure" />
+        }
+      />
+
+      <SettingRow
+        icon={<Link2 size={18} />}
+        title="Connected Apps & Permissions"
+        description="Third-party applications authorized to access your account."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        onClick={() =>
+          navigate("/settings/apps")
+        }
+        border={false}
+      />
+    </div>
+  );
+};
+
+/* ============================================================
+   NOTIFICATIONS
+   ============================================================ */
+
+const NotificationsSection = ({
+  settings,
+  setSettings,
+  onSave,
+}) => {
+  const update = (key, value) => {
+    setSettings((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
+  };
+
+  const groups = [
+    {
+      title: "Activity",
+      items: [
+        ["followers", "Followers"],
+        ["likes", "Likes"],
+        ["comments", "Comments"],
+        ["replies", "Replies"],
+        ["mentions", "Mentions"],
+        ["shares", "Shares"],
+        ["reposts", "Reposts"],
+        ["saves", "Saves"],
+      ],
+    },
+    {
+      title: "Creator & Monetization",
+      items: [
+        ["gifts", "Gifts"],
+        ["live", "Live"],
+        ["subscribers", "Subscribers"],
+        ["payments", "Subscription payments"],
+        ["creatorFund", "Creator fund"],
+        ["earnings", "Earnings"],
+        ["payouts", "Payouts"],
+      ],
+    },
+    {
+      title: "Content",
+      items: [
+        ["videoProcessing", "Video processing"],
+        ["publishing", "Publishing"],
+        ["scheduling", "Scheduled content"],
+        ["copyright", "Copyright"],
+        ["warnings", "Content warnings"],
+      ],
+    },
+    {
+      title: "System",
+      items: [
+        ["security", "Account security"],
+        ["system", "System notifications"],
+      ],
+    },
+  ];
+
+  return (
+    <div>
+      {groups.map((group) => (
+        <div
+          key={group.title}
+          className="border-b border-white/5 last:border-b-0"
+        >
+          <div className="px-5 py-4 bg-white/[0.015]">
+            <h3 className="text-[9px] uppercase tracking-[2px] font-black text-zinc-600">
+              {group.title}
+            </h3>
+          </div>
+
+          {group.items.map(
+            ([key, label]) => (
+              <SettingRow
+                key={key}
+                icon={<Bell size={17} />}
+                title={label}
+                right={
+                  <Toggle
+                    active={Boolean(
+                      settings[key]
+                    )}
+                    onChange={(value) =>
+                      update(
+                        key,
+                        value
+                      )
+                    }
+                  />
+                }
+              />
+            )
+          )}
+        </div>
+      ))}
+
+      <div className="px-5 py-4">
+        <h3 className="text-[9px] uppercase tracking-[2px] font-black text-zinc-600 mb-2">
+          Delivery
+        </h3>
+
+        {[
+          ["push", "Push notifications"],
+          ["email", "Email notifications"],
+          ["sms", "SMS notifications"],
+          ["inApp", "In-app notifications"],
+          ["sounds", "Notification sounds"],
+          ["vibration", "Vibration"],
+          ["quietHours", "Quiet hours"],
+        ].map(([key, label]) => (
+          <SettingRow
+            key={key}
+            icon={<Zap size={16} />}
+            title={label}
+            right={
+              <Toggle
+                active={Boolean(
+                  settings[key]
+                )}
+                onChange={(value) =>
+                  update(
+                    key,
+                    value
+                  )
+                }
+              />
+            }
+          />
+        ))}
+
+        <div className="mt-4">
+          <ActionButton
+            icon={<Save size={14} />}
+            onClick={onSave}
+          >
+            Save notifications
+          </ActionButton>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================
+   PRIVACY
+   ============================================================ */
+
+const PrivacySection = ({
+  profile,
+  settings,
+  onUpdate,
+  navigate,
+}) => {
+  const value = (key, fallback = false) =>
+    settings[key] ??
+    fallback;
+
+  return (
+    <div>
+      <SettingRow
+        icon={<Lock size={18} />}
+        title="Private Account"
+        description="Only approved people can follow you and view protected content."
+        right={
+          <Toggle
+            active={Boolean(
+              profile?.is_private
+            )}
+            onChange={(next) =>
+              onUpdate(
+                "privateAccount",
+                next
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<UserPlus size={18} />}
+        title="Who Can Follow You"
+        description="Control who can follow your account."
+        right={
+          <SelectBox
+            value={
+              settings.whoCanFollow ||
+              (profile?.is_private
+                ? "requests"
+                : "everyone")
+            }
+            onChange={(next) =>
+              onUpdate(
+                "whoCanFollow",
+                next
+              )
+            }
+            options={[
+              {
+                value: "everyone",
+                label: "Everyone",
+              },
+              {
+                value: "requests",
+                label: "Requests",
+              },
+              {
+                value: "nobody",
+                label: "Nobody",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<MessageCircle size={18} />}
+        title="Who Can Message You"
+        description="Control direct messages and message requests."
+        right={
+          <SelectBox
+            value={
+              settings.whoCanMessage ||
+              "everyone"
+            }
+            onChange={(next) =>
+              onUpdate(
+                "whoCanMessage",
+                next
+              )
+            }
+            options={[
+              {
+                value: "everyone",
+                label: "Everyone",
+              },
+              {
+                value: "followers",
+                label: "Followers",
+              },
+              {
+                value: "nobody",
+                label: "Nobody",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<AtSignIcon />}
+        title="Mentions"
+        description="Choose who can mention you."
+        right={
+          <SelectBox
+            value={
+              settings.mentions ||
+              "everyone"
+            }
+            onChange={(next) =>
+              onUpdate(
+                "mentions",
+                next
+              )
+            }
+            options={[
+              {
+                value: "everyone",
+                label: "Everyone",
+              },
+              {
+                value: "followers",
+                label: "Followers",
+              },
+              {
+                value: "nobody",
+                label: "Nobody",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Tag size={18} />}
+        title="Tags"
+        description="Control who can tag you in content."
+        right={
+          <SelectBox
+            value={
+              settings.tags ||
+              "everyone"
+            }
+            onChange={(next) =>
+              onUpdate(
+                "tags",
+                next
+              )
+            }
+            options={[
+              {
+                value: "everyone",
+                label: "Everyone",
+              },
+              {
+                value: "followers",
+                label: "Followers",
+              },
+              {
+                value: "nobody",
+                label: "Nobody",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Search size={18} />}
+        title="Search Visibility"
+        description="Allow your profile to appear in search results."
+        right={
+          <Toggle
+            active={value(
+              "searchVisibility",
+              true
+            )}
+            onChange={(next) =>
+              onUpdate(
+                "searchVisibility",
+                next
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Activity size={18} />}
+        title="Online Status"
+        description="Show when you are currently online."
+        right={
+          <Toggle
+            active={
+              profile?.is_online ??
+              profile?.online ??
+              true
+            }
+            onChange={(next) =>
+              onUpdate(
+                "onlineVisibility",
+                next
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<History size={18} />}
+        title="Last Active"
+        description="Show when you were last active."
+        right={
+          <Toggle
+            active={value(
+              "lastActive",
+              true
+            )}
+            onChange={(next) =>
+              onUpdate(
+                "lastActive",
+                next
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Eye size={18} />}
+        title="Profile Views"
+        description="Control profile-view visibility."
+        right={
+          <Toggle
+            active={value(
+              "profileViews",
+              false
+            )}
+            onChange={(next) =>
+              onUpdate(
+                "profileViews",
+                next
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Heart size={18} />}
+        title="Like History"
+        description="Control visibility of your liked content."
+        right={
+          <Toggle
+            active={value(
+              "likeHistory",
+              false
+            )}
+            onChange={(next) =>
+              onUpdate(
+                "likeHistory",
+                next
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<MapPinIcon />}
+        title="Location Visibility"
+        description="Current database setting for location visibility."
+        right={
+          <Badge>
+            {profile?.location_visibility ||
+              "district"}
+          </Badge>
+        }
+      />
+
+      <SettingRow
+        icon={<MapPinIcon />}
+        title="GPS Sharing"
+        description="Control whether GPS location sharing is enabled."
+        right={
+          <Toggle
+            active={Boolean(
+              profile?.gps_sharing
+            )}
+            onChange={(next) =>
+              onUpdate(
+                "gpsSharing",
+                next
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<CalendarDays size={18} />}
+        title="Birthday Visibility"
+        description="Control who can see your birthday."
+        right={
+          <Badge>
+            {profile?.birthday_visibility ||
+              "private"}
+          </Badge>
+        }
+      />
+
+      <SettingRow
+        icon={<User size={18} />}
+        title="Gender Visibility"
+        description="Control who can see your gender."
+        right={
+          <Badge>
+            {profile?.gender_visibility ||
+              "private"}
+          </Badge>
+        }
+      />
+
+      <SettingRow
+        icon={<Phone size={18} />}
+        title="Phone Visibility"
+        description="Control who can see your phone number."
+        right={
+          <Badge>
+            {profile?.phone_visibility ||
+              "private"}
+          </Badge>
+        }
+      />
+
+      <SettingRow
+        icon={<Shield size={18} />}
+        title="Blocked Accounts"
+        description="Manage people you have blocked."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        onClick={() =>
+          navigate("/settings/privacy")
+        }
+      />
+
+      <SettingRow
+        icon={<EyeOff size={18} />}
+        title="Muted Accounts"
+        description="Manage accounts whose content you have muted."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<UserMinus size={18} />}
+        title="Restricted Accounts"
+        description="Manage restricted interactions."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        border={false}
+      />
+    </div>
+  );
+};
+
+/* ============================================================
+   CONTENT
+   ============================================================ */
+
+const ContentSection = ({
+  settings,
+  onUpdate,
+}) => {
+  const value = (key, fallback) =>
+    settings[key] ??
+    fallback;
+
+  const controls = [
+    [
+      "comments",
+      "Comments",
+      true,
+    ],
+    [
+      "downloads",
+      "Downloads",
+      false,
+    ],
+    [
+      "duet",
+      "Duet",
+      false,
+    ],
+    [
+      "stitch",
+      "Stitch",
+      false,
+    ],
+    [
+      "repost",
+      "Repost",
+      true,
+    ],
+    [
+      "share",
+      "Sharing",
+      true,
+    ],
+  ];
+
+  return (
+    <div>
+      <SettingRow
+        icon={<Eye size={18} />}
+        title="Default Video Privacy"
+        description="Privacy applied when you publish new videos."
+        right={
+          <SelectBox
+            value={
+              settings.defaultPrivacy ||
+              "public"
+            }
+            onChange={(next) =>
+              onUpdate(
+                "defaultPrivacy",
+                next
+              )
+            }
+            options={[
+              {
+                value: "public",
+                label: "Public",
+              },
+              {
+                value: "followers",
+                label: "Followers",
+              },
+              {
+                value: "private",
+                label: "Private",
+              },
+            ]}
+          />
+        }
+      />
+
+      {controls.map(
+        ([key, title, fallback]) => (
+          <SettingRow
+            key={key}
+            icon={<Video size={17} />}
+            title={title}
+            right={
+              <Toggle
+                active={Boolean(
+                  value(
+                    key,
+                    fallback
+                  )
+                )}
+                onChange={(next) =>
+                  onUpdate(
+                    key,
+                    next
+                  )
+                }
+              />
+            }
+          />
+        )
+      )}
+
+      <SettingRow
+        icon={<AlertTriangle size={18} />}
+        title="Age Restriction"
+        description="Restrict content to appropriate age groups."
+        right={
+          <SelectBox
+            value={
+              settings.ageRestriction ||
+              "none"
+            }
+            onChange={(next) =>
+              onUpdate(
+                "ageRestriction",
+                next
+              )
+            }
+            options={[
+              {
+                value: "none",
+                label: "None",
+              },
+              {
+                value: "13+",
+                label: "13+",
+              },
+              {
+                value: "16+",
+                label: "16+",
+              },
+              {
+                value: "18+",
+                label: "18+",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<ShieldAlert size={18} />}
+        title="Sensitive Content"
+        description="Control how sensitive content is displayed."
+        right={
+          <SelectBox
+            value={
+              settings.sensitiveContent ||
+              "standard"
+            }
+            onChange={(next) =>
+              onUpdate(
+                "sensitiveContent",
+                next
+              )
+            }
+            options={[
+              {
+                value: "standard",
+                label: "Standard",
+              },
+              {
+                value: "less",
+                label: "Less",
+              },
+              {
+                value: "more",
+                label: "More",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Bot size={18} />}
+        title="AI Disclosure"
+        description="Disclose when content contains AI-generated or AI-modified material."
+        right={
+          <Toggle
+            active={Boolean(
+              value(
+                "aiDisclosure",
+                true
+              )
+            )}
+            onChange={(next) =>
+              onUpdate(
+                "aiDisclosure",
+                next
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Music size={18} />}
+        title="Music & Sound"
+        description="Manage music and sound usage on published content."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Upload size={18} />}
+        title="Upload Quality"
+        description="Choose your preferred upload quality."
+        right={
+          <SelectBox
+            value={
+              settings.uploadQuality ||
+              "high"
+            }
+            onChange={(next) =>
+              onUpdate(
+                "uploadQuality",
+                next
+              )
+            }
+            options={[
+              {
+                value: "dataSaver",
+                label: "Data saver",
+              },
+              {
+                value: "standard",
+                label: "Standard",
+              },
+              {
+                value: "high",
+                label: "High",
+              },
+              {
+                value: "original",
+                label: "Original",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Image size={18} />}
+        title="Thumbnail & Caption Defaults"
+        description="Manage default publishing metadata preferences."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+        border={false}
+      />
+    </div>
+  );
+};
+
+/* ============================================================
+   COMMENTS + MESSAGES
+   ============================================================ */
+
+const CommentsMessagesSection = ({
+  profile,
+  navigate,
+  onUpdate,
+}) => {
+  const settings = safeJson(
+    profile?.content_settings,
+    {}
+  );
+
+  return (
+    <div>
+      <SettingRow
+        icon={<MessageCircle size={18} />}
+        title="Who Can Comment"
+        description="Control who is allowed to comment on your content."
+        right={
+          <SelectBox
+            value={
+              settings.whoCanComment ||
+              "everyone"
+            }
+            onChange={(value) =>
+              onUpdate(
+                "whoCanComment",
+                value
+              )
+            }
+            options={[
+              {
+                value: "everyone",
+                label: "Everyone",
+              },
+              {
+                value: "followers",
+                label: "Followers",
+              },
+              {
+                value: "nobody",
+                label: "Nobody",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<ShieldAlert size={18} />}
+        title="Offensive Comment Filter"
+        description="Automatically filter potentially offensive comments."
+        right={
+          <Toggle
+            active={
+              settings.offensiveFilter ??
+              true
+            }
+            onChange={(value) =>
+              onUpdate(
+                "offensiveFilter",
+                value
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<ListFilter size={18} />}
+        title="Spam Filter"
+        description="Filter likely spam comments."
+        right={
+          <Toggle
+            active={
+              settings.spamFilter ??
+              true
+            }
+            onChange={(value) =>
+              onUpdate(
+                "spamFilter",
+                value
+              )
+            }
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Tag size={18} />}
+        title="Hidden Words"
+        description="Create a list of words and phrases to hide."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Settings2 size={18} />}
+        title="Manual Moderation"
+        description="Review and manage comments manually."
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<MessageSquare size={18} />}
+        title="Message Requests"
+        description="Control whether people outside your connections can send requests."
+        right={
+          <SelectBox
+            value="everyone"
+            onChange={() => {}}
+            options={[
+              {
+                value: "everyone",
+                label: "Everyone",
+              },
+              {
+                value: "followers",
+                label: "Followers",
+              },
+              {
+                value: "nobody",
+                label: "Nobody",
+              },
+            ]}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Users size={18} />}
+        title="Group Messages"
+        description="Control group conversation invitations."
+        right={
+          <ComingSoon text="Configure" />
+        }
+      />
+
+      <SettingRow
+        icon={<Check size={18} />}
+        title="Read Receipts"
+        description="Show when messages have been read."
+        right={
+          <Toggle
+            active={true}
+            onChange={() => {}}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<MoreHorizontal size={18} />}
+        title="Typing Indicators"
+        description="Show when you are typing."
+        right={
+          <Toggle
+            active={true}
+            onChange={() => {}}
+          />
+        }
+      />
+
+      <SettingRow
+        icon={<Bell size={18} />}
+        title="Message Notifications"
+        description="Manage message notification behavior."
+        right={
+          <Toggle
+            active={true}
+            onChange={() => {}}
+          />
+        }
+        border={false}
+      />
+    </div>
+  );
+};
+
+/* ============================================================
+   FOLLOWERS
+   ============================================================ */
+
+const FollowersSection = ({
+  profile,
+  navigate,
+}) => (
+  <div>
+    <SettingRow
+      icon={<UserPlus size={18} />}
+      title="Follow Requests"
+      description="Manage incoming follow requests."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Users size={18} />}
+      title="Follower Management"
+      description={`You currently have ${formatNumber(
+        profile?.follower_count
+      )} followers.`}
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<UserMinus size={18} />}
+      title="Remove Followers"
+      description="Remove followers without blocking them."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Shield size={18} />}
+      title="Blocked / Restricted"
+      description="Manage blocked and restricted accounts."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Sparkles size={18} />}
+      title="Account Suggestions"
+      description="Control whether your account is recommended to others."
+      right={
+        <Toggle
+          active={true}
+          onChange={() => {}}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Smartphone size={18} />}
+      title="Contact Syncing"
+      description="Find friends by syncing your contacts."
+      right={
+        <ComingSoon text="Configure" />
+      }
+    />
+
+    <SettingRow
+      icon={<Search size={18} />}
+      title="Find Friends"
+      description="Discover people you may know."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+      onClick={() =>
+        navigate("/friends")
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   DATA + STORAGE
+   ============================================================ */
+
+const DataStorageSection = ({
+  profile,
+  dataSaver,
+  toggleDataSaver,
+  storage,
+  refreshStorage,
+  clearLocalData,
+}) => (
+  <div>
+    <SettingRow
+      icon={<Database size={18} />}
+      title="Data Saver"
+      description="Reduce media quality and data usage on mobile networks."
+      right={
+        <Toggle
+          active={dataSaver}
+          onChange={toggleDataSaver}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Wifi size={18} />}
+      title="Autoplay"
+      description="Control automatic playback of videos."
+      right={
+        <SelectBox
+          value="wifi"
+          onChange={() => {}}
+          options={[
+            {
+              value: "always",
+              label: "Always",
+            },
+            {
+              value: "wifi",
+              label: "Wi-Fi only",
+            },
+            {
+              value: "never",
+              label: "Never",
+            },
+          ]}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Video size={18} />}
+      title="Video Quality"
+      description="Default playback quality."
+      right={
+        <SelectBox
+          value={
+            dataSaver
+              ? "dataSaver"
+              : "auto"
+          }
+          onChange={() => {}}
+          options={[
+            {
+              value: "dataSaver",
+              label: "Data saver",
+            },
+            {
+              value: "auto",
+              label: "Auto",
+            },
+            {
+              value: "high",
+              label: "High",
+            },
+          ]}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<HardDrive size={18} />}
+      title="Browser Storage"
+      description="Storage currently measurable from local browser data."
+      right={
+        <Badge tone="cyan">
+          {formatBytes(
+            storage.localStorageBytes
+          )}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<Folder size={18} />}
+      title="Videos & Drafts"
+      description="Manage drafts and locally stored content."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Image size={18} />}
+      title="Images & Thumbnails"
+      description="Manage image and thumbnail storage."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Music size={18} />}
+      title="Audio"
+      description="Manage saved audio and sounds."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Video size={18} />}
+      title="Live Recordings"
+      description="Manage recordings generated from live streams."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Download size={18} />}
+      title="Downloaded / Offline Content"
+      description="Manage locally available offline content."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <div className="p-5 flex flex-wrap gap-2">
+      <ActionButton
+        icon={<RefreshCw size={14} />}
+        onClick={refreshStorage}
+      >
+        Refresh storage
+      </ActionButton>
+
+      <ActionButton
+        icon={<Trash2 size={14} />}
+        onClick={clearLocalData}
+        danger
+      >
+        Clear temporary data
+      </ActionButton>
+    </div>
+
+    <div className="px-5 pb-5">
+      <p className="text-[9px] text-zinc-700 leading-relaxed">
+        Storage reporting depends on browser APIs.
+        Supabase Storage usage for videos, images,
+        audio and recordings should be calculated
+        from the actual storage backend rather than
+        displaying invented values.
+      </p>
+    </div>
+  </div>
+);
+
+/* ============================================================
+   LANGUAGE
+   ============================================================ */
+
+const LanguageRegionSection = ({
+  profile,
+  onUpdate,
+}) => (
+  <div>
+    <SettingRow
+      icon={<Languages size={18} />}
+      title="App Language"
+      description="Language used throughout the application."
+      right={
+        <SelectBox
+          value="English"
+          onChange={() => {}}
+          options={[
+            {
+              value: "English",
+              label: "English",
+            },
+            {
+              value: "Chichewa",
+              label: "Chichewa",
+            },
+          ]}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Globe size={18} />}
+      title="Country"
+      description="Your account country."
+      right={
+        <Badge>
+          {profile?.country ||
+            "Malawi"}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<MapPinIcon />}
+      title="Region"
+      description="Regional account preference."
+      right={
+        <Badge>
+          {profile?.region ||
+            "Not set"}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<MapPinIcon />}
+      title="City"
+      description="City associated with your profile."
+      right={
+        <Badge>
+          {profile?.city ||
+            "Not set"}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<ClockIcon />}
+      title="Timezone"
+      description="Default platform timezone."
+      right={
+        <Badge tone="cyan">
+          {MALAWI_TIMEZONE}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<Languages size={18} />}
+      title="Preferred Content Language"
+      description="Used for content recommendations."
+      right={
+        <SelectBox
+          value="English"
+          onChange={() => {}}
+          options={[
+            {
+              value: "English",
+              label: "English",
+            },
+            {
+              value: "Chichewa",
+              label: "Chichewa",
+            },
+          ]}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Globe size={18} />}
+      title="Translation"
+      description="Enable translation tools for supported content."
+      right={
+        <Toggle
+          active={true}
+          onChange={() => {}}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Languages size={18} />}
+      title="Auto Translate"
+      description="Automatically translate supported content."
+      right={
+        <Toggle
+          active={false}
+          onChange={() => {}}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<CreditCard size={18} />}
+      title="Currency"
+      description="Currency used for creator and payment information."
+      right={
+        <SelectBox
+          value={
+            profile?.currency_preference ||
+            "MWK"
+          }
+          onChange={(value) =>
+            onUpdate({
+              currency_preference:
+                value,
+            })
+          }
+          options={[
+            {
+              value: "MWK",
+              label: "MWK",
+            },
+            {
+              value: "USD",
+              label: "USD",
+            },
+            {
+              value: "ZAR",
+              label: "ZAR",
+            },
+          ]}
+        />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   APPEARANCE
+   ============================================================ */
+
+const AppearanceSection = ({
+  settings,
+  onUpdate,
+}) => (
+  <div>
+    <SettingRow
+      icon={<Palette size={18} />}
+      title="Theme"
+      description="Choose the application appearance."
+      right={
+        <SelectBox
+          value={settings.theme}
+          onChange={(value) =>
+            onUpdate("theme", value)
+          }
+          options={[
+            {
+              value: "dark",
+              label: "Dark",
+            },
+            {
+              value: "light",
+              label: "Light",
+            },
+            {
+              value: "system",
+              label: "System",
+            },
+            {
+              value: "neon",
+              label: "Neon",
+            },
+          ]}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Sparkles size={18} />}
+      title="Neon Mode"
+      description="Use the futuristic neon visual system."
+      right={
+        <Toggle
+          active={Boolean(
+            settings.neon
+          )}
+          onChange={(value) =>
+            onUpdate("neon", value)
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Zap size={18} />}
+      title="Accent Color"
+      description="Primary highlight color."
+      right={
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={
+              settings.accentColor ||
+              "#06b6d4"
+            }
+            onChange={(event) =>
+              onUpdate(
+                "accentColor",
+                event.target.value
+              )
+            }
+            className="w-9 h-9 rounded-lg bg-transparent border-0 cursor-pointer"
+          />
+        </div>
+      }
+    />
+
+    <SettingRow
+      icon={<LayoutGrid size={18} />}
+      title="Density"
+      description="Control spacing between interface elements."
+      right={
+        <SelectBox
+          value={
+            settings.density ||
+            "comfortable"
+          }
+          onChange={(value) =>
+            onUpdate(
+              "density",
+              value
+            )
+          }
+          options={[
+            {
+              value: "compact",
+              label: "Compact",
+            },
+            {
+              value: "comfortable",
+              label: "Comfortable",
+            },
+            {
+              value: "spacious",
+              label: "Spacious",
+            },
+          ]}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Zap size={18} />}
+      title="Animations"
+      description="Enable interface animations."
+      right={
+        <Toggle
+          active={Boolean(
+            settings.animations
+          )}
+          onChange={(value) =>
+            onUpdate(
+              "animations",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<PauseCircle size={18} />}
+      title="Reduce Motion"
+      description="Reduce animation and movement."
+      right={
+        <Toggle
+          active={Boolean(
+            settings.reduceMotion
+          )}
+          onChange={(value) =>
+            onUpdate(
+              "reduceMotion",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Cloud size={18} />}
+      title="Blur Effects"
+      description="Enable backdrop blur effects."
+      right={
+        <Toggle
+          active={Boolean(
+            settings.blur
+          )}
+          onChange={(value) =>
+            onUpdate(
+              "blur",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Sparkles size={18} />}
+      title="Glass Effects"
+      description="Enable glassmorphism interface elements."
+      right={
+        <Toggle
+          active={Boolean(
+            settings.glass
+          )}
+          onChange={(value) =>
+            onUpdate(
+              "glass",
+              value
+            )
+          }
+        />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   PAYMENTS
+   ============================================================ */
+
+const PaymentsSection = ({
+  profile,
+  currency,
+  navigate,
+}) => (
+  <div>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-5 border-b border-white/5">
+      <WalletStat
+        icon={<Wallet size={17} />}
+        label="Balance"
+        value={formatMoney(
+          profile?.balance,
+          currency
+        )}
+      />
+
+      <WalletStat
+        icon={<Coins size={17} />}
+        label="Coins"
+        value={formatNumber(
+          profile?.coins
+        )}
+      />
+
+      <WalletStat
+        icon={<Sparkles size={17} />}
+        label="Tokens earned"
+        value={formatNumber(
+          profile?.total_tokens_earned
+        )}
+      />
+
+      <WalletStat
+        icon={<Award size={17} />}
+        label="Tier"
+        value={
+          profile?.subscription_tier ||
+          "Free"
+        }
+      />
+    </div>
+
+    <SettingRow
+      icon={<Wallet size={18} />}
+      title="Wallet"
+      description="Balance, coins, tokens and earnings."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+      onClick={() =>
+        navigate("/payouts")
+      }
+    />
+
+    <SettingRow
+      icon={<CreditCard size={18} />}
+      title="Payment Method"
+      description={
+        profile?.payout_method ||
+        "No payout method configured"
+      }
+      right={
+        <Badge>
+          {profile?.payout_method ||
+            "Not set"}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<Smartphone size={18} />}
+      title="TNM Mpamba"
+      description="Use supported mobile money payout infrastructure."
+      right={
+        profile?.payout_method ===
+        "TNM Mpamba" ? (
+          <Badge tone="green">
+            Selected
+          </Badge>
+        ) : (
+          <Badge>
+            Available
+          </Badge>
+        )
+      }
+    />
+
+    <SettingRow
+      icon={<Smartphone size={18} />}
+      title="Airtel Money"
+      description="Use Airtel Money where supported."
+      right={
+        <Badge>
+          Available
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<CreditCard size={18} />}
+      title="Bank Account"
+      description="Manage bank payout information."
+      right={
+        <ComingSoon text="Configure" />
+      }
+    />
+
+    <SettingRow
+      icon={<ArrowDownIcon />}
+      title="Request Payout"
+      description="Request available creator earnings."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+      onClick={() =>
+        navigate("/payouts")
+      }
+    />
+
+    <SettingRow
+      icon={<History size={18} />}
+      title="Payout History"
+      description="Pending, completed, failed and cancelled payouts."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+      onClick={() =>
+        navigate("/payouts")
+      }
+    />
+
+    <SettingRow
+      icon={<ClipboardList size={18} />}
+      title="Transactions"
+      description="Payments, purchases, gifts, coins, earnings and refunds."
+      right={
+        <ComingSoon text="Transaction center" />
+      }
+      border={false}
+    />
+  </div>
+);
+
+const WalletStat = ({
+  icon,
+  label,
+  value,
+}) => (
+  <div className="rounded-2xl border border-white/5 bg-black p-4">
+    <div className="text-emerald-400 mb-2">
+      {icon}
+    </div>
+
+    <p className="text-[8px] font-black uppercase tracking-widest text-zinc-700">
+      {label}
+    </p>
+
+    <p className="text-xs font-black text-zinc-300 mt-1 truncate">
+      {value}
+    </p>
+  </div>
+);
+
+/* ============================================================
+   CREATOR
+   ============================================================ */
+
+const CreatorSection = ({
+  profile,
+  creatorLevel,
+  creatorXP,
+  navigate,
+}) => (
+  <div>
+    <div className="p-5 border-b border-white/5">
+      <div className="rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.035] p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[8px] uppercase tracking-[2px] font-black text-cyan-400">
+              Creator Level
+            </p>
+
+            <p className="text-3xl font-black mt-1">
+              {creatorLevel}
+            </p>
+          </div>
+
+          <Award
+            size={34}
+            className="text-yellow-400"
+          />
+        </div>
+
+        <p className="text-[10px] text-zinc-600 mt-2">
+          {formatNumber(
+            creatorXP
+          )}{" "}
+          XP earned
+        </p>
+      </div>
+    </div>
+
+    {[
+      [
+        <BarChart3 size={18} />,
+        "Creator Dashboard",
+        "Analytics, audience and performance.",
+        "/universe-tools",
+      ],
+      [
+        <Users size={18} />,
+        "Audience",
+        "Understand followers and audience behavior.",
+        null,
+      ],
+      [
+        <Video size={18} />,
+        "Content Performance",
+        "Views, watch time, engagement and growth.",
+        null,
+      ],
+      [
+        <Wallet size={18} />,
+        "Creator Earnings",
+        "Earnings, gifts, subscriptions and creator fund.",
+        "/payouts",
+      ],
+      [
+        <GiftIcon />,
+        "Gifts",
+        "Manage gifts received during creator activity.",
+        null,
+      ],
+      [
+        <Star size={18} />,
+        "Subscriptions",
+        "Manage subscriber and paid-content settings.",
+        null,
+      ],
+      [
+        <Video size={18} />,
+        "Livestream",
+        "Live center, live settings and stream tools.",
+        "/live-universe",
+      ],
+      [
+        <CalendarDays size={18} />,
+        "Scheduling",
+        "Schedule videos and live sessions.",
+        null,
+      ],
+      [
+        <Folder size={18} />,
+        "Content Library",
+        "Manage your creator media.",
+        null,
+      ],
+      [
+        <BriefcaseBusiness size={18} />,
+        "Media Kit",
+        "Creator portfolio and collaboration information.",
+        null,
+      ],
+      [
+        <TargetIcon />,
+        "Creator Goals",
+        "Set and track creator growth goals.",
+        null,
+      ],
+      [
+        <Bot size={18} />,
+        "AI Creator Tools",
+        "Use AI for captions, scripts, analysis and moderation.",
+        null,
+      ],
+    ].map(
+      ([icon, title, description, route]) => (
+        <SettingRow
+          key={title}
+          icon={icon}
+          title={title}
+          description={description}
+          right={
+            route ? (
+              <ChevronRight
+                size={17}
+                className="text-zinc-700"
+              />
+            ) : (
+              <ComingSoon text="Creator tools" />
+            )
+          }
+          onClick={
+            route
+              ? () => navigate(route)
+              : undefined
+          }
+        />
+      )
+    )}
+
+    <SettingRow
+      icon={<Tag size={18} />}
+      title="Creator Category"
+      description="Category used for your creator profile."
+      right={
+        <Badge>
+          {profile?.creator_category ||
+            profile?.profile_category ||
+            "Not set"}
+        </Badge>
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   SCHEDULING
+   ============================================================ */
+
+const SchedulingSection = ({
+  navigate,
+}) => (
+  <div>
+    <SettingRow
+      icon={<CalendarDays size={18} />}
+      title="Scheduled Videos"
+      description="View and manage scheduled video publishing."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Video size={18} />}
+      title="Scheduled Lives"
+      description="Manage upcoming livestream schedules."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+      onClick={() =>
+        navigate("/live-universe")
+      }
+    />
+
+    <SettingRow
+      icon={<Zap size={18} />}
+      title="Auto Publishing"
+      description="Automatically publish scheduled content."
+      right={
+        <Toggle
+          active={false}
+          onChange={() => {}}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<ClockIcon />}
+      title="Publishing Timezone"
+      description="Timezone used when publishing scheduled content."
+      right={
+        <Badge tone="cyan">
+          {MALAWI_TIMEZONE}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<Bell size={18} />}
+      title="Publishing Notifications"
+      description="Notify you when scheduled content publishes."
+      right={
+        <Toggle
+          active={true}
+          onChange={() => {}}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<AlertTriangle size={18} />}
+      title="Failed Publishing Notifications"
+      description="Notify you when scheduled publishing fails."
+      right={
+        <Toggle
+          active={true}
+          onChange={() => {}}
+        />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   LIBRARY
+   ============================================================ */
+
+const LibrarySection = ({
+  navigate,
+}) => (
+  <div>
+    {[
+      [
+        <Video size={18} />,
+        "Videos",
+      ],
+      [
+        <Archive size={18} />,
+        "Drafts",
+      ],
+      [
+        <Image size={18} />,
+        "Images",
+      ],
+      [
+        <Music size={18} />,
+        "Audio",
+      ],
+      [
+        <Image size={18} />,
+        "Thumbnails",
+      ],
+      [
+        <Video size={18} />,
+        "Live Recordings",
+      ],
+      [
+        <Archive size={18} />,
+        "Archived",
+      ],
+      [
+        <Trash2 size={18} />,
+        "Deleted",
+      ],
+      [
+        <History size={18} />,
+        "Recently Deleted",
+      ],
+    ].map(([icon, title]) => (
+      <SettingRow
+        key={title}
+        icon={icon}
+        title={title}
+        description={`Manage your ${title.toLowerCase()} content.`}
+        right={
+          <ChevronRight
+            size={17}
+            className="text-zinc-700"
+          />
+        }
+      />
+    ))}
+
+    <SettingRow
+      icon={<HardDrive size={18} />}
+      title="Storage Limits"
+      description="Storage limits and usage should be calculated from the actual media backend."
+      right={
+        <ComingSoon text="Live storage data" />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   CREATOR PROGRESS
+   ============================================================ */
+
+const CreatorProgressSection = ({
+  profile,
+  level,
+  xp,
+  navigate,
+}) => {
+  const progress =
+    ((xp % 1000) / 1000) * 100;
+
+  return (
+    <div>
+      <div className="p-5 border-b border-white/5">
+        <div className="rounded-2xl border border-yellow-400/10 bg-yellow-400/[0.035] p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[8px] font-black uppercase tracking-[2px] text-yellow-400">
+                Current Level
+              </p>
+
+              <p className="text-4xl font-black mt-1">
+                {level}
+              </p>
+            </div>
+
+            <Award
+              size={40}
+              className="text-yellow-400"
+            />
+          </div>
+
+          <div className="mt-5">
+            <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-zinc-700 mb-2">
+              <span>XP</span>
+              <span>
+                {formatNumber(xp)}
+              </span>
+            </div>
+
+            <div className="h-2 bg-black rounded-full overflow-hidden">
+              <div
+                className="h-full bg-yellow-400 rounded-full"
+                style={{
+                  width: `${progress}%`,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {[
+        [
+          <Award size={18} />,
+          "Achievements",
+        ],
+        [
+          <Star size={18} />,
+          "Badges",
+        ],
+        [
+          <Zap size={18} />,
+          "Creator Streaks",
+        ],
+        [
+          <TargetIcon />,
+          "Milestones",
+        ],
+        [
+          <TargetIcon />,
+          "Goals",
+        ],
+        [
+          <GiftIcon />,
+          "Rewards",
+        ],
+        [
+          <BarChart3 size={18} />,
+          "Progress",
+        ],
+        [
+          <Users size={18} />,
+          "Leaderboards",
+        ],
+      ].map(([icon, title]) => (
+        <SettingRow
+          key={title}
+          icon={icon}
+          title={title}
+          description={`View your creator ${title.toLowerCase()}.`}
+          right={
+            <ComingSoon text="Creator system" />
+          }
+        />
+      ))}
+
+      <SettingRow
+        icon={<Award size={18} />}
+        title="Profile Badges"
+        description="Badges stored on your profile."
+        right={
+          <Badge>
+            {Array.isArray(
+              profile?.profile_badges
+            )
+              ? profile.profile_badges
+                  .length
+              : 0}{" "}
+            badges
+          </Badge>
+        }
+        border={false}
+      />
+    </div>
+  );
+};
+
+/* ============================================================
+   BRAND
+   ============================================================ */
+
+const BrandSection = ({
+  profile,
+}) => (
+  <div>
+    <SettingRow
+      icon={<BriefcaseBusiness size={18} />}
+      title="Brand Collaborations"
+      description="Manage brand partnership opportunities."
+      right={
+        <ComingSoon text="Creator feature" />
+      }
+    />
+
+    <SettingRow
+      icon={<Mail size={18} />}
+      title="Business Email"
+      description={
+        profile?.business_email ||
+        "No business email configured"
+      }
+    />
+
+    <SettingRow
+      icon={<Phone size={18} />}
+      title="Business Phone"
+      description={
+        profile?.business_phone ||
+        "No business phone configured"
+      }
+    />
+
+    <SettingRow
+      icon={<Globe size={18} />}
+      title="Creator Website"
+      description={
+        profile?.creator_website ||
+        "No creator website configured"
+      }
+    />
+
+    <SettingRow
+      icon={<BriefcaseBusiness size={18} />}
+      title="Portfolio"
+      description="Showcase your creator portfolio."
+      right={
+        <ComingSoon text="Configure" />
+      }
+    />
+
+    <SettingRow
+      icon={<CreditCard size={18} />}
+      title="Rate Card"
+      description="Set your collaboration and sponsorship rates."
+      right={
+        <ComingSoon text="Configure" />
+      }
+    />
+
+    <SettingRow
+      icon={<MegaphoneIcon />}
+      title="Sponsored Content"
+      description="Manage sponsored content disclosures."
+      right={
+        <ComingSoon text="Configure" />
+      }
+    />
+
+    <SettingRow
+      icon={<BarChart3 size={18} />}
+      title="Campaign Analytics"
+      description="Track performance of creator campaigns."
+      right={
+        <ComingSoon text="Configure" />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   AI
+   ============================================================ */
+
+const AISection = ({
+  navigate,
+}) => (
+  <div>
+    {[
+      [
+        <Bot size={18} />,
+        "AI Assistant",
+        "Access AI assistance across Mpade Universe.",
+      ],
+      [
+        <Sparkles size={18} />,
+        "Recommendations",
+        "Personalized content recommendations.",
+      ],
+      [
+        <FileText size={18} />,
+        "Caption Generation",
+        "Generate captions for your content.",
+      ],
+      [
+        <Tag size={18} />,
+        "Hashtag Generation",
+        "Generate relevant hashtags.",
+      ],
+      [
+        <FileText size={18} />,
+        "Script Generation",
+        "Create scripts and content ideas.",
+      ],
+      [
+        <Image size={18} />,
+        "Thumbnail Assistance",
+        "AI assistance for thumbnail creation.",
+      ],
+      [
+        <Video size={18} />,
+        "Video Analysis",
+        "Analyze videos and performance.",
+      ],
+      [
+        <MessageCircle size={18} />,
+        "AI Comment Replies",
+        "Generate suggested comment responses.",
+      ],
+      [
+        <ShieldAlert size={18} />,
+        "AI Moderation",
+        "AI-assisted content moderation.",
+      ],
+      [
+        <Settings2 size={18} />,
+        "Personalization",
+        "Control AI personalization.",
+      ],
+      [
+        <Database size={18} />,
+        "AI Data Usage",
+        "Control how your data is used by AI features.",
+      ],
+      [
+        <Info size={18} />,
+        "AI Disclosure",
+        "Manage AI-generated content disclosures.",
+      ],
+      [
+        <History size={18} />,
+        "AI History",
+        "Review previous AI activity.",
+      ],
+      [
+        <Trash2 size={18} />,
+        "Clear AI History",
+        "Remove available AI interaction history.",
+      ],
+    ].map(
+      ([icon, title, description]) => (
+        <SettingRow
+          key={title}
+          icon={icon}
+          title={title}
+          description={description}
+          right={
+            title ===
+            "Personalization" ? (
+              <Toggle
+                active={true}
+                onChange={() => {}}
+              />
+            ) : (
+              <ComingSoon text="AI system" />
+            )
+          }
+        />
+      )
+    )}
+  </div>
+);
+
+/* ============================================================
+   COPYRIGHT
+   ============================================================ */
+
+const CopyrightSafetySection = ({
+  navigate,
+}) => (
+  <div>
+    {[
+      [
+        <ShieldCheck size={18} />,
+        "Copyright Status",
+      ],
+      [
+        <AlertTriangle size={18} />,
+        "Copyright Claims",
+      ],
+      [
+        <AlertTriangle size={18} />,
+        "Copyright Strikes",
+      ],
+      [
+        <FileText size={18} />,
+        "Disputes",
+      ],
+      [
+        <FileText size={18} />,
+        "Appeals",
+      ],
+      [
+        <Music size={18} />,
+        "Music Rights",
+      ],
+      [
+        <UserCheck size={18} />,
+        "Content Ownership",
+      ],
+      [
+        <Bot size={18} />,
+        "AI Disclosure",
+      ],
+      [
+        <Shield size={18} />,
+        "Community Guidelines",
+      ],
+      [
+        <Flag size={18} />,
+        "Content Violations",
+      ],
+      [
+        <EyeOff size={18} />,
+        "Removed / Restricted Content",
+      ],
+      [
+        <AlertTriangle size={18} />,
+        "Warnings",
+      ],
+    ].map(([icon, title]) => (
+      <SettingRow
+        key={title}
+        icon={icon}
+        title={title}
+        description={`Manage ${title.toLowerCase()} information.`}
+        right={
+          title ===
+          "Copyright Status" ? (
+            <ChevronRight
+              size={17}
+              className="text-zinc-700"
+            />
+          ) : (
+            <ComingSoon text="Safety center" />
+          )
+        }
+        onClick={
+          title ===
+          "Copyright Status"
+            ? () =>
+                navigate(
+                  "/settings/copyright"
+                )
+            : undefined
+        }
+      />
+    ))}
+  </div>
+);
+
+/* ============================================================
+   REPORTS
+   ============================================================ */
+
+const ReportsSection = () => (
+  <div>
+    {[
+      [
+        <Download size={18} />,
+        "Download Personal Data",
+      ],
+      [
+        <BarChart3 size={18} />,
+        "Export Analytics",
+      ],
+      [
+        <Video size={18} />,
+        "Export Videos",
+      ],
+      [
+        <Wallet size={18} />,
+        "Export Earnings",
+      ],
+      [
+        <ClipboardList size={18} />,
+        "Export Transactions",
+      ],
+      [
+        <Users size={18} />,
+        "Export Followers",
+      ],
+      [
+        <FileText size={18} />,
+        "Monthly Reports",
+      ],
+      [
+        <Sparkles size={18} />,
+        "Creator Reports",
+      ],
+      [
+        <CreditCard size={18} />,
+        "Financial Reports",
+      ],
+      [
+        <FileArchive size={18} />,
+        "Data Archive",
+      ],
+    ].map(([icon, title]) => (
+      <SettingRow
+        key={title}
+        icon={icon}
+        title={title}
+        description={`Generate or download ${title.toLowerCase()}.`}
+        right={
+          <Badge>
+            CSV / JSON / PDF
+          </Badge>
+        }
+      />
+    ))}
+  </div>
+);
+
+/* ============================================================
+   CONNECTED APPS
+   ============================================================ */
+
+const ConnectedAppsSection = () => (
+  <div>
+    <SettingRow
+      icon={<Link2 size={18} />}
+      title="Connected Apps"
+      description="Applications connected to your Mpade Universe account."
+      right={
+        <ComingSoon text="OAuth manager" />
+      }
+    />
+
+    <SettingRow
+      icon={<LogIn size={18} />}
+      title="OAuth Connections"
+      description="Review external sign-in and authorization connections."
+      right={
+        <ComingSoon text="OAuth manager" />
+      }
+    />
+
+    <SettingRow
+      icon={<Smartphone size={18} />}
+      title="Authorized Devices"
+      description="Devices authorized to access your account."
+      right={
+        <ComingSoon text="Device manager" />
+      }
+    />
+
+    <SettingRow
+      icon={<KeyRound size={18} />}
+      title="API Access"
+      description="Manage API access tokens and integrations."
+      right={
+        <ComingSoon text="API manager" />
+      }
+    />
+
+    <SettingRow
+      icon={<Shield size={18} />}
+      title="Third-Party Permissions"
+      description="Review permissions granted to external services."
+      right={
+        <ComingSoon text="Permission manager" />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   ACCESSIBILITY
+   ============================================================ */
+
+const AccessibilitySection = ({
+  settings,
+  onUpdate,
+}) => (
+  <div>
+    <SettingRow
+      icon={<TypeIcon />}
+      title="Font Size"
+      description="Adjust text size throughout the application."
+      right={
+        <SelectBox
+          value={settings.fontSize}
+          onChange={(value) =>
+            onUpdate(
+              "fontSize",
+              value
+            )
+          }
+          options={[
+            {
+              value: "small",
+              label: "Small",
+            },
+            {
+              value: "medium",
+              label: "Medium",
+            },
+            {
+              value: "large",
+              label: "Large",
+            },
+            {
+              value: "xlarge",
+              label: "Extra large",
+            },
+          ]}
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Eye size={18} />}
+      title="High Contrast"
+      description="Increase contrast for improved readability."
+      right={
+        <Toggle
+          active={
+            settings.highContrast
+          }
+          onChange={(value) =>
+            onUpdate(
+              "highContrast",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<PauseCircle size={18} />}
+      title="Reduce Motion"
+      description="Reduce animations and motion effects."
+      right={
+        <Toggle
+          active={
+            settings.reduceMotion
+          }
+          onChange={(value) =>
+            onUpdate(
+              "reduceMotion",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<MessageSquare size={18} />}
+      title="Captions"
+      description="Enable captions when available."
+      right={
+        <Toggle
+          active={
+            settings.captions
+          }
+          onChange={(value) =>
+            onUpdate(
+              "captions",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Headphones size={18} />}
+      title="Audio Descriptions"
+      description="Enable audio descriptions when available."
+      right={
+        <Toggle
+          active={
+            settings.audioDescriptions
+          }
+          onChange={(value) =>
+            onUpdate(
+              "audioDescriptions",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Palette size={18} />}
+      title="Color-Blind Friendly"
+      description="Use an accessibility-friendly color palette."
+      right={
+        <Toggle
+          active={
+            settings.colorBlindFriendly
+          }
+          onChange={(value) =>
+            onUpdate(
+              "colorBlindFriendly",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Smartphone size={18} />}
+      title="Large Touch Targets"
+      description="Increase interactive target sizes."
+      right={
+        <Toggle
+          active={
+            settings.largeTouchTargets
+          }
+          onChange={(value) =>
+            onUpdate(
+              "largeTouchTargets",
+              value
+            )
+          }
+        />
+      }
+    />
+
+    <SettingRow
+      icon={<Headphones size={18} />}
+      title="Screen Reader Support"
+      description="Accessibility support for assistive technologies."
+      right={
+        <Toggle
+          active={
+            settings.screenReader
+          }
+          onChange={(value) =>
+            onUpdate(
+              "screenReader",
+              value
+            )
+          }
+        />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   SUPPORT
+   ============================================================ */
+
+const SupportSection = ({
+  navigate,
+}) => (
+  <div>
+    {[
+      [
+        <HelpCircle size={18} />,
+        "Help Center",
+        "/support",
+      ],
+      [
+        <Flag size={18} />,
+        "Report a Problem",
+        "/support",
+      ],
+      [
+        <Flag size={18} />,
+        "Report Content",
+        "/support",
+      ],
+      [
+        <Shield size={18} />,
+        "Copyright Support",
+        "/settings/copyright",
+      ],
+      [
+        <CreditCard size={18} />,
+        "Payments Support",
+        "/support",
+      ],
+      [
+        <Sparkles size={18} />,
+        "Creator Support",
+        "/support",
+      ],
+      [
+        <KeyRound size={18} />,
+        "Account Recovery",
+        "/support",
+      ],
+      [
+        <ShieldCheck size={18} />,
+        "Safety Center",
+        "/support",
+      ],
+      [
+        <FileText size={18} />,
+        "Community Guidelines",
+        "/support",
+      ],
+      [
+        <FileText size={18} />,
+        "Terms",
+        "/terms",
+      ],
+      [
+        <Eye size={18} />,
+        "Privacy",
+        "/privacy",
+      ],
+      [
+        <Info size={18} />,
+        "About Mpade Universe",
+        "/about",
+      ],
+    ].map(
+      ([icon, title, route]) => (
+        <SettingRow
+          key={title}
+          icon={icon}
+          title={title}
+          description={`Open ${title.toLowerCase()}.`}
+          right={
+            <ChevronRight
+              size={17}
+              className="text-zinc-700"
+            />
+          }
+          onClick={() =>
+            navigate(route)
+          }
+        />
+      )
+    )}
+
+    <SettingRow
+      icon={<ClipboardList size={18} />}
+      title="Support Tickets"
+      description="Review your previous support requests."
+      right={
+        <ComingSoon text="Ticket system" />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   SYSTEM
+   ============================================================ */
+
+const SystemSection = ({
+  profile,
+  storage,
+  refresh,
+}) => (
+  <div>
+    <SettingRow
+      icon={<Info size={18} />}
+      title="App Version"
+      description="Current application version."
+      right={
+        <Badge>
+          {APP_VERSION}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<Server size={18} />}
+      title="Backend"
+      description="Connection to application backend."
+      right={
+        <Badge tone="green">
+          Available
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<Database size={18} />}
+      title="Database"
+      description="Supabase profile data connection."
+      right={
+        <Badge tone="green">
+          Connected
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<HardDrive size={18} />}
+      title="Storage"
+      description="Media storage infrastructure."
+      right={
+        <ComingSoon text="Live diagnostics" />
+      }
+    />
+
+    <SettingRow
+      icon={<Bell size={18} />}
+      title="Notification Service"
+      description="Push and application notification infrastructure."
+      right={
+        <ComingSoon text="Live diagnostics" />
+      }
+    />
+
+    <SettingRow
+      icon={<Video size={18} />}
+      title="Media Processing"
+      description="Video and media processing infrastructure."
+      right={
+        <ComingSoon text="Live diagnostics" />
+      }
+    />
+
+    <SettingRow
+      icon={<RefreshCw size={18} />}
+      title="Last Profile Sync"
+      description={
+        profile?.updated_at
+          ? formatDate(
+              profile.updated_at
+            )
+          : "Unknown"
+      }
+      right={
+        <ActionButton
+          icon={<RefreshCw size={13} />}
+          onClick={refresh}
+        >
+          Refresh
+        </ActionButton>
+      }
+    />
+
+    <SettingRow
+      icon={<Wifi size={18} />}
+      title="Network"
+      description="Current browser network state."
+      right={
+        <Badge
+          tone={
+            navigator.onLine
+              ? "green"
+              : "red"
+          }
+        >
+          {navigator.onLine
+            ? "Online"
+            : "Offline"}
+        </Badge>
+      }
+    />
+
+    <SettingRow
+      icon={<Cloud size={18} />}
+      title="Background Sync"
+      description="Synchronization of supported background tasks."
+      right={
+        <ComingSoon text="Configure" />
+      }
+    />
+
+    <SettingRow
+      icon={<Settings2 size={18} />}
+      title="Diagnostics"
+      description="Run application diagnostics."
+      right={
+        <ComingSoon text="Diagnostics" />
+      }
+    />
+
+    <SettingRow
+      icon={<FileText size={18} />}
+      title="Error Logs"
+      description="Application error and diagnostic logs."
+      right={
+        <ComingSoon text="Diagnostics" />
+      }
+    />
+
+    <SettingRow
+      icon={<Trash2 size={18} />}
+      title="Temporary Data"
+      description={`Browser storage currently measured at ${formatBytes(
+        storage.localStorageBytes
+      )}.`}
+      right={
+        <ComingSoon text="Use storage controls" />
+      }
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   ACCOUNT EXIT
+   ============================================================ */
+
+const AccountExitSection = ({
+  navigate,
+  onLogout,
+}) => (
+  <div>
+    <div className="p-5 border-b border-white/5">
+      <div className="rounded-2xl border border-red-500/15 bg-red-500/[0.04] p-5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle
+            size={20}
+            className="text-red-400 shrink-0"
+          />
+
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-wider text-red-400">
+              Account exit controls
+            </h3>
+
+            <p className="text-[10px] text-zinc-600 leading-relaxed mt-2">
+              These actions can affect your access
+              to your account and content. Download
+              important information before permanently
+              deleting your account.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <SettingRow
+      icon={<Download size={18} />}
+      title="Download Before Deletion"
+      description="Export your personal information, content, reports and account data."
+      right={
+        <ChevronRight
+          size={17}
+          className="text-zinc-700"
+        />
+      }
+      onClick={() =>
+        navigate("/settings/reports")
+      }
+    />
+
+    <SettingRow
+      icon={<LogOut size={18} />}
+      title="Log Out"
+      description="Log out from this current session."
+      right={
+        <ActionButton
+          icon={<LogOut size={13} />}
+          onClick={onLogout}
+        >
+          Log out
+        </ActionButton>
+      }
+    />
+
+    <SettingRow
+      icon={<LogOut size={18} />}
+      title="Log Out All Devices"
+      description="End all active sessions across your devices."
+      right={
+        <ComingSoon text="Security manager" />
+      }
+    />
+
+    <SettingRow
+      icon={<PauseCircle size={18} />}
+      title="Deactivate Account"
+      description="Temporarily disable your account."
+      right={
+        <ComingSoon text="Account action" />
+      }
+    />
+
+    <SettingRow
+      icon={<Trash2 size={18} />}
+      title="Delete Account"
+      description="Permanently delete your account and associated data."
+      right={
+        <ComingSoon text="Dangerous action" />
+      }
+      danger
+      border={false}
+    />
+  </div>
+);
+
+/* ============================================================
+   ICON HELPERS
+   ============================================================ */
+
+const AtSignIcon = () => (
+  <span className="text-lg font-black">
+    @
+  </span>
+);
+
+const MapPinIcon = () => (
+  <span className="text-lg">
+    📍
+  </span>
+);
+
+const ClockIcon = () => (
+  <span className="text-lg">
+    ◷
+  </span>
+);
+
+const ArrowDownIcon = () => (
+  <span className="text-lg">
+    ↓
+  </span>
+);
+
+const GiftIcon = () => (
+  <span className="text-lg">
+    🎁
+  </span>
+);
+
+const TargetIcon = () => (
+  <span className="text-lg">
+    🎯
+  </span>
+);
+
+const MegaphoneIcon = () => (
+  <span className="text-lg">
+    📢
+  </span>
+);
+
+const TypeIcon = () => (
+  <span className="text-lg font-black">
+    A
+  </span>
+);
+
+/* ============================================================
+   DEFAULT EXPORT
+   ============================================================ */
 
 export default SettingsPage;
