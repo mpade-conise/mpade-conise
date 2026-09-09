@@ -31,12 +31,13 @@ import {
   MoreVertical,
   Copy,
   VolumeX,
+  Volume2,
   Ban,
   Flag,
   Search,
   ChevronLeft,
   ChevronRight,
-  Eye,
+  AlertCircle,
   Repeat2,
   ListVideo,
   Pin,
@@ -46,14 +47,10 @@ import {
   WifiOff,
   QrCode,
   SlidersHorizontal,
-  ArrowDownAZ,
   Clock3,
   Flame,
   UserRound,
-  Image as ImageIcon,
-  AlertCircle,
-  Send,
-  Trash2
+  Send
 } from 'lucide-react';
 
 import { supabase } from '../supabaseClient';
@@ -70,6 +67,8 @@ const DEFAULT_STATS = {
   profileViews: 0
 };
 
+const EMPTY_SET = new Set();
+
 const Profile = () => {
   const navigate = useNavigate();
   const { id: paramUserId } = useParams();
@@ -80,7 +79,7 @@ const Profile = () => {
   const [profile, setProfile] = useState(null);
   const [targetUserId, setTargetUserId] = useState(null);
 
-  const [isOwnProfile, setIsOwnProfile] = useState(true);
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [isFollowingTarget, setIsFollowingTarget] = useState(false);
   const [followRequestPending, setFollowRequestPending] = useState(false);
 
@@ -106,7 +105,8 @@ const Profile = () => {
   const [followPage, setFollowPage] = useState(0);
   const [hasMoreFollowUsers, setHasMoreFollowUsers] = useState(true);
 
-  const [myFollowingIds, setMyFollowingIds] = useState(new Set());
+  const [myFollowingIds, setMyFollowingIds] =
+    useState(EMPTY_SET);
 
   const [stats, setStats] = useState(DEFAULT_STATS);
 
@@ -125,19 +125,40 @@ const Profile = () => {
   const [viewerIndex, setViewerIndex] = useState(0);
   const [viewerLoading, setViewerLoading] = useState(false);
   const [viewerLiked, setViewerLiked] = useState(false);
+  const [viewerLikeLoading, setViewerLikeLoading] =
+    useState(false);
 
   const [qrOpen, setQrOpen] = useState(false);
 
-  const [lastTap, setLastTap] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
+  const [mutualFollowers, setMutualFollowers] =
+    useState(0);
+
   const contentSentinelRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   const scrollStartYRef = useRef(0);
+  const lastTapRef = useRef(0);
+  const mountedRef = useRef(true);
 
   /*
-   * ------------------------------------------------------------
-   * Helpers
-   * ------------------------------------------------------------
+   * ============================================================
+   * LIFECYCLE
+   * ============================================================
+   */
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /*
+   * ============================================================
+   * HELPERS
+   * ============================================================
    */
 
   const formatCount = useCallback((num) => {
@@ -158,12 +179,17 @@ const Profile = () => {
     return value;
   }, []);
 
-  const getAvatar = useCallback((item, fallback = 'user') => {
-    return (
-      item?.avatar_url ||
-      `https://api.dicebear.com/7.x/avataaars/svg?seed=${item?.id || fallback}`
-    );
-  }, []);
+  const getAvatar = useCallback(
+    (item, fallback = 'user') => {
+      return (
+        item?.avatar_url ||
+        `https://api.dicebear.com/7.x/avataaars/svg?seed=${
+          item?.id || fallback
+        }`
+      );
+    },
+    []
+  );
 
   const getCover = useCallback((item) => {
     return (
@@ -184,54 +210,104 @@ const Profile = () => {
   }, []);
 
   const getProfilePath = useCallback(() => {
-    if (!profile?.username) {
-      return `/profile/${targetUserId}`;
-    }
-
-    return `/profile/${profile.username}`;
-  }, [profile, targetUserId]);
+    /*
+     * Keep routing consistent with the route parameter.
+     * This avoids problems when your router expects UUIDs.
+     */
+    return `/profile/${targetUserId}`;
+  }, [targetUserId]);
 
   const getAbsoluteProfileUrl = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return getProfilePath();
+    }
+
     return `${window.location.origin}${getProfilePath()}`;
   }, [getProfilePath]);
 
+  const showError = useCallback((error) => {
+    console.error(error);
+
+    return (
+      error?.message ||
+      error?.error_description ||
+      'Something went wrong.'
+    );
+  }, []);
+
   /*
-   * ------------------------------------------------------------
-   * Profile loading
-   * ------------------------------------------------------------
+   * ============================================================
+   * FETCH PROFILE
+   * ============================================================
    */
 
   const fetchProfileData = useCallback(async () => {
+    let effectiveId = null;
+
     try {
       setProfileLoading(true);
       setProfileError('');
 
+      /*
+       * Clear stale state while loading a new profile.
+       */
+      setProfile(null);
+      setDisplayVideos([]);
+      setContentPage(0);
+      setHasMoreContent(true);
+      setIsFollowingTarget(false);
+      setFollowRequestPending(false);
+      setIsMuted(false);
+      setIsBlocked(false);
+      setMutualFollowers(0);
+      setStats(DEFAULT_STATS);
+
       const {
-        data: { session }
+        data: { session },
+        error: sessionError
       } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
 
       const authUser = session?.user || null;
 
-      setUser(authUser);
-
-      const effectiveId = paramUserId || authUser?.id;
-
-      if (!effectiveId) {
-        setProfileError('No profile selected.');
-        return;
+      if (mountedRef.current) {
+        setUser(authUser);
       }
 
-      setTargetUserId(effectiveId);
+      effectiveId =
+        paramUserId ||
+        authUser?.id ||
+        null;
 
-      const isOwner = Boolean(
-        authUser?.id && effectiveId === authUser.id
-      );
+      if (!effectiveId) {
+        throw new Error(
+          'No profile selected.'
+        );
+      }
 
-      setIsOwnProfile(isOwner);
+      const isOwner =
+        Boolean(
+          authUser?.id &&
+          effectiveId === authUser.id
+        );
+
+      if (mountedRef.current) {
+        setTargetUserId(effectiveId);
+        setIsOwnProfile(isOwner);
+      }
 
       /*
-       * Profile
+       * ----------------------------------------------------------
+       * PROFILE
+       * ----------------------------------------------------------
+       *
+       * We use * because your existing database may contain
+       * additional profile fields.
        */
+
       const {
         data: profileData,
         error: profileErrorData
@@ -246,63 +322,206 @@ const Profile = () => {
       }
 
       if (!profileData) {
-        setProfile(null);
-        setProfileError('Profile not found.');
+        if (mountedRef.current) {
+          setProfileError(
+            'Profile not found.'
+          );
+        }
+
         return;
       }
 
       /*
-       * Block check
+       * Deleted / suspended profile support.
        */
-      if (authUser && !isOwner) {
-        const { data: blockData } = await supabase
-          .from('blocks')
-          .select('id')
-          .eq('blocker_id', authUser.id)
-          .eq('blocked_id', effectiveId)
-          .maybeSingle();
 
-        setIsBlocked(Boolean(blockData));
-      } else {
-        setIsBlocked(false);
+      if (
+        profileData.is_deleted === true ||
+        profileData.deleted === true
+      ) {
+        if (mountedRef.current) {
+          setProfile(profileData);
+          setProfileError(
+            'This profile has been deleted.'
+          );
+        }
+
+        return;
+      }
+
+      if (
+        profileData.is_suspended === true ||
+        profileData.suspended === true
+      ) {
+        if (mountedRef.current) {
+          setProfile(profileData);
+          setProfileError(
+            'This profile has been suspended.'
+          );
+        }
+
+        return;
       }
 
       /*
-       * Follow relationship
+       * ----------------------------------------------------------
+       * RELATIONSHIPS
+       * ----------------------------------------------------------
        */
-      let followingIds = [];
+
+      let myFollowing = [];
 
       if (authUser) {
-        const { data: myFollows } = await supabase
+        /*
+         * Current user's following list.
+         */
+        const {
+          data: myFollows,
+          error: myFollowsError
+        } = await supabase
           .from('follows')
           .select('following_id')
-          .eq('follower_id', authUser.id);
+          .eq(
+            'follower_id',
+            authUser.id
+          );
 
-        followingIds =
-          myFollows?.map((item) => item.following_id) || [];
+        if (myFollowsError) {
+          console.warn(
+            'Unable to load current following list:',
+            myFollowsError
+          );
+        } else {
+          myFollowing =
+            myFollows?.map(
+              (item) =>
+                item.following_id
+            ) || [];
+        }
 
-        setMyFollowingIds(new Set(followingIds));
+        if (mountedRef.current) {
+          setMyFollowingIds(
+            new Set(myFollowing)
+          );
 
-        setIsFollowingTarget(
-          followingIds.includes(effectiveId)
-        );
+          setIsFollowingTarget(
+            myFollowing.includes(
+              effectiveId
+            )
+          );
+        }
 
+        /*
+         * Block state.
+         */
         if (!isOwner) {
-          const { data: requestData } = await supabase
-            .from('follow_requests')
-            .select('id, status')
-            .eq('requester_id', authUser.id)
-            .eq('target_id', effectiveId)
-            .eq('status', 'pending')
+          const {
+            data: blockData,
+            error: blockError
+          } = await supabase
+            .from('blocks')
+            .select('id')
+            .eq(
+              'blocker_id',
+              authUser.id
+            )
+            .eq(
+              'blocked_id',
+              effectiveId
+            )
             .maybeSingle();
 
-          setFollowRequestPending(Boolean(requestData));
+          if (blockError) {
+            console.warn(
+              'Block state could not be loaded:',
+              blockError
+            );
+          }
+
+          if (mountedRef.current) {
+            setIsBlocked(
+              Boolean(blockData)
+            );
+          }
+
+          /*
+           * Mute state.
+           */
+          const {
+            data: muteData,
+            error: muteError
+          } = await supabase
+            .from('mutes')
+            .select('id')
+            .eq(
+              'user_id',
+              authUser.id
+            )
+            .eq(
+              'muted_user_id',
+              effectiveId
+            )
+            .maybeSingle();
+
+          if (muteError) {
+            console.warn(
+              'Mute state could not be loaded:',
+              muteError
+            );
+          }
+
+          if (mountedRef.current) {
+            setIsMuted(
+              Boolean(muteData)
+            );
+          }
+
+          /*
+           * Follow request.
+           */
+          if (!myFollowing.includes(effectiveId)) {
+            const {
+              data: requestData,
+              error: requestError
+            } = await supabase
+              .from('follow_requests')
+              .select('id, status')
+              .eq(
+                'requester_id',
+                authUser.id
+              )
+              .eq(
+                'target_id',
+                effectiveId
+              )
+              .eq(
+                'status',
+                'pending'
+              )
+              .maybeSingle();
+
+            if (requestError) {
+              console.warn(
+                'Follow request could not be loaded:',
+                requestError
+              );
+            }
+
+            if (mountedRef.current) {
+              setFollowRequestPending(
+                Boolean(requestData)
+              );
+            }
+          }
         }
       }
 
       /*
-       * Stats
+       * ----------------------------------------------------------
+       * STATS
+       * ----------------------------------------------------------
        */
+
       const [
         followingResult,
         followersResult,
@@ -311,19 +530,25 @@ const Profile = () => {
       ] = await Promise.all([
         supabase
           .from('follows')
-          .select('*', {
+          .select('id', {
             count: 'exact',
             head: true
           })
-          .eq('follower_id', effectiveId),
+          .eq(
+            'follower_id',
+            effectiveId
+          ),
 
         supabase
           .from('follows')
-          .select('*', {
+          .select('id', {
             count: 'exact',
             head: true
           })
-          .eq('following_id', effectiveId),
+          .eq(
+            'following_id',
+            effectiveId
+          ),
 
         supabase
           .from('videos')
@@ -333,106 +558,341 @@ const Profile = () => {
               count: 'exact'
             }
           )
-          .eq('user_id', effectiveId),
+          .eq(
+            'user_id',
+            effectiveId
+          ),
 
         supabase
           .from('profile_views')
-          .select('*', {
+          .select('id', {
             count: 'exact',
             head: true
           })
-          .eq('profile_id', effectiveId)
+          .eq(
+            'profile_id',
+            effectiveId
+          )
       ]);
 
-      const videoRows = videosResult.data || [];
-
-      const totalLikes = videoRows.reduce(
-        (sum, video) =>
-          sum + (Number(video.likes_count) || 0),
-        0
-      );
-
-      const totalViews = videoRows.reduce(
-        (sum, video) =>
-          sum + (Number(video.views_count) || 0),
-        0
-      );
-
-      setStats({
-        following: followingResult.count || 0,
-        followers: followersResult.count || 0,
-        likes: totalLikes,
-        views: totalViews,
-        videos: videosResult.count || 0,
-        profileViews: profileViewsResult.count || 0
-      });
-
       /*
-       * Record profile view
+       * Do not let one missing optional table destroy the
+       * entire profile.
        */
-      if (authUser && authUser.id !== effectiveId) {
-        await supabase
-          .from('profile_views')
-          .upsert(
-            {
-              profile_id: effectiveId,
-              viewer_id: authUser.id,
-              viewed_at: new Date().toISOString()
-            },
-            {
-              onConflict: 'profile_id,viewer_id'
-            }
-          );
+
+      if (followingResult.error) {
+        console.warn(
+          'Following count error:',
+          followingResult.error
+        );
       }
 
-      setProfile(profileData);
+      if (followersResult.error) {
+        console.warn(
+          'Followers count error:',
+          followersResult.error
+        );
+      }
+
+      if (videosResult.error) {
+        console.warn(
+          'Videos count error:',
+          videosResult.error
+        );
+      }
+
+      if (profileViewsResult.error) {
+        console.warn(
+          'Profile views error:',
+          profileViewsResult.error
+        );
+      }
+
+      const videoRows =
+        videosResult.data || [];
+
+      const totalLikes =
+        videoRows.reduce(
+          (sum, video) =>
+            sum +
+            (Number(
+              video.likes_count
+            ) || 0),
+          0
+        );
+
+      const totalViews =
+        videoRows.reduce(
+          (sum, video) =>
+            sum +
+            (Number(
+              video.views_count
+            ) || 0),
+          0
+        );
+
+      if (mountedRef.current) {
+        setStats({
+          following:
+            followingResult.count ||
+            0,
+          followers:
+            followersResult.count ||
+            0,
+          likes: totalLikes,
+          views: totalViews,
+          videos:
+            videosResult.count || 0,
+          profileViews:
+            profileViewsResult.count ||
+            0
+        });
+      }
+
+      /*
+       * ----------------------------------------------------------
+       * MUTUAL FOLLOWERS
+       * ----------------------------------------------------------
+       */
+
+      if (
+        authUser &&
+        !isOwner
+      ) {
+        try {
+          /*
+           * People who follow the target.
+           */
+          const {
+            data: targetFollowers
+          } = await supabase
+            .from('follows')
+            .select('follower_id')
+            .eq(
+              'following_id',
+              effectiveId
+            );
+
+          const targetFollowerIds =
+            new Set(
+              targetFollowers?.map(
+                (row) =>
+                  row.follower_id
+              ) || []
+            );
+
+          const mutualCount =
+            myFollowing.filter(
+              (id) =>
+                targetFollowerIds.has(
+                  id
+                )
+            ).length;
+
+          if (mountedRef.current) {
+            setMutualFollowers(
+              mutualCount
+            );
+          }
+        } catch (error) {
+          console.warn(
+            'Mutual follower calculation failed:',
+            error
+          );
+
+          if (mountedRef.current) {
+            setMutualFollowers(0);
+          }
+        }
+      }
+
+      /*
+       * ----------------------------------------------------------
+       * PROFILE VIEW
+       * ----------------------------------------------------------
+       */
+
+      if (
+        authUser &&
+        authUser.id !== effectiveId
+      ) {
+        try {
+          const {
+            error: viewError
+          } = await supabase
+            .from('profile_views')
+            .upsert(
+              {
+                profile_id:
+                  effectiveId,
+                viewer_id:
+                  authUser.id,
+                viewed_at:
+                  new Date().toISOString()
+              },
+              {
+                onConflict:
+                  'profile_id,viewer_id'
+              }
+            );
+
+          if (viewError) {
+            console.warn(
+              'Profile view could not be recorded:',
+              viewError
+            );
+          }
+        } catch (error) {
+          console.warn(
+            'Profile view error:',
+            error
+          );
+        }
+      }
+
+      /*
+       * ----------------------------------------------------------
+       * FINAL PROFILE STATE
+       * ----------------------------------------------------------
+       */
+
+      if (mountedRef.current) {
+        setProfile(profileData);
+      }
     } catch (error) {
-      console.error('Profile Data Error:', error);
-      setProfileError(
-        error?.message || 'Unable to load this profile.'
+      console.error(
+        'Profile Data Error:',
+        error
       );
+
+      if (mountedRef.current) {
+        setProfileError(
+          showError(error)
+        );
+      }
     } finally {
-      setProfileLoading(false);
+      if (mountedRef.current) {
+        setProfileLoading(false);
+      }
     }
-  }, [paramUserId]);
+  }, [
+    paramUserId,
+    showError
+  ]);
 
   /*
-   * ------------------------------------------------------------
-   * Content query
-   * ------------------------------------------------------------
+   * IMPORTANT:
+   * This was missing from your original file.
+   * Without this, the page remains on the loading screen forever.
+   */
+
+  useEffect(() => {
+    fetchProfileData();
+  }, [fetchProfileData]);
+
+  /*
+   * ============================================================
+   * VIDEO QUERY
+   * ============================================================
    */
 
   const buildVideoQuery = useCallback(
     (query, tab) => {
-      let result = query.eq('user_id', targetUserId);
+      let result =
+        query.eq(
+          'user_id',
+          targetUserId
+        );
 
+      /*
+       * Private tab is only available for owner.
+       */
       if (tab === 'private') {
-        result = result.eq('is_private', true);
+        result =
+          result.eq(
+            'is_private',
+            true
+          );
       }
 
-      if (contentFilter === 'public') {
-        result = result.eq('is_private', false);
+      /*
+       * Public/private filters only apply to
+       * the owner's normal video content.
+       */
+      if (
+        tab === 'videos' ||
+        tab === 'private'
+      ) {
+        if (
+          contentFilter ===
+          'public'
+        ) {
+          result =
+            result.eq(
+              'is_private',
+              false
+            );
+        }
+
+        if (
+          contentFilter ===
+          'private'
+        ) {
+          result =
+            result.eq(
+              'is_private',
+              true
+            );
+        }
       }
 
-      if (contentFilter === 'private') {
-        result = result.eq('is_private', true);
-      }
+      /*
+       * Pinned content always comes first.
+       *
+       * If your videos table does not yet contain
+       * is_pinned, remove this order line.
+       */
+      result =
+        result.order(
+          'is_pinned',
+          {
+            ascending: false,
+            nullsFirst: false
+          }
+        );
 
-      if (contentSort === 'popular') {
-        result = result.order('views_count', {
-          ascending: false,
-          nullsFirst: false
-        });
-      } else if (contentSort === 'likes') {
-        result = result.order('likes_count', {
-          ascending: false,
-          nullsFirst: false
-        });
+      if (
+        contentSort ===
+        'popular'
+      ) {
+        result =
+          result.order(
+            'views_count',
+            {
+              ascending: false,
+              nullsFirst: false
+            }
+          );
+      } else if (
+        contentSort === 'likes'
+      ) {
+        result =
+          result.order(
+            'likes_count',
+            {
+              ascending: false,
+              nullsFirst: false
+            }
+          );
       } else {
-        result = result.order('created_at', {
-          ascending: false,
-          nullsFirst: false
-        });
+        result =
+          result.order(
+            'created_at',
+            {
+              ascending: false,
+              nullsFirst: false
+            }
+          );
       }
 
       return result;
@@ -444,12 +904,70 @@ const Profile = () => {
     ]
   );
 
+  /*
+   * ============================================================
+   * REORDER VIDEOS
+   * ============================================================
+   */
+
+  const reorderByIds = useCallback(
+    (rows, ids) => {
+      const map =
+        new Map(
+          rows.map((row) => [
+            row.id,
+            row
+          ])
+        );
+
+      return ids
+        .map((id) =>
+          map.get(id)
+        )
+        .filter(Boolean);
+    },
+    []
+  );
+
+  /*
+   * ============================================================
+   * FETCH TAB CONTENT
+   * ============================================================
+   */
+
   const fetchTabData = useCallback(
     async ({
       reset = true,
       requestedPage = 0
     } = {}) => {
-      if (!targetUserId) return;
+      if (!targetUserId) {
+        return;
+      }
+
+      if (activeTab === 'playlists') {
+        if (mountedRef.current) {
+          setDisplayVideos([]);
+          setContentLoading(false);
+          setContentLoadingMore(false);
+          setHasMoreContent(false);
+        }
+
+        return;
+      }
+
+      if (
+        activeTab === 'private' &&
+        !isOwnProfile
+      ) {
+        if (mountedRef.current) {
+          setDisplayVideos([]);
+          setHasMoreContent(false);
+          setContentLoading(false);
+          setContentLoadingMore(false);
+        }
+
+        return;
+      }
 
       if (reset) {
         setContentLoading(true);
@@ -459,79 +977,99 @@ const Profile = () => {
       }
 
       try {
-        const from = requestedPage * PAGE_SIZE;
-        const to = from + PAGE_SIZE - 1;
+        const from =
+          requestedPage *
+          PAGE_SIZE;
+
+        const to =
+          from +
+          PAGE_SIZE -
+          1;
 
         let videosData = [];
 
         /*
-         * ------------------------------------------------------
-         * Own private content
-         * ------------------------------------------------------
+         * --------------------------------------------------------
+         * NORMAL VIDEOS / PRIVATE
+         * --------------------------------------------------------
          */
 
         if (
-          activeTab === 'private' &&
-          !isOwnProfile
+          activeTab ===
+            'videos' ||
+          activeTab ===
+            'private'
         ) {
-          setDisplayVideos([]);
-          setHasMoreContent(false);
-          return;
-        }
+          let query =
+            supabase
+              .from('videos')
+              .select('*');
 
-        /*
-         * ------------------------------------------------------
-         * Standard videos
-         * ------------------------------------------------------
-         */
-
-        if (
-          activeTab === 'videos' ||
-          activeTab === 'private'
-        ) {
-          let query = supabase
-            .from('videos')
-            .select('*');
-
-          query = buildVideoQuery(
-            query,
-            activeTab
-          );
+          query =
+            buildVideoQuery(
+              query,
+              activeTab
+            );
 
           const {
             data,
             error
-          } = await query.range(from, to);
+          } = await query.range(
+            from,
+            to
+          );
 
-          if (error) throw error;
+          if (error) {
+            throw error;
+          }
 
-          videosData = data || [];
+          videosData =
+            data || [];
         }
 
         /*
-         * ------------------------------------------------------
-         * Liked
-         * ------------------------------------------------------
+         * --------------------------------------------------------
+         * LIKED
+         * --------------------------------------------------------
          */
 
-        else if (activeTab === 'liked') {
+        else if (
+          activeTab === 'liked'
+        ) {
           const {
             data: likedRefs,
             error: likedError
           } = await supabase
             .from('video_likes')
-            .select('video_id')
-            .eq('user_id', targetUserId)
-            .range(from, to);
+            .select(
+              'video_id, created_at'
+            )
+            .eq(
+              'user_id',
+              targetUserId
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false
+              }
+            )
+            .range(
+              from,
+              to
+            );
 
-          if (likedError) throw likedError;
+          if (likedError) {
+            throw likedError;
+          }
 
           const ids =
             likedRefs?.map(
-              (item) => item.video_id
+              (item) =>
+                item.video_id
             ) || [];
 
-          if (ids.length > 0) {
+          if (ids.length) {
             const {
               data,
               error
@@ -540,36 +1078,61 @@ const Profile = () => {
               .select('*')
               .in('id', ids);
 
-            if (error) throw error;
+            if (error) {
+              throw error;
+            }
 
-            videosData = data || [];
+            videosData =
+              reorderByIds(
+                data || [],
+                ids
+              );
           }
         }
 
         /*
-         * ------------------------------------------------------
-         * Saved
-         * ------------------------------------------------------
+         * --------------------------------------------------------
+         * SAVED
+         * --------------------------------------------------------
          */
 
-        else if (activeTab === 'saved') {
+        else if (
+          activeTab === 'saved'
+        ) {
           const {
             data: savedRefs,
             error: savedError
           } = await supabase
             .from('favorites')
-            .select('video_id')
-            .eq('user_id', targetUserId)
-            .range(from, to);
+            .select(
+              'video_id, created_at'
+            )
+            .eq(
+              'user_id',
+              targetUserId
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false
+              }
+            )
+            .range(
+              from,
+              to
+            );
 
-          if (savedError) throw savedError;
+          if (savedError) {
+            throw savedError;
+          }
 
           const ids =
             savedRefs?.map(
-              (item) => item.video_id
+              (item) =>
+                item.video_id
             ) || [];
 
-          if (ids.length > 0) {
+          if (ids.length) {
             const {
               data,
               error
@@ -578,39 +1141,62 @@ const Profile = () => {
               .select('*')
               .in('id', ids);
 
-            if (error) throw error;
+            if (error) {
+              throw error;
+            }
 
-            videosData = data || [];
+            videosData =
+              reorderByIds(
+                data || [],
+                ids
+              );
           }
         }
 
         /*
-         * ------------------------------------------------------
-         * Reposts
-         * ------------------------------------------------------
+         * --------------------------------------------------------
+         * REPOSTS
+         * --------------------------------------------------------
          */
 
-        else if (activeTab === 'reposts') {
+        else if (
+          activeTab ===
+          'reposts'
+        ) {
           const {
             data: repostRows,
             error: repostError
           } = await supabase
             .from('reposts')
-            .select('video_id, created_at')
-            .eq('user_id', targetUserId)
-            .order('created_at', {
-              ascending: false
-            })
-            .range(from, to);
+            .select(
+              'video_id, created_at'
+            )
+            .eq(
+              'user_id',
+              targetUserId
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false
+              }
+            )
+            .range(
+              from,
+              to
+            );
 
-          if (repostError) throw repostError;
+          if (repostError) {
+            throw repostError;
+          }
 
           const ids =
             repostRows?.map(
-              (item) => item.video_id
+              (item) =>
+                item.video_id
             ) || [];
 
-          if (ids.length > 0) {
+          if (ids.length) {
             const {
               data,
               error
@@ -619,47 +1205,82 @@ const Profile = () => {
               .select('*')
               .in('id', ids);
 
-            if (error) throw error;
+            if (error) {
+              throw error;
+            }
 
-            videosData = data || [];
+            /*
+             * Supabase .in() does not preserve
+             * the order of ids. Restore repost order.
+             */
+            videosData =
+              reorderByIds(
+                data || [],
+                ids
+              );
           }
         }
 
         /*
-         * ------------------------------------------------------
-         * Playlists
-         * ------------------------------------------------------
+         * --------------------------------------------------------
+         * PRIVATE CONTENT VISIBILITY
+         * --------------------------------------------------------
          */
 
-        else if (activeTab === 'playlists') {
-          /*
-           * Playlists are handled separately below.
-           * The profile grid remains available for normal
-           * content tabs.
-           */
+        if (
+          !isOwnProfile &&
+          profile?.is_private &&
+          !isFollowingTarget
+        ) {
           videosData = [];
         }
 
-        setDisplayVideos((previous) => {
-          if (reset) {
-            return videosData;
+        /*
+         * --------------------------------------------------------
+         * UPDATE STATE
+         * --------------------------------------------------------
+         */
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        setDisplayVideos(
+          (previous) => {
+            if (reset) {
+              return videosData;
+            }
+
+            const existingIds =
+              new Set(
+                previous.map(
+                  (item) =>
+                    item.id
+                )
+              );
+
+            const additions =
+              videosData.filter(
+                (item) =>
+                  !existingIds.has(
+                    item.id
+                  )
+              );
+
+            return [
+              ...previous,
+              ...additions
+            ];
           }
+        );
 
-          const existingIds = new Set(
-            previous.map((item) => item.id)
-          );
+        setContentPage(
+          requestedPage
+        );
 
-          const additions =
-            videosData.filter(
-              (item) => !existingIds.has(item.id)
-            );
-
-          return [...previous, ...additions];
-        });
-
-        setContentPage(requestedPage);
         setHasMoreContent(
-          videosData.length === PAGE_SIZE
+          videosData.length ===
+            PAGE_SIZE
         );
       } catch (error) {
         console.error(
@@ -667,568 +1288,42 @@ const Profile = () => {
           error
         );
 
-        setContentError(
-          error?.message ||
-            'Unable to load content.'
-        );
+        if (mountedRef.current) {
+          setContentError(
+            showError(error)
+          );
+        }
       } finally {
-        setContentLoading(false);
-        setContentLoadingMore(false);
+        if (mountedRef.current) {
+          setContentLoading(false);
+          setContentLoadingMore(
+            false
+          );
+        }
       }
     },
     [
       targetUserId,
       activeTab,
       isOwnProfile,
-      buildVideoQuery
+      profile?.is_private,
+      isFollowingTarget,
+      buildVideoQuery,
+      reorderByIds,
+      showError
     ]
   );
 
   /*
-   * ------------------------------------------------------------
-   * Follow list
-   * ------------------------------------------------------------
-   */
-
-  const fetchFollowList = useCallback(
-    async ({
-      reset = true,
-      requestedPage = 0
-    } = {}) => {
-      if (!targetUserId) return;
-
-      if (reset) {
-        setFollowLoading(true);
-      } else {
-        setFollowLoadingMore(true);
-      }
-
-      try {
-        const from =
-          requestedPage * FOLLOW_PAGE_SIZE;
-
-        const to =
-          from + FOLLOW_PAGE_SIZE - 1;
-
-        const column =
-          modalType === 'followers'
-            ? 'follower_id'
-            : 'following_id';
-
-        const filterColumn =
-          modalType === 'followers'
-            ? 'following_id'
-            : 'follower_id';
-
-        const {
-          data: followData,
-          error: followError
-        } = await supabase
-          .from('follows')
-          .select(column)
-          .eq(filterColumn, targetUserId)
-          .range(from, to);
-
-        if (followError) {
-          throw followError;
-        }
-
-        const userIds =
-          followData?.map(
-            (item) => item[column]
-          ) || [];
-
-        if (userIds.length === 0) {
-          if (reset) setFollowList([]);
-          setHasMoreFollowUsers(false);
-          return;
-        }
-
-        let profileQuery = supabase
-          .from('profiles')
-          .select(
-            `
-              id,
-              username,
-              display_name,
-              avatar_url,
-              bio,
-              is_verified,
-              is_online
-            `
-          )
-          .in('id', userIds);
-
-        if (followSearch.trim()) {
-          profileQuery = profileQuery.ilike(
-            'username',
-            `%${followSearch.trim()}%`
-          );
-        }
-
-        const {
-          data: profiles,
-          error: profileError
-        } = await profileQuery;
-
-        if (profileError) {
-          throw profileError;
-        }
-
-        const orderedProfiles =
-          userIds
-            .map((id) =>
-              profiles?.find(
-                (item) => item.id === id
-              )
-            )
-            .filter(Boolean);
-
-        setFollowList((previous) => {
-          if (reset) {
-            return orderedProfiles;
-          }
-
-          const existing =
-            new Set(
-              previous.map(
-                (item) => item.id
-              )
-            );
-
-          return [
-            ...previous,
-            ...orderedProfiles.filter(
-              (item) =>
-                !existing.has(item.id)
-            )
-          ];
-        });
-
-        setFollowPage(requestedPage);
-
-        setHasMoreFollowUsers(
-          userIds.length === FOLLOW_PAGE_SIZE
-        );
-      } catch (error) {
-        console.error(
-          'Follow list error:',
-          error
-        );
-      } finally {
-        setFollowLoading(false);
-        setFollowLoadingMore(false);
-      }
-    },
-    [
-      targetUserId,
-      modalType,
-      followSearch
-    ]
-  );
-
-  const openFollowList = async (type) => {
-    setModalType(type);
-    setFollowSearch('');
-    setFollowPage(0);
-    setHasMoreFollowUsers(true);
-    setFollowList([]);
-    setIsModalOpen(true);
-
-    await fetchFollowList({
-      reset: true,
-      requestedPage: 0
-    });
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * Follow / unfollow
-   * ------------------------------------------------------------
-   */
-
-  const handleToggleFollow = async () => {
-    if (
-      !user?.id ||
-      !targetUserId ||
-      isOwnProfile ||
-      actionLoading ||
-      isBlocked
-    ) {
-      return;
-    }
-
-    setActionLoading(true);
-
-    try {
-      /*
-       * Private account
-       */
-      if (
-        profile?.is_private &&
-        !isFollowingTarget
-      ) {
-        if (followRequestPending) {
-          const {
-            error
-          } = await supabase
-            .from('follow_requests')
-            .delete()
-            .eq('requester_id', user.id)
-            .eq('target_id', targetUserId);
-
-          if (error) throw error;
-
-          setFollowRequestPending(false);
-        } else {
-          const {
-            error
-          } = await supabase
-            .from('follow_requests')
-            .insert({
-              requester_id: user.id,
-              target_id: targetUserId,
-              status: 'pending'
-            });
-
-          if (error) throw error;
-
-          setFollowRequestPending(true);
-        }
-
-        return;
-      }
-
-      /*
-       * Unfollow
-       */
-      if (isFollowingTarget) {
-        const {
-          error
-        } = await supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', user.id)
-          .eq('following_id', targetUserId);
-
-        if (error) throw error;
-
-        setIsFollowingTarget(false);
-
-        setStats((previous) => ({
-          ...previous,
-          following:
-            Math.max(
-              0,
-              previous.following - 1
-            ),
-          followers:
-            Math.max(
-              0,
-              previous.followers - 1
-            )
-        }));
-
-        return;
-      }
-
-      /*
-       * Follow
-       */
-      const {
-        error
-      } = await supabase
-        .from('follows')
-        .insert({
-          follower_id: user.id,
-          following_id: targetUserId
-        });
-
-      if (error) throw error;
-
-      setIsFollowingTarget(true);
-
-      setStats((previous) => ({
-        ...previous,
-        following:
-          previous.following + 1,
-        followers:
-          previous.followers + 1
-      }));
-
-      await supabase
-        .from('activities')
-        .insert({
-          user_id: targetUserId,
-          actor_id: user.id,
-          type: 'follow',
-          is_read: false
-        });
-    } catch (error) {
-      console.error(
-        'Follow action failed:',
-        error
-      );
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * Follow back
-   * ------------------------------------------------------------
-   */
-
-  const handleFollowBack = async (targetId) => {
-    if (
-      !user?.id ||
-      !targetId ||
-      actionLoading
-    ) {
-      return;
-    }
-
-    setMyFollowingIds((previous) => {
-      const next = new Set(previous);
-      next.add(targetId);
-      return next;
-    });
-
-    try {
-      const {
-        error
-      } = await supabase
-        .from('follows')
-        .insert({
-          follower_id: user.id,
-          following_id: targetId
-        });
-
-      if (error) throw error;
-
-      if (isOwnProfile) {
-        setStats((previous) => ({
-          ...previous,
-          following:
-            previous.following + 1
-        }));
-      }
-
-      await supabase
-        .from('activities')
-        .insert({
-          user_id: targetId,
-          actor_id: user.id,
-          type: 'follow',
-          is_read: false
-        });
-    } catch (error) {
-      console.error(
-        'Follow Back Failed:',
-        error
-      );
-
-      setMyFollowingIds((previous) => {
-        const next = new Set(previous);
-        next.delete(targetId);
-        return next;
-      });
-    }
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * Remove follower
-   * ------------------------------------------------------------
-   */
-
-  const handleRemoveFollower = async (
-    followerId
-  ) => {
-    if (
-      !user?.id ||
-      !isOwnProfile ||
-      !followerId
-    ) {
-      return;
-    }
-
-    setRemoveLoadingId(followerId);
-
-    try {
-      const {
-        error
-      } = await supabase
-        .from('follows')
-        .delete()
-        .eq('follower_id', followerId)
-        .eq('following_id', user.id);
-
-      if (error) throw error;
-
-      setFollowList((previous) =>
-        previous.filter(
-          (item) =>
-            item.id !== followerId
-        )
-      );
-
-      setStats((previous) => ({
-        ...previous,
-        followers:
-          Math.max(
-            0,
-            previous.followers - 1
-          )
-      }));
-    } catch (error) {
-      console.error(
-        'Remove follower failed:',
-        error
-      );
-    } finally {
-      setRemoveLoadingId(null);
-    }
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * Block
-   * ------------------------------------------------------------
-   */
-
-  const handleBlock = async () => {
-    if (
-      !user?.id ||
-      !targetUserId ||
-      isOwnProfile
-    ) {
-      return;
-    }
-
-    try {
-      const {
-        error
-      } = await supabase
-        .from('blocks')
-        .upsert({
-          blocker_id: user.id,
-          blocked_id: targetUserId
-        });
-
-      if (error) throw error;
-
-      setIsBlocked(true);
-      setProfileMenuOpen(false);
-
-      setIsFollowingTarget(false);
-    } catch (error) {
-      console.error(
-        'Block failed:',
-        error
-      );
-    }
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * Mute
-   * ------------------------------------------------------------
-   */
-
-  const handleMute = async () => {
-    if (
-      !user?.id ||
-      !targetUserId ||
-      isOwnProfile
-    ) {
-      return;
-    }
-
-    try {
-      if (isMuted) {
-        const {
-          error
-        } = await supabase
-          .from('mutes')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('muted_user_id', targetUserId);
-
-        if (error) throw error;
-
-        setIsMuted(false);
-      } else {
-        const {
-          error
-        } = await supabase
-          .from('mutes')
-          .upsert({
-            user_id: user.id,
-            muted_user_id: targetUserId
-          });
-
-        if (error) throw error;
-
-        setIsMuted(true);
-      }
-
-      setProfileMenuOpen(false);
-    } catch (error) {
-      console.error(
-        'Mute failed:',
-        error
-      );
-    }
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * Report
-   * ------------------------------------------------------------
-   */
-
-  const handleReport = async () => {
-    if (
-      !user?.id ||
-      !targetUserId ||
-      isOwnProfile
-    ) {
-      return;
-    }
-
-    try {
-      const {
-        error
-      } = await supabase
-        .from('reports')
-        .insert({
-          reporter_id: user.id,
-          reported_user_id: targetUserId,
-          type: 'profile',
-          status: 'pending'
-        });
-
-      if (error) throw error;
-
-      setProfileMenuOpen(false);
-    } catch (error) {
-      console.error(
-        'Report failed:',
-        error
-      );
-    }
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * Content
-   * ------------------------------------------------------------
+   * ============================================================
+   * CONTENT LOADER
+   * ============================================================
    */
 
   useEffect(() => {
-    if (!targetUserId) return;
+    if (!targetUserId) {
+      return;
+    }
 
     fetchTabData({
       reset: true,
@@ -1239,81 +1334,1126 @@ const Profile = () => {
     activeTab,
     contentSort,
     contentFilter,
-    isOwnProfile
-  ]);
-
-  /*
-   * ------------------------------------------------------------
-   * Infinite scroll
-   * ------------------------------------------------------------
-   */
-
-  useEffect(() => {
-    if (!contentSentinelRef.current) {
-      return;
-    }
-
-    const observer =
-      new IntersectionObserver(
-        (entries) => {
-          const first = entries[0];
-
-          if (
-            first.isIntersecting &&
-            hasMoreContent &&
-            !contentLoading &&
-            !contentLoadingMore
-          ) {
-            fetchTabData({
-              reset: false,
-              requestedPage:
-                contentPage + 1
-            });
-          }
-        },
-        {
-          rootMargin: '500px'
-        }
-      );
-
-    observer.observe(
-      contentSentinelRef.current
-    );
-
-    return () => observer.disconnect();
-  }, [
-    contentPage,
-    hasMoreContent,
-    contentLoading,
-    contentLoadingMore,
+    isOwnProfile,
+    isFollowingTarget,
     fetchTabData
   ]);
 
   /*
-   * ------------------------------------------------------------
-   * Follow list search
-   * ------------------------------------------------------------
+   * ============================================================
+   * FOLLOW LIST
+   * ============================================================
+   */
+
+  const fetchFollowList = useCallback(
+    async ({
+      reset = true,
+      requestedPage = 0
+    } = {}) => {
+      if (!targetUserId) {
+        return;
+      }
+
+      if (reset) {
+        setFollowLoading(true);
+      } else {
+        setFollowLoadingMore(true);
+      }
+
+      try {
+        const from =
+          requestedPage *
+          FOLLOW_PAGE_SIZE;
+
+        const to =
+          from +
+          FOLLOW_PAGE_SIZE -
+          1;
+
+        const relationColumn =
+          modalType === 'followers'
+            ? 'follower_id'
+            : 'following_id';
+
+        const targetColumn =
+          modalType === 'followers'
+            ? 'following_id'
+            : 'follower_id';
+
+        /*
+         * First obtain IDs.
+         *
+         * We intentionally fetch a larger pool when searching.
+         * This prevents search from only checking one page of
+         * follows.
+         */
+
+        let relationQuery =
+          supabase
+            .from('follows')
+            .select(
+              `${relationColumn}, created_at`
+            )
+            .eq(
+              targetColumn,
+              targetUserId
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false
+              }
+            );
+
+        if (!followSearch.trim()) {
+          relationQuery =
+            relationQuery.range(
+              from,
+              to
+            );
+        } else {
+          /*
+           * Search mode: retrieve the relationship IDs,
+           * then filter against profiles.
+           *
+           * The cap prevents unnecessarily huge queries.
+           */
+          relationQuery =
+            relationQuery.range(
+              0,
+              999
+            );
+        }
+
+        const {
+          data: followData,
+          error: followError
+        } = await relationQuery;
+
+        if (followError) {
+          throw followError;
+        }
+
+        const userIds =
+          followData?.map(
+            (item) =>
+              item[
+                relationColumn
+              ]
+          ) || [];
+
+        if (!userIds.length) {
+          if (mountedRef.current) {
+            if (reset) {
+              setFollowList([]);
+            }
+
+            setHasMoreFollowUsers(
+              false
+            );
+          }
+
+          return;
+        }
+
+        /*
+         * Profiles.
+         */
+        let profileQuery =
+          supabase
+            .from('profiles')
+            .select(
+              `
+                id,
+                username,
+                display_name,
+                full_name,
+                avatar_url,
+                bio,
+                is_verified,
+                is_online,
+                mutual_followers_count
+              `
+            )
+            .in(
+              'id',
+              userIds
+            );
+
+        if (
+          followSearch.trim()
+        ) {
+          const search =
+            followSearch
+              .trim()
+              .replace(
+                /[%_]/g,
+                ''
+              );
+
+          if (search) {
+            profileQuery =
+              profileQuery.or(
+                `username.ilike.%${search}%,display_name.ilike.%${search}%,full_name.ilike.%${search}%`
+              );
+          }
+        }
+
+        const {
+          data: profiles,
+          error: profileError
+        } = await profileQuery;
+
+        if (profileError) {
+          /*
+           * If optional columns do not exist, retry
+           * with the guaranteed basic profile fields.
+           */
+          console.warn(
+            'Extended profile query failed. Retrying basic fields:',
+            profileError
+          );
+
+          const {
+            data: basicProfiles,
+            error: basicError
+          } = await supabase
+            .from('profiles')
+            .select(
+              `
+                id,
+                username,
+                display_name,
+                avatar_url,
+                bio
+              `
+            )
+            .in(
+              'id',
+              userIds
+            );
+
+          if (basicError) {
+            throw basicError;
+          }
+
+          const orderedBasic =
+            userIds
+              .map(
+                (id) =>
+                  basicProfiles?.find(
+                    (item) =>
+                      item.id ===
+                      id
+                  )
+              )
+              .filter(Boolean);
+
+          if (mountedRef.current) {
+            setFollowList(
+              reset
+                ? orderedBasic
+                : [
+                    ...followList,
+                    ...orderedBasic.filter(
+                      (item) =>
+                        !followList.some(
+                          (existing) =>
+                            existing.id ===
+                            item.id
+                        )
+                    )
+                  ]
+            );
+
+            setFollowPage(
+              requestedPage
+            );
+
+            setHasMoreFollowUsers(
+              followSearch.trim()
+                ? false
+                : userIds.length ===
+                  FOLLOW_PAGE_SIZE
+            );
+          }
+
+          return;
+        }
+
+        /*
+         * Restore relation ordering.
+         */
+        const orderedProfiles =
+          userIds
+            .map(
+              (id) =>
+                profiles?.find(
+                  (item) =>
+                    item.id === id
+                )
+            )
+            .filter(Boolean);
+
+        /*
+         * In search mode we have already loaded
+         * a large pool, so pagination ends after
+         * displaying the filtered result.
+         */
+        const finalProfiles =
+          followSearch.trim()
+            ? orderedProfiles.slice(
+                0,
+                FOLLOW_PAGE_SIZE
+              )
+            : orderedProfiles;
+
+        if (mountedRef.current) {
+          setFollowList(
+            (previous) => {
+              if (reset) {
+                return finalProfiles;
+              }
+
+              const existingIds =
+                new Set(
+                  previous.map(
+                    (item) =>
+                      item.id
+                  )
+                );
+
+              return [
+                ...previous,
+                ...finalProfiles.filter(
+                  (item) =>
+                    !existingIds.has(
+                      item.id
+                    )
+                )
+              ];
+            }
+          );
+
+          setFollowPage(
+            requestedPage
+          );
+
+          setHasMoreFollowUsers(
+            followSearch.trim()
+              ? false
+              : userIds.length ===
+                FOLLOW_PAGE_SIZE
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Follow list error:',
+          error
+        );
+      } finally {
+        if (mountedRef.current) {
+          setFollowLoading(false);
+          setFollowLoadingMore(
+            false
+          );
+        }
+      }
+    },
+    [
+      targetUserId,
+      modalType,
+      followSearch,
+      followList
+    ]
+  );
+
+  /*
+   * ============================================================
+   * OPEN FOLLOWERS/FOLLOWING
+   * ============================================================
+   */
+
+  const openFollowList = useCallback(
+    async (type) => {
+      setModalType(type);
+      setFollowSearch('');
+      setFollowPage(0);
+      setHasMoreFollowUsers(
+        true
+      );
+      setFollowList([]);
+      setIsModalOpen(true);
+
+      /*
+       * The modal type state updates asynchronously.
+       * Fetch after the state has rendered through the
+       * effect below rather than immediately here.
+       */
+    },
+    []
+  );
+
+  /*
+   * Load follow list whenever modal/type/search changes.
    */
 
   useEffect(() => {
-    if (!isModalOpen) return;
+    if (!isModalOpen) {
+      return;
+    }
 
-    const timer = setTimeout(() => {
-      fetchFollowList({
-        reset: true,
-        requestedPage: 0
-      });
-    }, 300);
+    const timer =
+      setTimeout(() => {
+        fetchFollowList({
+          reset: true,
+          requestedPage: 0
+        });
+      }, 250);
 
-    return () => clearTimeout(timer);
+    return () =>
+      clearTimeout(timer);
   }, [
-    followSearch
+    isModalOpen,
+    modalType,
+    followSearch,
+    targetUserId
   ]);
 
   /*
-   * ------------------------------------------------------------
-   * Tabs
-   * ------------------------------------------------------------
+   * ============================================================
+   * FOLLOW / UNFOLLOW
+   * ============================================================
+   */
+
+  const handleToggleFollow =
+    useCallback(async () => {
+      if (
+        !user?.id ||
+        !targetUserId ||
+        isOwnProfile ||
+        actionLoading ||
+        isBlocked
+      ) {
+        return;
+      }
+
+      setActionLoading(true);
+
+      try {
+        /*
+         * ------------------------------------------------------
+         * PRIVATE ACCOUNT REQUEST
+         * ------------------------------------------------------
+         */
+
+        if (
+          profile?.is_private &&
+          !isFollowingTarget
+        ) {
+          if (
+            followRequestPending
+          ) {
+            const {
+              error
+            } = await supabase
+              .from(
+                'follow_requests'
+              )
+              .delete()
+              .eq(
+                'requester_id',
+                user.id
+              )
+              .eq(
+                'target_id',
+                targetUserId
+              );
+
+            if (error) {
+              throw error;
+            }
+
+            setFollowRequestPending(
+              false
+            );
+          } else {
+            const {
+              error
+            } = await supabase
+              .from(
+                'follow_requests'
+              )
+              .insert({
+                requester_id:
+                  user.id,
+                target_id:
+                  targetUserId,
+                status:
+                  'pending'
+              });
+
+            if (error) {
+              throw error;
+            }
+
+            setFollowRequestPending(
+              true
+            );
+          }
+
+          return;
+        }
+
+        /*
+         * ------------------------------------------------------
+         * UNFOLLOW
+         * ------------------------------------------------------
+         */
+
+        if (
+          isFollowingTarget
+        ) {
+          const {
+            error
+          } = await supabase
+            .from('follows')
+            .delete()
+            .eq(
+              'follower_id',
+              user.id
+            )
+            .eq(
+              'following_id',
+              targetUserId
+            );
+
+          if (error) {
+            throw error;
+          }
+
+          setIsFollowingTarget(
+            false
+          );
+
+          /*
+           * We are viewing targetUserId.
+           *
+           * Target's follower count decreases.
+           *
+           * Target's following count DOES NOT decrease.
+           *
+           * Only our own following count changes when
+           * we are viewing our own profile.
+           */
+          setStats(
+            (previous) => ({
+              ...previous,
+              followers:
+                Math.max(
+                  0,
+                  previous.followers -
+                    1
+                )
+            })
+          );
+
+          setMyFollowingIds(
+            (previous) => {
+              const next =
+                new Set(
+                  previous
+                );
+
+              next.delete(
+                targetUserId
+              );
+
+              return next;
+            }
+          );
+
+          return;
+        }
+
+        /*
+         * ------------------------------------------------------
+         * FOLLOW
+         * ------------------------------------------------------
+         */
+
+        const {
+          error
+        } = await supabase
+          .from('follows')
+          .insert({
+            follower_id:
+              user.id,
+            following_id:
+              targetUserId
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        setIsFollowingTarget(
+          true
+        );
+
+        setStats(
+          (previous) => ({
+            ...previous,
+            followers:
+              previous.followers +
+              1
+          })
+        );
+
+        setMyFollowingIds(
+          (previous) => {
+            const next =
+              new Set(
+                previous
+              );
+
+            next.add(
+              targetUserId
+            );
+
+            return next;
+          }
+        );
+
+        /*
+         * Notification/activity.
+         */
+        try {
+          await supabase
+            .from('activities')
+            .insert({
+              user_id:
+                targetUserId,
+              actor_id:
+                user.id,
+              type: 'follow',
+              is_read: false
+            });
+        } catch (activityError) {
+          console.warn(
+            'Follow activity failed:',
+            activityError
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Follow action failed:',
+          error
+        );
+      } finally {
+        setActionLoading(
+          false
+        );
+      }
+    }, [
+      user?.id,
+      targetUserId,
+      isOwnProfile,
+      actionLoading,
+      isBlocked,
+      profile?.is_private,
+      isFollowingTarget,
+      followRequestPending
+    ]);
+
+  /*
+   * ============================================================
+   * FOLLOW BACK
+   * ============================================================
+   */
+
+  const handleFollowBack =
+    useCallback(
+      async (targetId) => {
+        if (
+          !user?.id ||
+          !targetId ||
+          actionLoading ||
+          targetId === user.id
+        ) {
+          return;
+        }
+
+        if (
+          myFollowingIds.has(
+            targetId
+          )
+        ) {
+          return;
+        }
+
+        const previous =
+          new Set(
+            myFollowingIds
+          );
+
+        setMyFollowingIds(
+          (current) => {
+            const next =
+              new Set(
+                current
+              );
+
+            next.add(targetId);
+
+            return next;
+          }
+        );
+
+        try {
+          const {
+            error
+          } = await supabase
+            .from('follows')
+            .insert({
+              follower_id:
+                user.id,
+              following_id:
+                targetId
+            });
+
+          if (error) {
+            throw error;
+          }
+
+          /*
+           * Only our own profile's following
+           * count changes here.
+           */
+          if (
+            isOwnProfile
+          ) {
+            setStats(
+              (current) => ({
+                ...current,
+                following:
+                  current.following +
+                  1
+              })
+            );
+          }
+
+          try {
+            await supabase
+              .from(
+                'activities'
+              )
+              .insert({
+                user_id:
+                  targetId,
+                actor_id:
+                  user.id,
+                type: 'follow',
+                is_read: false
+              });
+          } catch (
+            activityError
+          ) {
+            console.warn(
+              'Follow-back activity failed:',
+              activityError
+            );
+          }
+        } catch (error) {
+          console.error(
+            'Follow Back Failed:',
+            error
+          );
+
+          setMyFollowingIds(
+            previous
+          );
+        }
+      },
+      [
+        user?.id,
+        actionLoading,
+        myFollowingIds,
+        isOwnProfile
+      ]
+    );
+
+  /*
+   * ============================================================
+   * REMOVE FOLLOWER
+   * ============================================================
+   */
+
+  const handleRemoveFollower =
+    useCallback(
+      async (followerId) => {
+        if (
+          !user?.id ||
+          !isOwnProfile ||
+          !followerId
+        ) {
+          return;
+        }
+
+        setRemoveLoadingId(
+          followerId
+        );
+
+        try {
+          const {
+            error
+          } = await supabase
+            .from('follows')
+            .delete()
+            .eq(
+              'follower_id',
+              followerId
+            )
+            .eq(
+              'following_id',
+              user.id
+            );
+
+          if (error) {
+            throw error;
+          }
+
+          setFollowList(
+            (previous) =>
+              previous.filter(
+                (item) =>
+                  item.id !==
+                  followerId
+              )
+          );
+
+          setStats(
+            (previous) => ({
+              ...previous,
+              followers:
+                Math.max(
+                  0,
+                  previous.followers -
+                    1
+                )
+            })
+          );
+        } catch (error) {
+          console.error(
+            'Remove follower failed:',
+            error
+          );
+        } finally {
+          setRemoveLoadingId(
+            null
+          );
+        }
+      },
+      [user?.id, isOwnProfile]
+    );
+
+  /*
+   * ============================================================
+   * BLOCK
+   * ============================================================
+   */
+
+  const handleBlock =
+    useCallback(async () => {
+      if (
+        !user?.id ||
+        !targetUserId ||
+        isOwnProfile ||
+        actionLoading
+      ) {
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          `Block @${profile?.username || 'this user'}?`
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setActionLoading(true);
+
+      try {
+        const {
+          error
+        } = await supabase
+          .from('blocks')
+          .upsert(
+            {
+              blocker_id:
+                user.id,
+              blocked_id:
+                targetUserId
+            },
+            {
+              onConflict:
+                'blocker_id,blocked_id'
+            }
+          );
+
+        if (error) {
+          throw error;
+        }
+
+        /*
+         * Remove follow relationship in both
+         * directions where possible.
+         */
+
+        await Promise.all([
+          supabase
+            .from('follows')
+            .delete()
+            .eq(
+              'follower_id',
+              user.id
+            )
+            .eq(
+              'following_id',
+              targetUserId
+            ),
+
+          supabase
+            .from('follows')
+            .delete()
+            .eq(
+              'follower_id',
+              targetUserId
+            )
+            .eq(
+              'following_id',
+              user.id
+            )
+        ]);
+
+        if (mountedRef.current) {
+          setIsBlocked(true);
+          setIsFollowingTarget(
+            false
+          );
+          setFollowRequestPending(
+            false
+          );
+          setProfileMenuOpen(
+            false
+          );
+          setDisplayVideos([]);
+        }
+      } catch (error) {
+        console.error(
+          'Block failed:',
+          error
+        );
+      } finally {
+        if (mountedRef.current) {
+          setActionLoading(
+            false
+          );
+        }
+      }
+    }, [
+      user?.id,
+      targetUserId,
+      isOwnProfile,
+      actionLoading,
+      profile?.username
+    ]);
+
+  /*
+   * ============================================================
+   * MUTE
+   * ============================================================
+   */
+
+  const handleMute =
+    useCallback(async () => {
+      if (
+        !user?.id ||
+        !targetUserId ||
+        isOwnProfile ||
+        actionLoading
+      ) {
+        return;
+      }
+
+      setActionLoading(true);
+
+      try {
+        if (isMuted) {
+          const {
+            error
+          } = await supabase
+            .from('mutes')
+            .delete()
+            .eq(
+              'user_id',
+              user.id
+            )
+            .eq(
+              'muted_user_id',
+              targetUserId
+            );
+
+          if (error) {
+            throw error;
+          }
+
+          setIsMuted(false);
+        } else {
+          const {
+            error
+          } = await supabase
+            .from('mutes')
+            .upsert(
+              {
+                user_id:
+                  user.id,
+                muted_user_id:
+                  targetUserId
+              },
+              {
+                onConflict:
+                  'user_id,muted_user_id'
+              }
+            );
+
+          if (error) {
+            throw error;
+          }
+
+          setIsMuted(true);
+        }
+
+        setProfileMenuOpen(
+          false
+        );
+      } catch (error) {
+        console.error(
+          'Mute failed:',
+          error
+        );
+      } finally {
+        setActionLoading(
+          false
+        );
+      }
+    }, [
+      user?.id,
+      targetUserId,
+      isOwnProfile,
+      actionLoading,
+      isMuted
+    ]);
+
+  /*
+   * ============================================================
+   * REPORT
+   * ============================================================
+   */
+
+  const handleReport =
+    useCallback(async () => {
+      if (
+        !user?.id ||
+        !targetUserId ||
+        isOwnProfile ||
+        actionLoading
+      ) {
+        return;
+      }
+
+      const reason =
+        window.prompt(
+          'Why are you reporting this profile?',
+          'Inappropriate content'
+        );
+
+      if (
+        reason === null
+      ) {
+        return;
+      }
+
+      setActionLoading(true);
+
+      try {
+        const {
+          error
+        } = await supabase
+          .from('reports')
+          .insert({
+            reporter_id:
+              user.id,
+            reported_user_id:
+              targetUserId,
+            type: 'profile',
+            reason:
+              reason.trim() ||
+              'Profile report',
+            status:
+              'pending'
+          });
+
+        if (error) {
+          /*
+           * Some schemas may not have reason.
+           * Retry using the original columns.
+           */
+          const {
+            error: retryError
+          } = await supabase
+            .from('reports')
+            .insert({
+              reporter_id:
+                user.id,
+              reported_user_id:
+                targetUserId,
+              type: 'profile',
+              status:
+                'pending'
+            });
+
+          if (retryError) {
+            throw retryError;
+          }
+        }
+
+        setProfileMenuOpen(
+          false
+        );
+      } catch (error) {
+        console.error(
+          'Report failed:',
+          error
+        );
+      } finally {
+        setActionLoading(
+          false
+        );
+      }
+    }, [
+      user?.id,
+      targetUserId,
+      isOwnProfile,
+      actionLoading
+    ]);
+
+  /*
+   * ============================================================
+   * TABS
+   * ============================================================
    */
 
   const tabs = useMemo(() => {
@@ -1358,314 +2498,736 @@ const Profile = () => {
   }, [isOwnProfile]);
 
   /*
+   * ============================================================
+   * VIDEO VIEWER
+   * ============================================================
+   */
+
+  const getViewerLiked =
+    useCallback(
+      async (videoId) => {
+        if (
+          !user?.id ||
+          !videoId
+        ) {
+          return false;
+        }
+
+        try {
+          const {
+            data,
+            error
+          } = await supabase
+            .from('video_likes')
+            .select('id')
+            .eq(
+              'video_id',
+              videoId
+            )
+            .eq(
+              'user_id',
+              user.id
+            )
+            .maybeSingle();
+
+          if (error) {
+            console.warn(
+              'Viewer like state failed:',
+              error
+            );
+
+            return false;
+          }
+
+          return Boolean(data);
+        } catch {
+          return false;
+        }
+      },
+      [user?.id]
+    );
+
+  const openViewer =
+    useCallback(
+      async (index) => {
+        const video =
+          displayVideos[index];
+
+        if (!video) {
+          return;
+        }
+
+        setViewerIndex(index);
+        setViewerOpen(true);
+        setViewerLoading(true);
+
+        const liked =
+          await getViewerLiked(
+            video.id
+          );
+
+        if (mountedRef.current) {
+          setViewerLiked(
+            liked
+          );
+        }
+      },
+      [
+        displayVideos,
+        getViewerLiked
+      ]
+    );
+
+  const closeViewer =
+    useCallback(() => {
+      setViewerOpen(false);
+      setViewerLoading(false);
+    }, []);
+
+  const goNextVideo =
+    useCallback(() => {
+      setViewerIndex(
+        (previous) => {
+          const next =
+            previous + 1;
+
+          if (
+            next <
+            displayVideos.length
+          ) {
+            return next;
+          }
+
+          return previous;
+        }
+      );
+
+      setViewerLiked(false);
+    }, [displayVideos.length]);
+
+  const goPreviousVideo =
+    useCallback(() => {
+      setViewerIndex(
+        (previous) =>
+          previous > 0
+            ? previous - 1
+            : previous
+      );
+
+      setViewerLiked(false);
+    }, []);
+
+  /*
    * ------------------------------------------------------------
-   * Video viewer
+   * Sync viewer like state whenever video changes.
    * ------------------------------------------------------------
    */
 
-  const openViewer = (
-    index
-  ) => {
-    setViewerIndex(index);
-    setViewerOpen(true);
-    setViewerLiked(false);
-  };
-
-  const closeViewer = () => {
-    setViewerOpen(false);
-  };
-
-  const goNextVideo = () => {
+  useEffect(() => {
     if (
-      viewerIndex <
-      displayVideos.length - 1
-    ) {
-      setViewerIndex(
-        (previous) =>
-          previous + 1
-      );
-      setViewerLiked(false);
-    }
-  };
-
-  const goPreviousVideo = () => {
-    if (viewerIndex > 0) {
-      setViewerIndex(
-        (previous) =>
-          previous - 1
-      );
-      setViewerLiked(false);
-    }
-  };
-
-  const handleViewerLike = async () => {
-    const video =
-      displayVideos[viewerIndex];
-
-    if (
-      !video ||
-      !user?.id
+      !viewerOpen ||
+      !displayVideos[
+        viewerIndex
+      ]
     ) {
       return;
     }
 
-    try {
-      if (viewerLiked) {
-        await supabase
-          .from('video_likes')
-          .delete()
-          .eq('video_id', video.id)
-          .eq('user_id', user.id);
+    let cancelled = false;
 
-        setViewerLiked(false);
+    const syncLike =
+      async () => {
+        const video =
+          displayVideos[
+            viewerIndex
+          ];
 
-        setDisplayVideos((previous) =>
-          previous.map((item) =>
-            item.id === video.id
-              ? {
-                  ...item,
-                  likes_count:
-                    Math.max(
-                      0,
-                      (item.likes_count ||
-                        0) - 1
-                    )
-                }
-              : item
-          )
+        const liked =
+          await getViewerLiked(
+            video.id
+          );
+
+        if (
+          !cancelled &&
+          mountedRef.current
+        ) {
+          setViewerLiked(
+            liked
+          );
+        }
+      };
+
+    syncLike();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    viewerOpen,
+    viewerIndex,
+    displayVideos,
+    getViewerLiked
+  ]);
+
+  /*
+   * ============================================================
+   * LIKE VIDEO
+   * ============================================================
+   */
+
+  const handleVideoLike =
+    useCallback(
+      async (
+        videoId,
+        currentlyLiked
+      ) => {
+        if (
+          !videoId ||
+          !user?.id ||
+          viewerLikeLoading
+        ) {
+          return;
+        }
+
+        setViewerLikeLoading(
+          true
         );
-      } else {
-        await supabase
-          .from('video_likes')
-          .upsert({
-            video_id: video.id,
-            user_id: user.id
-          });
 
-        setViewerLiked(true);
+        try {
+          if (
+            currentlyLiked
+          ) {
+            const {
+              error
+            } = await supabase
+              .from(
+                'video_likes'
+              )
+              .delete()
+              .eq(
+                'video_id',
+                videoId
+              )
+              .eq(
+                'user_id',
+                user.id
+              );
 
-        setDisplayVideos((previous) =>
-          previous.map((item) =>
-            item.id === video.id
-              ? {
-                  ...item,
-                  likes_count:
-                    (item.likes_count ||
-                      0) + 1
+            if (error) {
+              throw error;
+            }
+
+            setViewerLiked(
+              false
+            );
+
+            setDisplayVideos(
+              (previous) =>
+                previous.map(
+                  (item) =>
+                    item.id ===
+                    videoId
+                      ? {
+                          ...item,
+                          likes_count:
+                            Math.max(
+                              0,
+                              (Number(
+                                item.likes_count
+                              ) ||
+                                0) -
+                                1
+                            )
+                        }
+                      : item
+                )
+            );
+
+            /*
+             * Update profile total likes.
+             */
+            setStats(
+              (previous) => ({
+                ...previous,
+                likes:
+                  Math.max(
+                    0,
+                    previous.likes -
+                      1
+                  )
+              })
+            );
+          } else {
+            const {
+              error
+            } = await supabase
+              .from(
+                'video_likes'
+              )
+              .upsert(
+                {
+                  video_id:
+                    videoId,
+                  user_id:
+                    user.id
+                },
+                {
+                  onConflict:
+                    'video_id,user_id'
                 }
-              : item
-          )
-        );
+              );
+
+            if (error) {
+              throw error;
+            }
+
+            setViewerLiked(
+              true
+            );
+
+            setDisplayVideos(
+              (previous) =>
+                previous.map(
+                  (item) =>
+                    item.id ===
+                    videoId
+                      ? {
+                          ...item,
+                          likes_count:
+                            (Number(
+                              item.likes_count
+                            ) ||
+                              0) +
+                            1
+                        }
+                      : item
+                )
+            );
+
+            setStats(
+              (previous) => ({
+                ...previous,
+                likes:
+                  previous.likes +
+                  1
+              })
+            );
+          }
+        } catch (error) {
+          console.error(
+            'Like error:',
+            error
+          );
+        } finally {
+          if (mountedRef.current) {
+            setViewerLikeLoading(
+              false
+            );
+          }
+        }
+      },
+      [
+        user?.id,
+        viewerLikeLoading
+      ]
+    );
+
+  /*
+   * ============================================================
+   * DOUBLE TAP
+   * ============================================================
+   */
+
+  const handleVideoTap =
+    useCallback(
+      async (index) => {
+        const now =
+          Date.now();
+
+        const video =
+          displayVideos[index];
+
+        if (!video) {
+          return;
+        }
+
+        const isDoubleTap =
+          now -
+            lastTapRef.current <
+          300;
+
+        lastTapRef.current =
+          now;
+
+        if (isDoubleTap) {
+          setViewerIndex(
+            index
+          );
+          setViewerOpen(true);
+
+          /*
+           * FIX:
+           * The old implementation called handleViewerLike()
+           * immediately after setViewerIndex(). React state
+           * updates asynchronously, so it could like the
+           * previous video.
+           */
+          const currentlyLiked =
+            await getViewerLiked(
+              video.id
+            );
+
+          if (
+            !currentlyLiked
+          ) {
+            await handleVideoLike(
+              video.id,
+              false
+            );
+          } else {
+            setViewerLiked(
+              true
+            );
+          }
+
+          return;
+        }
+
+        await openViewer(index);
+      },
+      [
+        displayVideos,
+        getViewerLiked,
+        handleVideoLike,
+        openViewer
+      ]
+    );
+
+  /*
+   * ============================================================
+   * VIDEO HOVER
+   * ============================================================
+   */
+
+  const handleMouseEnter =
+    async (event) => {
+      try {
+        const playPromise =
+          event.currentTarget.play();
+
+        if (
+          playPromise !==
+          undefined
+        ) {
+          await playPromise;
+        }
+      } catch {
+        /*
+         * Autoplay may be blocked.
+         */
       }
-    } catch (error) {
-      console.error(
-        'Like error:',
-        error
-      );
-    }
-  };
+    };
+
+  const handleMouseLeave =
+    (event) => {
+      try {
+        event.currentTarget.pause();
+        event.currentTarget.currentTime = 0;
+      } catch {
+        /*
+         * Ignore media cleanup errors.
+         */
+      }
+    };
 
   /*
-   * ------------------------------------------------------------
-   * Double tap like
-   * ------------------------------------------------------------
+   * ============================================================
+   * PULL TO REFRESH
+   * ============================================================
    */
 
-  const handleVideoTap = (
-    index
-  ) => {
-    const now = Date.now();
-
-    if (
-      now - lastTap <
-      300
-    ) {
-      setViewerIndex(index);
-      setViewerOpen(true);
-      setViewerLiked(true);
-      handleViewerLike();
-    } else {
-      openViewer(index);
-    }
-
-    setLastTap(now);
-  };
-
-  /*
-   * ------------------------------------------------------------
-   * Thumbnail / video hover
-   * ------------------------------------------------------------
-   */
-
-  const handleMouseEnter = async (
-    event
-  ) => {
-    try {
-      const playPromise =
-        event.currentTarget.play();
+  const handleTouchStart =
+    (event) => {
+      const container =
+        scrollContainerRef.current;
 
       if (
-        playPromise !==
-        undefined
+        container &&
+        container.scrollTop <=
+          0
       ) {
-        await playPromise;
+        scrollStartYRef.current =
+          event.touches[0].clientY;
+      } else {
+        scrollStartYRef.current =
+          0;
       }
-    } catch {
-      // Browser autoplay restrictions
-    }
-  };
+    };
 
-  const handleMouseLeave = (
-    event
-  ) => {
-    try {
-      event.currentTarget.pause();
-      event.currentTarget.currentTime = 0;
-    } catch {
-      // Ignore media cleanup errors
-    }
-  };
+  const handleTouchEnd =
+    async (event) => {
+      const container =
+        scrollContainerRef.current;
+
+      if (
+        !container ||
+        refreshing ||
+        scrollStartYRef.current ===
+          0
+      ) {
+        return;
+      }
+
+      const endY =
+        event.changedTouches[0].clientY;
+
+      const distance =
+        endY -
+        scrollStartYRef.current;
+
+      if (
+        container.scrollTop <=
+          0 &&
+        distance > 100
+      ) {
+        setRefreshing(true);
+
+        try {
+          await fetchProfileData();
+
+          /*
+           * fetchProfileData sets targetUserId,
+           * so content normally reloads through
+           * the content effect.
+           */
+          if (
+            mountedRef.current
+          ) {
+            await fetchTabData({
+              reset: true,
+              requestedPage: 0
+            });
+          }
+        } catch (error) {
+          console.error(
+            'Refresh failed:',
+            error
+          );
+        } finally {
+          if (
+            mountedRef.current
+          ) {
+            setRefreshing(
+              false
+            );
+          }
+        }
+      }
+
+      scrollStartYRef.current =
+        0;
+    };
 
   /*
-   * ------------------------------------------------------------
-   * Pull to refresh
-   * ------------------------------------------------------------
+   * ============================================================
+   * INFINITE SCROLL
+   * ============================================================
    */
 
-  const handleTouchStart = (
-    event
-  ) => {
-    scrollStartYRef.current =
-      event.touches[0].clientY;
-  };
+  useEffect(() => {
+    const sentinel =
+      contentSentinelRef.current;
 
-  const handleTouchEnd = async (
-    event
-  ) => {
-    const endY =
-      event.changedTouches[0].clientY;
-
-    const distance =
-      endY -
-      scrollStartYRef.current;
-
-    const container =
-      event.currentTarget;
-
-    if (
-      container.scrollTop <= 0 &&
-      distance > 100 &&
-      !refreshing
-    ) {
-      setRefreshing(true);
-
-      try {
-        await fetchProfileData();
-
-        await fetchTabData({
-          reset: true,
-          requestedPage: 0
-        });
-      } finally {
-        setRefreshing(false);
-      }
+    if (!sentinel) {
+      return;
     }
-  };
+
+    const observer =
+      new IntersectionObserver(
+        (entries) => {
+          const first =
+            entries[0];
+
+          if (
+            first.isIntersecting &&
+            hasMoreContent &&
+            !contentLoading &&
+            !contentLoadingMore
+          ) {
+            fetchTabData({
+              reset: false,
+              requestedPage:
+                contentPage + 1
+            });
+          }
+        },
+        {
+          root:
+            scrollContainerRef.current,
+          rootMargin:
+            '500px 0px'
+        }
+      );
+
+    observer.observe(
+      sentinel
+    );
+
+    return () =>
+      observer.disconnect();
+  }, [
+    contentPage,
+    hasMoreContent,
+    contentLoading,
+    contentLoadingMore,
+    fetchTabData
+  ]);
 
   /*
-   * ------------------------------------------------------------
-   * Copy profile link
-   * ------------------------------------------------------------
+   * ============================================================
+   * COPY PROFILE LINK
+   * ============================================================
    */
 
   const copyProfileLink =
-    async () => {
+    useCallback(async () => {
       try {
-        await navigator.clipboard.writeText(
-          getAbsoluteProfileUrl()
-        );
+        const url =
+          getAbsoluteProfileUrl();
 
-        setProfileMenuOpen(false);
+        if (
+          navigator.clipboard
+        ) {
+          await navigator.clipboard.writeText(
+            url
+          );
+        } else {
+          const textarea =
+            document.createElement(
+              'textarea'
+            );
+
+          textarea.value =
+            url;
+
+          textarea.style.position =
+            'fixed';
+
+          textarea.style.opacity =
+            '0';
+
+          document.body.appendChild(
+            textarea
+          );
+
+          textarea.select();
+
+          document.execCommand(
+            'copy'
+          );
+
+          textarea.remove();
+        }
+
+        setProfileMenuOpen(
+          false
+        );
       } catch (error) {
         console.error(
           'Copy profile link failed:',
           error
         );
       }
-    };
+    }, [
+      getAbsoluteProfileUrl
+    ]);
 
   /*
-   * ------------------------------------------------------------
-   * Native share
-   * ------------------------------------------------------------
+   * ============================================================
+   * SHARE
+   * ============================================================
    */
 
-  const shareProfile = async () => {
-    const url =
-      getAbsoluteProfileUrl();
+  const shareProfile =
+    useCallback(async () => {
+      const url =
+        getAbsoluteProfileUrl();
 
-    try {
-      if (
-        navigator.share
-      ) {
-        await navigator.share({
-          title: `@${profile?.username || 'profile'}`,
-          text:
-            profile?.bio ||
-            `View @${profile?.username || 'profile'} on Con-Universe`,
-          url
-        });
-      } else {
-        await navigator.clipboard.writeText(
-          url
-        );
+      try {
+        if (
+          navigator.share
+        ) {
+          await navigator.share({
+            title: `@${
+              profile?.username ||
+              'profile'
+            }`,
+            text:
+              profile?.bio ||
+              `View @${
+                profile?.username ||
+                'profile'
+              } on Con-Universe`,
+            url
+          });
+        } else if (
+          navigator.clipboard
+        ) {
+          await navigator.clipboard.writeText(
+            url
+          );
+        }
+      } catch (error) {
+        if (
+          error?.name !==
+          'AbortError'
+        ) {
+          console.error(
+            'Share failed:',
+            error
+          );
+        }
       }
-    } catch (error) {
-      if (
-        error?.name !==
-        'AbortError'
-      ) {
-        console.error(
-          'Share failed:',
-          error
-        );
-      }
-    }
-  };
+    }, [
+      getAbsoluteProfileUrl,
+      profile?.username,
+      profile?.bio
+    ]);
 
   /*
-   * ------------------------------------------------------------
-   * Keyboard viewer controls
-   * ------------------------------------------------------------
+   * ============================================================
+   * KEYBOARD CONTROLS
+   * ============================================================
    */
 
   useEffect(() => {
-    const handleKeyDown = (
-      event
-    ) => {
-      if (!viewerOpen) return;
+    const handleKeyDown =
+      (event) => {
+        if (!viewerOpen) {
+          return;
+        }
 
-      if (
-        event.key ===
-        'Escape'
-      ) {
-        closeViewer();
-      }
+        if (
+          event.key ===
+          'Escape'
+        ) {
+          closeViewer();
+        }
 
-      if (
-        event.key ===
-        'ArrowRight'
-      ) {
-        goNextVideo();
-      }
+        if (
+          event.key ===
+          'ArrowRight'
+        ) {
+          goNextVideo();
+        }
 
-      if (
-        event.key ===
-        'ArrowLeft'
-      ) {
-        goPreviousVideo();
-      }
-    };
+        if (
+          event.key ===
+          'ArrowLeft'
+        ) {
+          goPreviousVideo();
+        }
+      };
 
     window.addEventListener(
       'keydown',
@@ -1679,14 +3241,69 @@ const Profile = () => {
       );
   }, [
     viewerOpen,
-    viewerIndex,
-    displayVideos.length
+    closeViewer,
+    goNextVideo,
+    goPreviousVideo
   ]);
 
   /*
-   * ------------------------------------------------------------
-   * Loading
-   * ------------------------------------------------------------
+   * ============================================================
+   * CLOSE MENU WHEN CLICKING OUTSIDE
+   * ============================================================
+   */
+
+  useEffect(() => {
+    const closeMenu =
+      (event) => {
+        if (
+          !event.target.closest(
+            '[data-profile-menu]'
+          )
+        ) {
+          setProfileMenuOpen(
+            false
+          );
+        }
+      };
+
+    if (
+      profileMenuOpen
+    ) {
+      document.addEventListener(
+        'click',
+        closeMenu
+      );
+    }
+
+    return () =>
+      document.removeEventListener(
+        'click',
+        closeMenu
+      );
+  }, [profileMenuOpen]);
+
+  /*
+   * ============================================================
+   * PRIVATE ACCESS
+   * ============================================================
+   */
+
+  const isPrivateLocked =
+    Boolean(
+      !isOwnProfile &&
+      profile?.is_private &&
+      !isFollowingTarget
+    );
+
+  const currentVideo =
+    displayVideos[
+      viewerIndex
+    ];
+
+  /*
+   * ============================================================
+   * LOADING
+   * ============================================================
    */
 
   if (
@@ -1697,19 +3314,26 @@ const Profile = () => {
       <div className="h-screen bg-[#050508] flex flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute w-[300px] h-[300px] bg-cyan-500/20 rounded-full blur-[120px]" />
 
-        <div className="text-cyan-400 font-black italic tracking-widest animate-pulse mb-4 uppercase drop-shadow-[0_0_12px_#00f3ff]">
+        <div className="relative z-10 text-cyan-400 font-black italic tracking-widest animate-pulse mb-4 uppercase drop-shadow-[0_0_12px_#00f3ff] text-center px-5">
           Initializing Neon Universe...
         </div>
 
-        <div className="w-48 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#00f3ff]" />
+        <div className="relative z-10 w-48 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#00f3ff]" />
+
+        <div className="relative z-10 mt-4">
+          <Loader2
+            size={18}
+            className="text-cyan-400 animate-spin"
+          />
+        </div>
       </div>
     );
   }
 
   /*
-   * ------------------------------------------------------------
-   * Profile not found / error
-   * ------------------------------------------------------------
+   * ============================================================
+   * PROFILE ERROR
+   * ============================================================
    */
 
   if (
@@ -1720,7 +3344,9 @@ const Profile = () => {
       <div className="min-h-screen bg-[#06060c] text-white flex items-center justify-center p-6">
         <div className="w-full max-w-md text-center">
           <div className="mx-auto w-20 h-20 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mb-5">
-            <AlertCircle size={36} />
+            <AlertCircle
+              size={36}
+            />
           </div>
 
           <h1 className="text-xl font-black uppercase tracking-widest text-red-400">
@@ -1732,11 +3358,24 @@ const Profile = () => {
           </p>
 
           <button
-            onClick={fetchProfileData}
+            onClick={
+              fetchProfileData
+            }
             className="mt-6 px-6 py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 font-black uppercase text-xs flex items-center gap-2 mx-auto"
           >
-            <RefreshCw size={15} />
+            <RefreshCw
+              size={15}
+            />
             Retry
+          </button>
+
+          <button
+            onClick={() =>
+              navigate(-1)
+            }
+            className="mt-3 px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 font-black uppercase text-xs"
+          >
+            Go Back
           </button>
         </div>
       </div>
@@ -1744,28 +3383,17 @@ const Profile = () => {
   }
 
   /*
-   * ------------------------------------------------------------
-   * Private blocked profile
-   * ------------------------------------------------------------
+   * ============================================================
+   * PROFILE AVAILABLE
+   * ============================================================
    */
 
-  const isPrivateLocked =
-    Boolean(
-      !isOwnProfile &&
-      profile?.is_private &&
-      !isFollowingTarget
-    );
-
-  const currentVideo =
-    displayVideos[viewerIndex];
-
   return (
-    <div
-      className="h-screen bg-[#06060c] text-white font-sans flex flex-col overflow-hidden relative"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
-      {/* Ambient neon background */}
+    <div className="h-screen bg-[#06060c] text-white font-sans flex flex-col overflow-hidden relative">
+
+      {/* ======================================================
+          AMBIENT BACKGROUND
+          ====================================================== */}
 
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/10 blur-[130px] rounded-full" />
@@ -1773,7 +3401,9 @@ const Profile = () => {
         <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-pink-500/10 blur-[130px] rounded-full" />
       </div>
 
-      {/* Pull refresh */}
+      {/* ======================================================
+          REFRESH INDICATOR
+          ====================================================== */}
 
       <AnimatePresence>
         {refreshing && (
@@ -1790,7 +3420,7 @@ const Profile = () => {
               y: -40,
               opacity: 0
             }}
-            className="absolute top-2 left-1/2 -translate-x-1/2 z-[100] text-cyan-400"
+            className="absolute top-2 left-1/2 -translate-x-1/2 z-[150] text-cyan-400"
           >
             <Loader2
               size={22}
@@ -1800,48 +3430,66 @@ const Profile = () => {
         )}
       </AnimatePresence>
 
-      {/* Header */}
+      {/* ======================================================
+          HEADER
+          ====================================================== */}
 
-      <nav className="flex items-center justify-between px-6 py-4 bg-[#0a0a14]/90 backdrop-blur-xl border-b border-cyan-500/30 z-50 shrink-0 shadow-[0_0_20px_rgba(0,243,255,0.15)]">
+      <nav className="relative flex items-center justify-between px-6 py-4 bg-[#0a0a14]/90 backdrop-blur-xl border-b border-cyan-500/30 z-50 shrink-0 shadow-[0_0_20px_rgba(0,243,255,0.15)]">
+
         {!isOwnProfile ? (
           <button
             onClick={() =>
               navigate(-1)
             }
             className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400 shadow-[0_0_10px_rgba(0,243,255,0.3)] active:translate-y-[2px] transition-all"
+            aria-label="Go back"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft
+              size={20}
+            />
           </button>
         ) : (
           <Link
             to="/find-friends"
             className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400 shadow-[0_0_10px_rgba(0,243,255,0.3)] active:translate-y-[2px] transition-all"
+            aria-label="Find friends"
           >
-            <UserPlus size={22} />
+            <UserPlus
+              size={22}
+            />
           </Link>
         )}
 
-        <h2 className="text-sm font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500">
+        <h2 className="text-sm font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500 truncate max-w-[45%]">
           {profile?.username ||
             'Username'}
         </h2>
 
-        <div className="flex gap-2">
+        <div
+          className="flex gap-2 relative"
+          data-profile-menu
+        >
           <button
-            onClick={shareProfile}
+            onClick={
+              shareProfile
+            }
             className="p-2 bg-[#0d0d1a] border border-pink-500/40 hover:border-pink-400 rounded-full text-pink-500 shadow-[0_0_10px_rgba(255,0,80,0.3)]"
             title="Share profile"
           >
-            <Share2 size={20} />
+            <Share2
+              size={20}
+            />
           </button>
 
           <button
-            onClick={() =>
+            onClick={(event) => {
+              event.stopPropagation();
+
               setProfileMenuOpen(
                 (previous) =>
                   !previous
-              )
-            }
+              );
+            }}
             className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400"
             title="Profile menu"
           >
@@ -1854,109 +3502,161 @@ const Profile = () => {
             <Link
               to="/settings"
               className="p-2 bg-[#0d0d1a] border border-cyan-500/40 hover:border-cyan-400 rounded-full text-cyan-400"
+              title="Settings"
             >
               <Settings
                 size={20}
               />
             </Link>
           )}
-        </div>
 
-        {/* Profile menu */}
+          {/* ==================================================
+              PROFILE MENU
+              ================================================== */}
 
-        <AnimatePresence>
-          {profileMenuOpen && (
-            <motion.div
-              initial={{
-                opacity: 0,
-                scale: 0.95,
-                y: -5
-              }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                y: 0
-              }}
-              exit={{
-                opacity: 0,
-                scale: 0.95,
-                y: -5
-              }}
-              className="absolute right-4 top-16 w-64 bg-[#0b0b15] border border-cyan-500/30 rounded-2xl shadow-[0_0_35px_rgba(0,243,255,0.15)] overflow-hidden"
-            >
-              <button
-                onClick={copyProfileLink}
-                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-cyan-500/10 text-sm"
-              >
-                <Copy
-                  size={17}
-                />
-                Copy Profile Link
-              </button>
-
-              <button
-                onClick={() =>
-                  setQrOpen(true)
+          <AnimatePresence>
+            {profileMenuOpen && (
+              <motion.div
+                initial={{
+                  opacity: 0,
+                  scale: 0.95,
+                  y: -5
+                }}
+                animate={{
+                  opacity: 1,
+                  scale: 1,
+                  y: 0
+                }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.95,
+                  y: -5
+                }}
+                className="absolute right-0 top-12 w-64 bg-[#0b0b15] border border-cyan-500/30 rounded-2xl shadow-[0_0_35px_rgba(0,243,255,0.15)] overflow-hidden"
+                onClick={(event) =>
+                  event.stopPropagation()
                 }
-                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-cyan-500/10 text-sm"
               >
-                <QrCode
-                  size={17}
-                />
-                Profile QR Code
-              </button>
+                <button
+                  onClick={
+                    copyProfileLink
+                  }
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-cyan-500/10 text-sm text-left"
+                >
+                  <Copy
+                    size={17}
+                  />
+                  Copy Profile Link
+                </button>
 
-              {!isOwnProfile && (
-                <>
-                  <button
-                    onClick={handleMute}
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-cyan-500/10 text-sm"
-                  >
-                    <VolumeX
-                      size={17}
-                    />
-                    {isMuted
-                      ? 'Unmute User'
-                      : 'Mute User'}
-                  </button>
+                <button
+                  onClick={() => {
+                    setQrOpen(true);
+                    setProfileMenuOpen(
+                      false
+                    );
+                  }}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-cyan-500/10 text-sm text-left"
+                >
+                  <QrCode
+                    size={17}
+                  />
+                  Profile QR Code
+                </button>
 
-                  <button
-                    onClick={handleBlock}
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-red-500/10 text-red-400 text-sm"
-                  >
-                    <Ban
-                      size={17}
-                    />
-                    Block User
-                  </button>
+                {!isOwnProfile && (
+                  <>
+                    <button
+                      onClick={
+                        handleMute
+                      }
+                      disabled={
+                        actionLoading
+                      }
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-cyan-500/10 text-sm text-left disabled:opacity-50"
+                    >
+                      {isMuted ? (
+                        <Volume2
+                          size={17}
+                        />
+                      ) : (
+                        <VolumeX
+                          size={17}
+                        />
+                      )}
 
-                  <button
-                    onClick={handleReport}
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-red-500/10 text-red-400 text-sm"
-                  >
-                    <Flag
-                      size={17}
-                    />
-                    Report Profile
-                  </button>
-                </>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                      {isMuted
+                        ? 'Unmute User'
+                        : 'Mute User'}
+                    </button>
+
+                    <button
+                      onClick={
+                        handleBlock
+                      }
+                      disabled={
+                        actionLoading
+                      }
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-red-500/10 text-red-400 text-sm text-left disabled:opacity-50"
+                    >
+                      <Ban
+                        size={17}
+                      />
+                      Block User
+                    </button>
+
+                    <button
+                      onClick={
+                        handleReport
+                      }
+                      disabled={
+                        actionLoading
+                      }
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-red-500/10 text-red-400 text-sm text-left disabled:opacity-50"
+                    >
+                      <Flag
+                        size={17}
+                      />
+                      Report Profile
+                    </button>
+                  </>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </nav>
 
-      {/* Main scroll area */}
+      {/* ======================================================
+          MAIN SCROLL AREA
+          ====================================================== */}
 
-      <div className="flex-1 overflow-y-auto pb-28 custom-scrollbar relative z-10">
+      <div
+        ref={
+          scrollContainerRef
+        }
+        className="flex-1 overflow-y-auto pb-28 custom-scrollbar relative z-10"
+        onTouchStart={
+          handleTouchStart
+        }
+        onTouchEnd={
+          handleTouchEnd
+        }
+      >
 
-        {/* Cover */}
+        {/* ====================================================
+            COVER
+            ==================================================== */}
 
         <section className="relative">
           <div className="h-40 sm:h-52 w-full overflow-hidden bg-[#0b0b15] border-b border-cyan-500/20">
-            {getCover(profile) ? (
+            {getCover(
+              profile
+            ) ? (
               <img
-                src={getCover(profile)}
+                src={getCover(
+                  profile
+                )}
                 alt="Profile cover"
                 className="w-full h-full object-cover"
               />
@@ -1964,6 +3664,7 @@ const Profile = () => {
               <div className="w-full h-full bg-gradient-to-br from-cyan-500/20 via-purple-500/20 to-pink-500/20 relative overflow-hidden">
                 <div className="absolute inset-0 opacity-30">
                   <div className="absolute w-56 h-56 bg-cyan-400 rounded-full blur-[100px] -top-20 left-10" />
+
                   <div className="absolute w-56 h-56 bg-pink-500 rounded-full blur-[100px] top-10 right-0" />
                 </div>
               </div>
@@ -1991,7 +3692,9 @@ const Profile = () => {
                     targetUserId
                   )}
                   className="w-full h-full rounded-full object-cover"
-                  alt="Profile"
+                  alt={getDisplayName(
+                    profile
+                  )}
                 />
 
                 {profile?.is_online && (
@@ -2012,11 +3715,13 @@ const Profile = () => {
           </div>
         </section>
 
-        {/* Profile information */}
+        {/* ====================================================
+            PROFILE INFORMATION
+            ==================================================== */}
 
         <section className="flex flex-col items-center pt-20 pb-5 px-4">
 
-          {/* Online state */}
+          {/* Online */}
 
           <div className="flex items-center gap-2 mb-2">
             {profile?.is_online ? (
@@ -2025,6 +3730,7 @@ const Profile = () => {
                   size={13}
                   className="text-green-400"
                 />
+
                 <span className="text-[10px] uppercase tracking-widest text-green-400 font-bold">
                   Online
                 </span>
@@ -2035,6 +3741,7 @@ const Profile = () => {
                   size={13}
                   className="text-zinc-600"
                 />
+
                 <span className="text-[10px] uppercase tracking-widest text-zinc-600 font-bold">
                   Offline
                 </span>
@@ -2044,14 +3751,17 @@ const Profile = () => {
 
           {/* Display name */}
 
-          <h1 className="text-xl font-black text-white tracking-wide">
-            {getDisplayName(profile)}
+          <h1 className="text-xl font-black text-white tracking-wide text-center">
+            {getDisplayName(
+              profile
+            )}
           </h1>
 
           {/* Username */}
 
           <p className="text-sm text-cyan-400 font-bold mt-1">
-            @{profile?.username ||
+            @
+            {profile?.username ||
               'user'}
 
             {profile?.is_verified && (
@@ -2140,24 +3850,39 @@ const Profile = () => {
             </div>
           </div>
 
+          {/* Profile views */}
+
+          <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-widest text-zinc-600 mb-4">
+            <UserRound
+              size={12}
+            />
+            {formatCount(
+              stats.profileViews
+            )}{' '}
+            profile views
+          </div>
+
           {/* Mutual followers */}
 
           {!isOwnProfile &&
-            profile?.mutual_followers_count >
+            mutualFollowers >
               0 && (
               <div className="flex items-center gap-2 text-[11px] text-zinc-400 mb-4">
                 <UserRound
                   size={14}
                   className="text-cyan-400"
                 />
+
                 {formatCount(
-                  profile.mutual_followers_count
+                  mutualFollowers
                 )}{' '}
                 mutual followers
               </div>
             )}
 
-          {/* Actions */}
+          {/* ==================================================
+              ACTIONS
+              ================================================== */}
 
           {isOwnProfile ? (
             <>
@@ -2173,7 +3898,9 @@ const Profile = () => {
                 </Link>
 
                 <button
-                  onClick={shareProfile}
+                  onClick={
+                    shareProfile
+                  }
                   className="flex-1 py-2.5 bg-gradient-to-b from-[#24101a] to-[#180a12] rounded-xl font-black text-[12px] uppercase tracking-wider text-pink-500 border border-pink-500/50 flex items-center justify-center gap-2"
                 >
                   <ExternalLink
@@ -2216,8 +3943,10 @@ const Profile = () => {
                 onClick={
                   handleToggleFollow
                 }
-                className={`flex-1 py-2.5 rounded-xl font-black text-[12px] uppercase tracking-wider flex items-center justify-center gap-2 ${
-                  followRequestPending
+                className={`flex-1 py-2.5 rounded-xl font-black text-[12px] uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+                  isBlocked
+                    ? 'bg-red-500/10 text-red-400 border border-red-500/30'
+                    : followRequestPending
                     ? 'bg-yellow-500/10 text-yellow-300 border border-yellow-500/40'
                     : isFollowingTarget
                     ? 'bg-zinc-800 text-zinc-300 border border-white/20'
@@ -2229,6 +3958,13 @@ const Profile = () => {
                     size={16}
                     className="animate-spin"
                   />
+                ) : isBlocked ? (
+                  <>
+                    <Ban
+                      size={16}
+                    />
+                    Blocked
+                  </>
                 ) : followRequestPending ? (
                   <>
                     <Clock3
@@ -2254,12 +3990,15 @@ const Profile = () => {
               </button>
 
               <button
+                disabled={
+                  isBlocked
+                }
                 onClick={() =>
                   navigate(
                     `/messaging?userId=${targetUserId}`
                   )
                 }
-                className="flex-1 py-2.5 bg-[#0a1524] text-cyan-300 border border-cyan-500/50 rounded-xl font-black text-[12px] uppercase tracking-wider flex items-center justify-center gap-2"
+                className="flex-1 py-2.5 bg-[#0a1524] text-cyan-300 border border-cyan-500/50 rounded-xl font-black text-[12px] uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-40"
               >
                 <MessageSquare
                   size={16}
@@ -2271,7 +4010,7 @@ const Profile = () => {
 
           {/* Bio */}
 
-          <p className="text-xs text-center max-w-xl px-6 text-cyan-200/60 font-medium italic">
+          <p className="text-xs text-center max-w-xl px-6 text-cyan-200/60 font-medium italic whitespace-pre-wrap">
             {profile?.bio ||
               'No bio yet.'}
           </p>
@@ -2281,65 +4020,73 @@ const Profile = () => {
           {!isOwnProfile &&
             profile?.is_private && (
               <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-widest text-zinc-500">
-                <Lock size={13} />
+                <Lock
+                  size={13}
+                />
                 Private Account
               </div>
             )}
         </section>
 
-        {/* Content controls */}
+        {/* ====================================================
+            CONTENT CONTROLS
+            ==================================================== */}
 
         <div className="sticky top-0 bg-[#06060c]/95 backdrop-blur-md z-40 border-y border-cyan-500/20">
 
           {/* Tabs */}
 
           <div className="flex overflow-x-auto scrollbar-none">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() =>
-                  setActiveTab(
+            {tabs.map(
+              (tab) => (
+                <button
+                  key={
                     tab.id
-                  )
-                }
-                className={`min-w-[90px] flex-1 flex flex-col items-center justify-center gap-1 py-3 relative transition-all ${
-                  activeTab ===
-                  tab.id
-                    ? 'text-cyan-400'
-                    : 'text-zinc-600'
-                }`}
-              >
-                {tab.icon}
+                  }
+                  onClick={() =>
+                    setActiveTab(
+                      tab.id
+                    )
+                  }
+                  className={`min-w-[90px] flex-1 flex flex-col items-center justify-center gap-1 py-3 relative transition-all ${
+                    activeTab ===
+                    tab.id
+                      ? 'text-cyan-400'
+                      : 'text-zinc-600'
+                  }`}
+                >
+                  {tab.icon}
 
-                <span className="text-[8px] uppercase tracking-widest font-bold">
-                  {tab.label}
-                </span>
+                  <span className="text-[8px] uppercase tracking-widest font-bold">
+                    {tab.label}
+                  </span>
 
-                {activeTab ===
-                  tab.id && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute bottom-0 w-12 h-[3px] bg-cyan-400 shadow-[0_0_15px_#00f3ff] rounded-full"
-                  />
-                )}
-              </button>
-            ))}
+                  {activeTab ===
+                    tab.id && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute bottom-0 w-12 h-[3px] bg-cyan-400 shadow-[0_0_15px_#00f3ff] rounded-full"
+                    />
+                  )}
+                </button>
+              )
+            )}
           </div>
 
-          {/* Sort/filter */}
+          {/* Sort / filter */}
 
           {activeTab !==
             'playlists' && (
             <div className="flex items-center justify-between px-4 py-2 border-t border-white/5">
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 overflow-x-auto scrollbar-none">
                 <button
                   onClick={() =>
                     setContentSort(
                       'latest'
                     )
                   }
-                  className={`px-3 py-1.5 rounded-lg text-[9px] uppercase font-black ${
+                  className={`px-3 py-1.5 rounded-lg text-[9px] uppercase font-black whitespace-nowrap ${
                     contentSort ===
                     'latest'
                       ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
@@ -2359,7 +4106,7 @@ const Profile = () => {
                       'popular'
                     )
                   }
-                  className={`px-3 py-1.5 rounded-lg text-[9px] uppercase font-black ${
+                  className={`px-3 py-1.5 rounded-lg text-[9px] uppercase font-black whitespace-nowrap ${
                     contentSort ===
                     'popular'
                       ? 'bg-pink-500/15 text-pink-300 border border-pink-500/30'
@@ -2379,7 +4126,7 @@ const Profile = () => {
                       'likes'
                     )
                   }
-                  className={`px-3 py-1.5 rounded-lg text-[9px] uppercase font-black ${
+                  className={`px-3 py-1.5 rounded-lg text-[9px] uppercase font-black whitespace-nowrap ${
                     contentSort ===
                     'likes'
                       ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
@@ -2407,8 +4154,8 @@ const Profile = () => {
                         : 'all'
                   )
                 }
-                className="p-2 text-cyan-400"
-                title="Filter"
+                className="p-2 text-cyan-400 shrink-0"
+                title={`Filter: ${contentFilter}`}
               >
                 <SlidersHorizontal
                   size={16}
@@ -2416,11 +4163,42 @@ const Profile = () => {
               </button>
             </div>
           )}
+
+          {activeTab !==
+            'playlists' && (
+            <div className="px-4 pb-2 text-[8px] uppercase tracking-widest text-zinc-700">
+              Filter: {contentFilter}
+            </div>
+          )}
         </div>
 
-        {/* Private account lock */}
+        {/* ====================================================
+            BLOCKED
+            ==================================================== */}
 
-        {isPrivateLocked ? (
+        {isBlocked ? (
+          <div className="py-24 flex flex-col items-center text-center px-8">
+            <div className="w-20 h-20 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mb-5">
+              <Ban
+                size={34}
+                className="text-red-400"
+              />
+            </div>
+
+            <h3 className="font-black uppercase tracking-widest text-sm text-red-400">
+              User Blocked
+            </h3>
+
+            <p className="text-xs text-zinc-500 mt-2 max-w-xs">
+              You have blocked this
+              profile.
+            </p>
+          </div>
+        ) : isPrivateLocked ? (
+          /* ==================================================
+             PRIVATE ACCOUNT
+             ================================================== */
+
           <div className="py-24 flex flex-col items-center text-center px-8">
             <div className="w-20 h-20 rounded-full bg-zinc-900 border border-zinc-700 flex items-center justify-center mb-5">
               <Lock
@@ -2434,12 +4212,17 @@ const Profile = () => {
             </h3>
 
             <p className="text-xs text-zinc-500 mt-2 max-w-xs">
-              Follow this account to see
-              their videos and content.
+              Follow this account to
+              see their videos and
+              content.
             </p>
           </div>
         ) : activeTab ===
           'playlists' ? (
+          /* ==================================================
+             PLAYLISTS
+             ================================================== */
+
           <div className="py-20 flex flex-col items-center text-cyan-400/50">
             <ListVideo
               size={50}
@@ -2450,21 +4233,27 @@ const Profile = () => {
               Playlists
             </p>
 
-            <p className="text-xs text-zinc-600 mt-2">
-              Playlist content can be managed
-              from the creator tools.
+            <p className="text-xs text-zinc-600 mt-2 text-center max-w-xs">
+              Playlist content can be
+              managed from the creator
+              tools.
             </p>
           </div>
         ) : (
           <>
-            {/* Content error */}
+            {/* ==================================================
+                CONTENT ERROR
+                ================================================== */}
 
             {contentError && (
-              <div className="p-5 flex items-center justify-center gap-3 text-red-400 text-xs">
+              <div className="p-5 flex flex-wrap items-center justify-center gap-3 text-red-400 text-xs">
                 <AlertCircle
                   size={17}
                 />
-                {contentError}
+
+                <span>
+                  {contentError}
+                </span>
 
                 <button
                   onClick={() =>
@@ -2480,7 +4269,9 @@ const Profile = () => {
               </div>
             )}
 
-            {/* Grid */}
+            {/* ==================================================
+                VIDEO GRID
+                ================================================== */}
 
             <div className="grid grid-cols-3 gap-[2px] bg-cyan-500/10 p-[1px]">
 
@@ -2492,7 +4283,9 @@ const Profile = () => {
                 }).map(
                   (_, index) => (
                     <div
-                      key={index}
+                      key={
+                        index
+                      }
                       className="aspect-[3/4] bg-[#0c0c16] animate-pulse border border-cyan-500/10"
                     />
                   )
@@ -2505,7 +4298,9 @@ const Profile = () => {
                     index
                   ) => (
                     <motion.div
-                      key={video.id}
+                      key={
+                        video.id
+                      }
                       initial={{
                         opacity: 0
                       }}
@@ -2538,10 +4333,6 @@ const Profile = () => {
                           src={
                             video.video_url
                           }
-                          poster={
-                            video.thumbnail_url ||
-                            undefined
-                          }
                           className="absolute inset-0 w-full h-full object-cover"
                           muted
                           playsInline
@@ -2567,6 +4358,7 @@ const Profile = () => {
                           <Pin
                             size={10}
                           />
+
                           <span className="text-[8px] font-black uppercase">
                             Pinned
                           </span>
@@ -2580,6 +4372,16 @@ const Profile = () => {
                         <div className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-pink-400">
                           <Repeat2
                             size={12}
+                          />
+                        </div>
+                      )}
+
+                      {/* Private */}
+
+                      {video.is_private && (
+                        <div className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-yellow-300">
+                          <Lock
+                            size={11}
                           />
                         </div>
                       )}
@@ -2627,11 +4429,17 @@ const Profile = () => {
                   <p className="text-[10px] font-bold uppercase tracking-[3px] mt-2">
                     Empty Neon Universe
                   </p>
+
+                  <p className="text-xs text-zinc-700 mt-2">
+                    No content available.
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* Infinite scroll sentinel */}
+            {/* ==================================================
+                INFINITE SCROLL
+                ================================================== */}
 
             <div
               ref={
@@ -2658,7 +4466,9 @@ const Profile = () => {
         )}
       </div>
 
-      {/* Followers / Following modal */}
+      {/* ========================================================
+          FOLLOWERS / FOLLOWING MODAL
+          ======================================================== */}
 
       <AnimatePresence>
         {isModalOpen && (
@@ -2693,7 +4503,9 @@ const Profile = () => {
                 }
                 className="p-2 bg-[#0d0d1a] border border-cyan-500/40 text-cyan-400 rounded-full"
               >
-                <X size={20} />
+                <X
+                  size={20}
+                />
               </button>
             </div>
 
@@ -2710,9 +4522,12 @@ const Profile = () => {
                   value={
                     followSearch
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setFollowSearch(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   placeholder={`Search ${modalType}...`}
@@ -2720,6 +4535,8 @@ const Profile = () => {
                 />
               </div>
             </div>
+
+            {/* Follow list */}
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
@@ -2729,7 +4546,9 @@ const Profile = () => {
                 }).map(
                   (_, index) => (
                     <div
-                      key={index}
+                      key={
+                        index
+                      }
                       className="h-16 rounded-2xl bg-[#0d0d1a] animate-pulse"
                     />
                   )
@@ -2745,11 +4564,23 @@ const Profile = () => {
 
                     return (
                       <div
-                        key={item.id}
+                        key={
+                          item.id
+                        }
                         className="flex items-center justify-between p-3 bg-[#0d0d1a]/80 rounded-2xl border border-cyan-500/20"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
+                        <button
+                          onClick={() => {
+                            setIsModalOpen(
+                              false
+                            );
 
+                            navigate(
+                              `/profile/${item.id}`
+                            );
+                          }}
+                          className="flex items-center gap-3 min-w-0 text-left"
+                        >
                           <div className="relative shrink-0">
                             <img
                               src={getAvatar(
@@ -2774,27 +4605,36 @@ const Profile = () => {
 
                               {item.is_verified && (
                                 <Check
-                                  size={12}
+                                  size={
+                                    12
+                                  }
                                   className="text-cyan-400 shrink-0"
                                 />
                               )}
                             </div>
 
                             <p className="text-[10px] text-zinc-500 truncate">
-                              @{item.username}
+                              @
+                              {
+                                item.username
+                              }
                             </p>
 
                             {item.mutual_followers_count >
                               0 && (
                               <p className="text-[9px] text-cyan-500/60">
-                                {item.mutual_followers_count}{' '}
+                                {
+                                  item.mutual_followers_count
+                                }{' '}
                                 mutual
                               </p>
                             )}
                           </div>
-                        </div>
+                        </button>
 
                         <div className="flex items-center gap-2 shrink-0">
+
+                          {/* Remove follower */}
 
                           {modalType ===
                             'followers' &&
@@ -2830,9 +4670,11 @@ const Profile = () => {
                               </button>
                             )}
 
+                          {/* Follow back */}
+
                           {item.id !==
                             user?.id &&
-                            !isMeFollowing ? (
+                          !isMeFollowing ? (
                             <button
                               onClick={() =>
                                 handleFollowBack(
@@ -2843,9 +4685,14 @@ const Profile = () => {
                             >
                               Follow Back
                             </button>
-                          ) : (
+                          ) : item.id !==
+                            user?.id ? (
                             <span className="text-cyan-400/60 text-[9px] font-black uppercase">
                               Following
+                            </span>
+                          ) : (
+                            <span className="text-zinc-600 text-[9px] font-black uppercase">
+                              You
                             </span>
                           )}
                         </div>
@@ -2877,8 +4724,12 @@ const Profile = () => {
 
               {hasMoreFollowUsers &&
                 followList.length >
-                  0 && (
+                  0 &&
+                !followSearch.trim() && (
                   <button
+                    disabled={
+                      followLoadingMore
+                    }
                     onClick={() =>
                       fetchFollowList({
                         reset: false,
@@ -2887,9 +4738,11 @@ const Profile = () => {
                           1
                       })
                     }
-                    className="w-full py-3 rounded-xl border border-cyan-500/20 text-cyan-400 text-[10px] uppercase font-black"
+                    className="w-full py-3 rounded-xl border border-cyan-500/20 text-cyan-400 text-[10px] uppercase font-black disabled:opacity-50"
                   >
-                    Load More
+                    {followLoadingMore
+                      ? 'Loading...'
+                      : 'Load More'}
                   </button>
                 )}
             </div>
@@ -2897,7 +4750,9 @@ const Profile = () => {
         )}
       </AnimatePresence>
 
-      {/* QR modal */}
+      {/* ========================================================
+          QR MODAL
+          ======================================================== */}
 
       <AnimatePresence>
         {qrOpen && (
@@ -2918,23 +4773,27 @@ const Profile = () => {
           >
             <motion.div
               initial={{
-                scale: 0.9
+                scale: 0.9,
+                opacity: 0
               }}
               animate={{
-                scale: 1
+                scale: 1,
+                opacity: 1
               }}
               onClick={(event) =>
                 event.stopPropagation()
               }
-              className="w-full max-w-sm bg-[#0b0b15] border border-cyan-500/30 rounded-3xl p-6 text-center"
+              className="relative w-full max-w-sm bg-[#0b0b15] border border-cyan-500/30 rounded-3xl p-6 text-center"
             >
               <button
                 onClick={() =>
                   setQrOpen(false)
                 }
-                className="absolute"
+                className="absolute top-4 right-4 p-2 rounded-full bg-black/40 text-white"
               >
-                <X size={20} />
+                <X
+                  size={20}
+                />
               </button>
 
               <QrCode
@@ -2946,6 +4805,14 @@ const Profile = () => {
                 Profile QR
               </h3>
 
+              {/*
+               * This is a visual placeholder.
+               *
+               * A real QR requires a QR generation package such
+               * as qrcode.react. The rest of the profile does
+               * not depend on that package.
+               */}
+
               <div className="mt-6 bg-white rounded-2xl p-6">
                 <div className="aspect-square flex items-center justify-center text-black">
                   <div className="text-center">
@@ -2955,9 +4822,7 @@ const Profile = () => {
                     />
 
                     <p className="text-xs font-bold mt-3 break-all">
-                      {profile?.username
-                        ? `@${profile.username}`
-                        : targetUserId}
+                      {getAbsoluteProfileUrl()}
                     </p>
                   </div>
                 </div>
@@ -2969,7 +4834,9 @@ const Profile = () => {
                 }
                 className="w-full mt-5 py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-black uppercase text-xs flex items-center justify-center gap-2"
               >
-                <Copy size={15} />
+                <Copy
+                  size={15}
+                />
                 Copy Profile Link
               </button>
             </motion.div>
@@ -2977,7 +4844,9 @@ const Profile = () => {
         )}
       </AnimatePresence>
 
-      {/* Full-screen video viewer */}
+      {/* ========================================================
+          FULL SCREEN VIDEO VIEWER
+          ======================================================== */}
 
       <AnimatePresence>
         {viewerOpen &&
@@ -2994,16 +4863,18 @@ const Profile = () => {
               }}
               className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
             >
-
               {/* Close */}
 
               <button
                 onClick={
                   closeViewer
                 }
-                className="absolute top-5 right-5 z-20 p-3 rounded-full bg-black/60 border border-white/10 text-white"
+                className="absolute top-5 right-5 z-30 p-3 rounded-full bg-black/60 border border-white/10 text-white"
+                aria-label="Close video"
               >
-                <X size={22} />
+                <X
+                  size={22}
+                />
               </button>
 
               {/* Previous */}
@@ -3014,7 +4885,8 @@ const Profile = () => {
                   onClick={
                     goPreviousVideo
                   }
-                  className="absolute left-4 top-1/2 -translate-y-1/2 z-20 p-3 rounded-full bg-black/60 text-white border border-white/10"
+                  className="absolute left-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/60 text-white border border-white/10"
+                  aria-label="Previous video"
                 >
                   <ChevronLeft
                     size={28}
@@ -3031,7 +4903,8 @@ const Profile = () => {
                   onClick={
                     goNextVideo
                   }
-                  className="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-3 rounded-full bg-black/60 text-white border border-white/10"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-black/60 text-white border border-white/10"
+                  aria-label="Next video"
                 >
                   <ChevronRight
                     size={28}
@@ -3066,10 +4939,18 @@ const Profile = () => {
                     false
                   )
                 }
-                onDoubleClick={
-                  handleViewerLike
+                onError={() =>
+                  setViewerLoading(
+                    false
+                  )
                 }
-                className="max-h-full max-w-full object-contain"
+                onDoubleClick={() =>
+                  handleVideoLike(
+                    currentVideo.id,
+                    viewerLiked
+                  )
+                }
+                className="max-h-full max-w-full w-full h-full object-contain"
               />
 
               {viewerLoading && (
@@ -3081,9 +4962,11 @@ const Profile = () => {
                 </div>
               )}
 
-              {/* Video information */}
+              {/* ==================================================
+                  VIDEO INFORMATION
+                  ================================================== */}
 
-              <div className="absolute left-5 bottom-6 max-w-[70%]">
+              <div className="absolute left-5 bottom-6 max-w-[70%] z-20">
 
                 <button
                   onClick={() =>
@@ -3102,7 +4985,10 @@ const Profile = () => {
                   />
 
                   <span className="font-black text-sm">
-                    @{profile?.username}
+                    @
+                    {
+                      profile?.username
+                    }
                   </span>
 
                   {profile?.is_verified && (
@@ -3141,29 +5027,60 @@ const Profile = () => {
               {/* Like */}
 
               <button
-                onClick={
-                  handleViewerLike
+                disabled={
+                  viewerLikeLoading
                 }
-                className={`absolute right-5 bottom-28 w-12 h-12 rounded-full flex items-center justify-center border ${
+                onClick={() =>
+                  handleVideoLike(
+                    currentVideo.id,
+                    viewerLiked
+                  )
+                }
+                className={`absolute right-5 bottom-28 z-30 w-12 h-12 rounded-full flex items-center justify-center border transition-all ${
                   viewerLiked
                     ? 'bg-pink-500/20 border-pink-400 text-pink-400'
                     : 'bg-black/60 border-white/10 text-white'
-                }`}
+                } disabled:opacity-50`}
+                aria-label={
+                  viewerLiked
+                    ? 'Unlike video'
+                    : 'Like video'
+                }
               >
-                <Heart
-                  size={23}
-                  className={
-                    viewerLiked
-                      ? 'fill-pink-400'
-                      : ''
-                  }
-                />
+                {viewerLikeLoading ? (
+                  <Loader2
+                    size={21}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Heart
+                    size={23}
+                    className={
+                      viewerLiked
+                        ? 'fill-pink-400'
+                        : ''
+                    }
+                  />
+                )}
               </button>
+
+              {/* Viewer position */}
+
+              <div className="absolute top-5 left-5 z-30 px-3 py-1.5 rounded-full bg-black/50 border border-white/10 text-[9px] uppercase tracking-widest text-zinc-300">
+                {viewerIndex +
+                  1}{' '}
+                /{' '}
+                {
+                  displayVideos.length
+                }
+              </div>
             </motion.div>
           )}
       </AnimatePresence>
 
-      {/* Footer neon line */}
+      {/* ========================================================
+          FOOTER NEON LINE
+          ======================================================== */}
 
       <div className="h-[2px] w-full bg-gradient-to-r from-cyan-500 via-pink-500 to-cyan-500 bottom-0 absolute shadow-[0_0_20px_#00f3ff] z-[120]" />
     </div>
