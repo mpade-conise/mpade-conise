@@ -40,25 +40,25 @@ const Upload = ({ onComplete }) => {
   // ----------------------------------------------------
   // 15 ADVANCED PRO & NEXT-GEN TIKTOK-LEVEL FEATURES:
   // ----------------------------------------------------
-  // Feature 1: Chapters & Time Markers
+  // Chapters & Time Markers
   const [chapters, setChapters] = useState([
     { time: 0, title: 'Intro Hook' }
   ]);
   const [newChapterTime, setNewChapterTime] = useState(0);
   const [newChapterTitle, setNewChapterTitle] = useState('');
 
-  // Feature 2: Auto Subtitles & Closed Captions (CC)
+  // Auto Subtitles & Closed Captions (CC)
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
   const [subtitles, setSubtitles] = useState([
     { start: 0, end: 3, text: 'Welcome to Universe Live ✨' }
   ]);
   const [isGeneratingCC, setIsGeneratingCC] = useState(false);
 
-  // Feature 3: Custom Cover Thumbnail Badge & Text Sticker
+  // Custom Cover Thumbnail Badge & Text Sticker
   const [coverText, setCoverText] = useState('');
   const [coverBadgeStyle, setCoverBadgeStyle] = useState('neon');
 
-  // Feature 4: Interactive Poll & Voting Sticker
+  // Interactive Poll & Voting Sticker
   const [pollEnabled, setPollEnabled] = useState(false);
   const [pollData, setPollData] = useState({
     question: 'What do you think of this vibe? 🔥',
@@ -68,7 +68,7 @@ const Upload = ({ onComplete }) => {
     votes2: 0
   });
 
-  // Feature 5: Product / External Link Pin Showcase
+  // Product / External Link Pin Showcase
   const [productEnabled, setProductEnabled] = useState(false);
   const [productLink, setProductLink] = useState({
     title: 'Featured Creator Drop',
@@ -77,39 +77,39 @@ const Upload = ({ onComplete }) => {
     ctaText: 'Shop Now'
   });
 
-  // Feature 6: Paid Partnership / Commercial Disclosure
+  // Paid Partnership / Commercial Disclosure
   const [isCommercial, setIsCommercial] = useState(false);
   const [sponsorTag, setSponsorTag] = useState('');
 
-  // Feature 7: Allow Duet & Remix Control
+  // Allow Duet & Remix Control
   const [allowDuet, setAllowDuet] = useState(true);
 
-  // Feature 8: Allow Stitch Permission Control
+  // Allow Stitch Permission Control
   const [allowStitch, setAllowStitch] = useState(true);
 
-  // Feature 9: Allow Downloads Toggle (Watermarked export)
+  // Allow Downloads Toggle (Watermarked export)
   const [allowDownload, setAllowDownload] = useState(true);
 
-  // Feature 10: 18+ Mature / Sensitive Content Age Gate
+  // 18+ Mature / Sensitive Content Age Gate
   const [ageRestricted, setAgeRestricted] = useState(false);
 
-  // Feature 11: 8 Cinematic Color Grading LUT Filters (persisted to player)
+  // 8 Cinematic Color Grading LUT Filters (persisted to player)
   const [selectedFilter, setSelectedFilter] = useState(() => {
     return localStorage.getItem('mpade_last_selected_filter') || 'original';
   });
 
-  // Feature 12: AI Voice Clarifier & Audio Enhancement
+  // AI Voice Clarifier & Audio Enhancement
   const [audioEnhancement, setAudioEnhancement] = useState('studio_master');
 
-  // Feature 13: Dual Audio Master Mixer (Original vs Music)
+  // Dual Audio Master Mixer (Original vs Music)
   const [videoVolume, setVideoVolume] = useState(100);
   const [musicVolume, setMusicVolume] = useState(80);
 
-  // Feature 14: Scheduled / Future Auto Release
+  // Scheduled / Future Auto Release
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
 
-  // Feature 15: Niche Channel & Target Audience Category
+  // Niche Channel & Target Audience Category
   const [category, setCategory] = useState('Entertainment');
 
   // Standard Social Fields
@@ -146,6 +146,8 @@ const Upload = ({ onComplete }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStage, setUploadStage] = useState('ready');
   const [uploadStatusText, setUploadStatusText] = useState('');
+  const [isMergingMedia, setIsMergingMedia] = useState(false);
+  const [mergeProgress, setMergeProgress] = useState(0);
 
   // Drag over state
   const [isDragging, setIsDragging] = useState(false);
@@ -517,6 +519,179 @@ const Upload = ({ onComplete }) => {
   };
 
   // ----------------------------------------------------
+  // FINAL MEDIA COMPOSITOR
+  // ----------------------------------------------------
+  // When a soundtrack is selected, the browser creates one self-contained
+  // video file containing the original video audio + selected music.
+  // No separate soundtrack object is uploaded to Supabase.
+  const mergeVideoWithMusic = async (sourceVideo, musicUrl) => {
+    if (!sourceVideo || !musicUrl) return sourceVideo;
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+      throw new Error('This browser cannot compose video and music locally. Please use a current Chrome, Edge, or Firefox browser.');
+    }
+
+    setIsMergingMedia(true);
+    setMergeProgress(0);
+    setUploadStage('mixing');
+    setUploadStatusText('Mixing original audio and soundtrack into one video...');
+
+    const sourceUrl = URL.createObjectURL(sourceVideo);
+    let videoEl;
+    let musicEl;
+    let canvas;
+    let animationFrame;
+    let audioContext;
+    let recorder;
+    let stopped = false;
+
+    try {
+      videoEl = document.createElement('video');
+      videoEl.src = sourceUrl;
+      videoEl.preload = 'auto';
+      videoEl.playsInline = true;
+      videoEl.crossOrigin = 'anonymous';
+      videoEl.muted = true;
+
+      musicEl = document.createElement('audio');
+      musicEl.src = musicUrl;
+      musicEl.preload = 'auto';
+      musicEl.crossOrigin = 'anonymous';
+      musicEl.loop = true;
+
+      const waitForMetadata = (media) => new Promise((resolve, reject) => {
+        if (media.readyState >= 1) {
+          resolve();
+          return;
+        }
+        const onLoaded = () => {
+          media.removeEventListener('loadedmetadata', onLoaded);
+          media.removeEventListener('error', onError);
+          resolve();
+        };
+        const onError = () => {
+          media.removeEventListener('loadedmetadata', onLoaded);
+          media.removeEventListener('error', onError);
+          reject(new Error('The selected soundtrack could not be loaded for local mixing. The audio source may block browser access (CORS).'));
+        };
+        media.addEventListener('loadedmetadata', onLoaded, { once: true });
+        media.addEventListener('error', onError, { once: true });
+        media.load();
+      });
+
+      await Promise.all([waitForMetadata(videoEl), waitForMetadata(musicEl)]);
+
+      if (!videoEl.videoWidth || !videoEl.videoHeight) {
+        throw new Error('The selected video could not be decoded for final audio mixing.');
+      }
+
+      canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      const ctx = canvas.getContext('2d', { alpha: false });
+      if (!ctx) throw new Error('The browser could not create the final video compositor.');
+
+      const canvasStream = canvas.captureStream(30);
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const mixedAudio = audioContext.createMediaStreamDestination();
+
+      const videoSource = audioContext.createMediaElementSource(videoEl);
+      const musicSource = audioContext.createMediaElementSource(musicEl);
+      const originalGain = audioContext.createGain();
+      const musicGain = audioContext.createGain();
+
+      originalGain.gain.value = Math.max(0, Math.min(1, videoVolume / 100));
+      musicGain.gain.value = Math.max(0, Math.min(1, musicVolume / 100));
+
+      videoSource.connect(originalGain);
+      musicSource.connect(musicGain);
+      originalGain.connect(mixedAudio);
+      musicGain.connect(mixedAudio);
+
+      const mixedAudioTracks = mixedAudio.stream.getAudioTracks();
+      if (mixedAudioTracks.length) canvasStream.addTrack(mixedAudioTracks[0]);
+
+      const supportedMime = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+      ].find(type => MediaRecorder.isTypeSupported(type));
+
+      if (!supportedMime) {
+        throw new Error('This browser does not support a compatible video/audio recording format.');
+      }
+
+      const chunks = [];
+      recorder = new MediaRecorder(canvasStream, {
+        mimeType: supportedMime,
+        videoBitsPerSecond: 6000000,
+        audioBitsPerSecond: 192000
+      });
+
+      const recordingFinished = new Promise((resolve, reject) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onerror = () => reject(new Error('The browser failed while composing the final media file.'));
+        recorder.onstop = () => {
+          stopped = true;
+          const blob = new Blob(chunks, { type: supportedMime });
+          if (!blob.size) {
+            reject(new Error('The final merged video was empty. Please try the upload again.'));
+            return;
+          }
+          resolve(new File([blob], `Studio_Merged_${Date.now()}.webm`, { type: supportedMime }));
+        };
+      });
+
+      const drawFrame = () => {
+        if (stopped) return;
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        if (videoEl.duration) {
+          const progress = Math.min(100, Math.round((videoEl.currentTime / videoEl.duration) * 100));
+          setMergeProgress(progress);
+          setUploadProgress(Math.max(12, Math.min(24, 12 + Math.round(progress * 0.12))));
+        }
+        animationFrame = requestAnimationFrame(drawFrame);
+      };
+
+      videoEl.onended = () => {
+        if (recorder.state !== 'inactive') recorder.stop();
+      };
+
+      await audioContext.resume();
+      videoEl.currentTime = 0;
+      musicEl.currentTime = 0;
+      recorder.start(250);
+      drawFrame();
+
+      await Promise.all([
+        videoEl.play(),
+        musicEl.play().catch(() => {
+          throw new Error('The selected soundtrack could not start. Please choose another track.');
+        })
+      ]);
+
+      const mergedFile = await recordingFinished;
+      return mergedFile;
+    } finally {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      try {
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+      } catch (_) {}
+      try {
+        videoEl?.pause();
+        musicEl?.pause();
+      } catch (_) {}
+      try {
+        await audioContext?.close();
+      } catch (_) {}
+      if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+      setIsMergingMedia(false);
+      setMergeProgress(100);
+    }
+  };
+
+  // ----------------------------------------------------
   // DUAL-STREAM RESILIENT UPLOAD ENGINE WITH FILTER PRESERVATION
   // ----------------------------------------------------
   const handleUpload = async () => {
@@ -525,11 +700,18 @@ const Upload = ({ onComplete }) => {
     setIsUploading(true);
     setUploadProgress(10);
     setUploadStage('optimizing');
-    setUploadStatusText('Encoding 1080p stream buffers & LUT grade...');
+    setUploadStatusText('Preparing final media package...');
 
     try {
       const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
       if (authError || !currentUser) throw new Error("Session expired. Please log in again.");
+
+      // Build the final upload file before it reaches storage. If a soundtrack
+      // is selected, the result contains both audio streams inside one video file.
+      let uploadVideoFile = videoFile;
+      if (selectedMusic?.url) {
+        uploadVideoFile = await mergeVideoWithMusic(videoFile, selectedMusic.url);
+      }
 
       // Stage 1: Generate & Upload Cover Thumbnail
       setUploadStage('thumbnail');
@@ -551,7 +733,7 @@ const Upload = ({ onComplete }) => {
       // Stage 2: Video Stream Upload with XHR Telemetry
       setUploadStage('uploading');
       setUploadStatusText('Transmitting video chunks to Supabase cloud storage...');
-      const fileExt = videoFile.name?.split('.').pop() || 'mp4';
+      const fileExt = uploadVideoFile.name?.split('.').pop() || 'webm';
       const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
 
       const sessionStr = localStorage.getItem('sb-wgzrebgvcqnvcstdpwsa-auth-token');
@@ -583,12 +765,13 @@ const Upload = ({ onComplete }) => {
           };
 
           xhr.onerror = () => reject(new Error("Storage network layer connection dropped."));
-          xhr.send(videoFile);
+          xhr.setRequestHeader('Content-Type', uploadVideoFile.type || 'video/webm');
+          xhr.send(uploadVideoFile);
         });
       } else {
         const { error: uploadError } = await supabase.storage
           .from('videos')
-          .upload(fileName, videoFile, { upsert: true });
+          .upload(fileName, uploadVideoFile, { contentType: uploadVideoFile.type || 'video/webm', upsert: true });
         if (uploadError) throw uploadError;
         publicUrl = supabase.storage.from('videos').getPublicUrl(fileName).data.publicUrl;
       }
@@ -615,7 +798,9 @@ const Upload = ({ onComplete }) => {
         thumbnail_url: thumbPublicUrl || preview,
         caption: caption.trim(),
         music_name: selectedMusic.name,
-        music_url: selectedMusic.url,
+        music_url: null,
+        audio_embedded: Boolean(selectedMusic?.url),
+        audio_source: selectedMusic?.url ? 'embedded' : 'original',
         user_id: currentUser.id,
         privacy: privacy,
         is_private: privacy === 'private',
@@ -655,7 +840,7 @@ const Upload = ({ onComplete }) => {
           thumbnail_url: thumbPublicUrl || preview,
           caption: caption.trim(),
           music_name: selectedMusic.name,
-          music_url: selectedMusic.url,
+          music_url: null,
           user_id: currentUser.id,
           privacy: privacy,
           is_private: privacy === 'private',
@@ -696,7 +881,15 @@ const Upload = ({ onComplete }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex flex-col md:items-center md:justify-center bg-black/95 md:bg-black/85 md:backdrop-blur-2xl md:p-4 overflow-hidden select-none">
+    <>
+      <style>{`
+        .studio-pro-root, .studio-pro-root * { scrollbar-width: thin; scrollbar-color: rgba(113,113,122,.65) rgba(255,255,255,.035); }
+        .studio-pro-root ::-webkit-scrollbar { width: 7px; height: 7px; }
+        .studio-pro-root ::-webkit-scrollbar-track { background: rgba(255,255,255,.035); border-radius: 999px; }
+        .studio-pro-root ::-webkit-scrollbar-thumb { background: rgba(113,113,122,.65); border-radius: 999px; border: 1px solid rgba(255,255,255,.08); }
+        .studio-pro-root ::-webkit-scrollbar-thumb:hover { background: rgba(161,161,170,.85); }
+      `}</style>
+      <div className="fixed inset-0 z-[120] flex flex-col md:items-center md:justify-center bg-black/70 md:bg-black/80 md:backdrop-blur-2xl md:p-4 overflow-hidden select-none studio-pro-root">
       
       {/* Hidden audio element for preview in editor */}
       <audio ref={audioPreviewRef} src={selectedMusic.url} loop />
@@ -707,17 +900,17 @@ const Upload = ({ onComplete }) => {
         initial={{ opacity: 0, scale: 0.98, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: 15 }}
-        className="relative w-full h-[100dvh] md:h-[92vh] md:max-h-[920px] md:max-w-6xl bg-[#080811] border-0 md:border md:border-cyan-500/30 md:rounded-[2.5rem] shadow-none md:shadow-[0_0_80px_rgba(6,182,212,0.25)] flex flex-col overflow-hidden text-white font-sans"
+        className="relative w-full h-[100dvh] md:h-[92vh] md:max-h-[920px] md:max-w-6xl bg-[#0b0c10] border-0 md:border md:border-white/10 md:rounded-[2rem] shadow-none md:shadow-[0_24px_90px_rgba(0,0,0,0.55)] flex flex-col overflow-hidden text-white font-sans"
       >
         
         {/* ============================================================ */}
         {/* 1. TOP HEADER & STEPPER BAR */}
         {/* ============================================================ */}
-        <header className="h-14 sm:h-16 px-3 sm:px-6 border-b border-cyan-500/15 bg-black/70 backdrop-blur-xl flex items-center justify-between shrink-0 z-30">
+        <header className="h-14 sm:h-16 px-3 sm:px-6 border-b border-white/10 bg-[#0d0f14]/95 backdrop-blur-xl flex items-center justify-between shrink-0 z-30">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button 
               type="button"
-              disabled={isUploading}
+              disabled={isUploading || isMergingMedia}
               onClick={onComplete}
               className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-all active:scale-90 disabled:opacity-40 shrink-0"
               aria-label="Close Studio"
@@ -731,11 +924,11 @@ const Upload = ({ onComplete }) => {
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <h1 className="text-xs sm:text-sm md:text-base font-black tracking-wider uppercase bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-pink-400 to-purple-400 truncate">
+                  <h1 className="text-xs sm:text-sm md:text-base font-black tracking-wider uppercase text-white truncate">
                     Studio Pro
                   </h1>
-                  <span className="hidden sm:inline-block px-1.5 py-0.5 bg-gradient-to-r from-cyan-500/20 to-pink-500/20 border border-cyan-400/40 rounded-full text-[8px] font-black text-cyan-300 uppercase tracking-widest">
-                    v3.0 Ultra
+                  <span className="hidden sm:inline-block px-1.5 py-0.5 bg-white/5 border border-white/10 rounded-full text-[8px] font-bold text-zinc-400 uppercase tracking-widest">
+                    Studio
                   </span>
                 </div>
               </div>
@@ -748,7 +941,7 @@ const Upload = ({ onComplete }) => {
               <button
                 key={step.id}
                 type="button"
-                disabled={step.disabled || isUploading}
+                disabled={step.disabled || isUploading || isMergingMedia}
                 onClick={() => setActiveStep(step.id)}
                 className={`flex items-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-wider transition-all shrink-0 disabled:opacity-25 disabled:cursor-not-allowed ${
                   activeStep === step.id 
@@ -1010,7 +1203,7 @@ const Upload = ({ onComplete }) => {
           </AnimatePresence>
 
           {/* RIGHT / MAIN PANEL: STEP WORKSTATION TABS */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-[#090911] custom-viewport-scrollbar pb-24 md:pb-8">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-[#0b0c10] custom-viewport-scrollbar pb-24 md:pb-8">
             
             {/* ============================================================ */}
             {/* STEP 1: MEDIA INGEST (DROPZONE / STUDIO CAMERA) */}
@@ -1189,7 +1382,7 @@ const Upload = ({ onComplete }) => {
                   <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                        <Tag size={15} /> Feature 3: Cover Frame Scrubber & Headline Sticker
+                        <Tag size={15} /> Cover Frame Scrubber & Headline Sticker
                       </h4>
                       <span className="text-[10px] sm:text-[11px] font-mono text-zinc-400">
                         {thumbScrubTime.toFixed(1)}s
@@ -1245,11 +1438,11 @@ const Upload = ({ onComplete }) => {
                   <p className="text-xs text-zinc-400">Master audio levels, voice clarity, and color grading LUT filters</p>
                 </div>
 
-                {/* Feature 11: 8 Cinematic LUT Color Filters (Persisted to Database & Feed) */}
+                {/* 8 Cinematic LUT Color Filters (Persisted to Database & Feed) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                      <Wand2 size={15} /> Feature 11: 8 Cinematic LUT Color Filters
+                      <Wand2 size={15} /> 8 Cinematic LUT Color Filters
                     </h4>
                     <span className="text-[10px] font-mono text-zinc-400 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded-full">
                       Active: {currentFilterObj.name}
@@ -1282,10 +1475,10 @@ const Upload = ({ onComplete }) => {
                   </div>
                 </div>
 
-                {/* Feature 12: AI Voice Clarifier & Audio Enhancer */}
+                {/* AI Voice Clarifier & Audio Enhancer */}
                 <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
                   <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
-                    <Sparkle size={15} /> Feature 12: AI Audio Enhancement & Voice Clarifier
+                    <Sparkle size={15} /> AI Audio Enhancement & Voice Clarifier
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
@@ -1311,10 +1504,10 @@ const Upload = ({ onComplete }) => {
                   </div>
                 </div>
 
-                {/* Feature 13: Dual Audio Master Mixer */}
+                {/* Dual Audio Master Mixer */}
                 <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
                   <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                    <SlidersHorizontal size={15} /> Feature 13: Dual Audio Master Mixer
+                    <SlidersHorizontal size={15} /> Dual Audio Master Mixer
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -1431,11 +1624,11 @@ const Upload = ({ onComplete }) => {
                   <p className="text-xs text-zinc-400">Chapters, Closed Captions, Polls, and Product showcase pins</p>
                 </div>
 
-                {/* Feature 1: Chapters & Timeline Markers */}
+                {/* Chapters & Timeline Markers */}
                 <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                      <BarChart2 size={15} /> Feature 1: Interactive Video Chapters & Markers
+                      <BarChart2 size={15} /> Interactive Video Chapters & Markers
                     </h4>
                     <span className="text-[11px] font-mono text-zinc-400">
                       {chapters.length} Marker(s)
@@ -1486,11 +1679,11 @@ const Upload = ({ onComplete }) => {
                   </div>
                 </div>
 
-                {/* Feature 2: Auto Subtitles & Closed Captions (CC) */}
+                {/* Auto Subtitles & Closed Captions (CC) */}
                 <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-black uppercase text-yellow-300 tracking-wider flex items-center gap-1.5">
-                      <FileText size={15} /> Feature 2: Auto Closed Captions (CC Subtitles)
+                      <FileText size={15} /> Auto Closed Captions (CC Subtitles)
                     </h4>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -1526,11 +1719,11 @@ const Upload = ({ onComplete }) => {
                   )}
                 </div>
 
-                {/* Feature 4: Interactive Poll / Voting Sticker */}
+                {/* Interactive Poll / Voting Sticker */}
                 <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
-                      <HelpCircle size={15} /> Feature 4: Interactive Poll & Voting Sticker
+                      <HelpCircle size={15} /> Interactive Poll & Voting Sticker
                     </h4>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -1572,11 +1765,11 @@ const Upload = ({ onComplete }) => {
                   )}
                 </div>
 
-                {/* Feature 5: Product / External Link Pin Showcase */}
+                {/* Product / External Link Pin Showcase */}
                 <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider flex items-center gap-1.5">
-                      <ShoppingBag size={15} /> Feature 5: Product / Web Link Showcase Pin
+                      <ShoppingBag size={15} /> Product / Web Link Showcase Pin
                     </h4>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input 
@@ -1708,10 +1901,10 @@ const Upload = ({ onComplete }) => {
                   </div>
                 </div>
 
-                {/* Feature 15: Niche Channel & Target Audience Category */}
+                {/* Niche Channel & Target Audience Category */}
                 <div className="space-y-2">
                   <label className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                    <Layers size={14} /> Feature 15: Target Audience Category
+                    <Layers size={14} /> Target Audience Category
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {categories.map(cat => (
@@ -1760,7 +1953,7 @@ const Upload = ({ onComplete }) => {
                   </div>
                 </div>
 
-                {/* Feature 6, 7, 8, 9, 10, 14: ADVANCED TOGGLES GRID */}
+                {/* ADVANCED TOGGLES GRID */}
                 <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
                   <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
                     <Shield size={15} /> Pro Creator Permissions & Compliance
@@ -1768,11 +1961,11 @@ const Upload = ({ onComplete }) => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     
-                    {/* Feature 7: Allow Duet */}
+                    {/* Allow Duet */}
                     <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer">
                       <div>
                         <p className="text-xs font-bold text-white">Allow Duet & Remix</p>
-                        <p className="text-[10px] text-zinc-500">Feature 7: Users can create side-by-side clips</p>
+                        <p className="text-[10px] text-zinc-500">Users can create side-by-side clips</p>
                       </div>
                       <input 
                         type="checkbox" 
@@ -1782,11 +1975,11 @@ const Upload = ({ onComplete }) => {
                       />
                     </label>
 
-                    {/* Feature 8: Allow Stitch */}
+                    {/* Allow Stitch */}
                     <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer">
                       <div>
                         <p className="text-xs font-bold text-white">Allow Stitch</p>
-                        <p className="text-[10px] text-zinc-500">Feature 8: Users can stitch up to 5s</p>
+                        <p className="text-[10px] text-zinc-500">Users can stitch up to 5s</p>
                       </div>
                       <input 
                         type="checkbox" 
@@ -1796,11 +1989,11 @@ const Upload = ({ onComplete }) => {
                       />
                     </label>
 
-                    {/* Feature 9: Allow Downloads */}
+                    {/* Allow Downloads */}
                     <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer">
                       <div>
                         <p className="text-xs font-bold text-white">Allow Video Downloads</p>
-                        <p className="text-[10px] text-zinc-500">Feature 9: Save button with watermark</p>
+                        <p className="text-[10px] text-zinc-500">Save button with watermark</p>
                       </div>
                       <input 
                         type="checkbox" 
@@ -1810,11 +2003,11 @@ const Upload = ({ onComplete }) => {
                       />
                     </label>
 
-                    {/* Feature 10: Age Restricted */}
+                    {/* Age Restricted */}
                     <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer">
                       <div>
                         <p className="text-xs font-bold text-white">18+ Mature Filter</p>
-                        <p className="text-[10px] text-zinc-500">Feature 10: Requires tap-to-reveal confirmation</p>
+                        <p className="text-[10px] text-zinc-500">Requires tap-to-reveal confirmation</p>
                       </div>
                       <input 
                         type="checkbox" 
@@ -1824,11 +2017,11 @@ const Upload = ({ onComplete }) => {
                       />
                     </label>
 
-                    {/* Feature 6: Commercial / Paid Partnership */}
+                    {/* Commercial / Paid Partnership */}
                     <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer sm:col-span-2">
                       <div className="flex-1 pr-3">
                         <p className="text-xs font-bold text-white">Paid Partnership Disclosure</p>
-                        <p className="text-[10px] text-zinc-500">Feature 6: Pin sponsor banner on video</p>
+                        <p className="text-[10px] text-zinc-500">Pin sponsor banner on video</p>
                         {isCommercial && (
                           <input 
                             type="text" 
@@ -1847,11 +2040,11 @@ const Upload = ({ onComplete }) => {
                       />
                     </label>
 
-                    {/* Feature 14: Scheduled Release */}
+                    {/* Scheduled Release */}
                     <div className="p-3 bg-black/40 border border-white/5 rounded-2xl sm:col-span-2 space-y-2">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-xs font-bold text-white">Feature 14: Scheduled Time Release</p>
+                          <p className="text-xs font-bold text-white">Scheduled Time Release</p>
                           <p className="text-[10px] text-zinc-500">Release video automatically at a future time</p>
                         </div>
                         <input 
@@ -1875,10 +2068,38 @@ const Upload = ({ onComplete }) => {
                 </div>
 
                 {/* ============================================================ */}
+                {/* FINAL MEDIA PACKAGE */}
+                {/* ============================================================ */}
+                <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Final media package</p>
+                      <p className="mt-1 text-sm font-semibold text-white truncate">
+                        {selectedMusic?.url ? 'Video + soundtrack will be stored as one self-contained file' : 'Original video will be stored without an extra soundtrack file'}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${selectedMusic?.url ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-400/20' : 'bg-white/5 text-zinc-400 border border-white/10'}`}>
+                      {selectedMusic?.url ? 'Audio embedded' : 'Original audio'}
+                    </span>
+                  </div>
+                  {isMergingMedia && (
+                    <div className="mt-3">
+                      <div className="mb-1.5 flex items-center justify-between text-[10px] text-zinc-500">
+                        <span>Composing final media</span>
+                        <span>{mergeProgress}%</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+                        <motion.div animate={{ width: `${mergeProgress}%` }} className="h-full rounded-full bg-cyan-400" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ============================================================ */}
                 {/* UPLOAD TELEMETRY COCKPIT & PROGRESS BAR */}
                 {/* ============================================================ */}
                 {isUploading ? (
-                  <div className="p-5 sm:p-6 bg-black/90 border border-cyan-400/50 rounded-3xl space-y-4 shadow-[0_0_30px_rgba(6,182,212,0.3)]">
+                  <div className="p-5 sm:p-6 bg-white/[0.025] border border-white/10 rounded-2xl space-y-4">
                     <div className="flex items-center justify-between text-xs font-black uppercase">
                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500 flex items-center gap-2">
                         <Loader2 size={16} className="animate-spin text-cyan-400" />
@@ -1893,7 +2114,7 @@ const Upload = ({ onComplete }) => {
                         initial={{ width: 0 }}
                         animate={{ width: `${uploadProgress}%` }}
                         transition={{ duration: 0.2 }}
-                        className="h-full bg-gradient-to-r from-cyan-500 via-pink-500 to-teal-400 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] relative"
+                        className="h-full bg-cyan-400 rounded-full relative"
                       >
                         <div className="absolute inset-0 bg-white/20 animate-pulse" />
                       </motion.div>
@@ -1908,7 +2129,7 @@ const Upload = ({ onComplete }) => {
                   <button
                     type="button"
                     onClick={handleUpload}
-                    className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-cyan-500 via-pink-500 to-rose-600 text-white font-black text-xs sm:text-sm uppercase tracking-widest rounded-2xl shadow-[0_0_30px_rgba(236,72,153,0.5)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:brightness-110"
+                    className="w-full py-3.5 sm:py-4 bg-white text-black font-bold text-xs sm:text-sm uppercase tracking-widest rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:brightness-110"
                   >
                     <Zap size={18} className="fill-white" /> Broadcast Video Now
                   </button>
@@ -1928,7 +2149,7 @@ const Upload = ({ onComplete }) => {
           {currentStepIndex > 0 ? (
             <button
               type="button"
-              disabled={isUploading}
+              disabled={isUploading || isMergingMedia}
               onClick={goToPrevStep}
               className="px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-zinc-300 flex items-center gap-1 active:scale-95 transition-all"
             >
@@ -1941,7 +2162,7 @@ const Upload = ({ onComplete }) => {
           {activeStep !== 'publish' && preview ? (
             <button
               type="button"
-              disabled={isUploading}
+              disabled={isUploading || isMergingMedia}
               onClick={goToNextStep}
               className="flex-1 max-w-[200px] py-2.5 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95 transition-all"
             >
@@ -1960,6 +2181,7 @@ const Upload = ({ onComplete }) => {
 
       </motion.div>
     </div>
+    </>
   );
 };
 
