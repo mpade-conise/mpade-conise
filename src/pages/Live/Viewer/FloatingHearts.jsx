@@ -14,7 +14,7 @@ const DEFAULT_ICONS = [
 ];
 
 const FloatingHearts = ({
-  count,
+  count = 0,
   streamId,
   reactionType = 'heart',
   sender,
@@ -31,11 +31,9 @@ const FloatingHearts = ({
   const timers = useRef(new Map());
   const queue = useRef([]);
   const processing = useRef(false);
+  const previousCount = useRef(Number(count));
   const lastReaction = useRef(0);
-  const previousCount = useRef(Number(count || 0));
   const mounted = useRef(false);
-  const tapTimer = useRef(null);
-  const tapCount = useRef(0);
 
   const getReaction = useCallback((type) => {
     return reactionIcons.find(item => item.type === type) || reactionIcons[0] || DEFAULT_ICONS[0];
@@ -43,12 +41,13 @@ const FloatingHearts = ({
 
   const removeHeart = useCallback((id) => {
     const timer = timers.current.get(id);
-    if (timer) clearTimeout(timer);
-    timers.current.delete(id);
 
-    if (mounted.current) {
-      setHearts(prev => prev.filter(item => item.id !== id));
+    if (timer) {
+      clearTimeout(timer);
+      timers.current.delete(id);
     }
+
+    setHearts(prev => prev.filter(item => item.id !== id));
   }, []);
 
   const addHeart = useCallback((type = 'heart', meta = {}) => {
@@ -92,9 +91,9 @@ const FloatingHearts = ({
   }, [avatar, duration, getReaction, maxHearts, onReaction, removeHeart, sender, throttleMs]);
 
   const enqueue = useCallback((type = 'heart', meta = {}, amount = 1) => {
-    const safeAmount = Math.min(Math.max(Number(amount) || 1, 1), 10);
+    const total = Math.min(Math.max(Number(amount) || 1, 1), 10);
 
-    for (let i = 0; i < safeAmount; i += 1) {
+    for (let i = 0; i < total; i += 1) {
       queue.current.push({ type, meta });
     }
 
@@ -119,7 +118,7 @@ const FloatingHearts = ({
   }, [addHeart]);
 
   const triggerLikeInDB = useCallback(async () => {
-    if (!streamId) return false;
+    if (!streamId) return;
 
     const { error } = await supabase.rpc('increment_likes', {
       stream_id_input: streamId
@@ -127,10 +126,7 @@ const FloatingHearts = ({
 
     if (error) {
       console.error('Error updating likes:', error.message);
-      return false;
     }
-
-    return true;
   }, [streamId]);
 
   useEffect(() => {
@@ -146,9 +142,20 @@ const FloatingHearts = ({
   }, [count, burstSize, enqueue, reactionType]);
 
   useEffect(() => {
-    if (!enableRealtime || !streamId || count !== undefined && count !== null) {
-      return undefined;
-    }
+    const handleLike = () => {
+      enqueue(reactionType, {}, burstSize);
+      triggerLikeInDB();
+    };
+
+    window.addEventListener('made-universe-live-like', handleLike);
+
+    return () => {
+      window.removeEventListener('made-universe-live-like', handleLike);
+    };
+  }, [enqueue, reactionType, burstSize, triggerLikeInDB]);
+
+  useEffect(() => {
+    if (!enableRealtime || !streamId) return undefined;
 
     const channel = supabase
       .channel('live-stream-likes-' + streamId)
@@ -181,20 +188,7 @@ const FloatingHearts = ({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [enableRealtime, streamId, count, enqueue, reactionType, burstSize]);
-
-  useEffect(() => {
-    const handleLike = () => {
-      enqueue(reactionType, {}, burstSize);
-      triggerLikeInDB();
-    };
-
-    window.addEventListener('made-universe-live-like', handleLike);
-
-    return () => {
-      window.removeEventListener('made-universe-live-like', handleLike);
-    };
-  }, [enqueue, reactionType, burstSize, triggerLikeInDB]);
+  }, [enableRealtime, streamId, enqueue, reactionType, burstSize]);
 
   useEffect(() => {
     const handleDoubleClick = event => {
@@ -212,39 +206,6 @@ const FloatingHearts = ({
   }, [enqueue, reactionType, triggerLikeInDB]);
 
   useEffect(() => {
-    const handlePointerUp = event => {
-      if (event?.target?.closest?.('button,input,textarea,select,a')) return;
-
-      tapCount.current += 1;
-
-      if (tapTimer.current) {
-        clearTimeout(tapTimer.current);
-      }
-
-      tapTimer.current = setTimeout(() => {
-        if (tapCount.current === 1) {
-          enqueue(reactionType, {}, 1);
-          triggerLikeInDB();
-        }
-
-        tapCount.current = 0;
-        tapTimer.current = null;
-      }, 250);
-    };
-
-    document.addEventListener('pointerup', handlePointerUp);
-
-    return () => {
-      document.removeEventListener('pointerup', handlePointerUp);
-
-      if (tapTimer.current) {
-        clearTimeout(tapTimer.current);
-        tapTimer.current = null;
-      }
-    };
-  }, [enqueue, reactionType, triggerLikeInDB]);
-
-  useEffect(() => {
     mounted.current = true;
 
     return () => {
@@ -252,17 +213,13 @@ const FloatingHearts = ({
       queue.current = [];
       processing.current = false;
 
-      if (tapTimer.current) {
-        clearTimeout(tapTimer.current);
-        tapTimer.current = null;
-      }
-
       timers.current.forEach(timer => clearTimeout(timer));
       timers.current.clear();
     };
   }, []);
 
-  const reducedMotion = typeof window !== 'undefined' &&
+  const reducedMotion =
+    typeof window !== 'undefined' &&
     window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -300,30 +257,21 @@ const FloatingHearts = ({
                 willChange: 'transform, opacity'
               }}
             >
-              {heart.avatar ? (
-                <div className="relative">
-                  <img
-                    src={heart.avatar}
-                    alt=""
-                    className="absolute -top-3 -right-2 w-4 h-4 rounded-full object-cover ring-1 ring-white/50"
-                  />
-                  <Icon
-                    size={heart.size}
-                    fill={heart.color}
-                    color={heart.color}
-                    strokeWidth={1.5}
-                    className="drop-shadow-[0_0_10px_rgba(254,44,85,0.5)]"
-                  />
-                </div>
-              ) : (
-                <Icon
-                  size={heart.size}
-                  fill={heart.color}
-                  color={heart.color}
-                  strokeWidth={1.5}
-                  className="drop-shadow-[0_0_10px_rgba(254,44,85,0.5)]"
+              {heart.avatar && (
+                <img
+                  src={heart.avatar}
+                  alt=""
+                  className="absolute -top-3 -right-2 w-4 h-4 rounded-full object-cover ring-1 ring-white/50"
                 />
               )}
+
+              <Icon
+                size={heart.size}
+                fill={heart.color}
+                color={heart.color}
+                strokeWidth={1.5}
+                className="drop-shadow-[0_0_10px_rgba(254,44,85,0.5)]"
+              />
             </motion.div>
           );
         })}
@@ -332,6 +280,5 @@ const FloatingHearts = ({
   );
 };
 
-};
-
 export default FloatingHearts;
+
