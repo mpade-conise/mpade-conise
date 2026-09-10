@@ -1,765 +1,461 @@
-import React, {
-  useState,
-  useEffect,
-  Suspense,
-  useMemo,
-  useRef
-} from 'react';
+
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
-import { Zap, X, Plus } from 'lucide-react';
-import { Canvas } from '@react-three/fiber';
-import {
-  useGLTF,
-  OrbitControls,
-  Center,
-  ContactShadows,
-  Bounds
-} from '@react-three/drei';
+import { Zap, X, Plus, Search, Heart, Volume2, VolumeX, ChevronLeft, ChevronRight, ShieldCheck, Loader2, Gift, Sparkles } from 'lucide-react';
 
-// ============================================================
-// 🔥 SILENCE SPECIFIC THREE.JS WARNINGS
-// ============================================================
-if (typeof window !== 'undefined') {
-  const originalWarn = console.warn;
+const GIFTS = [
+  { id: 'rose', name: 'Rose', icon: '🌹', price: 1, image: '', sound: '', category: 'Special', rarity: 'common', animation: 'float', big: false },
+  { id: 'fire', name: 'Campfire', icon: '🔥', price: 5, image: '', sound: '', category: 'Special', rarity: 'common', animation: 'flame', big: false },
+  { id: 'weights', name: 'Flex', icon: '💪', price: 3, image: '', sound: '', category: 'Special', rarity: 'common', animation: 'bounce', big: false },
+  { id: 'clap', name: 'Clap', icon: '👏', price: 2, image: '', sound: '', category: 'Special', rarity: 'common', animation: 'bounce', big: false },
+  { id: 'star', name: 'Star', icon: '⭐', price: 3, image: '', sound: '', category: 'Special', rarity: 'common', animation: 'sparkle', big: false },
+  { id: 'heart', name: 'Heart', icon: '❤️', price: 10, image: '', sound: '', category: 'Special', rarity: 'common', animation: 'pulse', big: false },
+  { id: 'pizza', name: 'Pizza', icon: '🍕', price: 30, image: '', sound: '', category: 'Food', rarity: 'common', animation: 'float', big: false },
+  { id: 'burger', name: 'Burger', icon: '🍔', price: 20, image: '', sound: '', category: 'Food', rarity: 'common', animation: 'float', big: false },
+  { id: 'diamond', name: 'Diamond', icon: '💎', price: 50, image: '', sound: '', category: 'Luxury', rarity: 'rare', animation: 'sparkle', big: false },
+  { id: 'balloon', name: 'Balloon', icon: '🎈', price: 15, image: '', sound: '', category: 'Special', rarity: 'common', animation: 'float', big: false },
+  { id: 'crown', name: 'Crown', icon: '👑', price: 100, image: '', sound: '', category: 'Luxury', rarity: 'rare', animation: 'sparkle', big: false },
+  { id: 'guitar', name: 'Guitar', icon: '🎸', price: 150, image: '', sound: '', category: 'Special', rarity: 'rare', animation: 'bounce', big: false },
+  { id: 'car', name: 'Car', icon: '🚗', price: 300, image: '', sound: '', category: 'Vehicles', rarity: 'rare', animation: 'slide', big: false },
+  { id: 'drone', name: 'Drone', icon: '🚁', price: 400, image: '', sound: '', category: 'Vehicles', rarity: 'rare', animation: 'float', big: false },
+  { id: 'dj', name: 'DJ', icon: '🎧', price: 350, image: '', sound: '', category: 'Special', rarity: 'rare', animation: 'bounce', big: false },
+  { id: 'castle', name: 'Castle', icon: '🏰', price: 2500, image: '', sound: '', category: 'Big Gifts', rarity: 'epic', animation: 'grand', big: true },
+  { id: 'lion', name: 'Lion', icon: '🦁', price: 5000, image: '', sound: '', category: 'Animals', rarity: 'epic', animation: 'grand', big: true },
+  { id: 'money', name: 'Money Rain', icon: '💰', price: 250, image: '', sound: '', category: 'Luxury', rarity: 'rare', animation: 'rain', big: false },
+  { id: 'helicopter', name: 'Helicopter', icon: '🚁', price: 4000, image: '', sound: '', category: 'Big Gifts', rarity: 'epic', animation: 'grand', big: true },
+  { id: 'ship', name: 'Cruise Ship', icon: '🚢', price: 3000, image: '', sound: '', category: 'Big Gifts', rarity: 'epic', animation: 'grand', big: true },
+  { id: 'dragon', name: 'Dragon', icon: '🐉', price: 10000, image: '', sound: '', category: 'Big Gifts', rarity: 'legendary', animation: 'grand', big: true },
+  { id: 'universe', name: 'Universe', icon: '🌌', price: 15000, image: '', sound: '', category: 'Big Gifts', rarity: 'legendary', animation: 'grand', big: true },
+  { id: 'space', name: 'Space', icon: '🚀', price: 12000, image: '', sound: '', category: 'Big Gifts', rarity: 'legendary', animation: 'grand', big: true },
+  { id: 'world', name: 'World', icon: '🌍', price: 8000, image: '', sound: '', category: 'Big Gifts', rarity: 'legendary', animation: 'grand', big: true },
+  { id: 'xwing', name: 'X-Wing', icon: '✈️', price: 5500, image: '', sound: '', category: 'Big Gifts', rarity: 'epic', animation: 'grand', big: true },
+  { id: 'cow', name: 'Cow', icon: '🐄', price: 120, image: '', sound: '', category: 'Animals', rarity: 'rare', animation: 'bounce', big: false },
+  { id: 'whale', name: 'Whale', icon: '🐋', price: 900, image: '', sound: '', category: 'Animals', rarity: 'rare', animation: 'float', big: false },
+  { id: 'horse', name: 'Horse', icon: '🐎', price: 350, image: '', sound: '', category: 'Animals', rarity: 'rare', animation: 'bounce', big: false },
+  { id: 'spider', name: 'Spider', icon: '🕷️', price: 40, image: '', sound: '', category: 'Animals', rarity: 'common', animation: 'bounce', big: false },
+  { id: 'wolf', name: 'Wolf', icon: '🐺', price: 600, image: '', sound: '', category: 'Animals', rarity: 'rare', animation: 'bounce', big: false },
+  { id: 'shark', name: 'Shark', icon: '🦈', price: 1200, image: '', sound: '', category: 'Animals', rarity: 'epic', animation: 'grand', big: false },
+  { id: 'bunny', name: 'Bunny', icon: '🐰', price: 50, image: '', sound: '', category: 'Animals', rarity: 'common', animation: 'bounce', big: false },
+  { id: 'stag', name: 'Stag', icon: '🦌', price: 400, image: '', sound: '', category: 'Animals', rarity: 'rare', animation: 'bounce', big: false }
+];
 
-  console.warn = (...args) => {
-    const message = args?.[0];
+const CATEGORIES = ['All', 'Popular', 'Recent', 'Favorites', 'Animals', 'Food', 'Vehicles', 'Luxury', 'Special', 'Big Gifts'];
 
-    if (
-      typeof message === 'string' &&
-      (
-        message.includes('THREE.Clock') ||
-        message.includes('WebGLRenderer') ||
-        message.includes('THREE.PropertyBinding')
-      )
-    ) {
-      return;
-    }
-
-    originalWarn(...args);
-  };
-}
-
-// ============================================================
-// 🎁 3D GIFT MODEL
-// ============================================================
-const GiftModel = ({ url }) => {
-  const { scene } = useGLTF(url);
-
-  const clonedScene = useMemo(() => {
-    return scene.clone(true);
-  }, [scene]);
-
-  return (
-    <Bounds
-      fit
-      clip
-      observe
-      margin={1.2}
-    >
-      <Center>
-        <primitive object={clonedScene} />
-      </Center>
-    </Bounds>
-  );
+const getStoredFavorites = () => {
+  try {
+    const value = localStorage.getItem('made_universe_gift_favorites');
+    return value ? JSON.parse(value) : [];
+  } catch {
+    return [];
+  }
 };
 
-// ============================================================
-// 🎁 SMALL MODEL VIEWER
-// ============================================================
-const ModelViewer = ({ model }) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const containerRef = useRef(null);
+const getStoredRecent = () => {
+  try {
+    const value = localStorage.getItem('made_universe_recent_gifts');
+    return value ? JSON.parse(value) : [];
+  } catch {
+    return [];
+  }
+};
+
+const GiftVisual = ({ gift, lowData }) => {
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') {
-      setIsVisible(true);
-      return undefined;
-    }
+    setFailed(false);
+  }, [gift.image]);
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsVisible(entry.isIntersecting);
-      },
-      {
-        threshold: 0.1
-      }
-    );
+  if (!gift.image || failed || lowData) {
+    return <span className={`text-4xl select-none ${gift.big ? 'scale-110' : ''}`}>{gift.icon}</span>;
+  }
 
-    const element = containerRef.current;
-
-    if (element) {
-      observer.observe(element);
-    }
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
-  return (
-    <div
-      ref={containerRef}
-      className="w-16 h-16 flex items-center justify-center"
-    >
-      {isVisible ? (
-        <Canvas
-          camera={{
-            position: [0, 0, 5],
-            fov: 40
-          }}
-          gl={{
-            alpha: true,
-            antialias: true
-          }}
-        >
-          <ambientLight intensity={1.5} />
-          <pointLight position={[10, 10, 10]} />
-
-          <Suspense fallback={null}>
-            <GiftModel url={model} />
-
-            <ContactShadows
-              position={[0, -0.8, 0]}
-              opacity={0.4}
-              scale={2}
-              blur={2}
-            />
-          </Suspense>
-
-          <OrbitControls
-            enableZoom={false}
-            enablePan={false}
-            autoRotate
-            autoRotateSpeed={5}
-          />
-        </Canvas>
-      ) : (
-        <div className="w-8 h-8 rounded-full bg-white/5 animate-pulse" />
-      )}
-    </div>
-  );
+  return <img src={gift.image} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} className="w-12 h-12 object-contain select-none" />;
 };
 
-// ============================================================
-// 🎁 GIFT PANEL
-// ============================================================
-// onGiftSent is called ONLY after:
-// 1. Gift is inserted successfully
-// 2. Coins are deducted successfully
-// 3. Gift panel is closed
-//
-// The parent component should use onGiftSent to display the
-// big 3D gift overlay.
-// ============================================================
-const GiftPanel = ({
-  streamId,
-  onClose,
-  onGiftSent
-}) => {
+const GiftPanel = ({ streamId, onClose, onGiftSent }) => {
   const navigate = useNavigate();
+  const mountedRef = useRef(true);
+  const audioRef = useRef(null);
+  const lastSendRef = useRef(0);
+  const sendLockRef = useRef(false);
 
   const [balance, setBalance] = useState(0);
   const [isSending, setIsSending] = useState(false);
-
-  // ==========================================================
-  // 🛡️ COMPONENT MOUNT STATE
-  // ==========================================================
-  const mountedRef = useRef(true);
+  const [category, setCategory] = useState('All');
+  const [search, setSearch] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [favorites, setFavorites] = useState(getStoredFavorites);
+  const [recent, setRecent] = useState(getStoredRecent);
+  const [popular, setPopular] = useState([]);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [lowData, setLowData] = useState(() => {
+    try {
+      return localStorage.getItem('made_universe_low_data') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [confirmGift, setConfirmGift] = useState(null);
+  const [error, setError] = useState('');
+  const [balanceLoading, setBalanceLoading] = useState(true);
+  const [sendProgress, setSendProgress] = useState('');
+  const [categoryStart, setCategoryStart] = useState(0);
 
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
     };
   }, []);
 
-  // ============================================================
-  // 🎁 COMPLETE GIFT CATALOG
-  // ============================================================
-  const GIFTS = useMemo(
-    () => [
-      {
-        id: 'rose',
-        name: 'Rose',
-        icon: '🌹',
-        price: 1,
-        model: '/models/Rose.glb',
-        sound: '/sound/rose.mp3'
-      },
-      {
-        id: 'fire',
-        name: 'Campfire',
-        icon: '🔥',
-        price: 5,
-        model: '/models/Campfire.glb',
-        sound: '/sound/fire.mp3'
-      },
-      {
-        id: 'weights',
-        name: 'Flex',
-        icon: '💪',
-        price: 3,
-        model: '/models/Dumbell.glb',
-        sound: '/sound/weights.mp3'
-      },
-      {
-        id: 'clap',
-        name: 'Clap',
-        icon: '👏',
-        price: 2,
-        model: '/models/Claptrap.glb',
-        sound: '/sound/clap.mp3'
-      },
-      {
-        id: 'star',
-        name: 'Star',
-        icon: '⭐',
-        price: 3,
-        model: '/models/Star.glb',
-        sound: '/sound/star.mp3'
-      },
-      {
-        id: 'heart',
-        name: 'Heart',
-        icon: '❤️',
-        price: 10,
-        model: '/models/Heart.glb',
-        sound: '/sound/heart.mp3'
-      },
-      {
-        id: 'pizza',
-        name: 'Pizza',
-        icon: '🍕',
-        price: 30,
-        model: '/models/Pizza.glb',
-        sound: '/sound/pizza.mp3'
-      },
-      {
-        id: 'burger',
-        name: 'Burger',
-        icon: '🍔',
-        price: 20,
-        model: '/models/Double Cheeseburger.glb',
-        sound: '/sound/burger.mp3'
-      },
-      {
-        id: 'diamond',
-        name: 'Diamond',
-        icon: '💎',
-        price: 50,
-        model: '/models/diamond.glb',
-        sound: '/sound/diamond.mp3'
-      },
-      {
-        id: 'balloon',
-        name: 'Balloon',
-        icon: '🎈',
-        price: 15,
-        model: '/models/Balloons.glb',
-        sound: '/sound/balloon.mp3'
-      },
-      {
-        id: 'crown',
-        name: 'Crown',
-        icon: '👑',
-        price: 100,
-        model: '/models/Crown.glb',
-        sound: '/sound/crown.mp3'
-      },
-      {
-        id: 'guitar',
-        name: 'Guitar',
-        icon: '🎸',
-        price: 150,
-        model: '/models/Guitar.glb',
-        sound: '/sound/guitar.mp3'
-      },
-      {
-        id: 'car',
-        name: 'Car',
-        icon: '🚗',
-        price: 300,
-        model: '/models/CAR Model.glb',
-        sound: '/sound/car.mp3'
-      },
-      {
-        id: 'drone',
-        name: 'Drone',
-        icon: '🚁',
-        price: 400,
-        model: '/models/Drone.glb',
-        sound: '/sound/drone.mp3'
-      },
-      {
-        id: 'dj',
-        name: 'DJ',
-        icon: '🎧',
-        price: 350,
-        model: '/models/DJ gear.glb',
-        sound: '/sound/dj.mp3'
-      },
-      {
-        id: 'castle',
-        name: 'Castle',
-        icon: '🏰',
-        price: 2500,
-        model: '/models/Castle Fortress.glb',
-        sound: '/sound/castle.mp3',
-        big: true
-      },
-      {
-        id: 'lion',
-        name: 'Lion',
-        icon: '🦁',
-        price: 5000,
-        model: '/models/Lion.glb',
-        sound: '/sound/lion.mp3',
-        big: true
-      },
-      {
-        id: 'money',
-        name: 'Money Rain',
-        icon: '💰',
-        price: 250,
-        model: '/models/Money.glb',
-        sound: '/sound/money.mp3'
-      },
-      {
-        id: 'helicopter',
-        name: 'Helicopter',
-        icon: '🚁',
-        price: 4000,
-        model: '/models/Helicopter.glb',
-        sound: '/sound/helicopter.mp3',
-        big: true
-      },
-      {
-        id: 'ship',
-        name: 'Cruise Ship',
-        icon: '🚢',
-        price: 3000,
-        model: '/models/Cruise liner.glb',
-        sound: '/sound/ship.mp3',
-        big: true
-      },
-      {
-        id: 'dragon',
-        name: 'Dragon',
-        icon: '🐉',
-        price: 10000,
-        model: '/models/Red Dragon.glb',
-        sound: '/sound/dragon.mp3',
-        big: true
-      },
-      {
-        id: 'universe',
-        name: 'Universe',
-        icon: '🌌',
-        price: 15000,
-        model: '/models/Solar System.glb',
-        sound: '/sound/universe.mp3',
-        big: true
-      },
-      {
-        id: 'space',
-        name: 'Space',
-        icon: '🚀',
-        price: 12000,
-        model: '/models/Space Shuttle.glb',
-        sound: '/sound/space.mp3',
-        big: true
-      },
-      {
-        id: 'world',
-        name: 'World',
-        icon: '🌍',
-        price: 8000,
-        model: '/models/Simple Worlds.glb',
-        sound: '/sound/world.mp3',
-        big: true
-      },
-      {
-        id: 'xwing',
-        name: 'X-Wing',
-        icon: '✈️',
-        price: 5500,
-        model: '/models/T-65 X-Wing Starfighter.glb',
-        sound: '/sound/xwing.mp3',
-        big: true
-      },
-      {
-        id: 'cow',
-        name: 'Cow',
-        icon: '🐄',
-        price: 120,
-        model: '/models/Cow.glb',
-        sound: '/sound/cow.mp3'
-      },
-      {
-        id: 'whale',
-        name: 'Whale',
-        icon: '🐋',
-        price: 900,
-        model: '/models/Whale.glb',
-        sound: '/sound/whale.mp3'
-      },
-      {
-        id: 'horse',
-        name: 'Horse',
-        icon: '🐎',
-        price: 350,
-        model: '/models/Horse.glb',
-        sound: '/sound/horse.mp3'
-      },
-      {
-        id: 'spider',
-        name: 'Spider',
-        icon: '🕷️',
-        price: 40,
-        model: '/models/Spider.glb',
-        sound: '/sound/spider.mp3'
-      },
-      {
-        id: 'wolf',
-        name: 'Wolf',
-        icon: '🐺',
-        price: 600,
-        model: '/models/Wolf.glb',
-        sound: '/sound/wolf.mp3'
-      },
-      {
-        id: 'shark',
-        name: 'Shark',
-        icon: '🦈',
-        price: 1200,
-        model: '/models/Shark.glb',
-        sound: '/sound/shark.mp3'
-      },
-      {
-        id: 'bunny',
-        name: 'Bunny',
-        icon: '🐰',
-        price: 50,
-        model: '/models/Bunny ears.glb',
-        sound: '/sound/bunny.mp3'
-      },
-      {
-        id: 'stag',
-        name: 'Stag',
-        icon: '🦌',
-        price: 400,
-        model: '/models/Stag.glb',
-        sound: '/sound/stag.mp3'
-      }
-    ],
-    []
-  );
-
-  // ============================================================
-  // 💰 FETCH USER COIN BALANCE
-  // ============================================================
   useEffect(() => {
-    const fetchBalance = async () => {
-      try {
-        const {
-          data: { user },
-          error: authError
-        } = await supabase.auth.getUser();
+    try {
+      localStorage.setItem('made_universe_gift_favorites', JSON.stringify(favorites));
+    } catch {}
+  }, [favorites]);
 
-        if (authError) {
-          console.error(
-            'Authentication error while fetching balance:',
-            authError.message
-          );
-          return;
-        }
+  useEffect(() => {
+    try {
+      localStorage.setItem('made_universe_recent_gifts', JSON.stringify(recent.slice(0, 20)));
+      localStorage.setItem('made_universe_low_data', String(lowData));
+    } catch {}
+  }, [recent, lowData]);
 
-        if (!user) {
-          console.warn('No authenticated user found.');
-          return;
-        }
-
-        const {
-          data,
-          error
-        } = await supabase
-          .from('profiles')
-          .select('coins')
-          .eq('id', user.id)
-          .single();
-
-        if (error) {
-          console.error(
-            'Error fetching balance:',
-            error.message
-          );
-          return;
-        }
-
-        if (mountedRef.current && data) {
-          setBalance(Number(data.coins) || 0);
-        }
-      } catch (error) {
-        console.error(
-          'Unexpected balance error:',
-          error
-        );
-      }
-    };
-
-    fetchBalance();
+  const fetchBalance = useCallback(async () => {
+    setBalanceLoading(true);
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error('Please log in again.');
+      const { data, error: balanceError } = await supabase.from('profiles').select('coins').eq('id', user.id).single();
+      if (balanceError) throw balanceError;
+      if (mountedRef.current) setBalance(Number(data?.coins) || 0);
+    } catch (err) {
+      console.error('Gift balance error:', err);
+      if (mountedRef.current) setError(err.message || 'Unable to load your coin balance.');
+    } finally {
+      if (mountedRef.current) setBalanceLoading(false);
+    }
   }, []);
 
-  // ============================================================
-  // 🎁 SEND GIFT
-  // ============================================================
-  const handleInstantSend = async (gift) => {
-    if (isSending) {
+  useEffect(() => {
+    fetchBalance();
+  }, [fetchBalance]);
+
+  useEffect(() => {
+    const loadPopular = async () => {
+      try {
+        const { data, error: popularError } = await supabase.from('live_gifts').select('gift_id').limit(500);
+        if (popularError || !data) return;
+        const counts = {};
+        data.forEach(row => {
+          counts[row.gift_id] = (counts[row.gift_id] || 0) + 1;
+        });
+        setPopular(Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([id]) => id));
+      } catch (err) {
+        console.warn('Popular gifts unavailable:', err);
+      }
+    };
+    loadPopular();
+  }, []);
+
+  const filteredGifts = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    let list = [...GIFTS];
+
+    if (category === 'Popular') {
+      const rank = new Map(popular.map((id, index) => [id, index]));
+      list.sort((a, b) => (rank.get(a.id) ?? 9999) - (rank.get(b.id) ?? 9999));
+    } else if (category === 'Recent') {
+      const rank = new Map(recent.map((id, index) => [id, index]));
+      list.sort((a, b) => (rank.get(a.id) ?? 9999) - (rank.get(b.id) ?? 9999));
+    } else if (category === 'Favorites') {
+      list = list.filter(gift => favorites.includes(gift.id));
+    } else if (category !== 'All') {
+      list = list.filter(gift => gift.category === category);
+    }
+
+    if (term) list = list.filter(gift => `${gift.name} ${gift.category} ${gift.rarity}`.toLowerCase().includes(term));
+    return list;
+  }, [category, search, popular, recent, favorites]);
+
+  const toggleFavorite = useCallback((giftId) => {
+    setFavorites(prev => prev.includes(giftId) ? prev.filter(id => id !== giftId) : [giftId, ...prev]);
+  }, []);
+
+  const playGiftSound = useCallback(async (gift) => {
+    if (!soundEnabled || !gift?.sound) return;
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      const audio = new Audio(gift.sound);
+      audio.preload = 'none';
+      audio.volume = gift.big ? 1 : 0.75;
+      audioRef.current = audio;
+      await audio.play();
+    } catch (err) {
+      console.warn('Gift audio unavailable or blocked:', err);
+    }
+  }, [soundEnabled]);
+
+  const performGiftTransaction = useCallback(async (gift, total, quantityValue) => {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw new Error('Authentication error. Please log in again.');
+
+    if (typeof supabase.rpc === 'function') {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('send_live_gift', {
+        p_stream_id: streamId,
+        p_gift_id: String(gift.id),
+        p_gift_name: String(gift.name),
+        p_icon: String(gift.icon),
+        p_quantity: quantityValue,
+        p_price_total: total
+      });
+
+      if (!rpcError) {
+        const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        if (result?.success === false) throw new Error(result.message || 'Gift transaction failed.');
+        return { user, atomic: true, result };
+      }
+
+      if (!/function .*send_live_gift.*does not exist|could not find the function|not found/i.test(rpcError.message || '')) {
+        throw rpcError;
+      }
+    }
+
+    const { data: stream, error: streamError } = await supabase.from('live_streams').select('id,status').eq('id', streamId).maybeSingle();
+    if (streamError) throw streamError;
+    if (!stream) throw new Error('This live stream is unavailable.');
+    if (stream.status && !['live', 'active', 'started'].includes(String(stream.status).toLowerCase())) throw new Error('This live stream is no longer active.');
+
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('coins').eq('id', user.id).single();
+    if (profileError) throw profileError;
+
+    const serverBalance = Number(profile?.coins) || 0;
+    if (serverBalance < total) throw new Error('Not enough coins to send this gift.');
+
+    const { error: insertError } = await supabase.from('live_gifts').insert({
+      stream_id: streamId,
+      sender_id: user.id,
+      gift_id: String(gift.id),
+      gift_name: String(gift.name),
+      icon: String(gift.icon),
+      price_total: total,
+      quantity: quantityValue
+    });
+    if (insertError) throw insertError;
+
+    const { error: updateError } = await supabase.from('profiles').update({ coins: serverBalance - total }).eq('id', user.id).gte('coins', total);
+    if (updateError) throw updateError;
+
+    return { user, atomic: false };
+  }, [streamId]);
+
+  const sendGift = useCallback(async (gift, quantityValue = quantity) => {
+    if (sendLockRef.current || isSending) return;
+    if (!gift || !streamId) {
+      setError('This stream is unavailable.');
       return;
     }
 
-    if (!gift) {
-      console.error('Gift is missing.');
+    const safeQuantity = Math.max(1, Math.min(100, Number(quantityValue) || 1));
+    const total = Number(gift.price) * safeQuantity;
+    const now = Date.now();
+
+    if (now - lastSendRef.current < 900) {
+      setError('Please wait a moment before sending another gift.');
       return;
     }
 
-    if (!streamId) {
-      alert('This stream is unavailable.');
+    if (total > Number(balance)) {
+      setError(`You need ${total.toLocaleString()} coins, but only have ${Number(balance).toLocaleString()}.`);
       return;
     }
 
-    if (Number(balance) < Number(gift.price)) {
-      alert('Not enough coins to send this gift.');
+    if (total >= 5000 && !confirmGift) {
+      setConfirmGift({ gift, quantity: safeQuantity, total });
       return;
     }
 
+    sendLockRef.current = true;
+    lastSendRef.current = now;
     setIsSending(true);
+    setError('');
+    setSendProgress('Sending gift...');
 
     try {
-      // ========================================================
-      // 👤 GET CURRENT USER
-      // ========================================================
-      const {
-        data: { user },
-        error: userError
-      } = await supabase.auth.getUser();
+      const result = await performGiftTransaction(gift, total, safeQuantity);
 
-      if (userError || !user) {
-        alert('Authentication error. Please log in again.');
-        return;
-      }
-
-      // ========================================================
-      // 🎁 INSERT GIFT INTO DATABASE
-      // ========================================================
-      const { error: insertError } = await supabase
-        .from('live_gifts')
-        .insert({
-          stream_id: streamId,
-          sender_id: user.id,
-          gift_id: String(gift.id),
-          gift_name: String(gift.name),
-          icon: String(gift.icon),
-          price_total: Number(gift.price),
-          quantity: 1
-        });
-
-      if (insertError) {
-        console.error(
-          'Gift insert error:',
-          insertError
-        );
-
-        alert(
-          `Failed to send gift: ${insertError.message}`
-        );
-
-        return;
-      }
-
-      // ========================================================
-      // 💰 DEDUCT COINS
-      // ========================================================
-      const newBalance = Math.max(
-        0,
-        Number(balance) - Number(gift.price)
-      );
-
-      const {
-        error: updateError
-      } = await supabase
-        .from('profiles')
-        .update({
-          coins: newBalance
-        })
-        .eq('id', user.id);
-
-      if (updateError) {
-        console.error(
-          'Balance update error:',
-          updateError
-        );
-
-        alert(
-          `Gift sent, but failed to update coins: ${updateError.message}`
-        );
-
-        return;
-      }
-
-      // ========================================================
-      // 💰 UPDATE LOCAL BALANCE
-      // ========================================================
       if (mountedRef.current) {
-        setBalance(newBalance);
+        setBalance(prev => Math.max(0, Number(prev) - total));
+        setRecent(prev => [gift.id, ...prev.filter(id => id !== gift.id)].slice(0, 20));
       }
 
-      // ========================================================
-      // 🔊 PLAY SOUND ONLY AFTER SUCCESS
-      // ========================================================
-      try {
-        const audio = new Audio(gift.sound);
+      await playGiftSound(gift);
 
-        audio.currentTime = 0;
+      if (typeof onClose === 'function') onClose();
 
-        await audio.play();
-      } catch (error) {
-        console.warn(
-          'Audio play blocked by browser:',
-          error
-        );
-      }
-
-      // ========================================================
-      // ✅ CLOSE GIFT PANEL FIRST
-      // ========================================================
-      if (typeof onClose === 'function') {
-        onClose();
-      }
-
-      // ========================================================
-      // 🎁 TELL PARENT ABOUT SUCCESSFUL GIFT
-      // ========================================================
-      // The parent owns the big-gift overlay.
-      // We wait briefly so the GiftPanel disappears first.
       if (typeof onGiftSent === 'function') {
+        const payload = { ...gift, quantity: safeQuantity, price_total: total, sender_id: result.user.id, transaction_atomic: result.atomic };
         setTimeout(() => {
-          onGiftSent(gift);
+          if (mountedRef.current || typeof onGiftSent === 'function') onGiftSent(payload);
         }, 100);
       }
-
-    } catch (error) {
-      console.error(
-        'Unexpected error sending gift:',
-        error
-      );
-
-      alert(
-        'Unexpected error sending gift. Check the browser console.'
-      );
+    } catch (err) {
+      console.error('Gift transaction error:', err);
+      if (mountedRef.current) setError(err.message || 'Failed to send gift. Your coins were not intentionally charged.');
     } finally {
       if (mountedRef.current) {
         setIsSending(false);
+        setSendProgress('');
+        setConfirmGift(null);
       }
+      sendLockRef.current = false;
     }
-  };
+  }, [balance, confirmGift, isSending, onClose, onGiftSent, performGiftTransaction, playGiftSound, quantity, streamId]);
 
-  // ============================================================
-  // 🎨 UI
-  // ============================================================
+  const quantityOptions = [1, 5, 10, 50, 100];
+  const visibleCategories = CATEGORIES.slice(categoryStart, categoryStart + 5);
+
   return (
-    <div className="flex flex-col bg-black/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[2rem] p-4 h-[60vh] text-white relative z-50">
-
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-      <div className="flex justify-between items-center mb-4">
-
-        {/* BALANCE */}
-        <div className="flex items-center gap-1">
-
+    <div className="flex flex-col bg-black/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[2rem] p-4 h-[68vh] max-h-[720px] text-white relative z-50 overflow-hidden">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
           <div className="flex items-center gap-2 bg-yellow-400/10 px-3 py-1.5 rounded-l-full border border-yellow-400/20">
-
-            <Zap
-              size={14}
-              className="text-yellow-400 fill-yellow-400"
-            />
-
-            <span className="text-sm font-bold">
-              {balance}
-            </span>
-
+            <Zap size={14} className="text-yellow-400 fill-yellow-400" />
+            <span className="text-sm font-black truncate">{balanceLoading ? '...' : Number(balance).toLocaleString()}</span>
           </div>
-
-          {/* RECHARGE */}
-          <button
-            type="button"
-            onClick={() => navigate('/live/recharge')}
-            className="flex items-center gap-1 bg-yellow-400 px-3 py-1.5 rounded-r-full border border-yellow-400 active:scale-95 transition-all"
-          >
-            <Plus
-              size={14}
-              className="text-black font-black"
-            />
-
-            <span className="text-[10px] font-black text-black uppercase">
-              Recharge
-            </span>
+          <button type="button" onClick={() => navigate('/live/recharge')} className="flex items-center gap-1 bg-yellow-400 px-3 py-1.5 rounded-r-full border border-yellow-400 active:scale-95 transition-all">
+            <Plus size={14} className="text-black" />
+            <span className="text-[10px] font-black text-black uppercase">Recharge</span>
           </button>
-
         </div>
-
-        {/* CLOSE */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-1 opacity-50 hover:opacity-100"
-          aria-label="Close gifts"
-        >
-          <X />
-        </button>
-
-      </div>
-
-      {/* ======================================================
-          GIFT GRID
-      ====================================================== */}
-      <div className="grid grid-cols-4 gap-3 overflow-y-auto pb-10 scrollbar-hide">
-
-        {GIFTS.map((gift) => (
-          <button
-            key={gift.id}
-            type="button"
-            onClick={() => handleInstantSend(gift)}
-            disabled={
-              isSending ||
-              Number(balance) < Number(gift.price)
-            }
-            className={`flex flex-col items-center p-2 rounded-2xl bg-white/5 border border-transparent hover:border-yellow-400/50 active:scale-95 transition-all ${
-              Number(balance) < Number(gift.price)
-                ? 'opacity-40 grayscale-[0.5]'
-                : 'opacity-100'
-            }`}
-          >
-
-            <ModelViewer
-              model={gift.model}
-            />
-
-            <span className="text-[10px] opacity-60 mt-1 truncate w-full">
-              {gift.name}
-            </span>
-
-            <span className="text-xs font-black text-yellow-400">
-              {gift.price}
-            </span>
-
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => setLowData(prev => !prev)} className={`p-2 rounded-full border transition ${lowData ? 'bg-yellow-400/20 border-yellow-400/40 text-yellow-300' : 'bg-white/5 border-white/10 text-white/60'}`} aria-label="Toggle low data mode">
+            <span className="text-[9px] font-black">DATA</span>
           </button>
-        ))}
-
+          <button type="button" onClick={() => setSoundEnabled(prev => !prev)} className="p-2 rounded-full bg-white/5 border border-white/10 text-white/70" aria-label={soundEnabled ? 'Mute gift sounds' : 'Enable gift sounds'}>
+            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+          <button type="button" onClick={onClose} className="p-2 opacity-60 hover:opacity-100" aria-label="Close gifts"><X size={20} /></button>
+        </div>
       </div>
 
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex-1 flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2">
+          <Search size={16} className="text-white/40 shrink-0" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search gifts..." aria-label="Search gifts" className="w-full bg-transparent outline-none text-sm placeholder:text-white/30" />
+          {search && <button type="button" onClick={() => setSearch('')} className="text-white/40"><X size={14} /></button>}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 mb-3 overflow-hidden">
+        <button type="button" onClick={() => setCategoryStart(Math.max(0, categoryStart - 1))} disabled={categoryStart === 0} className="p-1.5 rounded-lg bg-white/5 disabled:opacity-20"><ChevronLeft size={16} /></button>
+        <div className="flex gap-1 flex-1 overflow-hidden">
+          {visibleCategories.map(item => (
+            <button key={item} type="button" onClick={() => setCategory(item)} className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition ${category === item ? 'bg-yellow-400 text-black' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}>{item}</button>
+          ))}
+        </div>
+        <button type="button" onClick={() => setCategoryStart(Math.min(CATEGORIES.length - 5, categoryStart + 1))} disabled={categoryStart >= CATEGORIES.length - 5} className="p-1.5 rounded-lg bg-white/5 disabled:opacity-20"><ChevronRight size={16} /></button>
+      </div>
+
+      <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex items-center gap-2">
+          <Gift size={15} className="text-yellow-400" />
+          <span className="text-xs font-bold">{category}</span>
+          <span className="text-[10px] text-white/30">{filteredGifts.length} gifts</span>
+        </div>
+        <div className="flex items-center gap-1 bg-white/5 rounded-full p-1">
+          {quantityOptions.map(value => (
+            <button key={value} type="button" onClick={() => setQuantity(value)} className={`px-2 py-1 rounded-full text-[9px] font-black ${quantity === value ? 'bg-yellow-400 text-black' : 'text-white/50'}`}>{value}×</button>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs">
+          <ShieldCheck size={14} className="shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button type="button" onClick={() => setError('')}><X size={14} /></button>
+        </div>
+      )}
+
+      {sendProgress && (
+        <div className="flex items-center justify-center gap-2 py-2 text-yellow-300 text-xs font-bold">
+          <Loader2 size={14} className="animate-spin" />
+          {sendProgress}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto pb-8 scrollbar-hide">
+        {filteredGifts.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-white/30">
+            <Gift size={34} className="mb-2" />
+            <p className="text-sm">No gifts found</p>
+            {category === 'Favorites' && <p className="text-xs mt-1">Tap the heart on a gift to save it.</p>}
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 gap-2.5">
+            {filteredGifts.map(gift => {
+              const total = gift.price * quantity;
+              const affordable = Number(balance) >= total;
+              const favorite = favorites.includes(gift.id);
+
+              return (
+                <div key={gift.id} className={`relative rounded-2xl border transition-all ${affordable ? 'bg-white/5 border-white/5 hover:border-yellow-400/40' : 'bg-white/[0.02] border-transparent opacity-45'}`}>
+                  <button type="button" onClick={() => sendGift(gift)} disabled={isSending || !affordable} className="w-full flex flex-col items-center p-2.5 active:scale-95 transition-transform disabled:cursor-not-allowed" aria-label={`Send ${gift.name} for ${total} coins`}>
+                    <div className={`w-16 h-16 flex items-center justify-center rounded-xl bg-white/[0.03] ${gift.big ? 'ring-1 ring-yellow-400/20' : ''}`}>
+                      <GiftVisual gift={gift} lowData={lowData} />
+                    </div>
+                    <span className="text-[10px] font-semibold mt-1.5 truncate w-full text-center">{gift.name}</span>
+                    <span className="text-[11px] font-black text-yellow-400">{total.toLocaleString()} <span className="text-[8px] opacity-60">COINS</span></span>
+                    {quantity > 1 && <span className="text-[8px] text-white/35">{quantity}× {gift.price}</span>}
+                    {gift.big && <span className="mt-1 flex items-center gap-0.5 text-[7px] font-black uppercase text-yellow-300"><Sparkles size={8} /> Big gift</span>}
+                  </button>
+                  <button type="button" onClick={() => toggleFavorite(gift.id)} className={`absolute top-1.5 right-1.5 p-1 rounded-full ${favorite ? 'text-red-400 bg-red-400/10' : 'text-white/25 bg-black/20'}`} aria-label={favorite ? `Remove ${gift.name} from favorites` : `Add ${gift.name} to favorites`}>
+                    <Heart size={11} fill={favorite ? 'currentColor' : 'none'} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[9px] text-white/35">
+        <span>{lowData ? 'Low-data mode' : 'Standard media mode'} • {soundEnabled ? 'Sound on' : 'Sound muted'}</span>
+        <span>{quantity}× selected</span>
+      </div>
+
+      {confirmGift && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-md p-5">
+          <div className="w-full max-w-sm rounded-3xl bg-zinc-950 border border-yellow-400/20 p-5 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-14 h-14 rounded-2xl bg-yellow-400/10 flex items-center justify-center text-3xl">{confirmGift.gift.icon}</div>
+              <div>
+                <h3 className="font-black">{confirmGift.gift.name}</h3>
+                <p className="text-xs text-white/40">{confirmGift.quantity}× gift</p>
+              </div>
+            </div>
+            <div className="space-y-2 mb-5">
+              <div className="flex justify-between text-sm"><span className="text-white/50">Total cost</span><strong className="text-yellow-400">{confirmGift.total.toLocaleString()} coins</strong></div>
+              <div className="flex justify-between text-sm"><span className="text-white/50">Remaining</span><strong>{Math.max(0, Number(balance) - confirmGift.total).toLocaleString()} coins</strong></div>
+            </div>
+            <p className="text-xs text-white/40 mb-4">This is a high-value gift. Confirm before sending.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setConfirmGift(null)} className="py-3 rounded-xl bg-white/5 text-sm font-bold">Cancel</button>
+              <button type="button" onClick={() => sendGift(confirmGift.gift, confirmGift.quantity)} disabled={isSending} className="py-3 rounded-xl bg-yellow-400 text-black text-sm font-black disabled:opacity-50">{isSending ? 'Sending...' : 'Confirm gift'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
