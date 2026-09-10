@@ -35,18 +35,13 @@ const getAnimation = gift => {
 };
 
 const getIcon = gift => gift?.gift_icon || gift?.icon || '🎁';
-
 const getGiftName = gift => gift?.gift_name || gift?.giftName || 'Gift';
-
 const getUsername = gift => gift?.username || gift?.sender_username || 'Someone';
-
 const getAvatar = gift => gift?.avatar || gift?.avatar_url || gift?.sender_avatar || '';
-
 const getSound = gift => gift?.gift_sound || gift?.sound || '';
-
 const getImage = gift => gift?.gift_image || gift?.image || '';
 
-const getKey = gift => gift?.id || `${gift?.gift_id || getGiftName(gift)}-${gift?.sender_id || getUsername(gift)}-${gift?.created_at || Date.now()}-${Math.random()}`;
+const getKey = gift => gift?.id || [gift?.gift_id || getGiftName(gift), gift?.sender_id || getUsername(gift), gift?.created_at || Date.now(), Math.random()].join('-');
 
 const rarityConfig = {
   common: { glow: 'shadow-xl', ring: 'border-white/10', label: 'Common', scale: 1 },
@@ -88,7 +83,7 @@ const animationVariants = {
   },
   rain: {
     initial: { opacity: 0, y: -180, scale: 0.45, rotate: -20 },
-    animate: { opacity: 1, y: [ -40, 10, -5, 0 ], scale: [0.5, 1.15, 0.95, 1], rotate: [-15, 12, -5, 0] },
+    animate: { opacity: 1, y: [-40, 10, -5, 0], scale: [0.5, 1.15, 0.95, 1], rotate: [-15, 12, -5, 0] },
     exit: { opacity: 0, y: 100, scale: 0.5 }
   },
   grand: {
@@ -132,6 +127,7 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
           initial={{ opacity: 0, scale: 0.5 }}
           animate={{ opacity: [0, 0.8, 0], scale: [0.5, 1.2, 1.45] }}
           transition={{ duration: Math.min(duration / 1000, 3), ease: 'easeOut' }}
+          aria-hidden="true"
         />
       )}
 
@@ -177,16 +173,23 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
   const stopAudio = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
+
     try {
       audio.pause();
       audio.currentTime = 0;
       audio.removeAttribute('src');
       audio.load();
     } catch {}
+
     audioRef.current = null;
   }, []);
 
   const finishGift = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
     stopAudio();
     setActiveGift(null);
     onComplete?.();
@@ -194,24 +197,31 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
 
   const playSound = useCallback(soundUrl => {
     stopAudio();
-    if (!soundUrl || lowData === false && !soundUrl) return;
+
+    if (!soundUrl) return;
 
     try {
-      const audio = new Audio();
+      const audio = new Audio(soundUrl);
       audio.preload = 'auto';
       audio.volume = 1;
-      audio.src = soundUrl;
       audioRef.current = audio;
+
       const playPromise = audio.play();
       if (playPromise?.catch) playPromise.catch(() => {});
     } catch {}
-  }, [lowData, stopAudio]);
+  }, [stopAudio]);
 
   useEffect(() => {
     mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
-      if (timerRef.current) clearTimeout(timerRef.current);
+
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+
       stopAudio();
     };
   }, [stopAudio]);
@@ -231,22 +241,15 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
     if (activeGift || queue.length === 0) return;
 
     const nextGift = queue[0];
+    const duration = getDuration(nextGift);
 
     setQueue(previous => previous.slice(1));
     setActiveGift(nextGift);
-
-    const duration = getDuration(nextGift);
-    const sound = getSound(nextGift);
-
-    playSound(sound);
+    playSound(getSound(nextGift));
 
     timerRef.current = setTimeout(() => {
       if (mountedRef.current) finishGift();
     }, duration);
-
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
   }, [activeGift, queue, finishGift, playSound]);
 
   const data = useMemo(() => {
@@ -269,7 +272,6 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
   const username = getUsername(activeGift);
   const avatar = getAvatar(activeGift);
   const icon = getIcon(activeGift);
-  const rarityLabel = data.config.label;
 
   return (
     <AnimatePresence mode="wait">
@@ -325,20 +327,20 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
               {avatar ? (
                 <img src={avatar} alt="" className="w-full h-full rounded-full object-cover bg-black/30" />
               ) : (
-                <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-lg">👤</div>
+                <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-lg" aria-hidden="true">👤</div>
               )}
             </div>
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-white font-black text-sm sm:text-base truncate">{username}</span>
-                <span className="text-[9px] uppercase tracking-widest font-black text-white/50 shrink-0">{rarityLabel}</span>
+                <span className="text-[9px] uppercase tracking-widest font-black text-white/50 shrink-0">{data.config.label}</span>
               </div>
 
               <div className="flex items-center gap-2 mt-1 min-w-0">
                 <span className="text-base shrink-0" aria-hidden="true">{icon}</span>
                 <span className="text-yellow-300 font-bold text-xs sm:text-sm truncate">{data.quantity}× {name}</span>
-                <span className="text-white/50 text-[10px] shrink-0">•</span>
+                <span className="text-white/50 text-[10px] shrink-0" aria-hidden="true">•</span>
                 <span className="text-yellow-200 font-black text-[10px] sm:text-xs shrink-0">{data.price.toLocaleString()} coins</span>
               </div>
             </div>
