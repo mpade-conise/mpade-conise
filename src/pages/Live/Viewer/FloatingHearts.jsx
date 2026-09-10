@@ -1,72 +1,213 @@
-import React, { useEffect, useState } from 'react';
+```jsx
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart } from 'lucide-react';
-import { supabase } from '../../../supabaseClient'; // Ensure this path is correct
+import { Heart, ThumbsUp, Star, Flame, Laugh, Sparkles } from 'lucide-react';
+import { supabase } from '../../../supabaseClient';
 
-const FloatingHearts = ({ count, streamId }) => {
+const DEFAULT_ICONS = [
+  { type: 'heart', icon: Heart, color: '#fe2c55' },
+  { type: 'like', icon: ThumbsUp, color: '#3b82f6' },
+  { type: 'star', icon: Star, color: '#facc15' },
+  { type: 'fire', icon: Flame, color: '#ff6b35' },
+  { type: 'laugh', icon: Laugh, color: '#fbbf24' },
+  { type: 'sparkle', icon: Sparkles, color: '#a855f7' }
+];
+
+const FloatingHearts = ({
+  count,
+  streamId,
+  reactionType = 'heart',
+  sender,
+  avatar,
+  duration = 2,
+  maxHearts = 40,
+  burstSize = 1,
+  reactionIcons = DEFAULT_ICONS,
+  enableRealtime = true,
+  throttleMs = 120,
+  onReaction,
+  onLike
+}) => {
   const [hearts, setHearts] = useState([]);
+  const timers = useRef(new Map());
+  const queue = useRef([]);
+  const queueTimer = useRef(null);
+  const processing = useRef(false);
+  const lastReaction = useRef(0);
+  const previousCount = useRef(Number(count || 0));
+  const mounted = useRef(false);
 
-  // This handles the DATABASE update
-  // Call this function from your Like Button's onClick!
-  const triggerLikeInDB = async () => {
-    if (!streamId) return;
-    
-    const { error } = await supabase
-      .rpc('increment_likes', { stream_id_input: streamId });
+  const getReaction = useCallback((type = 'heart') => reactionIcons.find(r => r.type === type) || reactionIcons[0] || DEFAULT_ICONS[0], [reactionIcons]);
+
+  const removeHeart = useCallback(id => {
+    const timer = timers.current.get(id);
+    if (timer) clearTimeout(timer);
+    timers.current.delete(id);
+    if (mounted.current) setHearts(prev => prev.filter(h => h.id !== id));
+  }, []);
+
+  const addHeart = useCallback((type = 'heart', meta = {}) => {
+    if (!mounted.current) return;
+
+    const now = Date.now();
+    if (!meta.realtime && now - lastReaction.current < throttleMs) return;
+    lastReaction.current = now;
+
+    const reaction = getReaction(type);
+    const id = `${now}-${Math.random().toString(36).slice(2, 9)}`;
+    const heart = {
+      id,
+      type,
+      Icon: reaction.icon,
+      color: reaction.color,
+      left: `${Math.random() * 80 + 10}%`,
+      rotation: Math.random() * 40 - 20,
+      drift: Math.random() * 100 - 50,
+      scale: 0.7 + Math.random() * 0.6,
+      size: 22 + Math.random() * 12,
+      sender: meta.sender || sender,
+      avatar: meta.avatar || avatar
+    };
+
+    setHearts(prev => {
+      const next = [...prev, heart];
+      return next.length > maxHearts ? next.slice(-maxHearts) : next;
+    });
+
+    timers.current.set(id, setTimeout(() => removeHeart(id), duration * 1000 + 350));
+    onReaction?.(heart);
+  }, [avatar, duration, getReaction, maxHearts, onReaction, removeHeart, sender, throttleMs]);
+
+  const enqueue = useCallback((type = 'heart', meta = {}, amount = 1) => {
+    const safeAmount = Math.min(Math.max(Number(amount) || 1, 1), 10);
+    for (let i = 0; i < safeAmount; i++) queue.current.push({ type, meta });
+
+    if (processing.current) return;
+
+    processing.current = true;
+
+    const process = () => {
+      if (!mounted.current || !queue.current.length) {
+        processing.current = false;
+        queueTimer.current = null;
+        return;
+      }
+
+      const item = queue.current.shift();
+      addHeart(item.type, item.meta);
+      queueTimer.current = setTimeout(process, 45);
+    };
+
+    process();
+  }, [addHeart]);
+
+  const triggerLikeInDB = useCallback(async () => {
+    if (!streamId) return false;
+
+    const { error } = await supabase.rpc('increment_likes', { stream_id_input: streamId });
 
     if (error) {
-      console.error("Error updating likes:", error.message);
+      console.error('Error updating likes:', error.message);
+      return false;
     }
-  };
 
-  // This handles the VISUAL animation
+    return true;
+  }, [streamId]);
+
+  // Keeps your existing count-driven animation functionality.
   useEffect(() => {
-    if (count > 0) {
-      const id = Date.now();
-      const newHeart = {
-        id,
-        left: Math.random() * 80 + 10 + "%", 
-        rotation: Math.random() * 40 - 20,
-        color: ['#fe2c55', '#ff4d6d', '#ff758f', '#face15'][Math.floor(Math.random() * 4)]
-      };
+    const current = Math.max(0, Number(count || 0));
+    const previous = Math.max(0, Number(previousCount.current || 0));
+    const difference = Math.min(Math.max(current - previous, 0), 10);
 
-      setHearts((prev) => [...prev, newHeart]);
+    previousCount.current = current;
 
-      setTimeout(() => {
-        setHearts((prev) => prev.filter((h) => h.id !== id));
-      }, 2000);
-    }
-  }, [count]);
+    if (difference > 0) enqueue(reactionType, { realtime: true }, Math.min(difference * burstSize, 10));
+  }, [count, burstSize, enqueue, reactionType]);
+
+  // Optional realtime fallback using the existing live_streams.likes field.
+  useEffect(() => {
+    if (!enableRealtime || !streamId || count !== undefined && count !== null) return undefined;
+
+    const channel = supabase
+      .channel(`live-stream-likes-${streamId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'live_streams', filter: `id=eq.${streamId}` }, payload => {
+        const current = Math.max(0, Number(payload.new?.likes || 0));
+        const previous = Math.max(0, Number(previousCount.current || 0));
+        const difference = Math.min(Math.max(current - previous, 0), 10);
+
+        previousCount.current = current;
+
+        if (difference > 0) enqueue(reactionType, { realtime: true }, Math.min(difference * burstSize, 10));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [enableRealtime, streamId, count, enqueue, reactionType, burstSize]);
+
+  // Expose the existing database like action without hijacking the whole document.
+  useEffect(() => {
+    if (typeof onLike !== 'function') return undefined;
+
+    const handler = () => {
+      enqueue(reactionType, {}, burstSize);
+      onLike({ triggerLikeInDB, reactionType, burstSize });
+    };
+
+    window.addEventListener('made-universe-live-like', handler);
+    return () => window.removeEventListener('made-universe-live-like', handler);
+  }, [burstSize, enqueue, onLike, reactionType, triggerLikeInDB]);
+
+  useEffect(() => {
+    mounted.current = true;
+
+    return () => {
+      mounted.current = false;
+      queue.current = [];
+      processing.current = false;
+
+      if (queueTimer.current) clearTimeout(queueTimer.current);
+
+      timers.current.forEach(timer => clearTimeout(timer));
+      timers.current.clear();
+    };
+  }, []);
+
+  const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden z-10">
-      <AnimatePresence>
-        {hearts.map((heart) => (
-          <motion.div
-            key={heart.id}
-            initial={{ y: "100%", opacity: 1, scale: 0.5 }}
-            animate={{ 
-              y: "-20vh", 
-              opacity: 0, 
-              scale: 1.5,
-              x: Math.random() * 100 - 50 
-            }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 2, ease: "easeOut" }}
-            className="absolute bottom-0"
-            style={{ left: heart.left, rotate: `${heart.rotation}deg` }}
-          >
-            <Heart 
-              size={28} 
-              fill={heart.color} 
-              stroke="none" 
-              className="drop-shadow-[0_0_10px_rgba(254,44,85,0.5)]"
-            />
-          </motion.div>
-        ))}
+    <div className="absolute inset-0 pointer-events-none overflow-hidden z-10" aria-hidden="true">
+      <AnimatePresence initial={false}>
+        {hearts.map(heart => {
+          const Icon = heart.Icon || Heart;
+
+          return (
+            <motion.div
+              key={heart.id}
+              initial={{ y: reducedMotion ? 0 : '100%', x: 0, opacity: 0, scale: reducedMotion ? 1 : 0.5, rotate: heart.rotation }}
+              animate={{ y: reducedMotion ? '-20%' : '-20vh', x: reducedMotion ? 0 : heart.drift, opacity: reducedMotion ? 0 : 1, scale: heart.scale, rotate: heart.rotation }}
+              exit={{ opacity: 0, scale: 0.7 }}
+              transition={{ duration: reducedMotion ? 0.35 : duration, ease: 'easeOut' }}
+              className="absolute bottom-0"
+              style={{ left: heart.left, willChange: 'transform, opacity' }}
+            >
+              {heart.avatar ? (
+                <div className="relative">
+                  <img src={heart.avatar} alt="" className="absolute -top-3 -right-2 h-4 w-4 rounded-full object-cover ring-1 ring-white/50" />
+                  <Icon size={heart.size} fill={heart.color} color={heart.color} strokeWidth={1.5} className="drop-shadow-[0_0_10px_rgba(254,44,85,0.5)]" />
+                </div>
+              ) : (
+                <Icon size={heart.size} fill={heart.color} color={heart.color} strokeWidth={1.5} className="drop-shadow-[0_0_10px_rgba(254,44,85,0.5)]" />
+              )}
+            </motion.div>
+          );
+        })}
       </AnimatePresence>
     </div>
   );
 };
 
 export default FloatingHearts;
+```
