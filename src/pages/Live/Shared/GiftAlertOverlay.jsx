@@ -1,4 +1,4 @@
-```jsx
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -571,4 +571,3 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
 };
 
 export default GiftAlertOverlay;
-```
