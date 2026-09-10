@@ -8,30 +8,48 @@ const MAX_QUEUE = 30;
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const getDuration = gift => {
-  const seconds = Number(gift?.animation_duration ?? gift?.gift_animation_duration ?? gift?.sound_duration ?? gift?.gift_sound_duration);
-  return Number.isFinite(seconds) && seconds > 0 ? clamp(seconds * 1000, 700, 15000) : DEFAULT_DURATION;
+  const value = Number(gift?.animation_duration ?? gift?.gift_animation_duration ?? gift?.sound_duration ?? gift?.gift_sound_duration);
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_DURATION;
+  return clamp(value * 1000, 700, 15000);
 };
 
 const getQuantity = gift => {
-  const quantity = Number(gift?.quantity);
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+  const value = Number(gift?.quantity);
+  return Number.isFinite(value) && value > 0 ? value : 1;
 };
 
 const getPrice = gift => {
   const total = Number(gift?.price_total);
   if (Number.isFinite(total) && total >= 0) return total;
+
   const price = Number(gift?.price);
-  return Number.isFinite(price) && price >= 0 ? price * getQuantity(gift) : 0;
+  if (Number.isFinite(price) && price >= 0) return price * getQuantity(gift);
+
+  return 0;
 };
 
 const getRarity = gift => {
-  const rarity = String(gift?.rarity ?? gift?.gift_rarity ?? 'common').toLowerCase();
-  return ['common', 'rare', 'epic', 'legendary'].includes(rarity) ? rarity : 'common';
+  const value = String(gift?.rarity ?? gift?.gift_rarity ?? 'common').toLowerCase();
+  if (value === 'rare' || value === 'epic' || value === 'legendary') return value;
+  return 'common';
 };
 
 const getAnimation = gift => {
-  const animation = String(gift?.animation ?? gift?.gift_animation ?? 'float').toLowerCase();
-  return ['float', 'bounce', 'pulse', 'sparkle', 'flame', 'slide', 'rain', 'grand'].includes(animation) ? animation : 'float';
+  const value = String(gift?.animation ?? gift?.gift_animation ?? 'float').toLowerCase();
+
+  if (
+    value === 'bounce' ||
+    value === 'pulse' ||
+    value === 'sparkle' ||
+    value === 'flame' ||
+    value === 'slide' ||
+    value === 'rain' ||
+    value === 'grand'
+  ) {
+    return value;
+  }
+
+  return 'float';
 };
 
 const getIcon = gift => gift?.gift_icon || gift?.icon || '🎁';
@@ -41,13 +59,42 @@ const getAvatar = gift => gift?.avatar || gift?.avatar_url || gift?.sender_avata
 const getSound = gift => gift?.gift_sound || gift?.sound || '';
 const getImage = gift => gift?.gift_image || gift?.image || '';
 
-const getKey = gift => gift?.id || [gift?.gift_id || getGiftName(gift), gift?.sender_id || getUsername(gift), gift?.created_at || Date.now(), Math.random()].join('-');
+const getKey = gift => {
+  if (gift?.id) return String(gift.id);
+
+  return [
+    gift?.gift_id || getGiftName(gift),
+    gift?.sender_id || getUsername(gift),
+    gift?.created_at || Date.now(),
+    Math.random()
+  ].join('-');
+};
 
 const rarityConfig = {
-  common: { glow: 'shadow-xl', ring: 'border-white/10', label: 'Common', scale: 1 },
-  rare: { glow: 'shadow-[0_0_35px_rgba(59,130,246,.35)]', ring: 'border-blue-400/30', label: 'Rare', scale: 1.08 },
-  epic: { glow: 'shadow-[0_0_45px_rgba(168,85,247,.45)]', ring: 'border-purple-400/40', label: 'Epic', scale: 1.16 },
-  legendary: { glow: 'shadow-[0_0_65px_rgba(250,204,21,.65)]', ring: 'border-yellow-300/60', label: 'Legendary', scale: 1.28 }
+  common: {
+    label: 'Common',
+    ring: 'border-white/10',
+    glow: 'shadow-xl',
+    scale: 1
+  },
+  rare: {
+    label: 'Rare',
+    ring: 'border-blue-400/30',
+    glow: 'shadow-[0_0_35px_rgba(59,130,246,.35)]',
+    scale: 1.08
+  },
+  epic: {
+    label: 'Epic',
+    ring: 'border-purple-400/40',
+    glow: 'shadow-[0_0_45px_rgba(168,85,247,.45)]',
+    scale: 1.16
+  },
+  legendary: {
+    label: 'Legendary',
+    ring: 'border-yellow-300/60',
+    glow: 'shadow-[0_0_65px_rgba(250,204,21,.65)]',
+    scale: 1.28
+  }
 };
 
 const animationVariants = {
@@ -107,11 +154,28 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
   const icon = getIcon(gift);
   const animation = getAnimation(gift);
   const config = rarityConfig[rarity];
+
   const quantityBoost = quantity >= 100 ? 1.35 : quantity >= 10 ? 1.15 : 1;
-  const iconScale = (isBig ? 1.35 : 1) * config.scale * quantityBoost;
+  const iconSize = Math.round(62 * (isBig ? 1.35 : 1) * config.scale * quantityBoost);
+
+  const visualClass = [
+    'relative',
+    'flex',
+    'items-center',
+    'justify-center',
+    'rounded-full',
+    'border',
+    config.ring,
+    config.glow,
+    isBig ? 'bg-black/20' : 'bg-black/10',
+    'backdrop-blur-sm'
+  ].join(' ');
 
   return (
-    <div className="relative flex items-center justify-center shrink-0 w-[150px] h-[150px] sm:w-[190px] sm:h-[190px]" aria-hidden="true">
+    <div
+      className="relative flex items-center justify-center shrink-0 w-[150px] h-[150px] sm:w-[190px] sm:h-[190px]"
+      aria-hidden="true"
+    >
       {!lowData && (
         <motion.div
           className="absolute inset-2 rounded-full bg-white/5 blur-2xl"
@@ -131,18 +195,25 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
         />
       )}
 
-      {!lowData && ['sparkle', 'grand', 'rain'].includes(animation) && sparklePositions.map((position, index) => (
-        <motion.span
-          key={index}
-          className="absolute text-sm sm:text-lg"
-          style={position}
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: [0, 1, 0], scale: [0, 1, 0.4], y: [10, -12, 8] }}
-          transition={{ duration: 1.4, delay: index * 0.08, repeat: Math.max(1, Math.floor(duration / 1400) - 1), ease: 'easeInOut' }}
-        >
-          ✦
-        </motion.span>
-      ))}
+      {!lowData &&
+        ['sparkle', 'grand', 'rain'].includes(animation) &&
+        sparklePositions.map((position, index) => (
+          <motion.span
+            key={index}
+            className="absolute text-sm sm:text-lg"
+            style={position}
+            initial={{ opacity: 0, scale: 0 }}
+            animate={{ opacity: [0, 1, 0], scale: [0, 1, 0.4], y: [10, -12, 8] }}
+            transition={{
+              duration: 1.4,
+              delay: index * 0.08,
+              repeat: Math.max(1, Math.floor(duration / 1400) - 1),
+              ease: 'easeInOut'
+            }}
+          >
+            ✦
+          </motion.span>
+        ))}
 
       <motion.div
         variants={animationVariants[animation]}
@@ -150,13 +221,24 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
         animate="animate"
         exit="exit"
         transition={{ duration: Math.min(duration / 1000, 1.1), ease: 'easeOut' }}
-        className={`relative flex items-center justify-center rounded-full border ${config.ring} ${config.glow} ${isBig ? 'bg-black/20' : 'bg-black/10'} backdrop-blur-sm`}
+        className={visualClass}
         style={{ width: isBig ? 142 : 118, height: isBig ? 142 : 118 }}
       >
         {image && !lowData ? (
-          <img src={image} alt="" className="w-[72%] h-[72%] object-contain drop-shadow-2xl" />
+          <img
+            src={image}
+            alt=""
+            className="w-[72%] h-[72%] object-contain drop-shadow-2xl"
+            loading="eager"
+            decoding="async"
+          />
         ) : (
-          <span className="leading-none select-none" style={{ fontSize: `${62 * iconScale}px` }}>{icon}</span>
+          <span
+            className="leading-none select-none"
+            style={{ fontSize: iconSize }}
+          >
+            {icon}
+          </span>
         )}
       </motion.div>
     </div>
@@ -166,12 +248,14 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
 const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
   const [queue, setQueue] = useState([]);
   const [activeGift, setActiveGift] = useState(null);
+
   const audioRef = useRef(null);
   const timerRef = useRef(null);
   const mountedRef = useRef(true);
 
   const stopAudio = useCallback(() => {
     const audio = audioRef.current;
+
     if (!audio) return;
 
     try {
@@ -192,24 +276,34 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
 
     stopAudio();
     setActiveGift(null);
-    onComplete?.();
+
+    if (typeof onComplete === 'function') {
+      onComplete();
+    }
   }, [onComplete, stopAudio]);
 
-  const playSound = useCallback(soundUrl => {
-    stopAudio();
+  const playSound = useCallback(
+    soundUrl => {
+      stopAudio();
 
-    if (!soundUrl) return;
+      if (!soundUrl) return;
 
-    try {
-      const audio = new Audio(soundUrl);
-      audio.preload = 'auto';
-      audio.volume = 1;
-      audioRef.current = audio;
+      try {
+        const audio = new Audio(soundUrl);
 
-      const playPromise = audio.play();
-      if (playPromise?.catch) playPromise.catch(() => {});
-    } catch {}
-  }, [stopAudio]);
+        audio.preload = 'auto';
+        audio.volume = 1;
+        audioRef.current = audio;
+
+        const promise = audio.play();
+
+        if (promise && typeof promise.catch === 'function') {
+          promise.catch(() => {});
+        }
+      } catch {}
+    },
+    [stopAudio]
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -229,11 +323,19 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
   useEffect(() => {
     if (!gift) return;
 
-    const incoming = { ...gift, _alertKey: getKey(gift) };
+    const incomingGift = {
+      ...gift,
+      _alertKey: getKey(gift)
+    };
 
-    setQueue(previous => {
-      const next = [...previous, incoming];
-      return next.length > MAX_QUEUE ? next.slice(next.length - MAX_QUEUE) : next;
+    setQueue(previousQueue => {
+      const nextQueue = [...previousQueue, incomingGift];
+
+      if (nextQueue.length <= MAX_QUEUE) {
+        return nextQueue;
+      }
+
+      return nextQueue.slice(nextQueue.length - MAX_QUEUE);
     });
   }, [gift]);
 
@@ -243,13 +345,23 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
     const nextGift = queue[0];
     const duration = getDuration(nextGift);
 
-    setQueue(previous => previous.slice(1));
+    setQueue(previousQueue => previousQueue.slice(1));
     setActiveGift(nextGift);
+
     playSound(getSound(nextGift));
 
     timerRef.current = setTimeout(() => {
-      if (mountedRef.current) finishGift();
+      if (mountedRef.current) {
+        finishGift();
+      }
     }, duration);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
   }, [activeGift, queue, finishGift, playSound]);
 
   const data = useMemo(() => {
@@ -261,9 +373,16 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
     const animation = getAnimation(activeGift);
     const duration = getDuration(activeGift);
     const isBig = Boolean(activeGift.big || activeGift.is_big || price >= 100);
-    const config = rarityConfig[rarity];
 
-    return { quantity, price, rarity, animation, duration, isBig, config };
+    return {
+      quantity,
+      price,
+      rarity,
+      animation,
+      duration,
+      isBig,
+      config: rarityConfig[rarity]
+    };
   }, [activeGift]);
 
   if (!activeGift || !data) return null;
@@ -273,6 +392,55 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
   const avatar = getAvatar(activeGift);
   const icon = getIcon(activeGift);
 
+  const avatarRing =
+    data.rarity === 'legendary'
+      ? 'bg-yellow-300'
+      : data.rarity === 'epic'
+        ? 'bg-purple-400'
+        : data.rarity === 'rare'
+          ? 'bg-blue-400'
+          : 'bg-white/30';
+
+  const containerClass = [
+    'absolute',
+    'inset-x-0',
+    'bottom-0',
+    'h-1/2',
+    'pointer-events-none',
+    'z-[100]',
+    'overflow-hidden',
+    'flex',
+    'items-end',
+    'justify-center',
+    'px-3',
+    'pb-4',
+    'sm:pb-8'
+  ].join(' ');
+
+  const cardClass = [
+    'relative',
+    'flex',
+    'items-center',
+    'gap-3',
+    'px-4',
+    'py-3',
+    'rounded-2xl',
+    'border',
+    'backdrop-blur-2xl',
+    'max-w-[92vw]',
+    data.isBig ? 'bg-black/55 border-white/20 shadow-2xl' : 'bg-black/60 border-white/10 shadow-xl'
+  ].join(' ');
+
+  const contentClass = [
+    'relative',
+    'w-full',
+    'max-w-2xl',
+    'flex',
+    'flex-col',
+    'items-center',
+    data.isBig ? 'gap-1' : 'gap-0'
+  ].join(' ');
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -280,7 +448,7 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="absolute inset-x-0 bottom-0 h-1/2 pointer-events-none z-[100] overflow-hidden flex items-end justify-center px-3 pb-4 sm:pb-8"
+        className={containerClass}
         role="status"
         aria-live="polite"
         aria-label={`${username} sent ${data.quantity} ${name} gift worth ${data.price} coins`}
@@ -308,40 +476,74 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
         )}
 
         <motion.div
-          className={`relative w-full max-w-2xl flex flex-col items-center ${data.isBig ? 'gap-1' : 'gap-0'}`}
+          className={contentClass}
           initial={{ opacity: 0, y: 70, scale: data.isBig ? 0.8 : 0.94 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 40, scale: 0.88 }}
           transition={{ duration: Math.min(data.duration / 1000, 0.55), ease: 'easeOut' }}
         >
-          <GiftVisual gift={activeGift} duration={data.duration} isBig={data.isBig} rarity={data.rarity} quantity={data.quantity} lowData={lowData} />
+          <GiftVisual
+            gift={activeGift}
+            duration={data.duration}
+            isBig={data.isBig}
+            rarity={data.rarity}
+            quantity={data.quantity}
+            lowData={lowData}
+          />
 
           <motion.div
             initial={{ opacity: 0, y: 35 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 25 }}
             transition={{ duration: 0.45, delay: 0.08 }}
-            className={`relative flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-2xl max-w-[92vw] ${data.isBig ? 'bg-black/55 border-white/20 shadow-2xl' : 'bg-black/60 border-white/10 shadow-xl'}`}
+            className={cardClass}
           >
-            <div className={`relative w-11 h-11 sm:w-12 sm:h-12 rounded-full p-[2px] shrink-0 ${data.rarity === 'legendary' ? 'bg-yellow-300' : data.rarity === 'epic' ? 'bg-purple-400' : data.rarity === 'rare' ? 'bg-blue-400' : 'bg-white/30'}`}>
+            <div className={`relative w-11 h-11 sm:w-12 sm:h-12 rounded-full p-[2px] shrink-0 ${avatarRing}`}>
               {avatar ? (
-                <img src={avatar} alt="" className="w-full h-full rounded-full object-cover bg-black/30" />
+                <img
+                  src={avatar}
+                  alt=""
+                  className="w-full h-full rounded-full object-cover bg-black/30"
+                  loading="eager"
+                  decoding="async"
+                />
               ) : (
-                <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-lg" aria-hidden="true">👤</div>
+                <div
+                  className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-lg"
+                  aria-hidden="true"
+                >
+                  👤
+                </div>
               )}
             </div>
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-white font-black text-sm sm:text-base truncate">{username}</span>
-                <span className="text-[9px] uppercase tracking-widest font-black text-white/50 shrink-0">{data.config.label}</span>
+                <span className="text-white font-black text-sm sm:text-base truncate">
+                  {username}
+                </span>
+
+                <span className="text-[9px] uppercase tracking-widest font-black text-white/50 shrink-0">
+                  {data.config.label}
+                </span>
               </div>
 
               <div className="flex items-center gap-2 mt-1 min-w-0">
-                <span className="text-base shrink-0" aria-hidden="true">{icon}</span>
-                <span className="text-yellow-300 font-bold text-xs sm:text-sm truncate">{data.quantity}× {name}</span>
-                <span className="text-white/50 text-[10px] shrink-0" aria-hidden="true">•</span>
-                <span className="text-yellow-200 font-black text-[10px] sm:text-xs shrink-0">{data.price.toLocaleString()} coins</span>
+                <span className="text-base shrink-0" aria-hidden="true">
+                  {icon}
+                </span>
+
+                <span className="text-yellow-300 font-bold text-xs sm:text-sm truncate">
+                  {data.quantity}× {name}
+                </span>
+
+                <span className="text-white/50 text-[10px] shrink-0" aria-hidden="true">
+                  •
+                </span>
+
+                <span className="text-yellow-200 font-black text-[10px] sm:text-xs shrink-0">
+                  {data.price.toLocaleString()} coins
+                </span>
               </div>
             </div>
           </motion.div>
@@ -350,10 +552,16 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
             <motion.div
               initial={{ opacity: 0, scale: 0.5, y: 10 }}
               animate={{ opacity: 1, scale: [0.9, 1.12, 1], y: 0 }}
-              className={`mt-1 font-black uppercase tracking-widest ${data.quantity >= 100 ? 'text-yellow-300 text-lg' : 'text-white text-xs'}`}
+              className={
+                data.quantity >= 100
+                  ? 'mt-1 font-black uppercase tracking-widest text-yellow-300 text-lg'
+                  : 'mt-1 font-black uppercase tracking-widest text-white text-xs'
+              }
               aria-hidden="true"
             >
-              {data.quantity >= 100 ? `${data.quantity}× MEGA GIFT` : `${data.quantity}× GIFT`}
+              {data.quantity >= 100
+                ? `${data.quantity}× MEGA GIFT`
+                : `${data.quantity}× GIFT`}
             </motion.div>
           )}
         </motion.div>
