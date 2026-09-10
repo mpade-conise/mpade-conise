@@ -1267,26 +1267,33 @@ const LivePlayer = () => {
       </div>
 
       {/* BOTTOM UI */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 z-50 flex items-end justify-between pointer-events-none">
-        {/* CHAT */}
-        <AnimatePresence>
-          {chatVisible && (
-            <motion.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              className="flex-1 max-w-[340px] h-[340px] pointer-events-auto overflow-hidden hide-scrollbar"
-            >
-              <LiveChat
-                streamId={streamId}
-                hideMessages={false}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className="absolute inset-x-0 bottom-0 z-50 pointer-events-none">
+        {/* CHAT + ACTIONS
+         *
+         * Mobile layout intentionally stacks the chat above the action
+         * controls. This prevents the action rail from covering the chat
+         * input/messages on narrow phones.
+         */}
+        <div className="w-full px-3 pb-3 sm:px-4 sm:pb-4 sm:flex sm:items-end sm:justify-between sm:gap-4">
+          {/* CHAT */}
+          <AnimatePresence>
+            {chatVisible && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="w-full sm:max-w-[340px] h-[250px] sm:h-[340px] mb-2 sm:mb-0 pointer-events-auto overflow-hidden hide-scrollbar"
+              >
+                <LiveChat
+                  streamId={streamId}
+                  hideMessages={false}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {/* ACTION BUTTONS */}
-        <div className="flex items-center gap-2.5 pointer-events-auto pl-4 pb-2">
+          {/* ACTION BUTTONS */}
+          <div className="w-full sm:w-auto flex items-center justify-end gap-1.5 sm:gap-2.5 pointer-events-auto">
           {/* CHAT TOGGLE */}
           <button
             onClick={() => setChatVisible(previous => !previous)}
