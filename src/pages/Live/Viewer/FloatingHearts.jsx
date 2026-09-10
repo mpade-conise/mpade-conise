@@ -35,11 +35,9 @@ const FloatingHearts = ({
   const lastReaction = useRef(0);
   const mounted = useRef(false);
 
-  const getReaction = useCallback((type = 'heart') => {
-    return reactionIcons.find(item => item.type === type) || reactionIcons[0] || DEFAULT_ICONS[0];
-  }, [reactionIcons]);
+  const getReaction = useCallback((type) => reactionIcons.find(item => item.type === type) || reactionIcons[0] || DEFAULT_ICONS[0], [reactionIcons]);
 
-  const removeHeart = useCallback(id => {
+  const removeHeart = useCallback((id) => {
     const timer = timers.current.get(id);
     if (timer) clearTimeout(timer);
     timers.current.delete(id);
@@ -54,14 +52,14 @@ const FloatingHearts = ({
     lastReaction.current = now;
 
     const reaction = getReaction(type);
-    const id = `${now}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = String(now) + '-' + Math.random().toString(36).slice(2, 8);
 
     const heart = {
       id,
       type,
       Icon: reaction.icon,
       color: reaction.color,
-      left: `${Math.random() * 80 + 10}%`,
+      left: String(Math.random() * 80 + 10) + '%',
       rotation: Math.random() * 40 - 20,
       drift: Math.random() * 100 - 50,
       scale: 0.7 + Math.random() * 0.6,
@@ -82,7 +80,7 @@ const FloatingHearts = ({
   const enqueue = useCallback((type = 'heart', meta = {}, amount = 1) => {
     const total = Math.min(Math.max(Number(amount) || 1, 1), 10);
 
-    for (let i = 0; i < total; i++) queue.current.push({ type, meta });
+    for (let i = 0; i < total; i += 1) queue.current.push({ type, meta });
     if (queueTimer.current || !mounted.current) return;
 
     const process = () => {
@@ -102,7 +100,9 @@ const FloatingHearts = ({
   const triggerLikeInDB = useCallback(async () => {
     if (!streamId) return false;
 
-    const { error } = await supabase.rpc('increment_likes', { stream_id_input: streamId });
+    const { error } = await supabase.rpc('increment_likes', {
+      stream_id_input: streamId
+    });
 
     if (error) {
       console.error('Error updating likes:', error.message);
@@ -112,7 +112,6 @@ const FloatingHearts = ({
     return true;
   }, [streamId]);
 
-  // Existing count functionality: database likes can drive the animation.
   useEffect(() => {
     const current = Math.max(0, Number(count || 0));
     const previous = Math.max(0, Number(previousCount.current || 0));
@@ -123,17 +122,16 @@ const FloatingHearts = ({
     if (difference > 0) enqueue(reactionType, { realtime: true }, Math.min(difference * burstSize, 10));
   }, [count, burstSize, enqueue, reactionType]);
 
-  // Realtime updates directly from the existing live_streams table.
   useEffect(() => {
     if (!enableRealtime || !streamId || count !== undefined && count !== null) return undefined;
 
     const channel = supabase
-      .channel(`live-stream-likes-${streamId}`)
+      .channel('live-stream-likes-' + streamId)
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: 'live_streams',
-        filter: `id=eq.${streamId}`
+        filter: 'id=eq.' + streamId
       }, payload => {
         const current = Math.max(0, Number(payload.new?.likes || 0));
         const previous = Math.max(0, Number(previousCount.current || 0));
@@ -150,7 +148,6 @@ const FloatingHearts = ({
     };
   }, [enableRealtime, streamId, count, enqueue, reactionType, burstSize]);
 
-  // Exposes a safe event for the Live Room to trigger a reaction.
   useEffect(() => {
     const handleLike = () => {
       enqueue(reactionType, {}, burstSize);
@@ -164,7 +161,6 @@ const FloatingHearts = ({
     };
   }, [enqueue, reactionType, burstSize, triggerLikeInDB]);
 
-  // Complete cleanup.
   useEffect(() => {
     mounted.current = true;
 
