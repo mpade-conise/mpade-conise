@@ -16,7 +16,7 @@ import {
 import LiveChat from './LiveChat';
 import GiftPanel from './GiftPanel';
 import VideoPlayer from '../Shared/VideoPlayer';
-import FloatingHearts from './FloatingHearts';
+import FloatingHearts from "./FloatingHearts";
 import StreamHeader from '../Shared/StreamHeader';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
