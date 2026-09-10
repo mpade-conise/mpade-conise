@@ -25,25 +25,25 @@ const FloatingHearts = ({
   reactionIcons = DEFAULT_ICONS,
   enableRealtime = true,
   throttleMs = 120,
-  onReaction,
-  onLike
+  onReaction
 }) => {
   const [hearts, setHearts] = useState([]);
   const timers = useRef(new Map());
   const queue = useRef([]);
   const queueTimer = useRef(null);
-  const processing = useRef(false);
-  const lastReaction = useRef(0);
   const previousCount = useRef(Number(count || 0));
+  const lastReaction = useRef(0);
   const mounted = useRef(false);
 
-  const getReaction = useCallback((type = 'heart') => reactionIcons.find(r => r.type === type) || reactionIcons[0] || DEFAULT_ICONS[0], [reactionIcons]);
+  const getReaction = useCallback((type = 'heart') => {
+    return reactionIcons.find(item => item.type === type) || reactionIcons[0] || DEFAULT_ICONS[0];
+  }, [reactionIcons]);
 
   const removeHeart = useCallback(id => {
     const timer = timers.current.get(id);
     if (timer) clearTimeout(timer);
     timers.current.delete(id);
-    if (mounted.current) setHearts(prev => prev.filter(h => h.id !== id));
+    if (mounted.current) setHearts(prev => prev.filter(item => item.id !== id));
   }, []);
 
   const addHeart = useCallback((type = 'heart', meta = {}) => {
@@ -54,7 +54,8 @@ const FloatingHearts = ({
     lastReaction.current = now;
 
     const reaction = getReaction(type);
-    const id = `${now}-${Math.random().toString(36).slice(2, 9)}`;
+    const id = `${now}-${Math.random().toString(36).slice(2, 8)}`;
+
     const heart = {
       id,
       type,
@@ -74,21 +75,18 @@ const FloatingHearts = ({
       return next.length > maxHearts ? next.slice(-maxHearts) : next;
     });
 
-    timers.current.set(id, setTimeout(() => removeHeart(id), duration * 1000 + 350));
-    onReaction?.(heart);
+    timers.current.set(id, setTimeout(() => removeHeart(id), duration * 1000 + 300));
+    if (onReaction) onReaction(heart);
   }, [avatar, duration, getReaction, maxHearts, onReaction, removeHeart, sender, throttleMs]);
 
   const enqueue = useCallback((type = 'heart', meta = {}, amount = 1) => {
-    const safeAmount = Math.min(Math.max(Number(amount) || 1, 1), 10);
-    for (let i = 0; i < safeAmount; i++) queue.current.push({ type, meta });
+    const total = Math.min(Math.max(Number(amount) || 1, 1), 10);
 
-    if (processing.current) return;
-
-    processing.current = true;
+    for (let i = 0; i < total; i++) queue.current.push({ type, meta });
+    if (queueTimer.current || !mounted.current) return;
 
     const process = () => {
       if (!mounted.current || !queue.current.length) {
-        processing.current = false;
         queueTimer.current = null;
         return;
       }
@@ -114,7 +112,7 @@ const FloatingHearts = ({
     return true;
   }, [streamId]);
 
-  // Keeps your existing count-driven animation functionality.
+  // Existing count functionality: database likes can drive the animation.
   useEffect(() => {
     const current = Math.max(0, Number(count || 0));
     const previous = Math.max(0, Number(previousCount.current || 0));
@@ -125,13 +123,18 @@ const FloatingHearts = ({
     if (difference > 0) enqueue(reactionType, { realtime: true }, Math.min(difference * burstSize, 10));
   }, [count, burstSize, enqueue, reactionType]);
 
-  // Optional realtime fallback using the existing live_streams.likes field.
+  // Realtime updates directly from the existing live_streams table.
   useEffect(() => {
     if (!enableRealtime || !streamId || count !== undefined && count !== null) return undefined;
 
     const channel = supabase
       .channel(`live-stream-likes-${streamId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'live_streams', filter: `id=eq.${streamId}` }, payload => {
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'live_streams',
+        filter: `id=eq.${streamId}`
+      }, payload => {
         const current = Math.max(0, Number(payload.new?.likes || 0));
         const previous = Math.max(0, Number(previousCount.current || 0));
         const difference = Math.min(Math.max(current - previous, 0), 10);
@@ -147,28 +150,32 @@ const FloatingHearts = ({
     };
   }, [enableRealtime, streamId, count, enqueue, reactionType, burstSize]);
 
-  // Expose the existing database like action without hijacking the whole document.
+  // Exposes a safe event for the Live Room to trigger a reaction.
   useEffect(() => {
-    if (typeof onLike !== 'function') return undefined;
-
-    const handler = () => {
+    const handleLike = () => {
       enqueue(reactionType, {}, burstSize);
-      onLike({ triggerLikeInDB, reactionType, burstSize });
+      triggerLikeInDB();
     };
 
-    window.addEventListener('made-universe-live-like', handler);
-    return () => window.removeEventListener('made-universe-live-like', handler);
-  }, [burstSize, enqueue, onLike, reactionType, triggerLikeInDB]);
+    window.addEventListener('made-universe-live-like', handleLike);
 
+    return () => {
+      window.removeEventListener('made-universe-live-like', handleLike);
+    };
+  }, [enqueue, reactionType, burstSize, triggerLikeInDB]);
+
+  // Complete cleanup.
   useEffect(() => {
     mounted.current = true;
 
     return () => {
       mounted.current = false;
       queue.current = [];
-      processing.current = false;
 
-      if (queueTimer.current) clearTimeout(queueTimer.current);
+      if (queueTimer.current) {
+        clearTimeout(queueTimer.current);
+        queueTimer.current = null;
+      }
 
       timers.current.forEach(timer => clearTimeout(timer));
       timers.current.clear();
@@ -186,8 +193,8 @@ const FloatingHearts = ({
           return (
             <motion.div
               key={heart.id}
-              initial={{ y: reducedMotion ? 0 : '100%', x: 0, opacity: 0, scale: reducedMotion ? 1 : 0.5, rotate: heart.rotation }}
-              animate={{ y: reducedMotion ? '-20%' : '-20vh', x: reducedMotion ? 0 : heart.drift, opacity: reducedMotion ? 0 : 1, scale: heart.scale, rotate: heart.rotation }}
+              initial={{ y: reducedMotion ? 0 : '100%', x: 0, opacity: 1, scale: reducedMotion ? 1 : 0.5, rotate: heart.rotation }}
+              animate={{ y: reducedMotion ? '-20%' : '-20vh', x: reducedMotion ? 0 : heart.drift, opacity: 0, scale: heart.scale, rotate: heart.rotation }}
               exit={{ opacity: 0, scale: 0.7 }}
               transition={{ duration: reducedMotion ? 0.35 : duration, ease: 'easeOut' }}
               className="absolute bottom-0"
@@ -196,10 +203,10 @@ const FloatingHearts = ({
               {heart.avatar ? (
                 <div className="relative">
                   <img src={heart.avatar} alt="" className="absolute -top-3 -right-2 h-4 w-4 rounded-full object-cover ring-1 ring-white/50" />
-                  <Icon size={heart.size} fill={heart.color} color={heart.color} strokeWidth={1.5} className="drop-shadow-[0_0_10px_rgba(254,44,85,0.5)]" />
+                  <Icon size={heart.size} fill={heart.color} color={heart.color} strokeWidth={1.5} />
                 </div>
               ) : (
-                <Icon size={heart.size} fill={heart.color} color={heart.color} strokeWidth={1.5} className="drop-shadow-[0_0_10px_rgba(254,44,85,0.5)]" />
+                <Icon size={heart.size} fill={heart.color} color={heart.color} strokeWidth={1.5} />
               )}
             </motion.div>
           );
