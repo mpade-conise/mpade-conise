@@ -1,4 +1,4 @@
-```jsx
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, ThumbsUp, Star, Flame, Laugh, Sparkles } from 'lucide-react';
@@ -332,5 +332,6 @@ const FloatingHearts = ({
   );
 };
 
+};
+
 export default FloatingHearts;
-```
