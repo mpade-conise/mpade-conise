@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
-  Ban,
+  BadgeCheck,
+  Bell,
   ChevronDown,
+  Copy,
   Eye,
   Filter,
   Flame,
@@ -16,55 +18,46 @@ import {
   RefreshCw,
   Search,
   Share2,
-  ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Trophy,
   UserPlus,
   Users,
   Video,
+  Wifi,
   X,
   Zap
 } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 
-const PAGE_SIZE = 24;
-const SEARCH_DELAY = 350;
+const PAGE_SIZE = 18;
+const HIDDEN_KEY = 'made-universe-hidden-live-streams';
 
-const TABS = [
+const tabs = [
   { id: 'recommended', label: 'Recommended', icon: Sparkles },
-  { id: 'following', label: 'Following', icon: UserPlus },
+  { id: 'following', label: 'Following', icon: Heart },
   { id: 'trending', label: 'Trending', icon: Flame },
   { id: 'popular', label: 'Popular', icon: Trophy },
   { id: 'new', label: 'New', icon: Zap }
 ];
 
-const DEFAULT_FILTERS = {
-  category: 'All',
-  region: 'All',
-  language: 'All',
-  age: 'All'
+const readHiddenStreams = () => {
+  try {
+    const value = localStorage.getItem(HIDDEN_KEY);
+    const parsed = value ? JSON.parse(value) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveHiddenStreams = ids => {
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(ids));
+  } catch {}
 };
 
 const normalize = value => String(value || '').trim().toLowerCase();
-
-const formatNumber = value => {
-  const number = Number(value || 0);
-  if (number >= 1000000) return `${(number / 1000000).toFixed(number >= 10000000 ? 0 : 1)}M`;
-  if (number >= 1000) return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}K`;
-  return String(number);
-};
-
-const timeAgo = date => {
-  if (!date) return '';
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
-};
 
 const getSettings = stream => {
   if (!stream?.settings) return {};
@@ -78,12 +71,12 @@ const getSettings = stream => {
 
 const getRegion = stream => {
   const settings = getSettings(stream);
-  return stream?.region || stream?.district || settings.region || settings.district || '';
+  return stream?.region || stream?.district || settings.region || settings.district || settings.location || '';
 };
 
 const getLanguage = stream => {
   const settings = getSettings(stream);
-  return stream?.language || settings.language || '';
+  return stream?.language || settings.language || settings.languages || '';
 };
 
 const isAgeRestricted = stream => {
@@ -92,181 +85,124 @@ const isAgeRestricted = stream => {
     stream?.age_restricted ||
     stream?.is_age_restricted ||
     settings.age_restricted ||
-    settings.is_age_restricted ||
-    settings.ageRestriction
+    settings.ageRestricted ||
+    settings.age_limit
   );
 };
 
-const isPrivateStream = stream => {
-  const privacy = normalize(stream?.privacy);
-  return privacy === 'private' || privacy === 'followers' || privacy === 'subscriber';
-};
-
-const hasBattle = stream => {
+const isBattleActive = stream => {
   const settings = getSettings(stream);
   return Boolean(
-    stream?.battle_id ||
-    stream?.battle_stream_id ||
-    stream?.is_battle ||
-    settings.battle_id ||
-    settings.battleId ||
-    settings.battle
+    settings.battle_active ||
+    settings.battleActive ||
+    settings.pk_active ||
+    settings.pkActive ||
+    stream?.battle_active
   );
 };
 
-const hasCoHost = stream => Boolean(stream?.co_host_id || stream?.cohost_id);
-
-const getGoalValue = stream => Number(stream?.gift_goal_total || stream?.goal?.total || 0);
-
-const getEngagement = stream => {
-  const viewers = Number(stream?.viewer_count || 0);
-  const likes = Number(stream?.likes || 0);
-  const gifts = Number(stream?.gifts_count || stream?.total_gifts || 0);
-  return viewers + likes * 2 + gifts * 5;
+const hasGiftGoal = stream => {
+  return Number(stream?.gift_goal_total || stream?.goal?.total || 0) > 0;
 };
 
-const getTrendingScore = stream => {
+const getStreamDate = stream => {
+  const value = stream?.started_at || stream?.created_at;
+  const date = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(date) ? date : 0;
+};
+
+const formatNumber = value => {
+  const number = Number(value || 0);
+  if (number >= 1000000) return `${(number / 1000000).toFixed(1)}M`;
+  if (number >= 1000) return `${(number / 1000).toFixed(1)}K`;
+  return number.toString();
+};
+
+const formatStarted = value => {
+  if (!value) return '';
+  const diff = Math.max(0, Date.now() - new Date(value).getTime());
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'Just started';
+  if (minutes < 60) return `${minutes}m live`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h live`;
+  return `${Math.floor(hours / 24)}d live`;
+};
+
+const getScore = stream => {
   const viewers = Number(stream?.viewer_count || 0);
   const peak = Number(stream?.peak_viewers || 0);
   const likes = Number(stream?.likes || 0);
   const gifts = Number(stream?.gifts_count || stream?.total_gifts || 0);
-  const ageHours = Math.max(
-    0.25,
-    (Date.now() - new Date(stream?.started_at || Date.now()).getTime()) / 3600000
-  );
+  const ageMinutes = Math.max(1, (Date.now() - getStreamDate(stream)) / 60000);
+  const growth = viewers / ageMinutes;
 
-  return viewers * 4 + peak * 1.5 + likes * 2 + gifts * 6 + 100 / ageHours;
+  return viewers * 4 + peak * 1.5 + likes * 0.25 + gifts * 3 + growth * 12;
 };
-
-const SkeletonCard = () => (
-  <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] animate-pulse">
-    <div className="aspect-[4/5] bg-zinc-900" />
-    <div className="space-y-3 p-4">
-      <div className="h-3 w-2/3 rounded bg-zinc-800" />
-      <div className="h-3 w-1/2 rounded bg-zinc-800" />
-      <div className="h-8 w-full rounded-full bg-zinc-900" />
-    </div>
-  </div>
-);
 
 const StreamDiscovery = () => {
   const navigate = useNavigate();
 
   const [streams, setStreams] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState('');
-  const [currentUserId, setCurrentUserId] = useState(null);
   const [followedIds, setFollowedIds] = useState(new Set());
-  const [hiddenIds, setHiddenIds] = useState(new Set());
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   const [activeTab, setActiveTab] = useState('recommended');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [showFilters, setShowFilters] = useState(false);
-  const [showCategories, setShowCategories] = useState(false);
-  const [showRegion, setShowRegion] = useState(false);
-  const [showLanguage, setShowLanguage] = useState(false);
-  const [dataSaver, setDataSaver] = useState(false);
-  const [offline, setOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
-  const [menuId, setMenuId] = useState(null);
-  const [notice, setNotice] = useState('');
+  const [category, setCategory] = useState('');
+  const [region, setRegion] = useState('');
+  const [language, setLanguage] = useState('');
 
-  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [offline, setOffline] = useState(!navigator.onLine);
   const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
+
+  const [hiddenIds, setHiddenIds] = useState(() => new Set(readHiddenStreams()));
+  const [menuId, setMenuId] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [followingLoading, setFollowingLoading] = useState(null);
+  const [copiedId, setCopiedId] = useState(null);
 
   const realtimeChannelRef = useRef(null);
-  const isMountedRef = useRef(true);
+  const mountedRef = useRef(true);
   const loadingRef = useRef(false);
-  const observerRef = useRef(null);
-  const bottomRef = useRef(null);
-  const filtersRef = useRef(filters);
-  const activeTabRef = useRef(activeTab);
-  const searchQueryRef = useRef(searchQuery);
   const followedIdsRef = useRef(new Set());
-  const hiddenIdsRef = useRef(new Set());
+  const filtersRef = useRef({});
+  const requestRef = useRef(0);
 
-  useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
-
-  useEffect(() => {
-    activeTabRef.current = activeTab;
-  }, [activeTab]);
-
-  useEffect(() => {
-    searchQueryRef.current = searchQuery;
-  }, [searchQuery]);
-
-  useEffect(() => {
-    followedIdsRef.current = followedIds;
-  }, [followedIds]);
-
-  useEffect(() => {
-    hiddenIdsRef.current = hiddenIds;
-  }, [hiddenIds]);
-
-  useEffect(() => {
-    const handleOnline = () => setOffline(false);
-    const handleOffline = () => setOffline(true);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('made-universe-live-data-saver');
-    if (saved === 'true') setDataSaver(true);
-
-    const hidden = localStorage.getItem('made-universe-hidden-live-streams');
-    if (hidden) {
-      try {
-        setHiddenIds(new Set(JSON.parse(hidden)));
-      } catch {}
-    }
-  }, []);
-
-  const showNotice = useCallback(message => {
-    setNotice(message);
-    window.clearTimeout(showNotice.timer);
-    showNotice.timer = window.setTimeout(() => setNotice(''), 2600);
-  }, []);
-
-  const fetchHostProfiles = useCallback(async hostIds => {
+  const fetchProfiles = useCallback(async hostIds => {
     const ids = [...new Set(hostIds.filter(Boolean))];
     if (!ids.length) return {};
 
-    const { data, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, username, avatar_url, verified_status, is_verified, online')
-      .in('id', ids);
+    try {
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, verified_status, is_verified, online')
+        .in('id', ids);
 
-    if (profileError) {
-      console.warn('Live profile lookup failed:', profileError.message);
+      if (profileError) throw profileError;
+
+      return (data || []).reduce((map, profile) => {
+        map[profile.id] = profile;
+        return map;
+      }, {});
+    } catch (err) {
+      console.error('Failed to load live host profiles:', err.message);
       return {};
     }
-
-    return (data || []).reduce((map, profile) => {
-      map[profile.id] = profile;
-      return map;
-    }, {});
   }, []);
 
   const mergeProfiles = useCallback(async rows => {
-    if (!rows?.length) return [];
-
-    const profileMap = await fetchHostProfiles(rows.map(row => row.host_id));
+    const profiles = await fetchProfiles(rows.map(row => row.host_id));
 
     return rows.map(row => ({
       ...row,
-      host: profileMap[row.host_id] || {
+      host: profiles[row.host_id] || {
         id: row.host_id,
         username: 'Universe Host',
         avatar_url: null,
@@ -275,108 +211,78 @@ const StreamDiscovery = () => {
         online: true
       }
     }));
-  }, [fetchHostProfiles]);
+  }, [fetchProfiles]);
 
-  const loadFollowedCreators = useCallback(async userId => {
+  const loadFollowing = useCallback(async userId => {
     if (!userId) {
+      followedIdsRef.current = new Set();
       setFollowedIds(new Set());
       return;
     }
 
-    const { data, error: followError } = await supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', userId);
+    try {
+      const { data, error: followError } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', userId);
 
-    if (followError) {
-      console.warn('Follow lookup failed:', followError.message);
-      return;
+      if (followError) throw followError;
+
+      const ids = new Set((data || []).map(row => row.following_id).filter(Boolean));
+      followedIdsRef.current = ids;
+      setFollowedIds(ids);
+    } catch (err) {
+      console.warn('Following feed unavailable:', err.message);
+      followedIdsRef.current = new Set();
+      setFollowedIds(new Set());
     }
-
-    setFollowedIds(new Set((data || []).map(item => item.following_id).filter(Boolean)));
   }, []);
 
-  const streamMatchesFilters = useCallback(stream => {
-    if (!stream || stream.status !== 'live' || isPrivateStream(stream)) return false;
-    if (hiddenIdsRef.current.has(stream.id)) return false;
+  const getMatches = useCallback((stream, options = {}) => {
+    const currentCategory = options.category ?? filtersRef.current.category;
+    const currentRegion = options.region ?? filtersRef.current.region;
+    const currentLanguage = options.language ?? filtersRef.current.language;
+    const currentSearch = options.search ?? filtersRef.current.search;
+    const currentTab = options.tab ?? filtersRef.current.tab;
 
-    const currentFilters = filtersRef.current;
-    const currentSearch = normalize(searchQueryRef.current);
+    if (!stream || stream.status !== 'live') return false;
+    if (hiddenIds.has(stream.id)) return false;
 
-    if (currentFilters.category !== 'All' && normalize(stream.category) !== normalize(currentFilters.category)) {
-      return false;
-    }
+    const streamRegion = normalize(getRegion(stream));
+    const streamLanguage = normalize(getLanguage(stream));
+    const streamCategory = normalize(stream.category);
+    const username = normalize(stream.host?.username);
+    const title = normalize(stream.title);
 
-    if (currentFilters.region !== 'All' && normalize(getRegion(stream)) !== normalize(currentFilters.region)) {
-      return false;
-    }
-
-    if (currentFilters.language !== 'All' && normalize(getLanguage(stream)) !== normalize(currentFilters.language)) {
-      return false;
-    }
-
-    if (currentFilters.age === '18+' && !isAgeRestricted(stream)) return false;
-    if (currentFilters.age === 'All ages' && isAgeRestricted(stream)) return false;
-
-    if (activeTabRef.current === 'following' && !followedIdsRef.current.has(stream.host_id)) {
-      return false;
-    }
+    if (currentCategory && streamCategory !== normalize(currentCategory)) return false;
+    if (currentRegion && !streamRegion.includes(normalize(currentRegion))) return false;
+    if (currentLanguage && !streamLanguage.includes(normalize(currentLanguage))) return false;
 
     if (currentSearch) {
-      const username = normalize(stream.host?.username);
-      const title = normalize(stream.title);
-      const category = normalize(stream.category);
-
-      if (!username.includes(currentSearch) && !title.includes(currentSearch) && !category.includes(currentSearch)) {
-        return false;
-      }
+      const query = normalize(currentSearch);
+      if (!username.includes(query) && !title.includes(query) && !streamCategory.includes(query)) return false;
     }
+
+    if (currentTab === 'following' && !followedIdsRef.current.has(stream.host_id)) return false;
 
     return true;
-  }, []);
+  }, [hiddenIds]);
 
-  const sortStreams = useCallback(list => {
-    const result = [...list];
+  const loadStreams = useCallback(async (requestedPage = 0, append = false) => {
+    const requestId = ++requestRef.current;
 
-    if (activeTabRef.current === 'trending') {
-      return result.sort((a, b) => getTrendingScore(b) - getTrendingScore(a));
+    if (append) {
+      if (loadingRef.current) return;
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setError('');
     }
-
-    if (activeTabRef.current === 'popular') {
-      return result.sort((a, b) => Number(b.viewer_count || 0) - Number(a.viewer_count || 0));
-    }
-
-    if (activeTabRef.current === 'new') {
-      return result.sort((a, b) => new Date(b.started_at || 0).getTime() - new Date(a.started_at || 0).getTime());
-    }
-
-    if (activeTabRef.current === 'following') {
-      return result.sort((a, b) => {
-        const followedA = followedIdsRef.current.has(a.host_id) ? 1 : 0;
-        const followedB = followedIdsRef.current.has(b.host_id) ? 1 : 0;
-        return followedB - followedA || getTrendingScore(b) - getTrendingScore(a);
-      });
-    }
-
-    return result.sort((a, b) => {
-      const followedA = followedIdsRef.current.has(a.host_id) ? 1 : 0;
-      const followedB = followedIdsRef.current.has(b.host_id) ? 1 : 0;
-      return followedB - followedA || getTrendingScore(b) - getTrendingScore(a);
-    });
-  }, []);
-
-  const fetchStreams = useCallback(async (pageNumber = 0, append = false) => {
-    if (loadingRef.current) return;
 
     loadingRef.current = true;
 
-    if (append) setLoadingMore(true);
-    else if (pageNumber === 0) setLoading(true);
-
-    setError('');
-
     try {
-      const from = pageNumber * PAGE_SIZE;
+      const from = requestedPage * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
       const { data, error: streamError } = await supabase
@@ -387,90 +293,116 @@ const StreamDiscovery = () => {
         .range(from, to);
 
       if (streamError) throw streamError;
+      if (!mountedRef.current || requestId !== requestRef.current) return;
 
-      const rows = data || [];
-      const enriched = await mergeProfiles(rows);
-      const visible = enriched.filter(streamMatchesFilters);
-
-      if (!isMountedRef.current) return;
+      const rows = await mergeProfiles(data || []);
+      if (!mountedRef.current || requestId !== requestRef.current) return;
 
       setStreams(prev => {
-        const combined = append ? [...prev, ...visible] : visible;
-        const unique = new Map();
+        if (!append) return rows;
 
-        combined.forEach(stream => {
-          unique.set(stream.id, stream);
+        const map = new Map(prev.map(item => [item.id, item]));
+        rows.forEach(item => {
+          const existing = map.get(item.id);
+          map.set(item.id, { ...existing, ...item, host: item.host || existing?.host });
         });
 
-        return sortStreams([...unique.values()]);
+        return [...map.values()];
       });
 
-      setPage(pageNumber);
-      setHasMore(rows.length === PAGE_SIZE);
+      setHasMore((data || []).length === PAGE_SIZE);
+      setError('');
     } catch (err) {
-      console.error('Universe Live Discovery Error:', err);
+      if (!mountedRef.current || requestId !== requestRef.current) return;
 
-      if (isMountedRef.current) {
-        setError(err?.message || 'Unable to load live streams.');
-      }
+      console.error('Universe live discovery error:', err.message);
+      setError(err.message || 'Unable to load live streams.');
     } finally {
-      loadingRef.current = false;
-      if (isMountedRef.current) {
-        setLoadingMore(false);
+      if (mountedRef.current && requestId === requestRef.current) {
         setLoading(false);
+        setLoadingMore(false);
+        loadingRef.current = false;
       }
     }
-  }, [mergeProfiles, sortStreams, streamMatchesFilters]);
+  }, [mergeProfiles]);
 
   useEffect(() => {
-    isMountedRef.current = true;
+    mountedRef.current = true;
 
-    const initialise = async () => {
+    const init = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
 
-        if (!isMountedRef.current) return;
+        if (!mountedRef.current) return;
 
-        if (user) {
-          setCurrentUserId(user.id);
-          await loadFollowedCreators(user.id);
-        }
+        setCurrentUserId(user?.id || null);
 
-        await fetchStreams(0, false);
+        if (user?.id) await loadFollowing(user.id);
+        await loadStreams(0, false);
       } catch (err) {
-        console.error('Live discovery initialization failed:', err);
-
-        if (isMountedRef.current) {
-          setError(err?.message || 'Unable to initialize Live.');
+        if (mountedRef.current) {
           setLoading(false);
+          setError(err.message || 'Unable to initialize Live Discovery.');
         }
       }
     };
 
-    initialise();
+    init();
+
+    const handleOnline = () => setOffline(false);
+    const handleOffline = () => setOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
-      isMountedRef.current = false;
+      mountedRef.current = false;
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
-  }, [fetchStreams, loadFollowedCreators]);
+  }, [loadFollowing, loadStreams]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    const timer = setTimeout(() => {
       setSearchQuery(searchInput.trim());
-    }, SEARCH_DELAY);
+    }, 300);
 
-    return () => window.clearTimeout(timer);
+    return () => clearTimeout(timer);
   }, [searchInput]);
 
   useEffect(() => {
-    setPage(0);
-    setHasMore(true);
-    fetchStreams(0, false);
-  }, [activeTab, filters.category, filters.region, filters.language, filters.age, searchQuery]);
+    filtersRef.current = {
+      tab: activeTab,
+      category,
+      region,
+      language,
+      search: searchQuery
+    };
+  }, [activeTab, category, region, language, searchQuery]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel('public-live-stream-discovery')
+    setPage(0);
+    loadStreams(0, false);
+  }, [activeTab, category, region, language, loadStreams]);
+
+  useEffect(() => {
+    if (activeTab !== 'following') return;
+    loadStreams(0, false);
+  }, [followedIds, activeTab, loadStreams]);
+
+  useEffect(() => {
+    if (!searchQuery) return;
+
+    filtersRef.current.search = searchQuery;
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const channelName = `public-live-stream-discovery-${Math.random().toString(36).slice(2)}`;
+
+    realtimeChannelRef.current = supabase
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -479,69 +411,90 @@ const StreamDiscovery = () => {
           table: 'live_streams'
         },
         async payload => {
-          const event = payload.event || payload.eventType;
-          const nextStream = payload.new;
-          const oldStream = payload.old;
+          if (!mountedRef.current) return;
 
-          if (!isMountedRef.current) return;
+          const event = payload.event || payload.eventType;
 
           if (event === 'INSERT') {
-            if (!streamMatchesFilters(nextStream)) return;
+            if (payload.new?.status !== 'live') return;
 
-            const [enriched] = await mergeProfiles([nextStream]);
+            const profileMap = await fetchProfiles([payload.new.host_id]);
+            const incoming = {
+              ...payload.new,
+              host: profileMap[payload.new.host_id] || {
+                id: payload.new.host_id,
+                username: 'Universe Host',
+                avatar_url: null,
+                verified_status: false,
+                is_verified: false,
+                online: true
+              }
+            };
 
-            if (!isMountedRef.current) return;
+            if (!getMatches(incoming)) return;
 
             setStreams(prev => {
-              if (prev.some(stream => stream.id === enriched.id)) return prev;
-              return sortStreams([enriched, ...prev]);
+              if (prev.some(stream => stream.id === incoming.id)) return prev;
+              return [incoming, ...prev];
             });
-
-            return;
           }
 
           if (event === 'UPDATE') {
-            if (!nextStream?.id) return;
+            const updated = payload.new;
 
-            if (!streamMatchesFilters(nextStream)) {
-              setStreams(prev => prev.filter(stream => stream.id !== nextStream.id));
+            if (!updated?.id) return;
+
+            if (updated.status !== 'live') {
+              setStreams(prev => prev.filter(stream => stream.id !== updated.id));
               return;
             }
 
             setStreams(prev => {
-              const exists = prev.some(stream => stream.id === nextStream.id);
+              const existing = prev.find(stream => stream.id === updated.id);
 
-              if (!exists) {
-                mergeProfiles([nextStream]).then(([enriched]) => {
-                  if (!isMountedRef.current) return;
+              if (!existing) {
+                if (!getMatches(updated)) return prev;
+
+                fetchProfiles([updated.host_id]).then(profileMap => {
+                  if (!mountedRef.current) return;
+
+                  const incoming = {
+                    ...updated,
+                    host: profileMap[updated.host_id] || {
+                      id: updated.host_id,
+                      username: 'Universe Host',
+                      avatar_url: null,
+                      verified_status: false,
+                      is_verified: false,
+                      online: true
+                    }
+                  };
+
+                  if (!getMatches(incoming)) return;
 
                   setStreams(current => {
-                    if (current.some(stream => stream.id === enriched.id)) return current;
-                    return sortStreams([enriched, ...current]);
+                    if (current.some(stream => stream.id === incoming.id)) return current;
+                    return [incoming, ...current];
                   });
                 });
 
                 return prev;
               }
 
-              return sortStreams(
-                prev.map(stream =>
-                  stream.id === nextStream.id
-                    ? { ...stream, ...nextStream, host: stream.host }
-                    : stream
-                )
-              );
-            });
+              const merged = { ...existing, ...updated, host: existing.host };
 
-            return;
+              if (!getMatches(merged)) {
+                return prev.filter(stream => stream.id !== updated.id);
+              }
+
+              return prev.map(stream => stream.id === updated.id ? merged : stream);
+            });
           }
 
           if (event === 'DELETE') {
-            const oldId = oldStream?.id;
-
-            if (oldId) {
-              setStreams(prev => prev.filter(stream => stream.id !== oldId));
-            }
+            const deletedId = payload.old?.id;
+            if (!deletedId) return;
+            setStreams(prev => prev.filter(stream => stream.id !== deletedId));
           }
         }
       )
@@ -551,939 +504,809 @@ const StreamDiscovery = () => {
         }
       });
 
-    realtimeChannelRef.current = channel;
-
     return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
+      const channel = realtimeChannelRef.current;
+      realtimeChannelRef.current = null;
+      if (channel) supabase.removeChannel(channel);
     };
-  }, [mergeProfiles, sortStreams, streamMatchesFilters]);
+  }, [fetchProfiles, getMatches]);
 
   useEffect(() => {
-    if (!bottomRef.current || !hasMore) return undefined;
+    const handleScroll = () => {
+      if (loading || loadingMore || !hasMore) return;
 
-    observerRef.current = new IntersectionObserver(
-      entries => {
-        const first = entries[0];
+      const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 700;
 
-        if (first?.isIntersecting && !loadingRef.current && !loading && !loadingMore) {
-          fetchStreams(page + 1, true);
-        }
-      },
-      { rootMargin: '500px' }
-    );
-
-    observerRef.current.observe(bottomRef.current);
-
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-        observerRef.current = null;
+      if (nearBottom) {
+        const nextPage = page + 1;
+        setPage(nextPage);
+        loadStreams(nextPage, true);
       }
     };
-  }, [fetchStreams, hasMore, loading, loadingMore, page]);
 
-  const refresh = async () => {
-    if (loadingRef.current) return;
-
-    setRefreshing(true);
-
-    try {
-      await fetchStreams(0, false);
-    } finally {
-      if (isMountedRef.current) setRefreshing(false);
-    }
-  };
-
-  const handleResume = (event, id) => {
-    event.preventDefault();
-    event.stopPropagation();
-    navigate(`/live/dashboard/${id}`);
-  };
-
-  const openStream = stream => {
-    if (currentUserId === stream.host_id) return;
-    navigate(`/live/watch/${stream.id}`);
-  };
-
-  const openProfile = (event, hostId) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (hostId) navigate(`/profile/${hostId}`);
-  };
-
-  const toggleFollow = async (event, stream) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!currentUserId) {
-      showNotice('Sign in to follow creators.');
-      return;
-    }
-
-    const hostId = stream.host_id;
-    const currentlyFollowing = followedIdsRef.current.has(hostId);
-
-    try {
-      if (currentlyFollowing) {
-        const { error: deleteError } = await supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', currentUserId)
-          .eq('following_id', hostId);
-
-        if (deleteError) throw deleteError;
-
-        setFollowedIds(prev => {
-          const next = new Set(prev);
-          next.delete(hostId);
-          return next;
-        });
-
-        showNotice('Unfollowed creator.');
-      } else {
-        const { error: insertError } = await supabase
-          .from('follows')
-          .insert({
-            follower_id: currentUserId,
-            following_id: hostId
-          });
-
-        if (insertError) throw insertError;
-
-        setFollowedIds(prev => new Set([...prev, hostId]));
-        showNotice('Following creator.');
-      }
-    } catch (err) {
-      console.error('Follow action failed:', err);
-      showNotice(err?.message || 'Unable to update follow.');
-    }
-  };
-
-  const hideStream = (event, streamId) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    setHiddenIds(prev => {
-      const next = new Set(prev);
-      next.add(streamId);
-
-      localStorage.setItem(
-        'made-universe-hidden-live-streams',
-        JSON.stringify([...next])
-      );
-
-      return next;
-    });
-
-    setStreams(prev => prev.filter(stream => stream.id !== streamId));
-    setMenuId(null);
-    showNotice('Live hidden from discovery.');
-  };
-
-  const reportStream = (event, stream) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setMenuId(null);
-    showNotice(`Report opened for ${stream.host?.username || 'this live stream'}.`);
-  };
-
-  const shareStream = async (event, stream) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const url = `${window.location.origin}/live/watch/${stream.id}`;
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: stream.title || 'Made Universe Live',
-          text: `Watch ${stream.host?.username || 'this creator'} live on Made Universe.`,
-          url
-        });
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(url);
-        showNotice('Live link copied.');
-      } else {
-        showNotice('Copy this live link from your browser.');
-      }
-    } catch (err) {
-      if (err?.name !== 'AbortError') {
-        showNotice('Unable to share this live.');
-      }
-    }
-  };
-
-  const toggleDataSaver = () => {
-    setDataSaver(prev => {
-      const next = !prev;
-      localStorage.setItem('made-universe-live-data-saver', String(next));
-      return next;
-    });
-  };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [page, loading, loadingMore, hasMore, loadStreams]);
 
   const categories = useMemo(() => {
     const values = streams
       .map(stream => stream.category)
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(value => String(value).trim());
 
-    return ['All', ...new Set(values)].slice(0, 30);
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
   }, [streams]);
 
   const regions = useMemo(() => {
     const values = streams
       .map(getRegion)
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(value => String(value).trim());
 
-    return ['All', ...new Set(values)].slice(0, 30);
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
   }, [streams]);
 
   const languages = useMemo(() => {
     const values = streams
       .map(getLanguage)
+      .filter(Boolean)
+      .flatMap(value => String(value).split(','))
+      .map(value => value.trim())
       .filter(Boolean);
 
-    return ['All', ...new Set(values)].slice(0, 30);
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
   }, [streams]);
 
-  const visibleStreams = useMemo(
-    () => streams.filter(streamMatchesFilters),
-    [streams, streamMatchesFilters, hiddenIds, followedIds, filters, activeTab, searchQuery]
-  );
+  const visibleStreams = useMemo(() => {
+    let result = streams.filter(stream =>
+      getMatches(stream, {
+        tab: activeTab,
+        category,
+        region,
+        language,
+        search: searchQuery
+      })
+    );
 
-  const isSearching = Boolean(searchQuery);
+    if (activeTab === 'trending') {
+      result.sort((a, b) => getScore(b) - getScore(a));
+    } else if (activeTab === 'popular') {
+      result.sort((a, b) => Number(b.viewer_count || 0) - Number(a.viewer_count || 0));
+    } else if (activeTab === 'new') {
+      result.sort((a, b) => getStreamDate(b) - getStreamDate(a));
+    } else if (activeTab === 'recommended') {
+      result.sort((a, b) => {
+        const aFollowed = followedIds.has(a.host_id) ? 1 : 0;
+        const bFollowed = followedIds.has(b.host_id) ? 1 : 0;
+        return bFollowed - aFollowed || getScore(b) - getScore(a);
+      });
+    }
 
-  const activeFilterCount = [
-    filters.category !== 'All',
-    filters.region !== 'All',
-    filters.language !== 'All',
-    filters.age !== 'All'
-  ].filter(Boolean).length;
+    return result;
+  }, [
+    streams,
+    activeTab,
+    category,
+    region,
+    language,
+    searchQuery,
+    followedIds,
+    getMatches
+  ]);
+
+  const handleRefresh = async () => {
+    if (refreshing) return;
+
+    setRefreshing(true);
+    setPage(0);
+
+    try {
+      await loadStreams(0, false);
+    } finally {
+      if (mountedRef.current) setRefreshing(false);
+    }
+  };
+
+  const handleHide = id => {
+    const next = new Set(hiddenIds);
+    next.add(id);
+
+    setHiddenIds(next);
+    saveHiddenStreams([...next]);
+    setMenuId(null);
+    setStreams(prev => prev.filter(stream => stream.id !== id));
+  };
+
+  const handleShare = async stream => {
+    const url = `${window.location.origin}/live/watch/${stream.id}`;
+    const title = stream.title || `${stream.host?.username || 'Universe Host'} is live`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title,
+          text: `Watch ${title} on Made Universe`,
+          url
+        });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        setCopiedId(stream.id);
+        setTimeout(() => {
+          if (mountedRef.current) setCopiedId(null);
+        }, 1800);
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError') console.warn('Share failed:', err.message);
+    }
+
+    setMenuId(null);
+  };
+
+  const handleCopyLink = async stream => {
+    const url = `${window.location.origin}/live/watch/${stream.id}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(stream.id);
+
+      setTimeout(() => {
+        if (mountedRef.current) setCopiedId(null);
+      }, 1800);
+    } catch (err) {
+      console.warn('Copy failed:', err.message);
+    }
+
+    setMenuId(null);
+  };
+
+  const handleFollow = async (event, stream) => {
+    event.stopPropagation();
+
+    if (!currentUserId || followingLoading === stream.host_id || currentUserId === stream.host_id) return;
+
+    setFollowingLoading(stream.host_id);
+
+    const isFollowing = followedIdsRef.current.has(stream.host_id);
+
+    try {
+      if (isFollowing) {
+        const { error: deleteError } = await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', currentUserId)
+          .eq('following_id', stream.host_id);
+
+        if (deleteError) throw deleteError;
+
+        const next = new Set(followedIdsRef.current);
+        next.delete(stream.host_id);
+        followedIdsRef.current = next;
+        setFollowedIds(next);
+      } else {
+        const { error: insertError } = await supabase
+          .from('follows')
+          .insert({
+            follower_id: currentUserId,
+            following_id: stream.host_id
+          });
+
+        if (insertError) throw insertError;
+
+        const next = new Set(followedIdsRef.current);
+        next.add(stream.host_id);
+        followedIdsRef.current = next;
+        setFollowedIds(next);
+      }
+    } catch (err) {
+      console.error('Follow action failed:', err.message);
+    } finally {
+      if (mountedRef.current) setFollowingLoading(null);
+    }
+  };
+
+  const handleReport = stream => {
+    setMenuId(null);
+
+    const reason = window.prompt(
+      `Report ${stream.host?.username || 'this live stream'}.\nEnter a reason:`
+    );
+
+    if (reason?.trim()) {
+      console.warn('Live report requested:', {
+        stream_id: stream.id,
+        reason: reason.trim()
+      });
+      window.alert('Thank you. Your report has been recorded locally for review.');
+    }
+  };
+
+  const handleStreamClick = stream => {
+    if (currentUserId === stream.host_id) {
+      navigate(`/live/dashboard/${stream.id}`);
+      return;
+    }
+
+    navigate(`/live/watch/${stream.id}`);
+  };
 
   const clearFilters = () => {
-    setFilters(DEFAULT_FILTERS);
-    setShowFilters(false);
+    setCategory('');
+    setRegion('');
+    setLanguage('');
   };
 
-  const selectTab = tab => {
-    setActiveTab(tab);
-    setSearchInput('');
-    setSearchQuery('');
-  };
+  const hasFilters = Boolean(category || region || language);
 
-  const renderStreamCard = stream => {
-    const isHost = currentUserId === stream.host_id;
-    const following = followedIds.has(stream.host_id);
-    const verified = Boolean(stream.host?.verified_status || stream.host?.is_verified);
-    const region = getRegion(stream);
-    const language = getLanguage(stream);
-    const ageRestricted = isAgeRestricted(stream);
-    const battle = hasBattle(stream);
-    const coHost = hasCoHost(stream);
-    const goal = getGoalValue(stream);
-    const thumbnail = stream.thumbnail_url;
-    const title = stream.title || 'Live on Made Universe';
+  const isVerified = profile =>
+    Boolean(profile?.is_verified || profile?.verified_status === true || profile?.verified_status === 'verified');
 
-    return (
-      <article
-        key={stream.id}
-        className="group relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 transition-all duration-300 hover:-translate-y-1 hover:border-red-500/30 hover:shadow-[0_18px_50px_rgba(0,0,0,0.45)]"
-      >
-        <button
-          type="button"
-          className="block w-full text-left"
-          onClick={() => openStream(stream)}
-        >
-          <div className="relative aspect-[4/5] overflow-hidden bg-zinc-900">
-            {thumbnail && !dataSaver ? (
-              <img
-                src={thumbnail}
-                alt=""
-                loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                onError={event => {
-                  event.currentTarget.style.display = 'none';
-                }}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-950 to-red-950/40">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full border border-red-500/30 bg-red-600/10">
-                  <Radio className="text-red-500" size={32} />
-                </div>
-              </div>
-            )}
-
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
-
-            <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-              <span className="flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-                Live
-              </span>
-
-              {battle && (
-                <span className="rounded-full bg-purple-600/90 px-2 py-1 text-[8px] font-black uppercase">
-                  PK
-                </span>
-              )}
-
-              {ageRestricted && (
-                <span className="rounded-full bg-black/80 px-2 py-1 text-[8px] font-black">
-                  18+
-                </span>
-              )}
-            </div>
-
-            <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-2">
-              <div className="flex items-center gap-1.5 rounded-full bg-black/75 px-2.5 py-1.5 backdrop-blur-md">
-                <Eye size={12} className="text-red-400" />
-                <span className="text-[9px] font-black">
-                  {formatNumber(stream.viewer_count)}
-                </span>
-              </div>
-
-              {timeAgo(stream.started_at) && (
-                <span className="rounded-full bg-black/70 px-2 py-1 text-[8px] font-bold text-zinc-300">
-                  {timeAgo(stream.started_at)}
-                </span>
-              )}
-            </div>
+  const renderSkeletons = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div key={index} className="overflow-hidden rounded-3xl border border-white/5 bg-white/[0.03] animate-pulse">
+          <div className="aspect-[16/10] bg-white/[0.06]" />
+          <div className="p-4 space-y-3">
+            <div className="h-4 w-3/4 rounded bg-white/[0.06]" />
+            <div className="h-3 w-1/2 rounded bg-white/[0.06]" />
+            <div className="h-3 w-2/3 rounded bg-white/[0.06]" />
           </div>
-
-          <div className="p-4">
-            <div className="flex items-start gap-3">
-              <button
-                type="button"
-                onClick={event => openProfile(event, stream.host_id)}
-                className="relative shrink-0"
-              >
-                <img
-                  src={stream.host?.avatar_url || 'https://via.placeholder.com/96'}
-                  alt=""
-                  loading="lazy"
-                  className="h-10 w-10 rounded-full border border-white/10 bg-zinc-900 object-cover"
-                />
-                {stream.host?.online !== false && (
-                  <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-zinc-950 bg-green-500" />
-                )}
-              </button>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1">
-                  <h3 className="truncate text-xs font-black text-white">
-                    {stream.host?.username || 'Universe Host'}
-                  </h3>
-
-                  {verified && (
-                    <ShieldCheck size={13} className="shrink-0 text-blue-400" />
-                  )}
-                </div>
-
-                <p className="mt-0.5 truncate text-[10px] text-zinc-500">
-                  {title}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={event => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setMenuId(menuId === stream.id ? null : stream.id);
-                }}
-                className="rounded-full p-1.5 text-zinc-500 transition hover:bg-white/10 hover:text-white"
-                aria-label="Stream options"
-              >
-                <MoreHorizontal size={17} />
-              </button>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {stream.category && (
-                <span className="rounded-full bg-white/5 px-2 py-1 text-[8px] font-bold uppercase text-zinc-400">
-                  {stream.category}
-                </span>
-              )}
-
-              {region && (
-                <span className="flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-[8px] font-bold text-zinc-400">
-                  <Globe2 size={9} />
-                  {region}
-                </span>
-              )}
-
-              {language && (
-                <span className="flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-[8px] font-bold text-zinc-400">
-                  <Languages size={9} />
-                  {language}
-                </span>
-              )}
-
-              {coHost && (
-                <span className="rounded-full bg-purple-500/10 px-2 py-1 text-[8px] font-bold text-purple-300">
-                  Co-host
-                </span>
-              )}
-
-              {goal > 0 && (
-                <span className="flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-1 text-[8px] font-bold text-yellow-300">
-                  <Heart size={9} />
-                  Gift goal
-                </span>
-              )}
-            </div>
-
-            <div className="mt-4 flex items-center gap-2">
-              {isHost ? (
-                <button
-                  type="button"
-                  onClick={event => handleResume(event, stream.id)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-full bg-blue-600 px-3 py-2.5 text-[9px] font-black uppercase tracking-widest transition hover:bg-blue-500 active:scale-95"
-                >
-                  <Play size={11} fill="currentColor" />
-                  Resume
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={event => toggleFollow(event, stream)}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2.5 text-[9px] font-black uppercase tracking-widest transition active:scale-95 ${
-                      following
-                        ? 'bg-white/10 text-white'
-                        : 'bg-red-600 text-white hover:bg-red-500'
-                    }`}
-                  >
-                    <UserPlus size={11} />
-                    {following ? 'Following' : 'Follow'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={event => shareStream(event, stream)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-300 transition hover:bg-white/10 hover:text-white"
-                    aria-label="Share live"
-                  >
-                    <Share2 size={13} />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </button>
-
-        {menuId === stream.id && (
-          <div className="absolute right-3 top-14 z-30 w-44 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/95 p-1 shadow-2xl backdrop-blur-xl">
-            <button
-              type="button"
-              onClick={event => hideStream(event, stream.id)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[9px] font-bold uppercase text-zinc-300 hover:bg-white/10"
-            >
-              <Ban size={13} />
-              Hide live
-            </button>
-
-            <button
-              type="button"
-              onClick={event => reportStream(event, stream)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[9px] font-bold uppercase text-zinc-300 hover:bg-white/10"
-            >
-              <ShieldCheck size={13} />
-              Report
-            </button>
-
-            <button
-              type="button"
-              onClick={event => shareStream(event, stream)}
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[9px] font-bold uppercase text-zinc-300 hover:bg-white/10"
-            >
-              <Share2 size={13} />
-              Share
-            </button>
-          </div>
-        )}
-      </article>
-    );
-  };
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-black pb-28 text-white">
+    <div className="min-h-screen bg-[#050505] text-white pb-24">
       <style>{`
         @keyframes live-pulse {
-          0%,100% { opacity: 1; transform: scale(1); }
-          50% { opacity: .55; transform: scale(.92); }
+          0%,100% { opacity:1; transform:scale(1); }
+          50% { opacity:.65; transform:scale(.92); }
         }
-        .live-dot { animation: live-pulse 1.4s ease-in-out infinite; }
-        .live-scrollbar::-webkit-scrollbar { display: none; }
-        .live-scrollbar { scrollbar-width: none; }
+        .live-dot { animation:live-pulse 1.5s ease-in-out infinite; }
+        .glass { background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.07); backdrop-filter:blur(16px); }
+        .scrollbar-hide::-webkit-scrollbar { display:none; }
+        .scrollbar-hide { -ms-overflow-style:none; scrollbar-width:none; }
       `}</style>
 
-      {notice && (
-        <div className="fixed left-1/2 top-5 z-[100] -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900/95 px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-white shadow-2xl backdrop-blur-xl">
-          {notice}
-        </div>
-      )}
-
-      <header className="sticky top-0 z-40 border-b border-white/5 bg-black/90 backdrop-blur-xl">
-        <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">
+      <header className="sticky top-0 z-40 border-b border-white/5 bg-[#050505]/90 backdrop-blur-xl">
+        <div className="mx-auto max-w-[1600px] px-4 sm:px-6 py-4">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-300 transition hover:bg-white/10 hover:text-white"
+              className="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-white/10 transition"
               aria-label="Go back"
             >
               <ArrowLeft size={18} />
             </button>
 
-            <div className="flex min-w-0 items-center gap-2">
-              <Radio className="shrink-0 text-red-500" size={22} />
+            <div className="flex items-center gap-2 min-w-fit">
+              <Radio size={21} className="text-red-500" />
               <div>
-                <h1 className="text-lg font-black italic tracking-tighter">
+                <h1 className="font-black tracking-tight text-lg leading-none">
                   UNIVERSE <span className="text-red-500">LIVE</span>
                 </h1>
-                <p className="hidden text-[8px] font-bold uppercase tracking-[0.2em] text-zinc-600 sm:block">
+                <p className="hidden sm:block text-[9px] text-zinc-500 uppercase tracking-[.2em] mt-1">
                   Discover active broadcasts
                 </p>
               </div>
             </div>
 
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={toggleDataSaver}
-                className={`hidden rounded-full border px-3 py-2 text-[8px] font-black uppercase tracking-wider sm:flex ${
-                  dataSaver
-                    ? 'border-green-500/30 bg-green-500/10 text-green-400'
-                    : 'border-white/10 bg-white/5 text-zinc-400'
-                }`}
-              >
-                {dataSaver ? 'Data Saver On' : 'Data Saver'}
-              </button>
-
-              <button
-                type="button"
-                onClick={refresh}
-                disabled={refreshing || loading}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-300 transition hover:bg-white/10 disabled:opacity-40"
-                aria-label="Refresh live streams"
-              >
-                <RefreshCw className={refreshing ? 'animate-spin' : ''} size={16} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigate('/live/go-live')}
-                className="flex items-center gap-2 rounded-full bg-red-600 px-4 py-2.5 text-[9px] font-black uppercase tracking-widest shadow-[0_0_25px_rgba(220,38,38,0.25)] transition hover:bg-red-500 active:scale-95"
-              >
-                <Video size={13} />
-                <span className="hidden sm:inline">Go Live</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.035] px-3">
-            <Search size={16} className="shrink-0 text-zinc-500" />
-
-            <input
-              value={searchInput}
-              onChange={event => setSearchInput(event.target.value)}
-              placeholder="Search creators, live titles or categories..."
-              className="min-w-0 flex-1 bg-transparent py-3 text-xs text-white outline-none placeholder:text-zinc-600"
-            />
-
-            {searchInput && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchInput('');
-                  setSearchQuery('');
-                }}
-                className="text-zinc-500 hover:text-white"
-                aria-label="Clear search"
-              >
-                <X size={15} />
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-[1500px] px-4 pt-5 sm:px-6">
-        {offline && (
-          <div className="mb-4 flex items-center justify-between rounded-2xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-            <div>
-              <p className="text-[10px] font-black uppercase text-yellow-400">
-                You are offline
-              </p>
-              <p className="mt-1 text-[9px] text-zinc-500">
-                Live discovery will reconnect automatically.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={refresh}
-              className="rounded-full bg-yellow-500/10 px-3 py-2 text-[8px] font-black uppercase text-yellow-400"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        <div className="live-scrollbar flex gap-2 overflow-x-auto pb-2">
-          {TABS.map(tab => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => selectTab(tab.id)}
-                className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-[9px] font-black uppercase tracking-wider transition ${
-                  active
-                    ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.2)]'
-                    : 'border border-white/10 bg-white/5 text-zinc-500 hover:text-white'
-                }`}
-              >
-                <Icon size={12} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="live-scrollbar mt-3 flex gap-2 overflow-x-auto pb-2">
-          <button
-            type="button"
-            onClick={() => setShowCategories(!showCategories)}
-            className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[8px] font-black uppercase ${
-              filters.category !== 'All'
-                ? 'border-red-500/40 bg-red-500/10 text-red-400'
-                : 'border-white/10 bg-white/5 text-zinc-500'
-            }`}
-          >
-            <Radio size={11} />
-            {filters.category === 'All' ? 'Categories' : filters.category}
-            <ChevronDown size={11} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowRegion(!showRegion)}
-            className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[8px] font-black uppercase ${
-              filters.region !== 'All'
-                ? 'border-red-500/40 bg-red-500/10 text-red-400'
-                : 'border-white/10 bg-white/5 text-zinc-500'
-            }`}
-          >
-            <Globe2 size={11} />
-            {filters.region === 'All' ? 'Region' : filters.region}
-            <ChevronDown size={11} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowLanguage(!showLanguage)}
-            className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[8px] font-black uppercase ${
-              filters.language !== 'All'
-                ? 'border-red-500/40 bg-red-500/10 text-red-400'
-                : 'border-white/10 bg-white/5 text-zinc-500'
-            }`}
-          >
-            <Languages size={11} />
-            {filters.language === 'All' ? 'Language' : filters.language}
-            <ChevronDown size={11} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[8px] font-black uppercase ${
-              activeFilterCount
-                ? 'border-red-500/40 bg-red-500/10 text-red-400'
-                : 'border-white/10 bg-white/5 text-zinc-500'
-            }`}
-          >
-            <Filter size={11} />
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[7px] text-white">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleDataSaver}
-            className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-[8px] font-black uppercase ${
-              dataSaver
-                ? 'border-green-500/30 bg-green-500/10 text-green-400'
-                : 'border-white/10 bg-white/5 text-zinc-500'
-            }`}
-          >
-            <Zap size={11} />
-            {dataSaver ? 'Saver On' : 'Low Data'}
-          </button>
-        </div>
-
-        {(showCategories || showRegion || showLanguage || showFilters) && (
-          <div className="mt-3 rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-            {showCategories && (
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                    Categories
-                  </p>
-                  <button type="button" onClick={() => setShowCategories(false)}>
-                    <X size={13} className="text-zinc-600" />
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {categories.map(category => (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => {
-                        setFilters(prev => ({ ...prev, category }));
-                        setShowCategories(false);
-                      }}
-                      className={`rounded-full px-3 py-2 text-[8px] font-bold ${
-                        filters.category === category
-                          ? 'bg-red-600 text-white'
-                          : 'bg-white/5 text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {showRegion && (
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                    Regions / Districts
-                  </p>
-                  <button type="button" onClick={() => setShowRegion(false)}>
-                    <X size={13} className="text-zinc-600" />
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {regions.map(region => (
-                    <button
-                      key={region}
-                      type="button"
-                      onClick={() => {
-                        setFilters(prev => ({ ...prev, region }));
-                        setShowRegion(false);
-                      }}
-                      className={`rounded-full px-3 py-2 text-[8px] font-bold ${
-                        filters.region === region
-                          ? 'bg-red-600 text-white'
-                          : 'bg-white/5 text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      {region}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {showLanguage && (
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                    Languages
-                  </p>
-                  <button type="button" onClick={() => setShowLanguage(false)}>
-                    <X size={13} className="text-zinc-600" />
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {languages.map(language => (
-                    <button
-                      key={language}
-                      type="button"
-                      onClick={() => {
-                        setFilters(prev => ({ ...prev, language }));
-                        setShowLanguage(false);
-                      }}
-                      className={`rounded-full px-3 py-2 text-[8px] font-bold ${
-                        filters.language === language
-                          ? 'bg-red-600 text-white'
-                          : 'bg-white/5 text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      {language}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {showFilters && (
-              <div className="mt-4 border-t border-white/5 pt-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                    Content filters
-                  </p>
-
-                  {activeFilterCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="text-[8px] font-black uppercase text-red-400"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {['All', 'All ages', '18+'].map(age => (
-                    <button
-                      key={age}
-                      type="button"
-                      onClick={() => setFilters(prev => ({ ...prev, age }))}
-                      className={`rounded-full px-3 py-2 text-[8px] font-bold ${
-                        filters.age === age
-                          ? 'bg-red-600 text-white'
-                          : 'bg-white/5 text-zinc-400'
-                      }`}
-                    >
-                      {age}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="mt-6 flex items-center justify-between">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-red-500">
-              {isSearching ? 'Search results' : activeTab}
-            </p>
-            <p className="mt-1 text-[10px] text-zinc-600">
-              {visibleStreams.length} live broadcast{visibleStreams.length === 1 ? '' : 's'}
-            </p>
-          </div>
-
-          {dataSaver && (
-            <div className="flex items-center gap-1.5 rounded-full border border-green-500/20 bg-green-500/5 px-3 py-1.5 text-[8px] font-black uppercase text-green-400">
-              <Zap size={10} />
-              Low data
-            </div>
-          )}
-        </div>
-
-        {error && !loading && (
-          <div className="mt-6 rounded-3xl border border-red-500/20 bg-red-500/5 p-8 text-center">
-            <Video size={34} className="mx-auto text-red-500/60" />
-            <h2 className="mt-4 text-sm font-black uppercase">
-              Live discovery unavailable
-            </h2>
-            <p className="mx-auto mt-2 max-w-md text-[10px] leading-5 text-zinc-500">
-              {error}
-            </p>
-            <button
-              type="button"
-              onClick={refresh}
-              className="mt-5 rounded-full bg-red-600 px-5 py-2.5 text-[9px] font-black uppercase tracking-widest"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-            {Array.from({ length: 12 }).map((_, index) => (
-              <SkeletonCard key={index} />
-            ))}
-          </div>
-        ) : !error && visibleStreams.length > 0 ? (
-          <>
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-              {visibleStreams.map(renderStreamCard)}
-            </div>
-
-            <div ref={bottomRef} className="flex min-h-24 items-center justify-center">
-              {loadingMore && (
-                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-zinc-600">
-                  <RefreshCw size={12} className="animate-spin" />
-                  Loading more lives
-                </div>
-              )}
-
-              {!hasMore && visibleStreams.length > 0 && (
-                <p className="text-[8px] font-black uppercase tracking-[0.25em] text-zinc-800">
-                  You reached the end
-                </p>
-              )}
-            </div>
-          </>
-        ) : !error ? (
-          <div className="mt-6 rounded-[32px] border border-white/5 bg-white/[0.02] px-6 py-20 text-center">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-white/5 bg-white/[0.03]">
-              {isSearching ? (
-                <Search size={30} className="text-zinc-700" />
-              ) : (
-                <Radio size={30} className="text-zinc-700" />
-              )}
-            </div>
-
-            <h2 className="mt-5 text-sm font-black uppercase tracking-wide text-zinc-300">
-              {isSearching ? 'No live results' : 'No active lives'}
-            </h2>
-
-            <p className="mx-auto mt-2 max-w-sm text-[10px] leading-5 text-zinc-600">
-              {isSearching
-                ? 'Try another creator name, title, category, or clear your filters.'
-                : activeTab === 'following'
-                  ? 'Creators you follow are not live right now.'
-                  : 'There are no public live broadcasts matching your current filters.'}
-            </p>
-
-            <div className="mt-5 flex justify-center gap-2">
-              {(isSearching || activeFilterCount > 0) && (
+            <div className="relative flex-1 max-w-2xl mx-auto">
+              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
+              <input
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                placeholder="Search creators, live titles or categories..."
+                className="w-full h-11 rounded-2xl bg-white/[0.05] border border-white/[0.07] pl-11 pr-10 outline-none text-sm placeholder:text-zinc-600 focus:border-red-500/40 transition"
+              />
+              {searchInput && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchInput('');
                     setSearchQuery('');
-                    clearFilters();
-                    setActiveTab('recommended');
                   }}
-                  className="rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-[9px] font-black uppercase tracking-widest text-zinc-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
                 >
-                  Clear search
+                  <X size={15} />
                 </button>
               )}
+            </div>
 
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="hidden sm:flex w-10 h-10 rounded-full glass items-center justify-center hover:bg-white/10 transition"
+              title="Refresh"
+            >
+              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/live/go-live')}
+              className="h-10 px-4 sm:px-5 rounded-full bg-red-600 hover:bg-red-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2 transition active:scale-95"
+            >
+              <Video size={14} />
+              <span className="hidden sm:inline">Go Live</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1600px] px-4 sm:px-6">
+        {offline && (
+          <div className="mt-4 flex items-center gap-2 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-xs text-yellow-300">
+            <Wifi size={15} />
+            You're offline. Showing the latest available live streams.
+          </div>
+        )}
+
+        <section className="pt-7">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+            {tabs.map(tab => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 whitespace-nowrap px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider transition ${
+                    active
+                      ? 'bg-white text-black'
+                      : 'bg-white/[0.04] text-zinc-400 hover:text-white hover:bg-white/[0.08]'
+                  }`}
+                >
+                  <Icon size={13} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 mt-4 overflow-x-auto scrollbar-hide pb-1">
+            <button
+              type="button"
+              onClick={() => setShowFilters(value => !value)}
+              className={`flex items-center gap-2 whitespace-nowrap px-4 py-2.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition ${
+                showFilters || hasFilters
+                  ? 'border-red-500/40 bg-red-500/10 text-red-400'
+                  : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:text-white'
+              }`}
+            >
+              <SlidersHorizontal size={14} />
+              Filters
+              {hasFilters && (
+                <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-[8px]">
+                  {[category, region, language].filter(Boolean).length}
+                </span>
+              )}
+            </button>
+
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="bg-white/[0.04] border border-white/10 text-zinc-300 rounded-xl px-3 py-2.5 text-[10px] font-bold outline-none"
+            >
+              <option value="">All categories</option>
+              {categories.map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
+
+            <select
+              value={region}
+              onChange={e => setRegion(e.target.value)}
+              className="bg-white/[0.04] border border-white/10 text-zinc-300 rounded-xl px-3 py-2.5 text-[10px] font-bold outline-none"
+            >
+              <option value="">All regions</option>
+              {regions.map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
+
+            <select
+              value={language}
+              onChange={e => setLanguage(e.target.value)}
+              className="bg-white/[0.04] border border-white/10 text-zinc-300 rounded-xl px-3 py-2.5 text-[10px] font-bold outline-none"
+            >
+              <option value="">All languages</option>
+              {languages.map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
+
+            {hasFilters && (
               <button
                 type="button"
-                onClick={() => navigate('/live/go-live')}
-                className="rounded-full bg-red-600 px-5 py-2.5 text-[9px] font-black uppercase tracking-widest"
+                onClick={clearFilters}
+                className="px-3 py-2.5 rounded-xl text-[10px] font-black uppercase text-red-400 hover:bg-red-500/10"
               >
-                Go Live
+                Clear
               </button>
+            )}
+          </div>
+
+          {showFilters && (
+            <div className="mt-3 glass rounded-2xl p-4 flex flex-wrap gap-3">
+              <div className="flex items-center gap-2 text-zinc-400 text-[10px] font-bold uppercase">
+                <Filter size={14} />
+                Discovery filters
+              </div>
+
+              <div className="flex items-center gap-2 text-zinc-500 text-[10px]">
+                <Globe2 size={13} />
+                Region
+              </div>
+
+              <div className="flex items-center gap-2 text-zinc-500 text-[10px]">
+                <Languages size={13} />
+                Language
+              </div>
+
+              <div className="flex items-center gap-2 text-zinc-500 text-[10px]">
+                <BadgeCheck size={13} />
+                Verified creators are highlighted
+              </div>
+
+              <div className="flex items-center gap-2 text-zinc-500 text-[10px]">
+                <Wifi size={13} />
+                Discovery uses lightweight previews
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="pt-7">
+          <div className="flex items-end justify-between mb-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-black tracking-tight">
+                  {searchQuery ? `Results for "${searchQuery}"` : tabs.find(tab => tab.id === activeTab)?.label}
+                </h2>
+                {searchQuery && <Search size={17} className="text-red-500" />}
+              </div>
+
+              <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[.18em] mt-1">
+                {visibleStreams.length} active broadcast{visibleStreams.length === 1 ? '' : 's'}
+              </p>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2 text-[9px] text-zinc-600 uppercase font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 live-dot" />
+              Live updates enabled
             </div>
           </div>
-        ) : null}
+
+          {loading && renderSkeletons()}
+
+          {!loading && error && (
+            <div className="rounded-3xl border border-red-500/20 bg-red-500/[0.04] p-10 text-center">
+              <Radio size={40} className="mx-auto text-red-500/60 mb-4" />
+              <h3 className="font-black text-lg">Live Discovery unavailable</h3>
+              <p className="text-sm text-zinc-500 mt-2 max-w-md mx-auto">{error}</p>
+              <button
+                type="button"
+                onClick={() => loadStreams(0, false)}
+                className="mt-5 px-5 py-2.5 rounded-full bg-red-600 hover:bg-red-500 text-[10px] font-black uppercase tracking-widest"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && visibleStreams.length === 0 && (
+            <div className="rounded-3xl border border-white/5 bg-white/[0.02] p-16 text-center">
+              {searchQuery ? (
+                <>
+                  <Search size={42} className="mx-auto text-zinc-800 mb-4" />
+                  <h3 className="font-black text-lg">No live results</h3>
+                  <p className="text-sm text-zinc-600 mt-2">Try another creator, title or category.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput('');
+                      setSearchQuery('');
+                    }}
+                    className="mt-5 px-5 py-2.5 rounded-full bg-white text-black text-[10px] font-black uppercase tracking-widest"
+                  >
+                    Clear search
+                  </button>
+                </>
+              ) : activeTab === 'following' ? (
+                <>
+                  <Heart size={42} className="mx-auto text-zinc-800 mb-4" />
+                  <h3 className="font-black text-lg">No followed creators are live</h3>
+                  <p className="text-sm text-zinc-600 mt-2">Discover other live creators while you wait.</p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('recommended')}
+                    className="mt-5 px-5 py-2.5 rounded-full bg-white text-black text-[10px] font-black uppercase tracking-widest"
+                  >
+                    Discover lives
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Video size={42} className="mx-auto text-zinc-800 mb-4" />
+                  <h3 className="font-black text-lg">No active lives found</h3>
+                  <p className="text-sm text-zinc-600 mt-2">There are no broadcasts matching these filters right now.</p>
+                  {hasFilters && (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="mt-5 px-5 py-2.5 rounded-full bg-white text-black text-[10px] font-black uppercase tracking-widest"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {!loading && !error && visibleStreams.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {visibleStreams.map(stream => {
+                const isHost = currentUserId === stream.host_id;
+                const verified = isVerified(stream.host);
+                const regionName = getRegion(stream);
+                const languageName = getLanguage(stream);
+                const battle = isBattleActive(stream);
+                const giftGoal = hasGiftGoal(stream);
+                const ageRestricted = isAgeRestricted(stream);
+                const followed = followedIds.has(stream.host_id);
+                const thumbnail = stream.thumbnail_url;
+
+                return (
+                  <article
+                    key={stream.id}
+                    className="group relative overflow-hidden rounded-3xl border border-white/[0.07] bg-[#0b0b0b] hover:border-white/[0.14] transition-all duration-300"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleStreamClick(stream)}
+                      className="block w-full text-left"
+                    >
+                      <div className="relative aspect-[16/10] overflow-hidden bg-zinc-900">
+                        {thumbnail ? (
+                          <img
+                            src={thumbnail}
+                            alt={stream.title || 'Live stream'}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-950 to-red-950/30">
+                            <Radio size={40} className="text-zinc-700" />
+                          </div>
+                        )}
+
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
+
+                        <div className="absolute top-3 left-3 flex items-center gap-2">
+                          <span className="flex items-center gap-1.5 bg-red-600 px-2.5 py-1 rounded-lg text-[8px] font-black tracking-widest">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white live-dot" />
+                            LIVE
+                          </span>
+
+                          {ageRestricted && (
+                            <span className="px-2 py-1 rounded-lg bg-black/70 backdrop-blur text-[8px] font-black text-yellow-300">
+                              18+
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+                          {battle && (
+                            <span className="px-2 py-1 rounded-lg bg-purple-600/90 text-[8px] font-black uppercase">
+                              PK Battle
+                            </span>
+                          )}
+
+                          {giftGoal && (
+                            <span className="px-2 py-1 rounded-lg bg-yellow-500/90 text-black text-[8px] font-black uppercase">
+                              Gift Goal
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-[9px] font-bold text-white">
+                            <Eye size={13} />
+                            {formatNumber(stream.viewer_count)} watching
+                          </span>
+
+                          <span className="text-[9px] text-zinc-300 font-bold">
+                            {formatStarted(stream.started_at)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="relative shrink-0">
+                            <img
+                              src={stream.host?.avatar_url || 'https://via.placeholder.com/100'}
+                              alt=""
+                              loading="lazy"
+                              className="w-11 h-11 rounded-full object-cover border border-white/10 bg-zinc-900"
+                            />
+
+                            {stream.host?.online !== false && (
+                              <span className="absolute right-0 bottom-0 w-3 h-3 rounded-full bg-green-500 border-2 border-[#0b0b0b]" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <h3 className="font-black text-sm truncate">
+                                {stream.host?.username || 'Universe Host'}
+                              </h3>
+
+                              {verified && <BadgeCheck size={14} className="shrink-0 text-blue-400 fill-blue-400/10" />}
+                            </div>
+
+                            <p className="text-[10px] text-zinc-500 mt-0.5 truncate">
+                              {stream.title || 'Live on Made Universe'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-1.5">
+                          {stream.category && (
+                            <span className="px-2 py-1 rounded-lg bg-white/[0.05] text-[8px] font-bold text-zinc-400 uppercase truncate max-w-[130px]">
+                              {stream.category}
+                            </span>
+                          )}
+
+                          {regionName && (
+                            <span className="px-2 py-1 rounded-lg bg-white/[0.05] text-[8px] font-bold text-zinc-500 truncate max-w-[120px]">
+                              {regionName}
+                            </span>
+                          )}
+
+                          {languageName && (
+                            <span className="px-2 py-1 rounded-lg bg-white/[0.05] text-[8px] font-bold text-zinc-500 truncate max-w-[100px]">
+                              {languageName}
+                            </span>
+                          )}
+
+                          {stream.co_host_id && (
+                            <span className="px-2 py-1 rounded-lg bg-blue-500/10 text-[8px] font-bold text-blue-400">
+                              CO-HOST
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+
+                    <div className="px-4 pb-4 flex items-center gap-2">
+                      {isHost ? (
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            navigate(`/live/dashboard/${stream.id}`);
+                          }}
+                          className="flex-1 h-9 rounded-xl bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest transition"
+                        >
+                          <Play size={12} fill="currentColor" />
+                          Resume
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={e => handleFollow(e, stream)}
+                            disabled={followingLoading === stream.host_id}
+                            className={`flex-1 h-9 rounded-xl flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest transition ${
+                              followed
+                                ? 'bg-white/[0.07] text-white'
+                                : 'bg-red-600 hover:bg-red-500'
+                            }`}
+                          >
+                            {followed ? <Heart size={12} fill="currentColor" /> : <UserPlus size={12} />}
+                            {followed ? 'Following' : 'Follow'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              handleShare(stream);
+                            }}
+                            className="w-9 h-9 rounded-xl glass flex items-center justify-center hover:bg-white/10 transition"
+                            title="Share"
+                          >
+                            <Share2 size={14} />
+                          </button>
+                        </>
+                      )}
+
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setMenuId(menuId === stream.id ? null : stream.id);
+                          }}
+                          className="w-9 h-9 rounded-xl glass flex items-center justify-center hover:bg-white/10 transition"
+                          title="More"
+                        >
+                          <MoreHorizontal size={15} />
+                        </button>
+
+                        {menuId === stream.id && (
+                          <div className="absolute right-0 bottom-11 z-30 w-44 rounded-2xl border border-white/10 bg-[#111]/95 backdrop-blur-xl shadow-2xl p-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLink(stream)}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[10px] font-bold text-zinc-300 hover:bg-white/10"
+                            >
+                              <Copy size={14} />
+                              {copiedId === stream.id ? 'Copied' : 'Copy link'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleShare(stream)}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[10px] font-bold text-zinc-300 hover:bg-white/10"
+                            >
+                              <Share2 size={14} />
+                              Share live
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleHide(stream.id)}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[10px] font-bold text-zinc-300 hover:bg-white/10"
+                            >
+                              <X size={14} />
+                              Hide live
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleReport(stream)}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-[10px] font-bold text-red-400 hover:bg-red-500/10"
+                            >
+                              <Bell size={14} />
+                              Report live
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {loadingMore && (
+            <div className="flex justify-center py-10">
+              <div className="flex items-center gap-3 text-zinc-500 text-[10px] font-black uppercase tracking-widest">
+                <RefreshCw size={15} className="animate-spin" />
+                Loading more lives
+              </div>
+            </div>
+          )}
+
+          {!loading && !loadingMore && visibleStreams.length > 0 && !hasMore && (
+            <div className="py-12 text-center text-[9px] text-zinc-700 font-black uppercase tracking-[.25em]">
+              You've reached the end of live broadcasts
+            </div>
+          )}
+        </section>
       </main>
+
+      <button
+        type="button"
+        onClick={handleRefresh}
+        className="fixed bottom-6 right-5 sm:hidden z-30 w-12 h-12 rounded-full bg-red-600 shadow-[0_10px_35px_rgba(220,38,38,.35)] flex items-center justify-center"
+        aria-label="Refresh live streams"
+      >
+        <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+      </button>
     </div>
   );
 };
