@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -6,6 +5,44 @@ const DEFAULT_DURATION = 3000;
 const MAX_QUEUE = 30;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const giftIcons = {
+  rose: '🌹',
+  fire: '🔥',
+  weights: '💪',
+  clap: '👏',
+  star: '⭐',
+  heart: '❤️',
+  pizza: '🍕',
+  burger: '🍔',
+  diamond: '💎',
+  balloon: '🎈',
+  crown: '👑',
+  guitar: '🎸',
+  car: '🚗',
+  drone: '🚁',
+  dj: '🎧',
+  castle: '🏰',
+  lion: '🦁',
+  money: '💰',
+  helicopter: '🚁',
+  ship: '🚢',
+  dragon: '🐉',
+  universe: '🌌',
+  space: '🚀',
+  world: '🌍',
+  xwing: '✈️',
+  cow: '🐄',
+  whale: '🐋',
+  horse: '🐎',
+  spider: '🕷️',
+  wolf: '🐺',
+  shark: '🦈',
+  bunny: '🐰',
+  stag: '🦌'
+};
+
+const clampQuantity = value => Math.min(Math.max(value, 1), 100);
 
 const getDuration = gift => {
   const value = Number(gift?.animation_duration ?? gift?.gift_animation_duration ?? gift?.sound_duration ?? gift?.gift_sound_duration);
@@ -15,7 +52,7 @@ const getDuration = gift => {
 
 const getQuantity = gift => {
   const value = Number(gift?.quantity);
-  return Number.isFinite(value) && value > 0 ? value : 1;
+  return Number.isFinite(value) && value > 0 ? clampQuantity(value) : 1;
 };
 
 const getPrice = gift => {
@@ -27,6 +64,19 @@ const getPrice = gift => {
 
   return 0;
 };
+
+const getGiftId = gift => String(gift?.gift_id || gift?.id || '').trim().toLowerCase();
+
+const getIcon = gift => {
+  const giftId = getGiftId(gift);
+  return giftIcons[giftId] || gift?.gift_icon || gift?.icon || '🎁';
+};
+
+const getGiftName = gift => gift?.gift_name || gift?.giftName || 'Gift';
+const getUsername = gift => gift?.username || gift?.sender_username || 'Someone';
+const getAvatar = gift => gift?.avatar || gift?.avatar_url || gift?.sender_avatar || '';
+const getSound = gift => gift?.gift_sound || gift?.sound || '';
+const getImage = gift => gift?.gift_image || gift?.image || '';
 
 const getRarity = gift => {
   const value = String(gift?.rarity ?? gift?.gift_rarity ?? 'common').toLowerCase();
@@ -51,13 +101,6 @@ const getAnimation = gift => {
 
   return 'float';
 };
-
-const getIcon = gift => gift?.gift_icon || gift?.icon || '🎁';
-const getGiftName = gift => gift?.gift_name || gift?.giftName || 'Gift';
-const getUsername = gift => gift?.username || gift?.sender_username || 'Someone';
-const getAvatar = gift => gift?.avatar || gift?.avatar_url || gift?.sender_avatar || '';
-const getSound = gift => gift?.gift_sound || gift?.sound || '';
-const getImage = gift => gift?.gift_image || gift?.image || '';
 
 const getKey = gift => {
   if (gift?.id) return String(gift.id);
@@ -154,9 +197,9 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
   const icon = getIcon(gift);
   const animation = getAnimation(gift);
   const config = rarityConfig[rarity] || rarityConfig.common;
-
   const quantityBoost = quantity >= 100 ? 1.35 : quantity >= 10 ? 1.15 : 1;
   const iconSize = Math.round(62 * (isBig ? 1.35 : 1) * config.scale * quantityBoost);
+  const animationConfig = animationVariants[animation] || animationVariants.float;
 
   const visualClass = [
     'relative',
@@ -170,8 +213,6 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
     isBig ? 'bg-black/20' : 'bg-black/10',
     'backdrop-blur-sm'
   ].join(' ');
-
-  const animationConfig = animationVariants[animation] || animationVariants.float;
 
   return (
     <div className="relative flex items-center justify-center shrink-0 w-[150px] h-[150px] sm:w-[190px] sm:h-[190px]" aria-hidden="true">
@@ -194,25 +235,18 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
         />
       )}
 
-      {!lowData &&
-        ['sparkle', 'grand', 'rain'].includes(animation) &&
-        sparklePositions.map((position, index) => (
-          <motion.span
-            key={index}
-            className="absolute text-sm sm:text-lg"
-            style={position}
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: [0, 1, 0], scale: [0, 1, 0.4], y: [10, -12, 8] }}
-            transition={{
-              duration: 1.4,
-              delay: index * 0.08,
-              repeat: Math.max(1, Math.floor(duration / 1400) - 1),
-              ease: 'easeInOut'
-            }}
-          >
-            ✦
-          </motion.span>
-        ))}
+      {!lowData && ['sparkle', 'grand', 'rain'].includes(animation) && sparklePositions.map((position, index) => (
+        <motion.span
+          key={index}
+          className="absolute text-sm sm:text-lg"
+          style={position}
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{ opacity: [0, 1, 0], scale: [0, 1, 0.4], y: [10, -12, 8] }}
+          transition={{ duration: 1.4, delay: index * 0.08, repeat: Math.max(1, Math.floor(duration / 1400) - 1), ease: 'easeInOut' }}
+        >
+          ✦
+        </motion.span>
+      ))}
 
       <motion.div
         variants={animationConfig}
@@ -226,9 +260,14 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
         {image && !lowData ? (
           <img src={image} alt="" className="w-[72%] h-[72%] object-contain drop-shadow-2xl" loading="eager" decoding="async" />
         ) : (
-          <span className="leading-none select-none" style={{ fontSize: iconSize }}>
+          <motion.span
+            className="leading-none select-none"
+            style={{ fontSize: iconSize }}
+            animate={quantity >= 100 ? { scale: [1, 1.12, 1], rotate: [-2, 2, -2] } : undefined}
+            transition={quantity >= 100 ? { duration: 0.7, repeat: Infinity, ease: 'easeInOut' } : undefined}
+          >
             {icon}
-          </span>
+          </motion.span>
         )}
       </motion.div>
     </div>
@@ -238,14 +277,12 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
 const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
   const [queue, setQueue] = useState([]);
   const [activeGift, setActiveGift] = useState(null);
-
   const audioRef = useRef(null);
   const timerRef = useRef(null);
   const mountedRef = useRef(true);
 
   const stopAudio = useCallback(() => {
     const audio = audioRef.current;
-
     if (!audio) return;
 
     try {
@@ -272,28 +309,23 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
     }
   }, [onComplete, stopAudio]);
 
-  const playSound = useCallback(
-    soundUrl => {
-      stopAudio();
+  const playSound = useCallback(soundUrl => {
+    stopAudio();
+    if (!soundUrl) return;
 
-      if (!soundUrl) return;
+    try {
+      const audio = new Audio(soundUrl);
+      audio.preload = 'auto';
+      audio.volume = 1;
+      audioRef.current = audio;
 
-      try {
-        const audio = new Audio(soundUrl);
+      const promise = audio.play();
 
-        audio.preload = 'auto';
-        audio.volume = 1;
-        audioRef.current = audio;
-
-        const promise = audio.play();
-
-        if (promise && typeof promise.catch === 'function') {
-          promise.catch(() => {});
-        }
-      } catch {}
-    },
-    [stopAudio]
-  );
+      if (promise && typeof promise.catch === 'function') {
+        promise.catch(() => {});
+      }
+    } catch {}
+  }, [stopAudio]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -320,12 +352,7 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
 
     setQueue(previousQueue => {
       const nextQueue = [...previousQueue, incomingGift];
-
-      if (nextQueue.length <= MAX_QUEUE) {
-        return nextQueue;
-      }
-
-      return nextQueue.slice(nextQueue.length - MAX_QUEUE);
+      return nextQueue.length <= MAX_QUEUE ? nextQueue : nextQueue.slice(nextQueue.length - MAX_QUEUE);
     });
   }, [gift]);
 
@@ -337,7 +364,6 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
 
     setQueue(previousQueue => previousQueue.slice(1));
     setActiveGift(nextGift);
-
     playSound(getSound(nextGift));
 
     timerRef.current = setTimeout(() => {
@@ -509,13 +535,7 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
           >
             <div className={'relative w-11 h-11 sm:w-12 sm:h-12 rounded-full p-[2px] shrink-0 ' + avatarRing}>
               {avatar ? (
-                <img
-                  src={avatar}
-                  alt=""
-                  className="w-full h-full rounded-full object-cover bg-black/30"
-                  loading="eager"
-                  decoding="async"
-                />
+                <img src={avatar} alt="" className="w-full h-full rounded-full object-cover bg-black/30" loading="eager" decoding="async" />
               ) : (
                 <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-lg" aria-hidden="true">
                   👤
@@ -535,7 +555,7 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
               </div>
 
               <div className="flex items-center gap-2 mt-1 min-w-0">
-                <span className="text-base shrink-0" aria-hidden="true">
+                <span className="text-2xl shrink-0 leading-none" aria-hidden="true">
                   {icon}
                 </span>
 
