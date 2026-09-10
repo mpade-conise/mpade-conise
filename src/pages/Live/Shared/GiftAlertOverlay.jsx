@@ -30,24 +30,24 @@ const getPrice = gift => {
 
 const getRarity = gift => {
   const value = String(gift?.rarity ?? gift?.gift_rarity ?? 'common').toLowerCase();
-  if (value === 'rare' || value === 'epic' || value === 'legendary') return value;
+
+  if (value === 'rare') return 'rare';
+  if (value === 'epic') return 'epic';
+  if (value === 'legendary') return 'legendary';
+
   return 'common';
 };
 
 const getAnimation = gift => {
   const value = String(gift?.animation ?? gift?.gift_animation ?? 'float').toLowerCase();
 
-  if (
-    value === 'bounce' ||
-    value === 'pulse' ||
-    value === 'sparkle' ||
-    value === 'flame' ||
-    value === 'slide' ||
-    value === 'rain' ||
-    value === 'grand'
-  ) {
-    return value;
-  }
+  if (value === 'bounce') return 'bounce';
+  if (value === 'pulse') return 'pulse';
+  if (value === 'sparkle') return 'sparkle';
+  if (value === 'flame') return 'flame';
+  if (value === 'slide') return 'slide';
+  if (value === 'rain') return 'rain';
+  if (value === 'grand') return 'grand';
 
   return 'float';
 };
@@ -153,7 +153,7 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
   const image = getImage(gift);
   const icon = getIcon(gift);
   const animation = getAnimation(gift);
-  const config = rarityConfig[rarity];
+  const config = rarityConfig[rarity] || rarityConfig.common;
 
   const quantityBoost = quantity >= 100 ? 1.35 : quantity >= 10 ? 1.15 : 1;
   const iconSize = Math.round(62 * (isBig ? 1.35 : 1) * config.scale * quantityBoost);
@@ -171,11 +171,10 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
     'backdrop-blur-sm'
   ].join(' ');
 
+  const animationConfig = animationVariants[animation] || animationVariants.float;
+
   return (
-    <div
-      className="relative flex items-center justify-center shrink-0 w-[150px] h-[150px] sm:w-[190px] sm:h-[190px]"
-      aria-hidden="true"
-    >
+    <div className="relative flex items-center justify-center shrink-0 w-[150px] h-[150px] sm:w-[190px] sm:h-[190px]" aria-hidden="true">
       {!lowData && (
         <motion.div
           className="absolute inset-2 rounded-full bg-white/5 blur-2xl"
@@ -216,7 +215,7 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
         ))}
 
       <motion.div
-        variants={animationVariants[animation]}
+        variants={animationConfig}
         initial="initial"
         animate="animate"
         exit="exit"
@@ -225,18 +224,9 @@ const GiftVisual = ({ gift, duration, isBig, rarity, quantity, lowData }) => {
         style={{ width: isBig ? 142 : 118, height: isBig ? 142 : 118 }}
       >
         {image && !lowData ? (
-          <img
-            src={image}
-            alt=""
-            className="w-[72%] h-[72%] object-contain drop-shadow-2xl"
-            loading="eager"
-            decoding="async"
-          />
+          <img src={image} alt="" className="w-[72%] h-[72%] object-contain drop-shadow-2xl" loading="eager" decoding="async" />
         ) : (
-          <span
-            className="leading-none select-none"
-            style={{ fontSize: iconSize }}
-          >
+          <span className="leading-none select-none" style={{ fontSize: iconSize }}>
             {icon}
           </span>
         )}
@@ -381,7 +371,7 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
       animation,
       duration,
       isBig,
-      config: rarityConfig[rarity]
+      config: rarityConfig[rarity] || rarityConfig.common
     };
   }, [activeGift]);
 
@@ -392,14 +382,25 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
   const avatar = getAvatar(activeGift);
   const icon = getIcon(activeGift);
 
-  const avatarRing =
-    data.rarity === 'legendary'
-      ? 'bg-yellow-300'
-      : data.rarity === 'epic'
-        ? 'bg-purple-400'
-        : data.rarity === 'rare'
-          ? 'bg-blue-400'
-          : 'bg-white/30';
+  const accessibilityLabel = [
+    username,
+    'sent',
+    String(data.quantity),
+    name,
+    'gift worth',
+    String(data.price),
+    'coins'
+  ].join(' ');
+
+  let avatarRing = 'bg-white/30';
+
+  if (data.rarity === 'legendary') {
+    avatarRing = 'bg-yellow-300';
+  } else if (data.rarity === 'epic') {
+    avatarRing = 'bg-purple-400';
+  } else if (data.rarity === 'rare') {
+    avatarRing = 'bg-blue-400';
+  }
 
   const containerClass = [
     'absolute',
@@ -441,6 +442,14 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
     data.isBig ? 'gap-1' : 'gap-0'
   ].join(' ');
 
+  const quantityMessage = data.quantity >= 100
+    ? String(data.quantity) + '× MEGA GIFT'
+    : String(data.quantity) + '× GIFT';
+
+  const quantityClass = data.quantity >= 100
+    ? 'mt-1 font-black uppercase tracking-widest text-yellow-300 text-lg'
+    : 'mt-1 font-black uppercase tracking-widest text-white text-xs';
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -451,7 +460,7 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
         className={containerClass}
         role="status"
         aria-live="polite"
-        aria-label={`${username} sent ${data.quantity} ${name} gift worth ${data.price} coins`}
+        aria-label={accessibilityLabel}
       >
         {data.isBig && (
           <motion.div
@@ -498,7 +507,7 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
             transition={{ duration: 0.45, delay: 0.08 }}
             className={cardClass}
           >
-            <div className={`relative w-11 h-11 sm:w-12 sm:h-12 rounded-full p-[2px] shrink-0 ${avatarRing}`}>
+            <div className={'relative w-11 h-11 sm:w-12 sm:h-12 rounded-full p-[2px] shrink-0 ' + avatarRing}>
               {avatar ? (
                 <img
                   src={avatar}
@@ -508,10 +517,7 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
                   decoding="async"
                 />
               ) : (
-                <div
-                  className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-lg"
-                  aria-hidden="true"
-                >
+                <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-lg" aria-hidden="true">
                   👤
                 </div>
               )}
@@ -552,16 +558,10 @@ const GiftAlertOverlay = ({ gift, lowData = false, onComplete }) => {
             <motion.div
               initial={{ opacity: 0, scale: 0.5, y: 10 }}
               animate={{ opacity: 1, scale: [0.9, 1.12, 1], y: 0 }}
-              className={
-                data.quantity >= 100
-                  ? 'mt-1 font-black uppercase tracking-widest text-yellow-300 text-lg'
-                  : 'mt-1 font-black uppercase tracking-widest text-white text-xs'
-              }
+              className={quantityClass}
               aria-hidden="true"
             >
-              {data.quantity >= 100
-                ? `${data.quantity}× MEGA GIFT`
-                : `${data.quantity}× GIFT`}
+              {quantityMessage}
             </motion.div>
           )}
         </motion.div>
