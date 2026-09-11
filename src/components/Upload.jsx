@@ -1,1966 +1,2465 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
-import { supabase } from '../supabaseClient'; 
-import { 
-  X, Music, Disc, Film, Camera, Wand2, Volume2, VolumeX, Loader2, Play, Pause,
-  Hash, AtSign, Globe, Lock, Users, MapPin, Sparkles, Sliders, Shield,
-  CheckCircle2, Zap, Grid, Clock, RefreshCw, Scissors, ShoppingBag,
-  HelpCircle, Eye, EyeOff, Tag, SlidersHorizontal, Layers, Check, Search,
-  ChevronLeft, ChevronRight, BarChart2, MessageSquare, AlertTriangle, Radio,
-  Send, ExternalLink, Award, Plus, Trash2, Calendar, FileText, ArrowRight,
-  Maximize2, Minimize2, Upload as UploadIcon, CheckSquare, Sparkle, Gauge, Smartphone
+import { supabase } from '../supabaseClient';
+import {
+X, Music, Film, Camera, Wand2, Volume2, Loader2, Play, Pause, Hash, Globe,
+Lock, Users, MapPin, Sparkles, Sliders, Shield, CheckCircle2, Zap, Grid,
+Clock, RefreshCw, Gauge, Tag, SlidersHorizontal, Layers, Check, Search,
+ChevronLeft, ChevronRight, BarChart2, HelpCircle, ShoppingBag, FileText,
+Plus, ArrowRight, Upload as UploadIcon, Smartphone, Award, Send
 } from 'lucide-react';
 
+const MAX_SOURCE_SIZE = 500 * 1024 * 1024;
+const TARGET_WIDTH = 720;
+const TARGET_HEIGHT = 1280;
+const TARGET_FPS = 30;
+const TARGET_VIDEO_BITRATE = 2_500_000;
+const TARGET_AUDIO_BITRATE = 128_000;
+
 const Upload = ({ onComplete }) => {
-  // Navigation & Step Tabs: 'media' | 'audio_filter' | 'interactive' | 'publish'
-  const [activeStep, setActiveStep] = useState('media');
-  const [ingestMode, setIngestMode] = useState('dropzone'); // 'dropzone' | 'camera'
-  const [showMobilePreview, setShowMobilePreview] = useState(false);
-  
-  // Media Files & Previews
-  const [preview, setPreview] = useState(null);
-  const [videoFile, setVideoFile] = useState(null);
-  const [videoMetadata, setVideoMetadata] = useState({ 
-    duration: 0, 
-    size: 0, 
-    resolution: '1080x1920 HD', 
-    name: '',
-    bitrate: '60 FPS'
-  });
-  const [thumbnailBlob, setThumbnailBlob] = useState(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState(null);
-  const [thumbScrubTime, setThumbScrubTime] = useState(0.5);
+const [activeStep, setActiveStep] = useState('media');
+const [ingestMode, setIngestMode] = useState('dropzone');
+const [showMobilePreview, setShowMobilePreview] = useState(false);
 
-  // Video Playback Controls in Editor
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [videoDuration, setVideoDuration] = useState(0);
+const [preview, setPreview] = useState(null);
+const [videoFile, setVideoFile] = useState(null);
+const [videoMetadata, setVideoMetadata] = useState({
+duration: 0, size: 0, resolution: '720p optimized', name: '', bitrate: '30 FPS'
+});
+const [thumbnailBlob, setThumbnailBlob] = useState(null);
+const [thumbnailPreview, setThumbnailPreview] = useState(null);
+const [thumbScrubTime, setThumbScrubTime] = useState(0.5);
 
-  // ----------------------------------------------------
-  // 15 ADVANCED PRO & NEXT-GEN TIKTOK-LEVEL FEATURES:
-  // ----------------------------------------------------
-  // Feature 1: Chapters & Time Markers
-  const [chapters, setChapters] = useState([
-    { time: 0, title: 'Intro Hook' }
-  ]);
-  const [newChapterTime, setNewChapterTime] = useState(0);
-  const [newChapterTitle, setNewChapterTitle] = useState('');
+const [isPlaying, setIsPlaying] = useState(true);
+const [currentTime, setCurrentTime] = useState(0);
+const [videoDuration, setVideoDuration] = useState(0);
 
-  // Feature 2: Auto Subtitles & Closed Captions (CC)
-  const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
-  const [subtitles, setSubtitles] = useState([
-    { start: 0, end: 3, text: 'Welcome to Universe Live ✨' }
-  ]);
-  const [isGeneratingCC, setIsGeneratingCC] = useState(false);
+const [chapters, setChapters] = useState([{ time: 0, title: 'Intro Hook' }]);
+const [newChapterTime, setNewChapterTime] = useState(0);
+const [newChapterTitle, setNewChapterTitle] = useState('');
 
-  // Feature 3: Custom Cover Thumbnail Badge & Text Sticker
-  const [coverText, setCoverText] = useState('');
-  const [coverBadgeStyle, setCoverBadgeStyle] = useState('neon');
+const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+const [subtitles, setSubtitles] = useState([
+{ start: 0, end: 3, text: 'Welcome to Universe Live ✨' }
+]);
+const [isGeneratingCC, setIsGeneratingCC] = useState(false);
 
-  // Feature 4: Interactive Poll & Voting Sticker
-  const [pollEnabled, setPollEnabled] = useState(false);
-  const [pollData, setPollData] = useState({
-    question: 'What do you think of this vibe? 🔥',
-    option1: 'Obsessed 💯',
-    option2: 'Needs more bass ⚡',
-    votes1: 0,
-    votes2: 0
-  });
+const [coverText, setCoverText] = useState('');
+const [coverBadgeStyle, setCoverBadgeStyle] = useState('neon');
 
-  // Feature 5: Product / External Link Pin Showcase
-  const [productEnabled, setProductEnabled] = useState(false);
-  const [productLink, setProductLink] = useState({
-    title: 'Featured Creator Drop',
-    price: '$29.99',
-    url: 'https://mpade.universe.live',
-    ctaText: 'Shop Now'
-  });
+const [pollEnabled, setPollEnabled] = useState(false);
+const [pollData, setPollData] = useState({
+question: 'What do you think of this vibe? 🔥',
+option1: 'Obsessed 💯',
+option2: 'Needs more bass ⚡',
+votes1: 0,
+votes2: 0
+});
 
-  // Feature 6: Paid Partnership / Commercial Disclosure
-  const [isCommercial, setIsCommercial] = useState(false);
-  const [sponsorTag, setSponsorTag] = useState('');
+const [productEnabled, setProductEnabled] = useState(false);
+const [productLink, setProductLink] = useState({
+title: 'Featured Creator Drop',
+price: '$29.99',
+url: 'https://mpade.universe.live',
+ctaText: 'Shop Now'
+});
 
-  // Feature 7: Allow Duet & Remix Control
-  const [allowDuet, setAllowDuet] = useState(true);
+const [isCommercial, setIsCommercial] = useState(false);
+const [sponsorTag, setSponsorTag] = useState('');
+const [allowDuet, setAllowDuet] = useState(true);
+const [allowStitch, setAllowStitch] = useState(true);
+const [allowDownload, setAllowDownload] = useState(true);
+const [ageRestricted, setAgeRestricted] = useState(false);
 
-  // Feature 8: Allow Stitch Permission Control
-  const [allowStitch, setAllowStitch] = useState(true);
+const [selectedFilter, setSelectedFilter] = useState(() => {
+try {
+return localStorage.getItem('mpade_last_selected_filter') || 'original';
+} catch {
+return 'original';
+}
+});
 
-  // Feature 9: Allow Downloads Toggle (Watermarked export)
-  const [allowDownload, setAllowDownload] = useState(true);
+const [audioEnhancement, setAudioEnhancement] = useState('studio_master');
+const [videoVolume, setVideoVolume] = useState(100);
+const [musicVolume, setMusicVolume] = useState(80);
 
-  // Feature 10: 18+ Mature / Sensitive Content Age Gate
-  const [ageRestricted, setAgeRestricted] = useState(false);
+const [isScheduled, setIsScheduled] = useState(false);
+const [scheduledAt, setScheduledAt] = useState('');
+const [category, setCategory] = useState('Entertainment');
 
-  // Feature 11: 8 Cinematic Color Grading LUT Filters (persisted to player)
-  const [selectedFilter, setSelectedFilter] = useState(() => {
-    return localStorage.getItem('mpade_last_selected_filter') || 'original';
-  });
+const [caption, setCaption] = useState('');
+const [privacy, setPrivacy] = useState('public');
+const [location, setLocation] = useState('');
+const [tags, setTags] = useState([]);
+const [mentions, setMentions] = useState([]);
+const [allowComments, setAllowComments] = useState(true);
 
-  // Feature 12: AI Voice Clarifier & Audio Enhancement
-  const [audioEnhancement, setAudioEnhancement] = useState('studio_master');
+const [selectedMusic, setSelectedMusic] = useState({
+name: 'Original Audio',
+artist: 'Original Creator',
+url: null,
+artwork: null
+});
+const [searchQuery, setSearchQuery] = useState('');
+const [searchResults, setSearchResults] = useState([]);
+const [isSearching, setIsSearching] = useState(false);
+const [playingTrackUrl, setPlayingTrackUrl] = useState(null);
 
-  // Feature 13: Dual Audio Master Mixer (Original vs Music)
-  const [videoVolume, setVideoVolume] = useState(100);
-  const [musicVolume, setMusicVolume] = useState(80);
+const [isRecording, setIsRecording] = useState(false);
+const [recordingTime, setRecordingTime] = useState(0);
+const [recordingLimit, setRecordingLimit] = useState(60);
+const [facingMode, setFacingMode] = useState('user');
+const [isMuted, setIsMuted] = useState(false);
+const [showGrid, setShowGrid] = useState(false);
+const [recordingSpeed, setRecordingSpeed] = useState('1x');
 
-  // Feature 14: Scheduled / Future Auto Release
-  const [isScheduled, setIsScheduled] = useState(false);
-  const [scheduledAt, setScheduledAt] = useState('');
+const [isUploading, setIsUploading] = useState(false);
+const [uploadProgress, setUploadProgress] = useState(0);
+const [uploadStage, setUploadStage] = useState('ready');
+const [uploadStatusText, setUploadStatusText] = useState('');
 
-  // Feature 15: Niche Channel & Target Audience Category
-  const [category, setCategory] = useState('Entertainment');
+const [isDragging, setIsDragging] = useState(false);
+const [processingInfo, setProcessingInfo] = useState({
+originalSize: 0,
+finalSize: 0,
+compressionRatio: 0,
+duration: 0,
+mimeType: ''
+});
 
-  // Standard Social Fields
-  const [caption, setCaption] = useState('');
-  const [privacy, setPrivacy] = useState('public');
-  const [location, setLocation] = useState('');
-  const [tags, setTags] = useState([]);
-  const [mentions, setMentions] = useState([]);
-  const [allowComments, setAllowComments] = useState(true);
+const videoRef = useRef(null);
+const editorVideoRef = useRef(null);
+const mobileEditorVideoRef = useRef(null);
+const mediaRecorderRef = useRef(null);
+const chunksRef = useRef([]);
+const recordingTimerRef = useRef(null);
+const audioPreviewRef = useRef(null);
+const soundLabAudioRef = useRef(null);
+const fileInputRef = useRef(null);
+const cameraStreamRef = useRef(null);
+const objectUrlsRef = useRef([]);
+const processingAbortRef = useRef(false);
 
-  // Music Integration
-  const [selectedMusic, setSelectedMusic] = useState({ 
-    name: 'Original Audio', 
-    artist: 'Original Creator', 
-    url: null,
-    artwork: null
-  });
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [playingTrackUrl, setPlayingTrackUrl] = useState(null);
+const filters = [
+{ id: 'original', name: 'Original', css: '', color: 'bg-zinc-800' },
+{ id: 'neon_cyber', name: 'Neon Cyber', css: 'hue-rotate(90deg) saturate(200%) brightness(1.1) contrast(110%)', color: 'bg-gradient-to-tr from-cyan-500 to-pink-500' },
+{ id: 'electric', name: 'Electric Blue', css: 'contrast(140%) saturate(160%) hue-rotate(180deg) brightness(1.15)', color: 'bg-gradient-to-tr from-blue-500 to-purple-600' },
+{ id: 'cinema', name: 'B&W Cinema', css: 'grayscale(100%) contrast(150%) brightness(0.95)', color: 'bg-gradient-to-tr from-zinc-900 to-zinc-400' },
+{ id: 'golden_hour', name: 'Golden Hour', css: 'sepia(50%) saturate(190%) hue-rotate(-25deg) contrast(110%)', color: 'bg-gradient-to-tr from-amber-500 to-orange-600' },
+{ id: 'vintage', name: 'Vintage 90s', css: 'sepia(30%) contrast(90%) brightness(1.1) saturate(85%)', color: 'bg-gradient-to-tr from-emerald-600 to-amber-700' },
+{ id: 'midnight', name: 'Midnight Deep', css: 'brightness(0.8) contrast(130%) saturate(130%) hue-rotate(20deg)', color: 'bg-gradient-to-tr from-indigo-900 to-blue-700' },
+{ id: 'vibrant_pop', name: 'Vibrant Pop', css: 'saturate(220%) contrast(120%) brightness(1.05)', color: 'bg-gradient-to-tr from-rose-500 to-cyan-400' }
+];
 
-  // Camera Recording Engine
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [recordingLimit, setRecordingLimit] = useState(60);
-  const [facingMode, setFacingMode] = useState('user');
-  const [isMuted, setIsMuted] = useState(false);
-  const [showGrid, setShowGrid] = useState(false);
-  const [recordingSpeed, setRecordingSpeed] = useState('1x');
+const currentFilterObj = filters.find(f => f.id === selectedFilter) || filters[0];
 
-  // Upload Progress & Telemetry
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStage, setUploadStage] = useState('ready');
-  const [uploadStatusText, setUploadStatusText] = useState('');
+const categories = [
+'Entertainment', 'Music & Beats', 'Gaming & Esports', 'AI & Tech',
+'Comedy & Humor', 'Fitness & Wellness', 'Fashion & Beauty', 'Education & How-To',
+'Crypto & Web3', 'Travel & Adventure', 'Food & Culinary', 'Art & VFX'
+];
 
-  // Drag over state
-  const [isDragging, setIsDragging] = useState(false);
+const trendingHashtags = ['fyp', 'universe', 'viral', 'mpade', 'creator', 'trending', 'dance', 'afrobeats', 'tech', 'vibes'];
 
-  // Refs
-  const videoRef = useRef(null); 
-  const editorVideoRef = useRef(null);
-  const mobileEditorVideoRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const recordingTimerRef = useRef(null);
-  const audioPreviewRef = useRef(null);
-  const soundLabAudioRef = useRef(null);
-  const fileInputRef = useRef(null);
+const popularLocations = [
+'Lilongwe, MW', 'Blantyre, MW', 'London, UK', 'New York, USA',
+'Tokyo, Japan', 'Nairobi, Kenya', 'Johannesburg, SA', 'Paris, France'
+];
 
-  // Color Grading LUTs
-  const filters = [
-    { id: 'original', name: 'Original', css: '', color: 'bg-zinc-800' },
-    { id: 'neon_cyber', name: 'Neon Cyber', css: 'hue-rotate(90deg) saturate(200%) brightness(1.1) contrast(110%)', color: 'bg-gradient-to-tr from-cyan-500 to-pink-500' },
-    { id: 'electric', name: 'Electric Blue', css: 'contrast(140%) saturate(160%) hue-rotate(180deg) brightness(1.15)', color: 'bg-gradient-to-tr from-blue-500 to-purple-600' },
-    { id: 'cinema', name: 'B&W Cinema', css: 'grayscale(100%) contrast(150%) brightness(0.95)', color: 'bg-gradient-to-tr from-zinc-900 to-zinc-400' },
-    { id: 'golden_hour', name: 'Golden Hour', css: 'sepia(50%) saturate(190%) hue-rotate(-25deg) contrast(110%)', color: 'bg-gradient-to-tr from-amber-500 to-orange-600' },
-    { id: 'vintage', name: 'Vintage 90s', css: 'sepia(30%) contrast(90%) brightness(1.1) saturate(85%)', color: 'bg-gradient-to-tr from-emerald-600 to-amber-700' },
-    { id: 'midnight', name: 'Midnight Deep', css: 'brightness(0.8) contrast(130%) saturate(130%) hue-rotate(20deg)', color: 'bg-gradient-to-tr from-indigo-900 to-blue-700' },
-    { id: 'vibrant_pop', name: 'Vibrant Pop', css: 'saturate(220%) contrast(120%) brightness(1.05)', color: 'bg-gradient-to-tr from-rose-500 to-cyan-400' }
-  ];
+const aiHookPresets = [
+{ title: 'Viral Mystery Hook', caption: 'You won’t believe what happened at the 0:15 mark… 👀 Watch till the end! #fyp #viral' },
+{ title: 'Community Prompt', caption: 'Rate this vibe from 1 to 10 in the comments below 👇 Drop your honest opinion! #trending' },
+{ title: 'Aesthetic Wave', caption: 'High frequency creative energy ✨ Pure cosmic vibration. #vibes #universe' },
+{ title: 'Creator Insight', caption: 'Here is the secret nobody tells you about building high engagement… Save this 📌 #creator' }
+];
 
-  const currentFilterObj = filters.find(f => f.id === selectedFilter) || filters[0];
+const createObjectUrl = useCallback((blob) => {
+const url = URL.createObjectURL(blob);
+objectUrlsRef.current.push(url);
+return url;
+}, []);
 
-  const handleFilterSelect = (filterId) => {
-    setSelectedFilter(filterId);
-    try {
-      localStorage.setItem('mpade_last_selected_filter', filterId);
-    } catch (e) {}
-    if (preview) {
-      generateVideoThumbnail(preview, thumbScrubTime, filterId);
-    }
-  };
+const cleanupObjectUrls = useCallback(() => {
+objectUrlsRef.current.forEach(url => {
+try { URL.revokeObjectURL(url); } catch {}
+});
+objectUrlsRef.current = [];
+}, []);
 
-  const categories = [
-    'Entertainment', 'Music & Beats', 'Gaming & Esports', 'AI & Tech', 
-    'Comedy & Humor', 'Fitness & Wellness', 'Fashion & Beauty', 'Education & How-To',
-    'Crypto & Web3', 'Travel & Adventure', 'Food & Culinary', 'Art & VFX'
-  ];
+useEffect(() => {
+return () => {
+clearInterval(recordingTimerRef.current);
+cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+cleanupObjectUrls();
+};
+}, [cleanupObjectUrls]);
 
-  const trendingHashtags = ['fyp', 'universe', 'viral', 'mpade', 'creator', 'trending', 'dance', 'afrobeats', 'tech', 'vibes'];
-  const popularLocations = ['Lilongwe, MW', 'Blantyre, MW', 'London, UK', 'New York, USA', 'Tokyo, Japan', 'Nairobi, Kenya', 'Johannesburg, SA', 'Paris, France'];
+useEffect(() => {
+if (ingestMode !== 'camera' || preview) {
+cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+cameraStreamRef.current = null;
+return;
+}
 
-  // AI Hook Presets
-  const aiHookPresets = [
-    { title: 'Viral Mystery Hook', caption: 'You won’t believe what happened at the 0:15 mark… 👀 Watch till the end! #fyp #viral' },
-    { title: 'Community Prompt', caption: 'Rate this vibe from 1 to 10 in the comments below 👇 Drop your honest opinion! #trending' },
-    { title: 'Aesthetic Wave', caption: 'High frequency creative energy ✨ Pure cosmic vibration. #vibes #universe' },
-    { title: 'Creator Insight', caption: 'Here is the secret nobody tells you about building high engagement… Save this 📌 #creator' }
-  ];
+```
+let cancelled = false;
 
-  // Camera Management
-  useEffect(() => {
-    let stream = null;
-    const startCamera = async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: facingMode,
-            width: { ideal: 1080 },
-            height: { ideal: 1920 }
-          }, 
-          audio: !isMuted 
-        });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err) { 
-        console.warn("Camera stream access warning:", err); 
-      }
-    };
+const startCamera = async () => {
+  try {
+    cameraStreamRef.current?.getTracks().forEach(track => track.stop());
 
-    if (ingestMode === 'camera' && !preview) {
-      startCamera();
-    }
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-      }
-    };
-  }, [ingestMode, preview, facingMode, isMuted]);
-
-  // Handle Recording Timer Limit
-  useEffect(() => {
-    if (isRecording) {
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          if (prev >= recordingLimit) {
-            stopRecording();
-            return recordingLimit;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } else {
-      clearInterval(recordingTimerRef.current);
-      setRecordingTime(0);
-    }
-    return () => clearInterval(recordingTimerRef.current);
-  }, [isRecording, recordingLimit]);
-
-  // Sync editor audio volume
-  useEffect(() => {
-    if (audioPreviewRef.current && selectedMusic.url) {
-      audioPreviewRef.current.volume = musicVolume / 100;
-      if (isPlaying) {
-        audioPreviewRef.current.play().catch(() => {});
-      } else {
-        audioPreviewRef.current.pause();
-      }
-    } else if (audioPreviewRef.current) {
-      audioPreviewRef.current.pause();
-    }
-    return () => audioPreviewRef.current?.pause();
-  }, [selectedMusic, isPlaying, musicVolume]);
-
-  // Sync editor video volume
-  useEffect(() => {
-    if (editorVideoRef.current) {
-      editorVideoRef.current.volume = videoVolume / 100;
-    }
-    if (mobileEditorVideoRef.current) {
-      mobileEditorVideoRef.current.volume = videoVolume / 100;
-    }
-  }, [videoVolume]);
-
-  // Extract high-definition video thumbnail from frame
-  const generateVideoThumbnail = (sourceUrl, timeOffset = 0.5, overrideFilterId = null) => {
-    return new Promise((resolve) => {
-      const vid = document.createElement('video');
-      vid.src = sourceUrl;
-      vid.crossOrigin = 'anonymous';
-      vid.muted = true;
-      vid.currentTime = timeOffset;
-      
-      vid.onloadeddata = () => {
-        vid.currentTime = timeOffset;
-      };
-
-      vid.onseeked = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = vid.videoWidth || 720;
-          canvas.height = vid.videoHeight || 1280;
-          const ctx = canvas.getContext('2d');
-          
-          // Apply current filter to thumbnail
-          const activeF = filters.find(f => f.id === (overrideFilterId || selectedFilter)) || filters[0];
-          if (activeF.css) {
-            ctx.filter = activeF.css;
-          }
-          
-          ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
-          
-          // Add custom cover text overlay if entered
-          if (coverText.trim()) {
-            ctx.font = 'bold 36px sans-serif';
-            ctx.fillStyle = '#00F3FF';
-            ctx.textAlign = 'center';
-            ctx.shadowColor = 'rgba(0,0,0,0.8)';
-            ctx.shadowBlur = 10;
-            ctx.fillText(coverText, canvas.width / 2, canvas.height - 80);
-          }
-
-          canvas.toBlob((blob) => {
-            if (blob) {
-              setThumbnailBlob(blob);
-              const previewUrl = URL.createObjectURL(blob);
-              setThumbnailPreview(previewUrl);
-              resolve(blob);
-            } else {
-              resolve(null);
-            }
-          }, 'image/jpeg', 0.9);
-        } catch (e) {
-          console.warn("Thumbnail generation notice:", e);
-          resolve(null);
-        }
-      };
-
-      vid.onerror = () => resolve(null);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode,
+        width: { ideal: 1080 },
+        height: { ideal: 1920 }
+      },
+      audio: !isMuted
     });
-  };
 
-  // Recording Handlers
-  const startRecording = () => {
-    if (!videoRef.current?.srcObject) return;
-    try {
-      setIsRecording(true);
-      chunksRef.current = [];
-      const stream = videoRef.current.srcObject;
-      
-      const options = { mimeType: 'video/webm;codecs=vp9,opus' };
-      let recorder;
-      if (MediaRecorder.isTypeSupported(options.mimeType)) {
-        recorder = new MediaRecorder(stream, options);
-      } else {
-        recorder = new MediaRecorder(stream);
-      }
-
-      mediaRecorderRef.current = recorder;
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/mp4' });
-        setVideoFile(blob);
-        const objUrl = URL.createObjectURL(blob);
-        setPreview(objUrl);
-        setVideoMetadata({
-          duration: recordingTime,
-          size: (blob.size / (1024 * 1024)).toFixed(2),
-          resolution: '1080x1920 (Studio Cam)',
-          name: `Studio_Recording_${Date.now()}.mp4`,
-          bitrate: '60 FPS Ultra'
-        });
-        await generateVideoThumbnail(objUrl);
-        setActiveStep('audio_filter');
-      };
-
-      recorder.start(500);
-    } catch (err) {
-      console.error("Recording init error:", err);
-      setIsRecording(false);
+    if (cancelled) {
+      stream.getTracks().forEach(track => track.stop());
+      return;
     }
-  };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
+    cameraStreamRef.current = stream;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play().catch(() => {});
     }
+  } catch (error) {
+    console.warn('Camera access:', error);
+  }
+};
+
+startCamera();
+
+return () => {
+  cancelled = true;
+  cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+  cameraStreamRef.current = null;
+};
+```
+
+}, [ingestMode, preview, facingMode, isMuted]);
+
+useEffect(() => {
+if (!isRecording) {
+clearInterval(recordingTimerRef.current);
+return;
+}
+
+```
+recordingTimerRef.current = setInterval(() => {
+  setRecordingTime(previous => {
+    if (previous >= recordingLimit - 1) {
+      stopRecording();
+      return recordingLimit;
+    }
+    return previous + 1;
+  });
+}, 1000);
+
+return () => clearInterval(recordingTimerRef.current);
+```
+
+}, [isRecording, recordingLimit]);
+
+useEffect(() => {
+if (audioPreviewRef.current) {
+audioPreviewRef.current.volume = musicVolume / 100;
+}
+}, [musicVolume]);
+
+useEffect(() => {
+[editorVideoRef.current, mobileEditorVideoRef.current].forEach(video => {
+if (video) video.volume = videoVolume / 100;
+});
+}, [videoVolume]);
+
+const getSupportedMimeType = () => {
+const types = [
+'video/webm;codecs=vp9,opus',
+'video/webm;codecs=vp8,opus',
+'video/webm'
+];
+
+```
+return types.find(type => MediaRecorder.isTypeSupported(type)) || '';
+```
+
+};
+
+const waitForVideoMetadata = (video) => new Promise((resolve, reject) => {
+if (video.readyState >= 1 && video.duration) {
+resolve();
+return;
+}
+
+```
+const timeout = setTimeout(() => reject(new Error('Video metadata could not be loaded.')), 15000);
+
+video.onloadedmetadata = () => {
+  clearTimeout(timeout);
+  resolve();
+};
+
+video.onerror = () => {
+  clearTimeout(timeout);
+  reject(new Error('The selected video could not be decoded by this browser.'));
+};
+```
+
+});
+
+const loadVideoElement = async (source) => {
+const video = document.createElement('video');
+video.preload = 'auto';
+video.playsInline = true;
+video.muted = true;
+
+```
+if (typeof source === 'string') {
+  video.crossOrigin = 'anonymous';
+  video.src = source;
+} else {
+  video.src = createObjectUrl(source);
+}
+
+await waitForVideoMetadata(video);
+await video.play().catch(() => {});
+video.pause();
+
+return video;
+```
+
+};
+
+const generateVideoThumbnail = async (sourceUrl, timeOffset = 0.5, overrideFilterId = null) => {
+try {
+const vid = await loadVideoElement(sourceUrl);
+const safeTime = Math.min(Math.max(0, Number(timeOffset) || 0), Math.max(0, vid.duration - 0.05));
+
+```
+  await new Promise(resolve => {
+    const done = () => {
+      vid.removeEventListener('seeked', done);
+      resolve();
+    };
+    vid.addEventListener('seeked', done);
+    vid.currentTime = safeTime;
+  });
+
+  const canvas = document.createElement('canvas');
+  const sourceWidth = vid.videoWidth || TARGET_WIDTH;
+  const sourceHeight = vid.videoHeight || TARGET_HEIGHT;
+  const scale = Math.min(1, TARGET_WIDTH / sourceWidth, TARGET_HEIGHT / sourceHeight);
+
+  canvas.width = Math.max(320, Math.round(sourceWidth * scale));
+  canvas.height = Math.max(320, Math.round(sourceHeight * scale));
+
+  const ctx = canvas.getContext('2d');
+  const activeFilter = filters.find(f => f.id === (overrideFilterId || selectedFilter)) || filters[0];
+
+  ctx.filter = activeFilter.css || 'none';
+  ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+  ctx.filter = 'none';
+
+  if (coverText.trim()) {
+    const fontSize = Math.max(22, Math.round(canvas.width / 18));
+    ctx.font = `900 ${fontSize}px sans-serif`;
+    ctx.fillStyle = '#00F3FF';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,.85)';
+    ctx.shadowBlur = 12;
+    ctx.fillText(coverText.trim(), canvas.width / 2, canvas.height - fontSize * 1.8);
+  }
+
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+
+  if (!blob) return null;
+
+  setThumbnailBlob(blob);
+
+  if (thumbnailPreview) {
+    try { URL.revokeObjectURL(thumbnailPreview); } catch {}
+  }
+
+  const thumbUrl = URL.createObjectURL(blob);
+  objectUrlsRef.current.push(thumbUrl);
+  setThumbnailPreview(thumbUrl);
+
+  return blob;
+} catch (error) {
+  console.warn('Thumbnail generation:', error);
+  return null;
+}
+```
+
+};
+
+const handleFilterSelect = async (filterId) => {
+setSelectedFilter(filterId);
+
+```
+try {
+  localStorage.setItem('mpade_last_selected_filter', filterId);
+} catch {}
+
+if (preview) {
+  await generateVideoThumbnail(preview, thumbScrubTime, filterId);
+}
+```
+
+};
+
+const startRecording = () => {
+const stream = cameraStreamRef.current || videoRef.current?.srcObject;
+
+```
+if (!stream || typeof MediaRecorder === 'undefined') {
+  alert('This browser does not support camera recording.');
+  return;
+}
+
+const mimeType = getSupportedMimeType();
+
+try {
+  chunksRef.current = [];
+
+  const recorder = mimeType
+    ? new MediaRecorder(stream, { mimeType, videoBitsPerSecond: TARGET_VIDEO_BITRATE })
+    : new MediaRecorder(stream);
+
+  mediaRecorderRef.current = recorder;
+
+  recorder.ondataavailable = event => {
+    if (event.data?.size) chunksRef.current.push(event.data);
   };
 
-  // File Select Handler
-  const handleFileSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  recorder.onerror = event => {
+    console.error('Recording error:', event.error);
+    setIsRecording(false);
+  };
+
+  recorder.onstop = async () => {
+    const actualMime = recorder.mimeType || mimeType || 'video/webm';
+    const extension = actualMime.includes('mp4') ? 'mp4' : 'webm';
+    const blob = new Blob(chunksRef.current, { type: actualMime });
+
+    if (!blob.size) {
+      alert('Recording produced an empty video.');
+      return;
+    }
+
+    const file = new File(
+      [blob],
+      `Studio_Recording_${Date.now()}.${extension}`,
+      { type: actualMime, lastModified: Date.now() }
+    );
 
     setVideoFile(file);
-    const objUrl = URL.createObjectURL(file);
-    setPreview(objUrl);
-    setVideoMetadata({
-      duration: 0,
-      size: (file.size / (1024 * 1024)).toFixed(2),
-      resolution: '1080p HD Studio Ingest',
-      name: file.name,
-      bitrate: '60 FPS 4K Ready'
+    setProcessingInfo({
+      originalSize: file.size,
+      finalSize: file.size,
+      compressionRatio: 0,
+      duration: recordingTime,
+      mimeType: actualMime
     });
-    
-    await generateVideoThumbnail(objUrl);
+
+    const url = createObjectUrl(file);
+    setPreview(url);
+
+    setVideoMetadata({
+      duration: recordingTime,
+      size: (file.size / 1048576).toFixed(2),
+      resolution: 'Camera source',
+      name: file.name,
+      bitrate: 'Optimized 30 FPS'
+    });
+
+    await generateVideoThumbnail(url, Math.min(0.5, Math.max(0, recordingTime - 0.1)));
     setActiveStep('audio_filter');
   };
 
-  // Music Search via iTunes
-  const handleMusicSearch = async (term) => {
-    const query = term || searchQuery;
-    if (!query.trim()) return;
-    setIsSearching(true);
-    try {
-      const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=20`);
-      const data = await res.json();
-      setSearchResults(data.results || []);
-    } catch (err) { 
-      console.error("Music fetch error:", err); 
-    } finally { 
-      setIsSearching(false); 
-    }
-  };
+  recorder.start(500);
+  setIsRecording(true);
+  setRecordingTime(0);
+} catch (error) {
+  console.error('Recording initialization:', error);
+  alert(error.message || 'Unable to start recording.');
+  setIsRecording(false);
+}
+```
 
-  // Tag & Mention Helpers
-  const handleAddTag = (tag) => {
-    const cleanTag = tag.replace(/^#/, '');
-    if (!tags.includes(cleanTag)) {
-      setTags([...tags, cleanTag]);
-    }
-    if (!caption.includes(`#${cleanTag}`)) {
-      setCaption(prev => `${prev ? prev.trim() + ' ' : ''}#${cleanTag}`);
-    }
-  };
+};
 
-  const handleAddMention = (handle) => {
-    const cleanHandle = handle.replace(/^@/, '');
-    if (!mentions.includes(cleanHandle)) {
-      setMentions([...mentions, cleanHandle]);
-    }
-    if (!caption.includes(`@${cleanHandle}`)) {
-      setCaption(prev => `${prev ? prev.trim() + ' ' : ''}@${cleanHandle}`);
-    }
-  };
+const stopRecording = () => {
+clearInterval(recordingTimerRef.current);
 
-  // Geolocation Auto-Detection
-  const handleDetectLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setLocation(`Location: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`);
-        },
-        () => setLocation('Universe Studio, Global')
-      );
-    } else {
-      setLocation('Universe Studio, Global');
-    }
-  };
+```
+if (mediaRecorderRef.current?.state && mediaRecorderRef.current.state !== 'inactive') {
+  mediaRecorderRef.current.stop();
+}
 
-  // Auto Generate Captions Simulation
-  const handleAutoGenerateCC = () => {
-    setIsGeneratingCC(true);
-    setTimeout(() => {
-      const words = caption ? caption.split(' ') : ['Trending', 'video', 'on', 'Universe', 'live', 'now!'];
-      const autoCC = [
-        { start: 0, end: 2, text: words.slice(0, 3).join(' ') || 'Welcome to the broadcast ✨' },
-        { start: 2, end: 5, text: words.slice(3, 7).join(' ') || 'Watch closely until the end 🔥' },
-        { start: 5, end: 8, text: words.slice(7).join(' ') || 'Drop a comment & follow for more!' }
-      ];
-      setSubtitles(autoCC);
-      setIsGeneratingCC(false);
-    }, 900);
-  };
+setIsRecording(false);
+```
 
-  // Add Chapter Marker
-  const handleAddChapter = () => {
-    if (!newChapterTitle.trim()) return;
-    const newChap = { time: Number(newChapterTime) || 0, title: newChapterTitle.trim() };
-    setChapters(prev => [...prev.filter(c => c.time !== newChap.time), newChap].sort((a, b) => a.time - b.time));
-    setNewChapterTitle('');
-  };
+};
 
-  // Remove Chapter Marker
-  const handleRemoveChapter = (timeToRemove) => {
-    setChapters(prev => prev.filter(c => c.time !== timeToRemove));
-  };
+const readVideoMetadata = async (file, url) => {
+try {
+const video = await loadVideoElement(url);
+const duration = Number.isFinite(video.duration) ? video.duration : 0;
 
-  // Format Duration string
-  const formatTime = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
+```
+  setVideoDuration(duration);
 
-  // Step Switchers
-  const stepList = [
-    { id: 'media', stepNum: 1, label: 'Media', icon: <Film size={15} /> },
-    { id: 'audio_filter', stepNum: 2, label: 'Audio & LUT', icon: <Music size={15} />, disabled: !preview },
-    { id: 'interactive', stepNum: 3, label: 'Interactive', icon: <Sparkles size={15} />, disabled: !preview },
-    { id: 'publish', stepNum: 4, label: 'Publish', icon: <Send size={15} />, disabled: !preview }
-  ];
+  setVideoMetadata({
+    duration,
+    size: (file.size / 1048576).toFixed(2),
+    resolution: `${video.videoWidth || 0}x${video.videoHeight || 0}`,
+    name: file.name,
+    bitrate: video.videoWidth >= 1920 ? 'High Resolution' : 'Standard'
+  });
 
-  const currentStepIndex = stepList.findIndex(s => s.id === activeStep);
+  setThumbScrubTime(Math.min(0.5, Math.max(0, duration - 0.1)));
+} catch (error) {
+  console.warn('Metadata:', error);
+}
+```
 
-  const goToNextStep = () => {
-    if (currentStepIndex < stepList.length - 1) {
-      setActiveStep(stepList[currentStepIndex + 1].id);
-    }
-  };
+};
 
-  const goToPrevStep = () => {
-    if (currentStepIndex > 0) {
-      setActiveStep(stepList[currentStepIndex - 1].id);
-    }
-  };
+const handleFileSelect = async (event) => {
+const file = event.target.files?.[0];
 
-  // ----------------------------------------------------
-  // DUAL-STREAM RESILIENT UPLOAD ENGINE WITH FILTER PRESERVATION
-  // ----------------------------------------------------
-  const handleUpload = async () => {
-    if (!videoFile) return alert("Please select or record a video first!");
-    
-    setIsUploading(true);
-    setUploadProgress(10);
-    setUploadStage('optimizing');
-    setUploadStatusText('Encoding 1080p stream buffers & LUT grade...');
+```
+if (!file) return;
 
-    try {
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      if (authError || !currentUser) throw new Error("Session expired. Please log in again.");
+if (!file.type.startsWith('video/')) {
+  alert('Please select a valid video file.');
+  return;
+}
 
-      // Stage 1: Generate & Upload Cover Thumbnail
-      setUploadStage('thumbnail');
-      setUploadProgress(25);
-      setUploadStatusText('Synthesizing 4K cover frame & sticker overlays...');
-      
-      let thumbPublicUrl = null;
-      if (thumbnailBlob) {
-        const thumbPath = `${currentUser.id}/thumb_${Date.now()}.jpg`;
-        const { error: thumbErr } = await supabase.storage
-          .from('videos')
-          .upload(thumbPath, thumbnailBlob, { contentType: 'image/jpeg', upsert: true });
+if (file.size > MAX_SOURCE_SIZE) {
+  alert('The source video is larger than the 500 MB limit.');
+  return;
+}
 
-        if (!thumbErr) {
-          thumbPublicUrl = supabase.storage.from('videos').getPublicUrl(thumbPath).data.publicUrl;
-        }
-      }
+setVideoFile(file);
+setProcessingInfo({
+  originalSize: file.size,
+  finalSize: 0,
+  compressionRatio: 0,
+  duration: 0,
+  mimeType: ''
+});
 
-      // Stage 2: Video Stream Upload with XHR Telemetry
-      setUploadStage('uploading');
-      setUploadStatusText('Transmitting video chunks to Supabase cloud storage...');
-      const fileExt = videoFile.name?.split('.').pop() || 'mp4';
-      const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
+const url = createObjectUrl(file);
+setPreview(url);
 
-      const sessionStr = localStorage.getItem('sb-wgzrebgvcqnvcstdpwsa-auth-token');
-      const parsedSession = sessionStr ? JSON.parse(sessionStr) : null;
-      const token = parsedSession?.access_token;
+await readVideoMetadata(file, url);
+await generateVideoThumbnail(url, 0.5);
 
-      let publicUrl = '';
+setActiveStep('audio_filter');
+```
 
-      if (token) {
-        const uploadUrl = `${supabase.storage.from('videos').url}/object/videos/${fileName}`;
-        publicUrl = supabase.storage.from('videos').getPublicUrl(fileName).data.publicUrl;
+};
 
-        await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', uploadUrl, true);
-          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-          xhr.setRequestHeader('apikey', supabase.supabaseKey);
+const handleMusicSearch = async (term) => {
+const query = (term || searchQuery).trim();
 
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-              const percent = Math.round((event.loaded / event.total) * 60) + 30; // Maps 30% -> 90%
-              setUploadProgress(percent);
-            }
-          };
+```
+if (!query) return;
 
-          xhr.onload = () => {
-            if (xhr.status === 200 || xhr.status === 201) resolve(xhr.response);
-            else reject(new Error(`Storage response code ${xhr.status}: ${xhr.statusText}`));
-          };
+setIsSearching(true);
 
-          xhr.onerror = () => reject(new Error("Storage network layer connection dropped."));
-          xhr.send(videoFile);
-        });
-      } else {
-        const { error: uploadError } = await supabase.storage
-          .from('videos')
-          .upload(fileName, videoFile, { upsert: true });
-        if (uploadError) throw uploadError;
-        publicUrl = supabase.storage.from('videos').getPublicUrl(fileName).data.publicUrl;
-      }
+try {
+  const response = await fetch(
+    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=20`
+  );
 
-      // Stage 3: Indexing Metadata into Database with Resilience Fallback
-      setUploadStage('indexing');
-      setUploadProgress(92);
-      setUploadStatusText('Linking 15 smart features & indexing into global feed...');
+  if (!response.ok) throw new Error('Music search failed.');
 
-      const extractedTags = caption.match(/#[a-zA-Z0-9_]+/g)?.map(t => t.replace('#', '')) || tags;
-      const extractedMentions = caption.match(/@[a-zA-Z0-9_]+/g)?.map(m => m.replace('@', '')) || mentions;
-      
-      // Permanently embed filter into tags for guaranteed persistence across all database schemas
-      const persistentTags = Array.from(new Set([...extractedTags, `filter_${selectedFilter}`]));
+  const data = await response.json();
+  setSearchResults(data.results || []);
+} catch (error) {
+  console.error('Music search:', error);
+  alert('Unable to search music right now.');
+} finally {
+  setIsSearching(false);
+}
+```
 
-      // Save to local device cache for instant retrieval
+};
+
+const handleAddTag = tag => {
+const cleanTag = tag.replace(/^#/, '');
+
+```
+setTags(previous => previous.includes(cleanTag) ? previous : [...previous, cleanTag]);
+
+setCaption(previous =>
+  previous.includes(`#${cleanTag}`)
+    ? previous
+    : `${previous ? previous.trim() + ' ' : ''}#${cleanTag}`
+);
+```
+
+};
+
+const handleAddMention = handle => {
+const cleanHandle = handle.replace(/^@/, '');
+
+```
+setMentions(previous => previous.includes(cleanHandle) ? previous : [...previous, cleanHandle]);
+
+setCaption(previous =>
+  previous.includes(`@${cleanHandle}`)
+    ? previous
+    : `${previous ? previous.trim() + ' ' : ''}@${cleanHandle}`
+);
+```
+
+};
+
+const handleDetectLocation = () => {
+if (!navigator.geolocation) {
+setLocation('Universe Studio, Global');
+return;
+}
+
+```
+navigator.geolocation.getCurrentPosition(
+  position => {
+    const { latitude, longitude } = position.coords;
+    setLocation(`Location: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`);
+  },
+  () => setLocation('Universe Studio, Global'),
+  { enableHighAccuracy: false, timeout: 8000 }
+);
+```
+
+};
+
+const handleAutoGenerateCC = () => {
+setIsGeneratingCC(true);
+
+```
+setTimeout(() => {
+  const words = caption.trim()
+    ? caption.split(/\s+/)
+    : ['Trending', 'video', 'on', 'Universe', 'live', 'now!'];
+
+  setSubtitles([
+    { start: 0, end: 2, text: words.slice(0, 3).join(' ') || 'Welcome to the broadcast ✨' },
+    { start: 2, end: 5, text: words.slice(3, 7).join(' ') || 'Watch closely until the end 🔥' },
+    { start: 5, end: 8, text: words.slice(7).join(' ') || 'Drop a comment & follow for more!' }
+  ]);
+
+  setIsGeneratingCC(false);
+}, 900);
+```
+
+};
+
+const handleAddChapter = () => {
+if (!newChapterTitle.trim()) return;
+
+```
+const chapter = {
+  time: Number(newChapterTime) || 0,
+  title: newChapterTitle.trim()
+};
+
+setChapters(previous =>
+  [...previous.filter(item => item.time !== chapter.time), chapter]
+    .sort((a, b) => a.time - b.time)
+);
+
+setNewChapterTitle('');
+```
+
+};
+
+const handleRemoveChapter = time => {
+setChapters(previous => previous.filter(chapter => chapter.time !== time));
+};
+
+const formatTime = seconds => {
+const m = Math.floor(seconds / 60);
+const s = Math.floor(seconds % 60);
+return `${m}:${s < 10 ? '0' : ''}${s}`;
+};
+
+const waitForPlayback = async video => {
+try {
+await video.play();
+} catch {}
+};
+
+/*
+
+* IMPORTANT:
+* This is the actual processing engine.
+*
+* Original source:
+* videoFile
+*
+* Processing:
+* * scales to 720p maximum
+* * 30 FPS
+* * applies selected LUT
+* * captures original video audio
+* * captures selected soundtrack
+* * mixes both audio streams
+* * encodes one final compressed WebM
+*
+* The original source is NEVER uploaded.
+  */
+
+const processVideoForUpload = async () => {
+if (!videoFile) throw new Error('No video selected.');
+
+```
+if (!window.MediaRecorder) {
+  throw new Error('Your browser does not support video processing.');
+}
+
+const outputMime = getSupportedMimeType();
+
+if (!outputMime) {
+  throw new Error('This browser cannot encode a supported compressed video format.');
+}
+
+processingAbortRef.current = false;
+
+setUploadStage('optimizing');
+setUploadProgress(3);
+setUploadStatusText('Preparing video for low-data upload...');
+
+const sourceUrl = preview || createObjectUrl(videoFile);
+const sourceVideo = await loadVideoElement(sourceUrl);
+
+const duration = Number.isFinite(sourceVideo.duration) ? sourceVideo.duration : 0;
+
+if (!duration) {
+  throw new Error('The video duration could not be detected.');
+}
+
+setVideoDuration(duration);
+
+const sourceWidth = sourceVideo.videoWidth || TARGET_WIDTH;
+const sourceHeight = sourceVideo.videoHeight || TARGET_HEIGHT;
+
+const sourceScale = Math.min(
+  1,
+  TARGET_WIDTH / sourceWidth,
+  TARGET_HEIGHT / sourceHeight
+);
+
+const outputWidth = Math.max(2, Math.round(sourceWidth * sourceScale / 2) * 2);
+const outputHeight = Math.max(2, Math.round(sourceHeight * sourceScale / 2) * 2);
+
+const canvas = document.createElement('canvas');
+canvas.width = outputWidth;
+canvas.height = outputHeight;
+
+const context = canvas.getContext('2d', { alpha: false });
+
+if (!context) {
+  throw new Error('Video canvas processing is unavailable.');
+}
+
+const canvasStream = canvas.captureStream(TARGET_FPS);
+
+const sourceStream = typeof sourceVideo.captureStream === 'function'
+  ? sourceVideo.captureStream()
+  : typeof sourceVideo.mozCaptureStream === 'function'
+    ? sourceVideo.mozCaptureStream()
+    : null;
+
+if (!sourceStream) {
+  throw new Error('This browser cannot capture the source video for processing.');
+}
+
+let audioContext = null;
+let destination = null;
+let sourceAudioNode = null;
+let musicAudio = null;
+let musicAudioNode = null;
+
+try {
+  const hasSourceAudio = sourceStream.getAudioTracks().length > 0;
+  const hasMusic = Boolean(selectedMusic.url);
+
+  if (hasSourceAudio || hasMusic) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    destination = audioContext.createMediaStreamDestination();
+
+    if (hasSourceAudio) {
       try {
-        localStorage.setItem(`mpade_filter_${publicUrl}`, selectedFilter);
-      } catch (e) {}
+        sourceAudioNode = audioContext.createMediaStreamSource(sourceStream);
+        const sourceGain = audioContext.createGain();
+        sourceGain.gain.value = videoVolume / 100;
+        sourceAudioNode.connect(sourceGain);
+        sourceGain.connect(destination);
+      } catch (error) {
+        console.warn('Original audio mixing:', error);
+      }
+    }
 
-      // Full 15-Feature Record
-      const fullVideoRecord = {
-        video_url: publicUrl,
-        thumbnail_url: thumbPublicUrl || preview,
-        caption: caption.trim(),
-        music_name: selectedMusic.name,
-        music_url: selectedMusic.url,
-        user_id: currentUser.id,
-        privacy: privacy,
-        is_private: privacy === 'private',
-        location: location.trim(),
-        tags: persistentTags,
-        mentions: extractedMentions,
-        // The 15 Super Features:
-        allow_duet: allowDuet,
-        allow_stitch: allowStitch,
-        allow_download: allowDownload,
-        allow_comments: allowComments,
-        is_commercial: isCommercial,
-        sponsor_tag: sponsorTag.trim(),
-        age_restricted: ageRestricted,
-        filter_style: selectedFilter, // Persisted filter style
-        category: category,
-        poll_data: pollEnabled ? pollData : null,
-        product_link: productEnabled ? productLink : null,
-        chapters: chapters.length > 0 ? chapters : null,
-        subtitles: subtitlesEnabled && subtitles.length > 0 ? subtitles : null,
-        audio_enhancement: audioEnhancement,
-        scheduled_at: isScheduled && scheduledAt ? new Date(scheduledAt).toISOString() : null,
-        thumbnail_text: coverText.trim()
-      };
+    if (hasMusic) {
+      musicAudio = new Audio();
+      musicAudio.crossOrigin = 'anonymous';
+      musicAudio.preload = 'auto';
+      musicAudio.src = selectedMusic.url;
+      musicAudio.loop = true;
+      musicAudio.volume = 1;
 
-      // Try inserting with all 15 columns
-      let { error: dbError } = await supabase
-        .from('videos')
-        .insert([fullVideoRecord]);
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error('Selected music could not be loaded for embedding.')),
+          15000
+        );
 
-      // Graceful fallback if database table does not yet have newly added custom columns
-      if (dbError) {
-        console.warn("Full-column insert notice, trying base schema fallback with embedded filter tag:", dbError.message);
-        
-        const fallbackRecord = {
-          video_url: publicUrl,
-          thumbnail_url: thumbPublicUrl || preview,
-          caption: caption.trim(),
-          music_name: selectedMusic.name,
-          music_url: selectedMusic.url,
-          user_id: currentUser.id,
-          privacy: privacy,
-          is_private: privacy === 'private',
-          location: location.trim(),
-          tags: persistentTags, // Keeps filter in tags: filter_neon_cyber
-          mentions: extractedMentions
+        musicAudio.oncanplaythrough = () => {
+          clearTimeout(timeout);
+          resolve();
         };
 
-        const { error: fallbackErr } = await supabase
-          .from('videos')
-          .insert([fallbackRecord]);
-        
-        if (fallbackErr) throw fallbackErr;
-      }
+        musicAudio.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('Selected music cannot be embedded because the audio source rejected cross-origin processing.'));
+        };
 
-      // Stage 4: Celebration Burst
-      setUploadProgress(100);
-      setUploadStage('complete');
-      setUploadStatusText('Broadcast live across Mpade Universe!');
-
-      confetti({
-        particleCount: 100,
-        spread: 90,
-        origin: { y: 0.6 },
-        colors: ['#00F3FF', '#EC4899', '#3B82F6', '#10B981', '#F59E0B']
+        musicAudio.load();
       });
 
-      setTimeout(() => {
-        if (onComplete) onComplete();
-      }, 1200);
+      musicAudioNode = audioContext.createMediaElementSource(musicAudio);
+      const musicGain = audioContext.createGain();
+      musicGain.gain.value = musicVolume / 100;
+      musicAudioNode.connect(musicGain);
+      musicGain.connect(destination);
+    }
+  }
 
-    } catch (err) {
-      console.error("Upload process error:", err);
-      alert(`Publishing failed: ${err.message || 'Network error'}`);
-    } finally {
-      setIsUploading(false);
+  const combinedStream = new MediaStream([
+    ...canvasStream.getVideoTracks(),
+    ...(destination ? destination.stream.getAudioTracks() : [])
+  ]);
+
+  const recorderOptions = {
+    mimeType: outputMime,
+    videoBitsPerSecond: TARGET_VIDEO_BITRATE,
+    audioBitsPerSecond: TARGET_AUDIO_BITRATE
+  };
+
+  const recorder = new MediaRecorder(combinedStream, recorderOptions);
+  const outputChunks = [];
+
+  recorder.ondataavailable = event => {
+    if (event.data?.size) outputChunks.push(event.data);
+  };
+
+  const processingPromise = new Promise((resolve, reject) => {
+    recorder.onerror = event => {
+      reject(event.error || new Error('Video encoding failed.'));
+    };
+
+    recorder.onstop = () => {
+      const blob = new Blob(outputChunks, { type: outputMime });
+
+      if (!blob.size) {
+        reject(new Error('The optimized video is empty.'));
+        return;
+      }
+
+      resolve(blob);
+    };
+  });
+
+  recorder.start(1000);
+
+  if (audioContext?.state === 'suspended') {
+    await audioContext.resume().catch(() => {});
+  }
+
+  if (musicAudio) {
+    await musicAudio.play().catch(error => {
+      throw new Error(`Music could not be embedded: ${error.message}`);
+    });
+  }
+
+  await waitForPlayback(sourceVideo);
+
+  const startTime = performance.now();
+
+  await new Promise(resolve => {
+    let lastProgress = -1;
+
+    const drawFrame = () => {
+      if (processingAbortRef.current) {
+        try { recorder.stop(); } catch {}
+        resolve();
+        return;
+      }
+
+      if (sourceVideo.ended || sourceVideo.currentTime >= duration - 0.05) {
+        try { recorder.stop(); } catch {}
+        resolve();
+        return;
+      }
+
+      const activeFilter = filters.find(f => f.id === selectedFilter) || filters[0];
+
+      context.filter = activeFilter.css || 'none';
+      context.drawImage(sourceVideo, 0, 0, outputWidth, outputHeight);
+      context.filter = 'none';
+
+      const elapsed = (performance.now() - startTime) / 1000;
+      const progress = Math.min(86, Math.round((sourceVideo.currentTime / duration) * 82) + 5);
+
+      if (progress !== lastProgress) {
+        lastProgress = progress;
+        setUploadProgress(progress);
+        setUploadStatusText(
+          `Encoding optimized ${outputWidth}×${outputHeight} video... ${Math.round((sourceVideo.currentTime / duration) * 100)}%`
+        );
+      }
+
+      requestAnimationFrame(drawFrame);
+    };
+
+    drawFrame();
+  });
+
+  const processedBlob = await processingPromise;
+
+  musicAudio?.pause();
+  sourceVideo.pause();
+
+  canvasStream.getTracks().forEach(track => track.stop());
+  sourceStream.getTracks().forEach(track => track.stop());
+  combinedStream.getTracks().forEach(track => track.stop());
+
+  if (audioContext) {
+    await audioContext.close().catch(() => {});
+  }
+
+  const extension = outputMime.includes('mp4') ? 'mp4' : 'webm';
+  const processedFile = new File(
+    [processedBlob],
+    `universe_${Date.now()}.${extension}`,
+    { type: outputMime, lastModified: Date.now() }
+  );
+
+  const originalSize = videoFile.size;
+  const finalSize = processedFile.size;
+  const compressionRatio = originalSize
+    ? Math.max(0, Math.round((1 - finalSize / originalSize) * 100))
+    : 0;
+
+  setProcessingInfo({
+    originalSize,
+    finalSize,
+    compressionRatio,
+    duration,
+    mimeType: outputMime
+  });
+
+  setUploadProgress(88);
+  setUploadStage('optimized');
+  setUploadStatusText(
+    `Optimized ${(finalSize / 1048576).toFixed(2)} MB • ${compressionRatio}% smaller`
+  );
+
+  return processedFile;
+} catch (error) {
+  try { sourceVideo.pause(); } catch {}
+  canvasStream?.getTracks().forEach(track => track.stop());
+  sourceStream?.getTracks().forEach(track => track.stop());
+  if (audioContext) await audioContext.close().catch(() => {});
+  throw error;
+}
+```
+
+};
+
+const uploadFileWithProgress = async (file, path, userId) => {
+setUploadStage('uploading');
+setUploadProgress(90);
+setUploadStatusText('Uploading optimized video...');
+
+```
+const { data: sessionData } = await supabase.auth.getSession();
+const token = sessionData?.session?.access_token;
+
+if (!token) {
+  const { error } = await supabase.storage
+    .from('videos')
+    .upload(path, file, {
+      contentType: file.type,
+      cacheControl: '31536000',
+      upsert: false
+    });
+
+  if (error) throw error;
+
+  return supabase.storage.from('videos').getPublicUrl(path).data.publicUrl;
+}
+
+const uploadUrl = `${supabase.storage.from('videos').url}/object/videos/${path}`;
+
+return new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+
+  xhr.open('POST', uploadUrl, true);
+  xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+  xhr.setRequestHeader('apikey', supabase.supabaseKey);
+  xhr.setRequestHeader('x-upsert', 'false');
+  xhr.setRequestHeader('cache-control', '31536000');
+  xhr.setRequestHeader('content-type', file.type);
+
+  xhr.upload.onprogress = event => {
+    if (!event.lengthComputable) return;
+
+    const progress = 90 + Math.round((event.loaded / event.total) * 7);
+
+    setUploadProgress(Math.min(97, progress));
+    setUploadStatusText(
+      `Uploading optimized video... ${Math.round((event.loaded / event.total) * 100)}%`
+    );
+  };
+
+  xhr.onload = () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      resolve(
+        supabase.storage.from('videos').getPublicUrl(path).data.publicUrl
+      );
+    } else {
+      reject(new Error(`Storage upload failed (${xhr.status}).`));
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[120] flex flex-col md:items-center md:justify-center bg-black/95 md:bg-black/85 md:backdrop-blur-2xl md:p-4 overflow-hidden select-none">
-      
-      {/* Hidden audio element for preview in editor */}
-      <audio ref={audioPreviewRef} src={selectedMusic.url} loop />
-      <audio ref={soundLabAudioRef} src={playingTrackUrl} loop />
+  xhr.onerror = () => reject(new Error('Network connection dropped during upload.'));
+  xhr.onabort = () => reject(new Error('Upload was interrupted.'));
+  xhr.send(file);
+});
+```
 
-      {/* FULL RESPONSIVE MODAL CONTAINER */}
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.98, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.98, y: 15 }}
-        className="relative w-full h-[100dvh] md:h-[92vh] md:max-h-[920px] md:max-w-6xl bg-[#080811] border-0 md:border md:border-cyan-500/30 md:rounded-[2.5rem] shadow-none md:shadow-[0_0_80px_rgba(6,182,212,0.25)] flex flex-col overflow-hidden text-white font-sans"
-      >
-        
-        {/* ============================================================ */}
-        {/* 1. TOP HEADER & STEPPER BAR */}
-        {/* ============================================================ */}
-        <header className="h-14 sm:h-16 px-3 sm:px-6 border-b border-cyan-500/15 bg-black/70 backdrop-blur-xl flex items-center justify-between shrink-0 z-30">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button 
-              type="button"
-              disabled={isUploading}
-              onClick={onComplete}
-              className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-all active:scale-90 disabled:opacity-40 shrink-0"
-              aria-label="Close Studio"
-            >
-              <X size={18} />
-            </button>
+};
 
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-teal-400 to-pink-500 p-0.5 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.5)] shrink-0">
-                <Zap size={14} className="text-black fill-black" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <h1 className="text-xs sm:text-sm md:text-base font-black tracking-wider uppercase bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-pink-400 to-purple-400 truncate">
-                    Studio Pro
-                  </h1>
-                  <span className="hidden sm:inline-block px-1.5 py-0.5 bg-gradient-to-r from-cyan-500/20 to-pink-500/20 border border-cyan-400/40 rounded-full text-[8px] font-black text-cyan-300 uppercase tracking-widest">
-                    v3.0 Ultra
+const handleUpload = async () => {
+if (!videoFile) {
+alert('Please select or record a video first.');
+return;
+}
+
+```
+if (isScheduled && scheduledAt && new Date(scheduledAt) <= new Date()) {
+  alert('Scheduled release must be in the future.');
+  return;
+}
+
+setIsUploading(true);
+processingAbortRef.current = false;
+
+try {
+  const {
+    data: { user: currentUser },
+    error: authError
+  } = await supabase.auth.getUser();
+
+  if (authError || !currentUser) {
+    throw new Error('Session expired. Please log in again.');
+  }
+
+  setUploadStage('optimizing');
+  setUploadProgress(2);
+  setUploadStatusText('Compressing video and preparing embedded soundtrack...');
+
+  const processedFile = await processVideoForUpload();
+
+  if (!processedFile?.size) {
+    throw new Error('Video processing produced no output.');
+  }
+
+  setUploadStage('thumbnail');
+  setUploadProgress(88);
+  setUploadStatusText('Creating optimized cover thumbnail...');
+
+  let thumbPublicUrl = null;
+
+  const finalPreviewUrl = createObjectUrl(processedFile);
+
+  if (!thumbnailBlob) {
+    await generateVideoThumbnail(
+      finalPreviewUrl,
+      Math.min(thumbScrubTime, Math.max(0, videoDuration - 0.1))
+    );
+  }
+
+  if (thumbnailBlob) {
+    const thumbPath = `${currentUser.id}/thumb_${Date.now()}.jpg`;
+
+    const { error: thumbError } = await supabase.storage
+      .from('videos')
+      .upload(thumbPath, thumbnailBlob, {
+        contentType: 'image/jpeg',
+        cacheControl: '31536000',
+        upsert: false
+      });
+
+    if (thumbError) {
+      console.warn('Thumbnail upload:', thumbError.message);
+    } else {
+      thumbPublicUrl = supabase.storage
+        .from('videos')
+        .getPublicUrl(thumbPath)
+        .data.publicUrl;
+    }
+  }
+
+  const extension = processedFile.type.includes('mp4') ? 'mp4' : 'webm';
+  const videoPath = `${currentUser.id}/${Date.now()}_optimized.${extension}`;
+
+  const publicUrl = await uploadFileWithProgress(
+    processedFile,
+    videoPath,
+    currentUser.id
+  );
+
+  setUploadStage('indexing');
+  setUploadProgress(98);
+  setUploadStatusText('Saving video metadata and creator settings...');
+
+  const extractedTags = caption
+    .match(/#[a-zA-Z0-9_]+/g)
+    ?.map(tag => tag.replace('#', '')) || [];
+
+  const extractedMentions = caption
+    .match(/@[a-zA-Z0-9_]+/g)
+    ?.map(mention => mention.replace('@', '')) || [];
+
+  const persistentTags = Array.from(
+    new Set([
+      ...tags,
+      ...extractedTags,
+      `filter_${selectedFilter}`
+    ])
+  );
+
+  try {
+    localStorage.setItem(
+      `mpade_filter_${publicUrl}`,
+      selectedFilter
+    );
+  } catch {}
+
+  /*
+   * IMPORTANT:
+   * music_url is intentionally NULL when music has been embedded.
+   *
+   * The soundtrack already exists inside video_url.
+   * There is no separate audio upload.
+   */
+
+  const fullVideoRecord = {
+    video_url: publicUrl,
+    thumbnail_url: thumbPublicUrl,
+    caption: caption.trim(),
+    music_name: selectedMusic.url ? selectedMusic.name : 'Original Audio',
+    music_url: null,
+    user_id: currentUser.id,
+    privacy,
+    is_private: privacy === 'private',
+    location: location.trim(),
+    tags: persistentTags,
+    mentions: extractedMentions,
+    allow_duet: allowDuet,
+    allow_stitch: allowStitch,
+    allow_download: allowDownload,
+    allow_comments: allowComments,
+    is_commercial: isCommercial,
+    sponsor_tag: sponsorTag.trim(),
+    age_restricted: ageRestricted,
+    filter_style: selectedFilter,
+    category,
+    poll_data: pollEnabled ? pollData : null,
+    product_link: productEnabled ? productLink : null,
+    chapters: chapters.length ? chapters : null,
+    subtitles: subtitlesEnabled && subtitles.length ? subtitles : null,
+    audio_enhancement: audioEnhancement,
+    scheduled_at: isScheduled && scheduledAt
+      ? new Date(scheduledAt).toISOString()
+      : null,
+    thumbnail_text: coverText.trim()
+  };
+
+  let { error: dbError } = await supabase
+    .from('videos')
+    .insert([fullVideoRecord]);
+
+  if (dbError) {
+    console.warn(
+      'Extended video schema unavailable. Falling back:',
+      dbError.message
+    );
+
+    const fallbackRecord = {
+      video_url: publicUrl,
+      thumbnail_url: thumbPublicUrl,
+      caption: caption.trim(),
+      music_name: selectedMusic.url ? selectedMusic.name : 'Original Audio',
+      music_url: null,
+      user_id: currentUser.id,
+      privacy,
+      is_private: privacy === 'private',
+      location: location.trim(),
+      tags: persistentTags,
+      mentions: extractedMentions
+    };
+
+    const { error: fallbackError } = await supabase
+      .from('videos')
+      .insert([fallbackRecord]);
+
+    if (fallbackError) throw fallbackError;
+  }
+
+  setUploadProgress(100);
+  setUploadStage('complete');
+  setUploadStatusText(
+    selectedMusic.url
+      ? 'Published with embedded soundtrack.'
+      : 'Published optimized video.'
+  );
+
+  confetti({
+    particleCount: 100,
+    spread: 90,
+    origin: { y: 0.6 }
+  });
+
+  setTimeout(() => {
+    if (onComplete) onComplete();
+  }, 1200);
+} catch (error) {
+  console.error('Publishing error:', error);
+
+  setUploadStage('error');
+  setUploadStatusText(error.message || 'Publishing failed.');
+
+  alert(`Publishing failed: ${error.message || 'Network error'}`);
+} finally {
+  setIsUploading(false);
+}
+```
+
+};
+
+const stepList = [
+{ id: 'media', stepNum: 1, label: 'Media', icon: <Film size={15} /> },
+{ id: 'audio_filter', stepNum: 2, label: 'Audio & LUT', icon: <Music size={15} />, disabled: !preview },
+{ id: 'interactive', stepNum: 3, label: 'Interactive', icon: <Sparkles size={15} />, disabled: !preview },
+{ id: 'publish', stepNum: 4, label: 'Publish', icon: <Send size={15} />, disabled: !preview }
+];
+
+const currentStepIndex = stepList.findIndex(step => step.id === activeStep);
+
+const goToNextStep = () => {
+if (currentStepIndex < stepList.length - 1 && preview) {
+setActiveStep(stepList[currentStepIndex + 1].id);
+}
+};
+
+const goToPrevStep = () => {
+if (currentStepIndex > 0) {
+setActiveStep(stepList[currentStepIndex - 1].id);
+}
+};
+
+return ( <div className="fixed inset-0 z-[120] flex flex-col md:items-center md:justify-center bg-black/95 md:bg-black/85 md:backdrop-blur-2xl md:p-4 overflow-hidden select-none">
+<audio ref={audioPreviewRef} src={selectedMusic.url || undefined} loop />
+<audio ref={soundLabAudioRef} src={playingTrackUrl || undefined} loop />
+
+```
+  <motion.div
+    initial={{ opacity: 0, scale: 0.98, y: 15 }}
+    animate={{ opacity: 1, scale: 1, y: 0 }}
+    className="relative w-full h-[100dvh] md:h-[92vh] md:max-h-[920px] md:max-w-6xl bg-[#080811] md:border md:border-cyan-500/30 md:rounded-[2.5rem] md:shadow-[0_0_80px_rgba(6,182,212,0.25)] flex flex-col overflow-hidden text-white font-sans"
+  >
+    <header className="h-14 sm:h-16 px-3 sm:px-6 border-b border-cyan-500/15 bg-black/70 backdrop-blur-xl flex items-center justify-between shrink-0 z-30">
+      <div className="flex items-center gap-2 min-w-0">
+        <button
+          type="button"
+          disabled={isUploading}
+          onClick={onComplete}
+          className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white disabled:opacity-40"
+        >
+          <X size={18} />
+        </button>
+
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-teal-400 to-pink-500 flex items-center justify-center">
+            <Zap size={15} className="text-black fill-black" />
+          </div>
+          <div>
+            <h1 className="text-xs sm:text-sm font-black tracking-wider uppercase bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-pink-400 to-purple-400">
+              Studio Pro
+            </h1>
+            <span className="hidden sm:block text-[8px] text-cyan-300 font-black tracking-widest">
+              OPTIMIZED MEDIA ENGINE
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 bg-black/60 border border-white/10 rounded-2xl p-1 max-w-[55%] overflow-x-auto">
+        {stepList.map(step => (
+          <button
+            key={step.id}
+            type="button"
+            disabled={step.disabled || isUploading}
+            onClick={() => setActiveStep(step.id)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] sm:text-xs font-black uppercase shrink-0 ${
+              activeStep === step.id
+                ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-black'
+                : 'text-zinc-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            {step.icon}
+            <span className="hidden md:inline">{step.label}</span>
+            <span className="md:hidden">{step.stepNum}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        {preview && (
+          <button
+            type="button"
+            onClick={() => setShowMobilePreview(value => !value)}
+            className="md:hidden p-2 rounded-xl bg-white/5 border border-white/10"
+          >
+            <Smartphone size={16} />
+          </button>
+        )}
+
+        {preview && activeStep !== 'publish' && (
+          <button
+            type="button"
+            onClick={() => setActiveStep('publish')}
+            className="hidden lg:flex items-center gap-1.5 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-xs px-3 py-2 rounded-xl"
+          >
+            Publish <ArrowRight size={14} />
+          </button>
+        )}
+      </div>
+    </header>
+
+    <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className="hidden md:flex md:w-[340px] lg:w-[380px] border-r border-white/10 p-5 flex-col items-center justify-center bg-black/40 overflow-y-auto">
+        <div className="relative w-full max-w-[260px] aspect-[9/16] bg-zinc-950 rounded-[2.2rem] overflow-hidden border-2 border-cyan-500/40 shadow-[0_0_40px_rgba(6,182,212,0.25)]">
+          {preview ? (
+            <>
+              <video
+                ref={editorVideoRef}
+                src={preview}
+                className="w-full h-full object-cover"
+                style={{ filter: currentFilterObj.css }}
+                autoPlay
+                loop
+                muted={videoVolume === 0}
+                playsInline
+                onTimeUpdate={event => setCurrentTime(event.currentTarget.currentTime)}
+                onLoadedMetadata={event => setVideoDuration(event.currentTarget.duration || 0)}
+              />
+
+              {selectedFilter !== 'original' && (
+                <div className="absolute bottom-3 left-3 bg-black/80 px-2 py-1 rounded-full text-[9px] font-black text-cyan-300">
+                  <Wand2 size={10} className="inline mr-1" />
+                  {currentFilterObj.name}
+                </div>
+              )}
+
+              {isCommercial && (
+                <div className="absolute top-3 left-3 bg-black/80 px-2 py-1 rounded-full text-[9px] font-black text-amber-300">
+                  <Award size={10} className="inline mr-1" />
+                  {sponsorTag || 'Paid Partnership'}
+                </div>
+              )}
+
+              {ageRestricted && (
+                <div className="absolute top-3 right-3 bg-red-950/90 px-2 py-1 rounded-full text-[9px] font-black text-red-300">
+                  18+ Mature
+                </div>
+              )}
+
+              {pollEnabled && (
+                <div className="absolute top-1/3 left-3 right-3 bg-black/85 p-3 rounded-2xl border border-cyan-400/40">
+                  <p className="text-[11px] font-black text-cyan-200 text-center mb-2">
+                    {pollData.question}
+                  </p>
+                  <div className="space-y-1">
+                    <div className="py-1.5 bg-cyan-500/20 rounded-xl text-[10px] text-center">
+                      {pollData.option1}
+                    </div>
+                    <div className="py-1.5 bg-pink-500/20 rounded-xl text-[10px] text-center">
+                      {pollData.option2}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {productEnabled && (
+                <div className="absolute bottom-16 left-3 right-3 bg-black/90 p-2 rounded-2xl border border-pink-500/40">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag size={16} className="text-pink-400" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold truncate">{productLink.title}</p>
+                      <p className="text-[9px] text-emerald-400">{productLink.price}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {subtitlesEnabled && subtitles.length > 0 && (
+                <div className="absolute bottom-6 left-3 right-3 text-center">
+                  <span className="inline-block bg-black/80 px-3 py-1 rounded-xl text-[11px] font-black text-yellow-300">
+                    {subtitles[0]?.text}
                   </span>
                 </div>
-              </div>
-            </div>
-          </div>
+              )}
 
-          {/* Stepper Tabs Bar (Horizontal Responsive) */}
-          <div className="flex items-center gap-1 bg-black/60 border border-white/10 rounded-2xl p-1 max-w-[55%] sm:max-w-none overflow-x-auto no-scrollbar">
-            {stepList.map(step => (
-              <button
-                key={step.id}
-                type="button"
-                disabled={step.disabled || isUploading}
-                onClick={() => setActiveStep(step.id)}
-                className={`flex items-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-wider transition-all shrink-0 disabled:opacity-25 disabled:cursor-not-allowed ${
-                  activeStep === step.id 
-                    ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-black shadow-[0_0_15px_rgba(6,182,212,0.5)]' 
-                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {step.icon}
-                <span className="hidden md:inline">{step.label}</span>
-                <span className="md:hidden font-mono text-[10px]">{step.stepNum}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Mobile Preview Switch & Quick Publish Action */}
-          <div className="flex items-center gap-1.5">
-            {preview && (
               <button
                 type="button"
-                onClick={() => setShowMobilePreview(!showMobilePreview)}
-                className={`md:hidden p-2 rounded-xl text-xs font-bold transition-all border ${
-                  showMobilePreview 
-                    ? 'bg-cyan-500 text-black border-cyan-400 shadow-md' 
-                    : 'bg-white/5 text-zinc-300 border-white/10 hover:text-white'
-                }`}
-                title="Toggle Video Preview"
+                onClick={() => {
+                  const video = editorVideoRef.current;
+                  if (!video) return;
+
+                  if (video.paused) {
+                    video.play().catch(() => {});
+                    audioPreviewRef.current?.play().catch(() => {});
+                    setIsPlaying(true);
+                  } else {
+                    video.pause();
+                    audioPreviewRef.current?.pause();
+                    setIsPlaying(false);
+                  }
+                }}
+                className="absolute inset-0 flex items-center justify-center bg-black/10"
               >
-                <Smartphone size={16} />
-              </button>
-            )}
-
-            {preview && activeStep !== 'publish' && (
-              <button
-                type="button"
-                onClick={() => setActiveStep('publish')}
-                className="hidden lg:flex items-center gap-1.5 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-xs uppercase tracking-wider px-3.5 py-2 rounded-xl shadow-[0_0_15px_rgba(236,72,153,0.4)] active:scale-95 transition-all"
-              >
-                Next <ArrowRight size={14} />
-              </button>
-            )}
-          </div>
-        </header>
-
-        {/* ============================================================ */}
-        {/* 2. MAIN WORKSPACE (RESPONSIVE SPLIT / SINGLE VIEW) */}
-        {/* ============================================================ */}
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-          
-          {/* DESKTOP LEFT PANEL: 9:16 PREVIEW & LIVE WORKSTATION */}
-          <div className="hidden md:flex md:w-[340px] lg:w-[380px] border-r border-white/10 p-4 lg:p-6 flex-col items-center justify-center bg-black/40 relative shrink-0 overflow-y-auto custom-viewport-scrollbar">
-            
-            {/* Viewport Frame */}
-            <div className="relative w-full max-w-[240px] lg:max-w-[260px] aspect-[9/16] bg-zinc-950 rounded-[2.2rem] overflow-hidden border-2 border-cyan-500/40 shadow-[0_0_40px_rgba(6,182,212,0.25)] flex items-center justify-center group">
-              
-              {preview ? (
-                <>
-                  {/* Active Video Preview with Persisted LUT Filter */}
-                  <video 
-                    ref={editorVideoRef}
-                    src={preview} 
-                    className="w-full h-full object-cover" 
-                    style={{ filter: currentFilterObj.css }}
-                    autoPlay 
-                    loop 
-                    playsInline
-                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-                    onLoadedMetadata={(e) => setVideoDuration(e.currentTarget.duration || 0)}
-                  />
-
-                  {/* Active Filter Indicator Badge */}
-                  {selectedFilter !== 'original' && (
-                    <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1 bg-cyan-950/80 backdrop-blur-md px-2 py-0.5 rounded-full border border-cyan-400/50 shadow-lg">
-                      <Wand2 size={10} className="text-cyan-400" />
-                      <span className="text-[9px] font-black uppercase text-cyan-300">{currentFilterObj.name}</span>
-                    </div>
-                  )}
-
-                  {/* Feature 6 Overlay: Paid Partnership Badge */}
-                  {isCommercial && (
-                    <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-full border border-amber-400/50 shadow-lg">
-                      <Award size={12} className="text-amber-400" />
-                      <span className="text-[9px] font-black uppercase text-amber-300 truncate max-w-[120px]">
-                        {sponsorTag ? `Paid: ${sponsorTag}` : 'Paid Partnership'}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Feature 10 Overlay: Age Restricted 18+ Badge */}
-                  {ageRestricted && (
-                    <div className="absolute top-3 right-3 z-30 flex items-center gap-1 bg-red-950/90 backdrop-blur-md px-2 py-0.5 rounded-full border border-red-500/60 shadow-lg">
-                      <Shield size={10} className="text-red-400" />
-                      <span className="text-[9px] font-black uppercase text-red-300">18+ Mature</span>
-                    </div>
-                  )}
-
-                  {/* Feature 4 Overlay: Interactive Poll Sticker */}
-                  {pollEnabled && (
-                    <div className="absolute top-1/3 left-3 right-3 z-30 bg-black/85 backdrop-blur-md p-3 rounded-2xl border border-cyan-400/40 shadow-2xl">
-                      <p className="text-[11px] font-black text-cyan-200 mb-2 text-center">
-                        {pollData.question}
-                      </p>
-                      <div className="space-y-1.5">
-                        <div className="w-full py-1.5 px-3 bg-cyan-500/20 border border-cyan-400/30 rounded-xl text-[10px] font-bold text-cyan-300 text-center truncate">
-                          {pollData.option1}
-                        </div>
-                        <div className="w-full py-1.5 px-3 bg-pink-500/20 border border-pink-400/30 rounded-xl text-[10px] font-bold text-pink-300 text-center truncate">
-                          {pollData.option2}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Feature 5 Overlay: Product Pin Showcase */}
-                  {productEnabled && (
-                    <div className="absolute bottom-16 left-3 right-3 z-30 bg-black/90 backdrop-blur-md p-2 rounded-2xl border border-pink-500/40 flex items-center justify-between shadow-2xl">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-pink-500/20 flex items-center justify-center text-pink-400 shrink-0">
-                          <ShoppingBag size={16} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-bold text-white truncate">{productLink.title}</p>
-                          <p className="text-[9px] font-mono text-emerald-400">{productLink.price}</p>
-                        </div>
-                      </div>
-                      <span className="px-2 py-1 bg-pink-500 text-white rounded-lg text-[9px] font-black uppercase shrink-0">
-                        {productLink.ctaText}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Feature 2 Overlay: Subtitles / Closed Captions */}
-                  {subtitlesEnabled && subtitles.length > 0 && (
-                    <div className="absolute bottom-6 left-3 right-3 z-30 text-center">
-                      <span className="inline-block bg-black/80 backdrop-blur-md px-3 py-1 rounded-xl text-[11px] font-black text-yellow-300 border border-yellow-500/40 drop-shadow">
-                        {subtitles[0]?.text}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Touch Play/Pause Overlay */}
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      if (editorVideoRef.current) {
-                        if (isPlaying) {
-                          editorVideoRef.current.pause();
-                          audioPreviewRef.current?.pause();
-                        } else {
-                          editorVideoRef.current.play();
-                          audioPreviewRef.current?.play();
-                        }
-                        setIsPlaying(!isPlaying);
-                      }
-                    }}
-                    className="absolute inset-0 flex items-center justify-center z-20 bg-black/10 hover:bg-black/30 transition-colors"
-                  >
-                    {!isPlaying && (
-                      <div className="w-14 h-14 rounded-full bg-black/70 backdrop-blur-md border border-cyan-400/50 flex items-center justify-center text-cyan-400 shadow-2xl">
-                        <Play size={24} className="fill-cyan-400 ml-0.5" />
-                      </div>
-                    )}
-                  </button>
-                </>
-              ) : ingestMode === 'camera' ? (
-                /* Live Camera Feed inside 9:16 frame */
-                <div className="relative w-full h-full">
-                  <video 
-                    ref={videoRef} 
-                    autoPlay 
-                    playsInline 
-                    muted 
-                    style={{ filter: currentFilterObj.css }} 
-                    className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} 
-                  />
-                  {showGrid && (
-                    <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 border border-white/10 z-10">
-                      <div className="border-r border-b border-white/15" />
-                      <div className="border-r border-b border-white/15" />
-                      <div className="border-b border-white/15" />
-                      <div className="border-r border-b border-white/15" />
-                      <div className="border-r border-b border-white/15" />
-                      <div className="border-b border-white/15" />
-                      <div className="border-r border-b border-white/15" />
-                      <div className="border-r border-b border-white/15" />
-                      <div />
-                    </div>
-                  )}
-                  <div className="absolute bottom-4 left-0 right-0 flex justify-center z-20">
-                    <button 
-                      type="button"
-                      onClick={isRecording ? stopRecording : startRecording}
-                      className="w-14 h-14 rounded-full border-4 border-white flex items-center justify-center p-1 bg-black/40"
-                    >
-                      <div className={`transition-all ${isRecording ? 'w-5 h-5 bg-red-600 rounded-sm animate-pulse' : 'w-full h-full bg-pink-500 rounded-full'}`} />
-                    </button>
+                {!isPlaying && (
+                  <div className="w-14 h-14 rounded-full bg-black/70 border border-cyan-400/50 flex items-center justify-center">
+                    <Play size={24} className="fill-cyan-400 text-cyan-400" />
                   </div>
-                </div>
-              ) : (
-                /* Empty Ingest State */
-                <div className="p-4 text-center text-zinc-500 flex flex-col items-center">
-                  <Film size={36} className="text-zinc-600 mb-2" />
-                  <p className="text-xs font-bold text-zinc-400">No Media Loaded</p>
-                  <p className="text-[10px] text-zinc-600">Select or drop a video file</p>
-                </div>
-              )}
+                )}
+              </button>
 
-              {/* Scrub Progress Bar inside Frame */}
-              {preview && (
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-40">
-                  <div 
-                    className="h-full bg-gradient-to-r from-cyan-400 to-pink-500" 
-                    style={{ width: `${videoDuration ? (currentTime / videoDuration) * 100 : 0}%` }}
-                  />
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-pink-500"
+                  style={{ width: `${videoDuration ? (currentTime / videoDuration) * 100 : 0}%` }}
+                />
+              </div>
+            </>
+          ) : ingestMode === 'camera' ? (
+            <div className="relative w-full h-full">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ filter: currentFilterObj.css }}
+                className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+              />
+              {showGrid && (
+                <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+                  {Array.from({ length: 9 }).map((_, index) => (
+                    <div key={index} className="border border-white/10" />
+                  ))}
                 </div>
               )}
             </div>
+          ) : (
+            <div className="p-4 text-center text-zinc-500">
+              <Film size={36} className="mx-auto mb-2" />
+              <p className="text-xs font-bold">No Media Loaded</p>
+            </div>
+          )}
+        </div>
 
-            {/* Media Metadata Pill */}
-            {preview && (
-              <div className="mt-3 w-full max-w-[260px] bg-white/5 border border-white/10 rounded-2xl p-2.5 flex items-center justify-between text-[11px] font-mono text-zinc-400">
-                <span className="truncate max-w-[140px] text-cyan-300 font-bold">
-                  {videoMetadata.name || 'Studio Stream'}
-                </span>
-                <span className="text-pink-400 font-bold">{videoMetadata.size} MB</span>
-              </div>
-            )}
+        {preview && (
+          <div className="mt-3 w-full max-w-[260px] bg-white/5 border border-white/10 rounded-2xl p-2.5 flex items-center justify-between text-[11px] font-mono">
+            <span className="truncate max-w-[145px] text-cyan-300">
+              {videoMetadata.name}
+            </span>
+            <span className="text-pink-400">
+              {processingInfo.finalSize
+                ? `${(processingInfo.finalSize / 1048576).toFixed(2)} MB`
+                : `${videoMetadata.size} MB`}
+            </span>
           </div>
+        )}
 
-          {/* MOBILE PREVIEW SLIDEOUT / EXPANDABLE DRAWER */}
-          <AnimatePresence>
-            {showMobilePreview && preview && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="md:hidden border-b border-cyan-500/20 bg-black/90 p-3 flex flex-col items-center shrink-0"
-              >
-                <div className="relative w-36 aspect-[9/16] bg-zinc-950 rounded-2xl overflow-hidden border border-cyan-500/40 shadow-lg">
-                  <video 
-                    ref={mobileEditorVideoRef}
-                    src={preview} 
-                    className="w-full h-full object-cover" 
-                    style={{ filter: currentFilterObj.css }}
-                    autoPlay 
-                    loop 
-                    playsInline
-                  />
-                  {selectedFilter !== 'original' && (
-                    <div className="absolute bottom-1 left-1 bg-black/80 px-1.5 py-0.5 rounded text-[8px] font-black text-cyan-300 uppercase">
-                      {currentFilterObj.name}
-                    </div>
-                  )}
-                </div>
-                <p className="text-[10px] font-mono text-zinc-400 mt-1">
-                  Active LUT: <span className="text-cyan-300">{currentFilterObj.name}</span> • Filter Preserved
+        {processingInfo.finalSize > 0 && (
+          <div className="mt-2 w-full max-w-[260px] p-2 rounded-xl bg-emerald-950/30 border border-emerald-500/20 text-[9px] font-mono text-emerald-300">
+            Optimized: {processingInfo.compressionRatio}% smaller
+          </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {showMobilePreview && preview && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="md:hidden border-b border-cyan-500/20 bg-black/90 p-3 flex flex-col items-center"
+          >
+            <div className="relative w-36 aspect-[9/16] rounded-2xl overflow-hidden border border-cyan-500/40">
+              <video
+                ref={mobileEditorVideoRef}
+                src={preview}
+                className="w-full h-full object-cover"
+                style={{ filter: currentFilterObj.css }}
+                autoPlay
+                loop
+                playsInline
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-[#090911] pb-24 md:pb-8">
+        {activeStep === 'media' && (
+          <div className="space-y-5 max-w-3xl mx-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+              <div>
+                <h2 className="text-base sm:text-lg font-black uppercase flex items-center gap-2">
+                  <Film size={18} className="text-cyan-400" />
+                  Media Ingestion Engine
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Select a video or record directly from your camera
                 </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </div>
 
-          {/* RIGHT / MAIN PANEL: STEP WORKSTATION TABS */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-[#090911] custom-viewport-scrollbar pb-24 md:pb-8">
-            
-            {/* ============================================================ */}
-            {/* STEP 1: MEDIA INGEST (DROPZONE / STUDIO CAMERA) */}
-            {/* ============================================================ */}
-            {activeStep === 'media' && (
-              <div className="space-y-5 max-w-3xl mx-auto">
-                
-                {/* Mode Selector */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
-                  <div>
-                    <h2 className="text-base sm:text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
-                      <Film size={18} className="text-cyan-400" /> Media Ingestion Engine
-                    </h2>
-                    <p className="text-xs text-zinc-400">Choose your ingest source or drop 4K media files</p>
-                  </div>
+              <div className="flex bg-black/60 border border-white/10 p-1 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setIngestMode('dropzone')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase ${
+                    ingestMode === 'dropzone' ? 'bg-cyan-500 text-black' : 'text-zinc-400'
+                  }`}
+                >
+                  Dropzone
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIngestMode('camera')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase ${
+                    ingestMode === 'camera' ? 'bg-pink-500 text-white' : 'text-zinc-400'
+                  }`}
+                >
+                  Camera
+                </button>
+              </div>
+            </div>
 
-                  <div className="flex bg-black/60 border border-white/10 p-1 rounded-2xl self-start sm:self-auto">
-                    <button
-                      type="button"
-                      onClick={() => setIngestMode('dropzone')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                        ingestMode === 'dropzone' ? 'bg-cyan-500 text-black shadow-md' : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      Dropzone
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIngestMode('camera')}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                        ingestMode === 'camera' ? 'bg-pink-500 text-white shadow-md' : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      Studio Camera
-                    </button>
-                  </div>
+            {ingestMode === 'dropzone' && (
+              <div
+                onDragOver={event => {
+                  event.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={event => {
+                  event.preventDefault();
+                  setIsDragging(false);
+                  handleFileSelect({ target: { files: event.dataTransfer.files } });
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-3xl p-8 sm:p-12 flex flex-col items-center text-center cursor-pointer ${
+                  isDragging
+                    ? 'border-cyan-400 bg-cyan-950/30'
+                    : 'border-cyan-500/30 bg-gradient-to-b from-cyan-950/20 to-pink-950/20'
+                }`}
+              >
+                <div className="w-20 h-20 rounded-3xl bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center mb-4">
+                  <UploadIcon size={30} className="text-cyan-400" />
                 </div>
 
-                {/* Dropzone Container */}
-                {ingestMode === 'dropzone' && (
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                      if (e.dataTransfer.files?.[0]) {
-                        handleFileSelect({ target: { files: e.dataTransfer.files } });
-                      }
-                    }}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`relative border-2 border-dashed rounded-3xl p-6 sm:p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
-                      isDragging 
-                        ? 'border-cyan-400 bg-cyan-950/30 scale-[1.01] shadow-[0_0_30px_rgba(6,182,212,0.4)]' 
-                        : 'border-cyan-500/30 hover:border-cyan-400/70 bg-gradient-to-b from-cyan-950/20 via-zinc-900/30 to-pink-950/20'
-                    }`}
-                  >
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-gradient-to-tr from-cyan-500/20 to-pink-500/20 border border-cyan-500/40 flex items-center justify-center mb-3 sm:mb-4 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-                      <UploadIcon size={28} className="text-cyan-400 animate-bounce" />
-                    </div>
+                <h3 className="text-lg font-black">
+                  {preview ? 'Change / Replace Video' : 'Select or Drop Video'}
+                </h3>
 
-                    <h3 className="text-base sm:text-lg font-black text-white mb-1">
-                      {preview ? 'Change / Replace Video File' : 'Select or Drop Video Broadcast File'}
-                    </h3>
-                    <p className="text-xs text-zinc-400 max-w-md mb-4 sm:mb-6">
-                      Supports MP4, MOV, WebM, M4V with high-bitrate audio sync and automatic 9:16 aspect ratio.
-                    </p>
+                <p className="text-xs text-zinc-400 max-w-md mt-2 mb-5">
+                  MP4, MOV, WebM and M4V are accepted. The source is compressed locally before upload.
+                </p>
 
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] sm:text-[11px] font-mono text-zinc-300">
-                        Max: 500 MB
-                      </span>
-                      <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] sm:text-[11px] font-mono text-cyan-300">
-                        Resolution: 1080p / 4K UHD
-                      </span>
-                      <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] sm:text-[11px] font-mono text-pink-300">
-                        Bitrate: 60 FPS
-                      </span>
-                    </div>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px]">
+                    Max 500 MB
+                  </span>
+                  <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] text-cyan-300">
+                    Output: 720p
+                  </span>
+                  <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] text-pink-300">
+                    30 FPS
+                  </span>
+                </div>
 
-                    <input 
-                      ref={fileInputRef} 
-                      type="file" 
-                      accept="video/*" 
-                      hidden 
-                      onChange={handleFileSelect} 
-                    />
-                  </div>
-                )}
-
-                {/* Studio Camera Controls */}
-                {ingestMode === 'camera' && (
-                  <div className="space-y-4">
-                    {/* Mobile Camera Viewport if previewing on mobile */}
-                    <div className="md:hidden relative aspect-[9/16] max-h-[340px] mx-auto bg-black rounded-3xl overflow-hidden border-2 border-pink-500/40">
-                      <video 
-                        ref={videoRef} 
-                        autoPlay 
-                        playsInline 
-                        muted 
-                        style={{ filter: currentFilterObj.css }} 
-                        className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} 
-                      />
-                      {showGrid && (
-                        <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 border border-white/10 z-10">
-                          <div className="border-r border-b border-white/15" />
-                          <div className="border-r border-b border-white/15" />
-                          <div className="border-b border-white/15" />
-                          <div className="border-r border-b border-white/15" />
-                          <div className="border-r border-b border-white/15" />
-                          <div className="border-b border-white/15" />
-                          <div className="border-r border-b border-white/15" />
-                          <div className="border-r border-b border-white/15" />
-                          <div />
-                        </div>
-                      )}
-                      <div className="absolute bottom-3 left-0 right-0 flex justify-center z-20">
-                        <button 
-                          type="button"
-                          onClick={isRecording ? stopRecording : startRecording}
-                          className="w-12 h-12 rounded-full border-4 border-white flex items-center justify-center p-1 bg-black/40 shadow-2xl"
-                        >
-                          <div className={`transition-all ${isRecording ? 'w-4 h-4 bg-red-600 rounded-sm animate-pulse' : 'w-full h-full bg-pink-500 rounded-full'}`} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => setFacingMode(f => f === 'user' ? 'environment' : 'user')}
-                        className="p-3 sm:p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5 hover:border-cyan-400 transition-colors"
-                      >
-                        <RefreshCw size={18} className="text-cyan-400" />
-                        <span className="text-xs font-bold text-white">Flip Camera</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">{facingMode}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowGrid(g => !g)}
-                        className={`p-3 sm:p-4 border rounded-2xl flex flex-col items-center gap-1.5 transition-colors ${
-                          showGrid ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-zinc-900/60 border-white/10 text-white'
-                        }`}
-                      >
-                        <Grid size={18} />
-                        <span className="text-xs font-bold">Rule of Thirds</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">{showGrid ? 'Active' : 'Off'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setRecordingSpeed(s => s === '1x' ? '2x' : s === '2x' ? '0.5x' : '1x')}
-                        className="p-3 sm:p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5 hover:border-cyan-400 transition-colors"
-                      >
-                        <Gauge size={18} className="text-pink-400" />
-                        <span className="text-xs font-bold text-white">Capture Speed</span>
-                        <span className="text-[10px] text-pink-400 font-mono">{recordingSpeed}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setRecordingLimit(l => l === 60 ? 180 : l === 180 ? 15 : 60)}
-                        className="p-3 sm:p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5 hover:border-cyan-400 transition-colors"
-                      >
-                        <Clock size={18} className="text-amber-400" />
-                        <span className="text-xs font-bold text-white">Time Limit</span>
-                        <span className="text-[10px] text-amber-400 font-mono">{recordingLimit}s max</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Cover Frame Scrubber (Feature 3) */}
-                {preview && (
-                  <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                        <Tag size={15} /> Feature 3: Cover Frame Scrubber & Headline Sticker
-                      </h4>
-                      <span className="text-[10px] sm:text-[11px] font-mono text-zinc-400">
-                        {thumbScrubTime.toFixed(1)}s
-                      </span>
-                    </div>
-
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max={videoDuration || 10} 
-                      step="0.1" 
-                      value={thumbScrubTime}
-                      onChange={async (e) => {
-                        const val = parseFloat(e.target.value);
-                        setThumbScrubTime(val);
-                        await generateVideoThumbnail(preview, val);
-                      }}
-                      className="w-full accent-cyan-400 cursor-pointer h-2 bg-zinc-800 rounded-lg"
-                    />
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                      <input 
-                        type="text" 
-                        value={coverText}
-                        onChange={(e) => setCoverText(e.target.value)}
-                        placeholder="Cover Headline Sticker..."
-                        className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-cyan-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => generateVideoThumbnail(preview, thumbScrubTime)}
-                        className="bg-white/10 hover:bg-white/20 border border-white/15 rounded-2xl text-xs font-black uppercase py-2.5 active:scale-95 transition-all text-cyan-300"
-                      >
-                        Bake Cover Frame
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/*"
+                  hidden
+                  onChange={handleFileSelect}
+                />
               </div>
             )}
 
-            {/* ============================================================ */}
-            {/* STEP 2: AUDIO & CINEMATIC LUT FILTERS */}
-            {/* ============================================================ */}
-            {activeStep === 'audio_filter' && (
-              <div className="space-y-5 max-w-3xl mx-auto">
-                
-                {/* Header */}
-                <div className="pb-3 border-b border-white/10">
-                  <h2 className="text-base sm:text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
-                    <Sliders size={18} className="text-pink-400" /> Sound Lab & Cinematic LUT Grading
-                  </h2>
-                  <p className="text-xs text-zinc-400">Master audio levels, voice clarity, and color grading LUT filters</p>
-                </div>
+            {ingestMode === 'camera' && (
+              <div className="space-y-4">
+                <div className="md:hidden relative aspect-[9/16] max-h-[420px] mx-auto bg-black rounded-3xl overflow-hidden border-2 border-pink-500/40">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{ filter: currentFilterObj.css }}
+                    className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                  />
 
-                {/* Feature 11: 8 Cinematic LUT Color Filters (Persisted to Database & Feed) */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                      <Wand2 size={15} /> Feature 11: 8 Cinematic LUT Color Filters
-                    </h4>
-                    <span className="text-[10px] font-mono text-zinc-400 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded-full">
-                      Active: {currentFilterObj.name}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    {filters.map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => handleFilterSelect(f.id)}
-                        className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden active:scale-[0.98] ${
-                          selectedFilter === f.id 
-                            ? 'bg-cyan-950/50 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.4)]' 
-                            : 'bg-zinc-900/40 border-white/10 hover:bg-zinc-900/80 hover:border-white/20'
-                        }`}
-                      >
-                        <div className={`w-full h-10 rounded-xl mb-2 flex items-center justify-center ${f.color}`}>
-                          {selectedFilter === f.id && (
-                            <Check size={16} className="text-white drop-shadow-md" />
-                          )}
-                        </div>
-                        <p className="text-xs font-bold text-white truncate">{f.name}</p>
-                        <p className="text-[10px] text-zinc-500 font-mono">
-                          {selectedFilter === f.id ? 'Applied to Feed' : 'Select'}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Feature 12: AI Voice Clarifier & Audio Enhancer */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
-                  <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
-                    <Sparkle size={15} /> Feature 12: AI Audio Enhancement & Voice Clarifier
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {[
-                      { id: 'none', label: 'Standard Pass', desc: 'Raw original' },
-                      { id: 'crystal_voice', label: 'Crystal Voice', desc: 'Isolates vocals' },
-                      { id: 'studio_master', label: 'Studio Master', desc: 'Comp & Limit' },
-                      { id: 'bass_boost', label: 'Bass Booster', desc: 'Punchy 808s' }
-                    ].map(enh => (
-                      <button
-                        key={enh.id}
-                        type="button"
-                        onClick={() => setAudioEnhancement(enh.id)}
-                        className={`p-3 rounded-2xl border text-left transition-all ${
-                          audioEnhancement === enh.id 
-                            ? 'bg-pink-950/40 border-pink-500 text-pink-300 shadow-md' 
-                            : 'bg-black/40 border-white/10 text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        <p className="text-xs font-bold text-white">{enh.label}</p>
-                        <p className="text-[10px] text-zinc-500">{enh.desc}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Feature 13: Dual Audio Master Mixer */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
-                  <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                    <SlidersHorizontal size={15} /> Feature 13: Dual Audio Master Mixer
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs font-bold">
-                        <span className="text-zinc-300">Original Video Audio</span>
-                        <span className="font-mono text-cyan-400">{videoVolume}%</span>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
-                        value={videoVolume} 
-                        onChange={(e) => setVideoVolume(Number(e.target.value))}
-                        className="w-full accent-cyan-400 h-2 bg-zinc-800 rounded-lg" 
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs font-bold">
-                        <span className="text-zinc-300">Soundtrack Beat Volume</span>
-                        <span className="font-mono text-pink-400">{musicVolume}%</span>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
-                        value={musicVolume} 
-                        onChange={(e) => setMusicVolume(Number(e.target.value))}
-                        className="w-full accent-pink-500 h-2 bg-zinc-800 rounded-lg" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* iTunes Sound Lab Search */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-zinc-300 tracking-wider flex items-center gap-1.5">
-                      <Music size={15} className="text-pink-500" /> Global Music Search & Ingestion
-                    </h4>
-                    <span className="text-[11px] font-bold text-cyan-400 truncate max-w-[150px]">
-                      {selectedMusic.name}
-                    </span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                      <input 
-                        type="text" 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleMusicSearch()}
-                        placeholder="Search songs, artists, afrobeats..." 
-                        className="w-full bg-black/60 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs text-white placeholder-zinc-500 outline-none focus:border-cyan-400"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleMusicSearch()}
-                      className="px-4 sm:px-5 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-black text-xs uppercase rounded-2xl active:scale-95 transition-all shadow-md shrink-0"
-                    >
-                      {isSearching ? <Loader2 size={16} className="animate-spin" /> : 'Find Beat'}
-                    </button>
-                  </div>
-
-                  {/* Results List */}
-                  {searchResults.length > 0 && (
-                    <div className="max-h-48 overflow-y-auto space-y-2 pr-1 custom-viewport-scrollbar">
-                      {searchResults.slice(0, 8).map(track => (
-                        <div 
-                          key={track.trackId}
-                          className="flex items-center justify-between p-2.5 bg-black/40 border border-white/5 rounded-2xl hover:border-cyan-400/40 transition-all"
-                        >
-                          <div className="flex items-center gap-3 min-w-0 pr-2">
-                            <img src={track.artworkUrl60} className="w-10 h-10 rounded-xl object-cover shrink-0" alt="" />
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-white truncate">{track.trackName}</p>
-                              <p className="text-[10px] text-zinc-400 truncate">{track.artistName}</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedMusic({
-                              name: track.trackName,
-                              artist: track.artistName,
-                              url: track.previewUrl,
-                              artwork: track.artworkUrl100
-                            })}
-                            className="px-3 py-1.5 bg-pink-500 hover:bg-pink-600 text-white rounded-xl text-[11px] font-black uppercase shrink-0 transition-all"
-                          >
-                            Apply
-                          </button>
-                        </div>
+                  {showGrid && (
+                    <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+                      {Array.from({ length: 9 }).map((_, index) => (
+                        <div key={index} className="border border-white/10" />
                       ))}
                     </div>
                   )}
-                </div>
 
-              </div>
-            )}
-
-            {/* ============================================================ */}
-            {/* STEP 3: INTERACTIVE FEATURES & STICKERS */}
-            {/* ============================================================ */}
-            {activeStep === 'interactive' && (
-              <div className="space-y-5 max-w-3xl mx-auto">
-                
-                {/* Header */}
-                <div className="pb-3 border-b border-white/10">
-                  <h2 className="text-base sm:text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
-                    <Sparkles size={18} className="text-yellow-400" /> Interactive Stickers & Community Tools
-                  </h2>
-                  <p className="text-xs text-zinc-400">Chapters, Closed Captions, Polls, and Product showcase pins</p>
-                </div>
-
-                {/* Feature 1: Chapters & Timeline Markers */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                      <BarChart2 size={15} /> Feature 1: Interactive Video Chapters & Markers
-                    </h4>
-                    <span className="text-[11px] font-mono text-zinc-400">
-                      {chapters.length} Marker(s)
-                    </span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <input 
-                      type="number" 
-                      min="0"
-                      max={videoDuration || 600}
-                      value={newChapterTime}
-                      onChange={(e) => setNewChapterTime(e.target.value)}
-                      placeholder="Sec" 
-                      className="w-16 sm:w-20 bg-black/60 border border-white/10 rounded-2xl px-3 py-2.5 text-xs text-white outline-none focus:border-cyan-400 font-mono"
-                    />
-                    <input 
-                      type="text" 
-                      value={newChapterTitle}
-                      onChange={(e) => setNewChapterTitle(e.target.value)}
-                      placeholder="Chapter Label (e.g. 0:15 Drop)..." 
-                      className="flex-1 min-w-0 bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white outline-none focus:border-cyan-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddChapter}
-                      className="px-4 bg-cyan-500 text-black font-black text-xs uppercase rounded-2xl active:scale-95 transition-all shrink-0"
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </div>
-
-                  {/* Chapters List */}
-                  <div className="flex flex-wrap gap-2">
-                    {chapters.map(chap => (
-                      <div key={chap.time} className="flex items-center gap-2 bg-black/60 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-xs">
-                        <span className="font-mono text-cyan-400 font-bold">{formatTime(chap.time)}</span>
-                        <span className="text-white">{chap.title}</span>
-                        <button 
-                          type="button"
-                          onClick={() => handleRemoveChapter(chap.time)}
-                          className="text-zinc-500 hover:text-red-400 ml-1"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Feature 2: Auto Subtitles & Closed Captions (CC) */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-yellow-300 tracking-wider flex items-center gap-1.5">
-                      <FileText size={15} /> Feature 2: Auto Closed Captions (CC Subtitles)
-                    </h4>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={subtitlesEnabled}
-                        onChange={(e) => setSubtitlesEnabled(e.target.checked)}
-                        className="accent-yellow-400 rounded w-4 h-4"
-                      />
-                      <span className="text-xs font-bold text-zinc-300">Enable CC</span>
-                    </label>
-                  </div>
-
-                  {subtitlesEnabled && (
-                    <div className="space-y-2 pt-2">
-                      <button
-                        type="button"
-                        disabled={isGeneratingCC}
-                        onClick={handleAutoGenerateCC}
-                        className="w-full py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-xs uppercase rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2"
-                      >
-                        {isGeneratingCC ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                        Auto-Sync Subtitles with AI
-                      </button>
-                      <div className="space-y-1.5 pt-1 max-h-36 overflow-y-auto custom-viewport-scrollbar">
-                        {subtitles.map((sub, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-xs font-mono text-zinc-400 bg-black/40 p-2 rounded-xl border border-white/5">
-                            <span className="text-yellow-400 shrink-0">{sub.start}s-{sub.end}s:</span>
-                            <span className="text-zinc-200 truncate">{sub.text}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Feature 4: Interactive Poll / Voting Sticker */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
-                      <HelpCircle size={15} /> Feature 4: Interactive Poll & Voting Sticker
-                    </h4>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={pollEnabled}
-                        onChange={(e) => setPollEnabled(e.target.checked)}
-                        className="accent-pink-500 rounded w-4 h-4"
-                      />
-                      <span className="text-xs font-bold text-zinc-300">Pin Poll</span>
-                    </label>
-                  </div>
-
-                  {pollEnabled && (
-                    <div className="space-y-3 pt-2">
-                      <input 
-                        type="text" 
-                        value={pollData.question}
-                        onChange={(e) => setPollData({ ...pollData, question: e.target.value })}
-                        placeholder="Ask your viewers a question..."
-                        className="w-full bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white outline-none focus:border-pink-500"
-                      />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input 
-                          type="text" 
-                          value={pollData.option1}
-                          onChange={(e) => setPollData({ ...pollData, option1: e.target.value })}
-                          placeholder="Option A (e.g. Yes 🔥)"
-                          className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2 text-xs text-cyan-300 outline-none focus:border-cyan-400"
-                        />
-                        <input 
-                          type="text" 
-                          value={pollData.option2}
-                          onChange={(e) => setPollData({ ...pollData, option2: e.target.value })}
-                          placeholder="Option B (e.g. No ⚡)"
-                          className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2 text-xs text-pink-300 outline-none focus:border-pink-500"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Feature 5: Product / External Link Pin Showcase */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider flex items-center gap-1.5">
-                      <ShoppingBag size={15} /> Feature 5: Product / Web Link Showcase Pin
-                    </h4>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={productEnabled}
-                        onChange={(e) => setProductEnabled(e.target.checked)}
-                        className="accent-emerald-400 rounded w-4 h-4"
-                      />
-                      <span className="text-xs font-bold text-zinc-300">Attach Product</span>
-                    </label>
-                  </div>
-
-                  {productEnabled && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
-                      <input 
-                        type="text" 
-                        value={productLink.title}
-                        onChange={(e) => setProductLink({ ...productLink, title: e.target.value })}
-                        placeholder="Product Name..."
-                        className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white outline-none focus:border-emerald-400"
-                      />
-                      <input 
-                        type="text" 
-                        value={productLink.price}
-                        onChange={(e) => setProductLink({ ...productLink, price: e.target.value })}
-                        placeholder="Price (e.g. $19.99)..."
-                        className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white outline-none focus:border-emerald-400"
-                      />
-                      <input 
-                        type="text" 
-                        value={productLink.url}
-                        onChange={(e) => setProductLink({ ...productLink, url: e.target.value })}
-                        placeholder="Destination URL..."
-                        className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white outline-none focus:border-emerald-400"
-                      />
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            )}
-
-            {/* ============================================================ */}
-            {/* STEP 4: METADATA & BROADCAST PUBLISH */}
-            {/* ============================================================ */}
-            {activeStep === 'publish' && (
-              <div className="space-y-5 max-w-3xl mx-auto">
-                
-                {/* Header */}
-                <div className="pb-3 border-b border-white/10">
-                  <h2 className="text-base sm:text-lg font-black tracking-wide text-white uppercase flex items-center gap-2">
-                    <Globe size={18} className="text-cyan-400" /> Broadcast Distribution Deck
-                  </h2>
-                  <p className="text-xs text-zinc-400">Configure caption, category, permissions, and release options</p>
-                </div>
-
-                {/* Caption & AI Viral Hooks */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-black uppercase text-zinc-300 tracking-wider">
-                      Video Caption & Description
-                    </label>
-                    <span className="text-[11px] font-mono text-zinc-500">
-                      {caption.length} / 2200
-                    </span>
-                  </div>
-
-                  <textarea 
-                    value={caption} 
-                    onChange={(e) => setCaption(e.target.value)} 
-                    rows={3} 
-                    placeholder="Write a compelling caption that triggers curiosity... Use #hashtags and @mentions" 
-                    className="w-full bg-black/60 border border-cyan-500/30 focus:border-cyan-400 rounded-2xl p-4 text-xs text-white placeholder-zinc-500 outline-none transition-all resize-none shadow-inner" 
-                  />
-
-                  {/* AI Quick Hooks */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
-                    <span className="text-[10px] font-black uppercase text-pink-400 flex items-center gap-1 shrink-0">
-                      <Sparkles size={12} /> AI Hooks:
-                    </span>
-                    {aiHookPresets.map(hook => (
-                      <button
-                        key={hook.title}
-                        type="button"
-                        onClick={() => setCaption(hook.caption)}
-                        className="px-2.5 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] text-zinc-300 font-bold shrink-0 transition-all active:scale-95"
-                      >
-                        {hook.title}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Hashtag & Mention Insertion Chips */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                    <Hash size={14} className="text-cyan-400 shrink-0" />
-                    {trendingHashtags.map(tag => (
-                      <button 
-                        key={tag} 
-                        type="button"
-                        onClick={() => handleAddTag(tag)} 
-                        className="px-2.5 py-1 bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 rounded-xl text-[10px] font-mono hover:bg-cyan-500 hover:text-black transition-all shrink-0"
-                      >
-                        #{tag}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                    <MapPin size={14} className="text-pink-400 shrink-0" />
-                    <button
-                      type="button"
-                      onClick={handleDetectLocation}
-                      className="px-2.5 py-1 bg-pink-950/40 border border-pink-500/40 text-pink-300 rounded-xl text-[10px] font-bold shrink-0 hover:bg-pink-500 hover:text-white transition-all"
-                    >
-                      📍 Auto-Detect Location
-                    </button>
-                    {popularLocations.map(loc => (
-                      <button
-                        key={loc}
-                        type="button"
-                        onClick={() => setLocation(loc)}
-                        className="px-2.5 py-1 bg-white/5 border border-white/10 text-zinc-300 rounded-xl text-[10px] shrink-0 hover:border-pink-400 transition-all"
-                      >
-                        {loc}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Feature 15: Niche Channel & Target Audience Category */}
-                <div className="space-y-2">
-                  <label className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                    <Layers size={14} /> Feature 15: Target Audience Category
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {categories.map(cat => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setCategory(cat)}
-                        className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all truncate ${
-                          category === cat 
-                            ? 'bg-cyan-500 text-black border-cyan-400 shadow-md font-black' 
-                            : 'bg-black/40 text-zinc-400 border-white/10 hover:text-white'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Privacy Visibility */}
-                <div className="space-y-2">
-                  <label className="text-xs font-black uppercase text-zinc-300 tracking-wider">
-                    Audience & Visibility
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: 'public', label: 'Public', desc: 'Everyone', icon: <Globe size={16} /> },
-                      { id: 'friends', label: 'Followers', desc: 'Mutual only', icon: <Users size={16} /> },
-                      { id: 'private', label: 'Private', desc: 'Only me', icon: <Lock size={16} /> }
-                    ].map(p => (
-                      <button 
-                        key={p.id}
-                        type="button"
-                        onClick={() => setPrivacy(p.id)}
-                        className={`p-3 rounded-2xl border flex flex-col items-center gap-1 transition-all ${
-                          privacy === p.id 
-                            ? 'bg-gradient-to-tr from-cyan-950/60 to-pink-950/60 border-cyan-400 shadow-md text-white' 
-                            : 'bg-zinc-900/40 border-white/10 text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        <div className={privacy === p.id ? 'text-cyan-400' : 'text-zinc-400'}>{p.icon}</div>
-                        <span className="text-xs font-black uppercase">{p.label}</span>
-                        <span className="text-[10px] text-zinc-500">{p.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Feature 6, 7, 8, 9, 10, 14: ADVANCED TOGGLES GRID */}
-                <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-4 sm:p-5 space-y-4">
-                  <h4 className="text-xs font-black uppercase text-pink-300 tracking-wider flex items-center gap-1.5">
-                    <Shield size={15} /> Pro Creator Permissions & Compliance
-                  </h4>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    
-                    {/* Feature 7: Allow Duet */}
-                    <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer">
-                      <div>
-                        <p className="text-xs font-bold text-white">Allow Duet & Remix</p>
-                        <p className="text-[10px] text-zinc-500">Feature 7: Users can create side-by-side clips</p>
-                      </div>
-                      <input 
-                        type="checkbox" 
-                        checked={allowDuet}
-                        onChange={(e) => setAllowDuet(e.target.checked)}
-                        className="accent-cyan-400 w-4 h-4"
-                      />
-                    </label>
-
-                    {/* Feature 8: Allow Stitch */}
-                    <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer">
-                      <div>
-                        <p className="text-xs font-bold text-white">Allow Stitch</p>
-                        <p className="text-[10px] text-zinc-500">Feature 8: Users can stitch up to 5s</p>
-                      </div>
-                      <input 
-                        type="checkbox" 
-                        checked={allowStitch}
-                        onChange={(e) => setAllowStitch(e.target.checked)}
-                        className="accent-cyan-400 w-4 h-4"
-                      />
-                    </label>
-
-                    {/* Feature 9: Allow Downloads */}
-                    <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer">
-                      <div>
-                        <p className="text-xs font-bold text-white">Allow Video Downloads</p>
-                        <p className="text-[10px] text-zinc-500">Feature 9: Save button with watermark</p>
-                      </div>
-                      <input 
-                        type="checkbox" 
-                        checked={allowDownload}
-                        onChange={(e) => setAllowDownload(e.target.checked)}
-                        className="accent-pink-500 w-4 h-4"
-                      />
-                    </label>
-
-                    {/* Feature 10: Age Restricted */}
-                    <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer">
-                      <div>
-                        <p className="text-xs font-bold text-white">18+ Mature Filter</p>
-                        <p className="text-[10px] text-zinc-500">Feature 10: Requires tap-to-reveal confirmation</p>
-                      </div>
-                      <input 
-                        type="checkbox" 
-                        checked={ageRestricted}
-                        onChange={(e) => setAgeRestricted(e.target.checked)}
-                        className="accent-red-500 w-4 h-4"
-                      />
-                    </label>
-
-                    {/* Feature 6: Commercial / Paid Partnership */}
-                    <label className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl cursor-pointer sm:col-span-2">
-                      <div className="flex-1 pr-3">
-                        <p className="text-xs font-bold text-white">Paid Partnership Disclosure</p>
-                        <p className="text-[10px] text-zinc-500">Feature 6: Pin sponsor banner on video</p>
-                        {isCommercial && (
-                          <input 
-                            type="text" 
-                            value={sponsorTag}
-                            onChange={(e) => setSponsorTag(e.target.value)}
-                            placeholder="Sponsor Brand Name (e.g. Nike, Apple, Universe)..."
-                            className="mt-2 w-full bg-zinc-950 border border-amber-500/40 rounded-xl px-3 py-1.5 text-xs text-amber-300 outline-none"
-                          />
-                        )}
-                      </div>
-                      <input 
-                        type="checkbox" 
-                        checked={isCommercial}
-                        onChange={(e) => setIsCommercial(e.target.checked)}
-                        className="accent-amber-400 w-4 h-4"
-                      />
-                    </label>
-
-                    {/* Feature 14: Scheduled Release */}
-                    <div className="p-3 bg-black/40 border border-white/5 rounded-2xl sm:col-span-2 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-white">Feature 14: Scheduled Time Release</p>
-                          <p className="text-[10px] text-zinc-500">Release video automatically at a future time</p>
-                        </div>
-                        <input 
-                          type="checkbox" 
-                          checked={isScheduled}
-                          onChange={(e) => setIsScheduled(e.target.checked)}
-                          className="accent-cyan-400 w-4 h-4"
-                        />
-                      </div>
-                      {isScheduled && (
-                        <input 
-                          type="datetime-local" 
-                          value={scheduledAt}
-                          onChange={(e) => setScheduledAt(e.target.value)}
-                          className="w-full bg-zinc-950 border border-cyan-500/40 rounded-xl px-3 py-1.5 text-xs text-cyan-300 outline-none font-mono"
-                        />
-                      )}
-                    </div>
-
-                  </div>
-                </div>
-
-                {/* ============================================================ */}
-                {/* UPLOAD TELEMETRY COCKPIT & PROGRESS BAR */}
-                {/* ============================================================ */}
-                {isUploading ? (
-                  <div className="p-5 sm:p-6 bg-black/90 border border-cyan-400/50 rounded-3xl space-y-4 shadow-[0_0_30px_rgba(6,182,212,0.3)]">
-                    <div className="flex items-center justify-between text-xs font-black uppercase">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-pink-500 flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin text-cyan-400" />
-                        {uploadStatusText}
-                      </span>
-                      <span className="font-mono text-cyan-300 text-sm">{uploadProgress}%</span>
-                    </div>
-
-                    {/* Animated High-End Progress Bar */}
-                    <div className="relative w-full h-3 bg-zinc-900 rounded-full overflow-hidden border border-white/10 p-0.5">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${uploadProgress}%` }}
-                        transition={{ duration: 0.2 }}
-                        className="h-full bg-gradient-to-r from-cyan-500 via-pink-500 to-teal-400 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] relative"
-                      >
-                        <div className="absolute inset-0 bg-white/20 animate-pulse" />
-                      </motion.div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500">
-                      <span>Stage: {uploadStage.toUpperCase()}</span>
-                      <span>LUT: {currentFilterObj.name} (Preserved)</span>
-                    </div>
-                  </div>
-                ) : (
                   <button
                     type="button"
-                    onClick={handleUpload}
-                    className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-cyan-500 via-pink-500 to-rose-600 text-white font-black text-xs sm:text-sm uppercase tracking-widest rounded-2xl shadow-[0_0_30px_rgba(236,72,153,0.5)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:brightness-110"
+                    onClick={isRecording ? stopRecording : startRecording}
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full border-4 border-white p-1 bg-black/40"
                   >
-                    <Zap size={18} className="fill-white" /> Broadcast Video Now
+                    <div className={`w-full h-full ${isRecording ? 'bg-red-600 rounded-md' : 'bg-pink-500 rounded-full'}`} />
                   </button>
-                )}
+                </div>
 
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setFacingMode(value => value === 'user' ? 'environment' : 'user')}
+                    className="p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5"
+                  >
+                    <RefreshCw size={18} className="text-cyan-400" />
+                    <span className="text-xs font-bold">Flip Camera</span>
+                    <span className="text-[10px] text-zinc-500">{facingMode}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowGrid(value => !value)}
+                    className={`p-4 rounded-2xl border flex flex-col items-center gap-1.5 ${
+                      showGrid ? 'bg-cyan-500/20 border-cyan-400' : 'bg-zinc-900/60 border-white/10'
+                    }`}
+                  >
+                    <Grid size={18} />
+                    <span className="text-xs font-bold">Grid</span>
+                    <span className="text-[10px] text-zinc-500">{showGrid ? 'Active' : 'Off'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRecordingSpeed(value => value === '1x' ? '2x' : value === '2x' ? '0.5x' : '1x')}
+                    className="p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5"
+                  >
+                    <Gauge size={18} className="text-pink-400" />
+                    <span className="text-xs font-bold">Speed</span>
+                    <span className="text-[10px] text-pink-400">{recordingSpeed}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRecordingLimit(value => value === 60 ? 180 : value === 180 ? 15 : 60)}
+                    className="p-4 bg-zinc-900/60 border border-white/10 rounded-2xl flex flex-col items-center gap-1.5"
+                  >
+                    <Clock size={18} className="text-amber-400" />
+                    <span className="text-xs font-bold">Limit</span>
+                    <span className="text-[10px] text-amber-400">{recordingLimit}s</span>
+                  </button>
+                </div>
+
+                {isRecording && (
+                  <div className="text-center text-sm font-mono text-red-400">
+                    Recording {formatTime(recordingTime)} / {formatTime(recordingLimit)}
+                  </div>
+                )}
               </div>
             )}
 
+            {preview && (
+              <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase text-cyan-300 flex items-center gap-1.5">
+                    <Tag size={15} />
+                    Cover Frame
+                  </h4>
+                  <span className="text-[10px] font-mono text-zinc-400">
+                    {thumbScrubTime.toFixed(1)}s
+                  </span>
+                </div>
+
+                <input
+                  type="range"
+                  min="0"
+                  max={videoDuration || 10}
+                  step="0.1"
+                  value={Math.min(thumbScrubTime, videoDuration || 10)}
+                  onChange={async event => {
+                    const value = Number(event.target.value);
+                    setThumbScrubTime(value);
+                    await generateVideoThumbnail(preview, value);
+                  }}
+                  className="w-full accent-cyan-400"
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <input
+                    type="text"
+                    value={coverText}
+                    onChange={event => setCoverText(event.target.value)}
+                    placeholder="Cover headline..."
+                    className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => generateVideoThumbnail(preview, thumbScrubTime)}
+                    className="bg-white/10 border border-white/15 rounded-2xl text-xs font-black uppercase py-2.5 text-cyan-300"
+                  >
+                    Bake Cover
+                  </button>
+                </div>
+
+                {thumbnailPreview && (
+                  <img
+                    src={thumbnailPreview}
+                    alt="Video cover preview"
+                    className="w-24 aspect-[9/16] object-cover rounded-xl border border-cyan-500/30"
+                  />
+                )}
+              </div>
+            )}
           </div>
+        )}
 
-        </div>
+        {activeStep === 'audio_filter' && (
+          <div className="space-y-5 max-w-3xl mx-auto">
+            <div className="pb-3 border-b border-white/10">
+              <h2 className="text-lg font-black uppercase flex items-center gap-2">
+                <Sliders size={18} className="text-pink-400" />
+                Sound Lab & Cinematic LUT
+              </h2>
+              <p className="text-xs text-zinc-400">
+                The selected soundtrack will be embedded into the final compressed video.
+              </p>
+            </div>
 
-        {/* ============================================================ */}
-        {/* 3. MOBILE BOTTOM ACTION BAR */}
-        {/* ============================================================ */}
-        <footer className="md:hidden border-t border-cyan-500/15 bg-black/90 backdrop-blur-xl p-3 flex items-center justify-between gap-2 shrink-0 z-30">
-          {currentStepIndex > 0 ? (
-            <button
-              type="button"
-              disabled={isUploading}
-              onClick={goToPrevStep}
-              className="px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-zinc-300 flex items-center gap-1 active:scale-95 transition-all"
-            >
-              <ChevronLeft size={16} /> Back
-            </button>
-          ) : (
-            <div />
-          )}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase text-cyan-300">
+                  8 Cinematic LUT Filters
+                </h4>
+                <span className="text-[10px] text-zinc-400">
+                  Active: {currentFilterObj.name}
+                </span>
+              </div>
 
-          {activeStep !== 'publish' && preview ? (
-            <button
-              type="button"
-              disabled={isUploading}
-              onClick={goToNextStep}
-              className="flex-1 max-w-[200px] py-2.5 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95 transition-all"
-            >
-              Next Step <ChevronRight size={16} />
-            </button>
-          ) : activeStep === 'publish' && !isUploading ? (
-            <button
-              type="button"
-              onClick={handleUpload}
-              className="flex-1 py-2.5 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(236,72,153,0.4)] active:scale-95 transition-all"
-            >
-              <Zap size={15} className="fill-white" /> Broadcast
-            </button>
-          ) : null}
-        </footer>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {filters.map(filter => (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    onClick={() => handleFilterSelect(filter.id)}
+                    className={`p-3 rounded-2xl border text-left ${
+                      selectedFilter === filter.id
+                        ? 'bg-cyan-950/50 border-cyan-400'
+                        : 'bg-zinc-900/40 border-white/10'
+                    }`}
+                  >
+                    <div className={`w-full h-10 rounded-xl mb-2 flex items-center justify-center ${filter.color}`}>
+                      {selectedFilter === filter.id && <Check size={16} />}
+                    </div>
+                    <p className="text-xs font-bold truncate">{filter.name}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      </motion.div>
+            <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-3">
+              <h4 className="text-xs font-black uppercase text-pink-300">
+                AI Audio Enhancement
+              </h4>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: 'none', label: 'Standard' },
+                  { id: 'crystal_voice', label: 'Crystal Voice' },
+                  { id: 'studio_master', label: 'Studio Master' },
+                  { id: 'bass_boost', label: 'Bass Booster' }
+                ].map(option => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setAudioEnhancement(option.id)}
+                    className={`p-3 rounded-2xl border text-xs font-bold ${
+                      audioEnhancement === option.id
+                        ? 'bg-pink-950/40 border-pink-500 text-pink-300'
+                        : 'bg-black/40 border-white/10 text-zinc-400'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
+              <h4 className="text-xs font-black uppercase text-cyan-300">
+                Dual Audio Master Mixer
+              </h4>
+
+              <div>
+                <div className="flex justify-between text-xs">
+                  <span>Original Video Audio</span>
+                  <span className="text-cyan-400">{videoVolume}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={videoVolume}
+                  onChange={event => setVideoVolume(Number(event.target.value))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs">
+                  <span>Embedded Soundtrack</span>
+                  <span className="text-pink-400">{musicVolume}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={musicVolume}
+                  onChange={event => setMusicVolume(Number(event.target.value))}
+                  className="w-full accent-pink-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase text-zinc-300">
+                  Global Music Search
+                </h4>
+                <span className="text-[10px] text-cyan-400 truncate max-w-[180px]">
+                  {selectedMusic.name}
+                </span>
+              </div>
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    value={searchQuery}
+                    onChange={event => setSearchQuery(event.target.value)}
+                    onKeyDown={event => event.key === 'Enter' && handleMusicSearch()}
+                    placeholder="Search songs, artists, Afrobeats..."
+                    className="w-full bg-black/60 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs outline-none"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleMusicSearch()}
+                  className="px-5 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-black text-xs rounded-2xl"
+                >
+                  {isSearching ? <Loader2 size={16} className="animate-spin" /> : 'Find Beat'}
+                </button>
+              </div>
+
+              {searchResults.length > 0 && (
+                <div className="max-h-52 overflow-y-auto space-y-2">
+                  {searchResults.slice(0, 8).map(track => (
+                    <div
+                      key={track.trackId}
+                      className="flex items-center justify-between p-2.5 bg-black/40 border border-white/5 rounded-2xl"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {track.artworkUrl60 && (
+                          <img
+                            src={track.artworkUrl60}
+                            className="w-10 h-10 rounded-xl object-cover"
+                            alt=""
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold truncate">{track.trackName}</p>
+                          <p className="text-[10px] text-zinc-400 truncate">{track.artistName}</p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedMusic({
+                            name: track.trackName,
+                            artist: track.artistName,
+                            url: track.previewUrl,
+                            artwork: track.artworkUrl100
+                          });
+                          setPlayingTrackUrl(track.previewUrl);
+                        }}
+                        className="px-3 py-1.5 bg-pink-500 text-white rounded-xl text-[10px] font-black uppercase"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedMusic.url && (
+                <div className="p-3 bg-pink-950/20 border border-pink-500/30 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold">{selectedMusic.name}</p>
+                    <p className="text-[10px] text-zinc-400">{selectedMusic.artist}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMusic({
+                        name: 'Original Audio',
+                        artist: 'Original Creator',
+                        url: null,
+                        artwork: null
+                      });
+                      setPlayingTrackUrl(null);
+                    }}
+                    className="text-xs text-red-400 font-bold"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeStep === 'interactive' && (
+          <div className="space-y-5 max-w-3xl mx-auto">
+            <div className="pb-3 border-b border-white/10">
+              <h2 className="text-lg font-black uppercase flex items-center gap-2">
+                <Sparkles size={18} className="text-yellow-400" />
+                Interactive Features
+              </h2>
+              <p className="text-xs text-zinc-400">
+                Configure chapters, captions, polls and product links.
+              </p>
+            </div>
+
+            <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase text-cyan-300">
+                  Chapters & Markers
+                </h4>
+                <span className="text-[10px] text-zinc-500">{chapters.length} marker(s)</span>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max={videoDuration || 600}
+                  value={newChapterTime}
+                  onChange={event => setNewChapterTime(event.target.value)}
+                  className="w-20 bg-black/60 border border-white/10 rounded-2xl px-3 py-2.5 text-xs"
+                  placeholder="Sec"
+                />
+                <input
+                  value={newChapterTitle}
+                  onChange={event => setNewChapterTitle(event.target.value)}
+                  placeholder="Chapter title..."
+                  className="flex-1 bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddChapter}
+                  className="px-4 bg-cyan-500 text-black rounded-2xl"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {chapters.map(chapter => (
+                  <div
+                    key={`${chapter.time}-${chapter.title}`}
+                    className="flex items-center gap-2 bg-black/60 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-xs"
+                  >
+                    <span className="text-cyan-400 font-mono">{formatTime(chapter.time)}</span>
+                    <span>{chapter.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveChapter(chapter.time)}
+                      className="text-zinc-500 hover:text-red-400"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase text-yellow-300">
+                  Auto Closed Captions
+                </h4>
+                <input
+                  type="checkbox"
+                  checked={subtitlesEnabled}
+                  onChange={event => setSubtitlesEnabled(event.target.checked)}
+                  className="accent-yellow-400"
+                />
+              </div>
+
+              {subtitlesEnabled && (
+                <>
+                  <button
+                    type="button"
+                    disabled={isGeneratingCC}
+                    onClick={handleAutoGenerateCC}
+                    className="w-full py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 text-black font-black text-xs uppercase rounded-2xl"
+                  >
+                    {isGeneratingCC ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Auto-Sync Subtitles'}
+                  </button>
+
+                  <div className="space-y-1.5">
+                    {subtitles.map((subtitle, index) => (
+                      <div key={index} className="text-xs bg-black/40 p-2 rounded-xl">
+                        <span className="text-yellow-400 font-mono">
+                          {subtitle.start}s-{subtitle.end}s
+                        </span>{' '}
+                        {subtitle.text}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase text-pink-300">
+                  Poll & Voting
+                </h4>
+                <input
+                  type="checkbox"
+                  checked={pollEnabled}
+                  onChange={event => setPollEnabled(event.target.checked)}
+                  className="accent-pink-500"
+                />
+              </div>
+
+              {pollEnabled && (
+                <>
+                  <input
+                    value={pollData.question}
+                    onChange={event => setPollData({ ...pollData, question: event.target.value })}
+                    className="w-full bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs"
+                    placeholder="Question..."
+                  />
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={pollData.option1}
+                      onChange={event => setPollData({ ...pollData, option1: event.target.value })}
+                      className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs"
+                      placeholder="Option A"
+                    />
+                    <input
+                      value={pollData.option2}
+                      onChange={event => setPollData({ ...pollData, option2: event.target.value })}
+                      className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs"
+                      placeholder="Option B"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase text-emerald-300">
+                  Product / External Link
+                </h4>
+                <input
+                  type="checkbox"
+                  checked={productEnabled}
+                  onChange={event => setProductEnabled(event.target.checked)}
+                  className="accent-emerald-400"
+                />
+              </div>
+
+              {productEnabled && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <input
+                    value={productLink.title}
+                    onChange={event => setProductLink({ ...productLink, title: event.target.value })}
+                    placeholder="Product"
+                    className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs"
+                  />
+                  <input
+                    value={productLink.price}
+                    onChange={event => setProductLink({ ...productLink, price: event.target.value })}
+                    placeholder="Price"
+                    className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs"
+                  />
+                  <input
+                    value={productLink.url}
+                    onChange={event => setProductLink({ ...productLink, url: event.target.value })}
+                    placeholder="URL"
+                    className="bg-black/60 border border-white/10 rounded-2xl px-4 py-2.5 text-xs"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeStep === 'publish' && (
+          <div className="space-y-5 max-w-3xl mx-auto">
+            <div className="pb-3 border-b border-white/10">
+              <h2 className="text-lg font-black uppercase flex items-center gap-2">
+                <Globe size={18} className="text-cyan-400" />
+                Broadcast Distribution
+              </h2>
+              <p className="text-xs text-zinc-400">
+                Final metadata, audience and publishing controls.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <label className="text-xs font-black uppercase">Caption</label>
+                <span className="text-[10px] text-zinc-500">{caption.length}/2200</span>
+              </div>
+
+              <textarea
+                value={caption}
+                onChange={event => setCaption(event.target.value.slice(0, 2200))}
+                rows={4}
+                placeholder="Write your caption..."
+                className="w-full bg-black/60 border border-cyan-500/30 rounded-2xl p-4 text-xs outline-none resize-none"
+              />
+
+              <div className="flex gap-2 overflow-x-auto">
+                {aiHookPresets.map(hook => (
+                  <button
+                    key={hook.title}
+                    type="button"
+                    onClick={() => setCaption(hook.caption)}
+                    className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] shrink-0"
+                  >
+                    {hook.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex gap-2 overflow-x-auto">
+                <Hash size={14} className="text-cyan-400 shrink-0" />
+                {trendingHashtags.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => handleAddTag(tag)}
+                    className="px-2.5 py-1 bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 rounded-xl text-[10px] shrink-0"
+                  >
+                    #{tag}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-2 overflow-x-auto">
+                <MapPin size={14} className="text-pink-400 shrink-0" />
+                <button
+                  type="button"
+                  onClick={handleDetectLocation}
+                  className="px-2.5 py-1 bg-pink-950/40 border border-pink-500/40 text-pink-300 rounded-xl text-[10px] shrink-0"
+                >
+                  Auto-Detect
+                </button>
+
+                {popularLocations.map(place => (
+                  <button
+                    key={place}
+                    type="button"
+                    onClick={() => setLocation(place)}
+                    className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-[10px] shrink-0"
+                  >
+                    {place}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-black uppercase text-cyan-300">
+                Target Category
+              </label>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {categories.map(item => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setCategory(item)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold text-left truncate ${
+                      category === item
+                        ? 'bg-cyan-500 text-black border-cyan-400'
+                        : 'bg-black/40 text-zinc-400 border-white/10'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-black uppercase text-zinc-300">
+                Audience & Visibility
+              </label>
+
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                {[
+                  { id: 'public', label: 'Public', icon: <Globe size={16} /> },
+                  { id: 'friends', label: 'Followers', icon: <Users size={16} /> },
+                  { id: 'private', label: 'Private', icon: <Lock size={16} /> }
+                ].map(option => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setPrivacy(option.id)}
+                    className={`p-3 rounded-2xl border flex flex-col items-center gap-1 ${
+                      privacy === option.id
+                        ? 'bg-cyan-950/60 border-cyan-400'
+                        : 'bg-zinc-900/40 border-white/10'
+                    }`}
+                  >
+                    {option.icon}
+                    <span className="text-xs font-black">{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/40 border border-white/10 rounded-3xl p-5 space-y-3">
+              <h4 className="text-xs font-black uppercase text-pink-300">
+                Creator Permissions & Compliance
+              </h4>
+
+              {[
+                ['Allow Duet & Remix', allowDuet, setAllowDuet],
+                ['Allow Stitch', allowStitch, setAllowStitch],
+                ['Allow Downloads', allowDownload, setAllowDownload],
+                ['18+ Mature Content', ageRestricted, setAgeRestricted],
+                ['Paid Partnership', isCommercial, setIsCommercial],
+                ['Allow Comments', allowComments, setAllowComments]
+              ].map(([label, value, setter]) => (
+                <label
+                  key={label}
+                  className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-2xl"
+                >
+                  <span className="text-xs font-bold">{label}</span>
+                  <input
+                    type="checkbox"
+                    checked={value}
+                    onChange={event => setter(event.target.checked)}
+                    className="accent-cyan-400"
+                  />
+                </label>
+              ))}
+
+              {isCommercial && (
+                <input
+                  value={sponsorTag}
+                  onChange={event => setSponsorTag(event.target.value)}
+                  placeholder="Sponsor brand name..."
+                  className="w-full bg-black border border-amber-500/40 rounded-xl px-3 py-2 text-xs text-amber-300"
+                />
+              )}
+
+              <div className="p-3 bg-black/40 border border-white/5 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold">Scheduled Release</p>
+                    <p className="text-[10px] text-zinc-500">Publish automatically later</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isScheduled}
+                    onChange={event => setIsScheduled(event.target.checked)}
+                    className="accent-cyan-400"
+                  />
+                </div>
+
+                {isScheduled && (
+                  <input
+                    type="datetime-local"
+                    value={scheduledAt}
+                    onChange={event => setScheduledAt(event.target.value)}
+                    className="mt-3 w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-xs text-cyan-300"
+                  />
+                )}
+              </div>
+            </div>
+
+            {processingInfo.finalSize > 0 && !isUploading && (
+              <div className="p-4 bg-emerald-950/30 border border-emerald-500/30 rounded-2xl">
+                <div className="flex items-center gap-2 text-emerald-300 text-xs font-black">
+                  <CheckCircle2 size={16} />
+                  VIDEO OPTIMIZATION READY
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+                  <div>
+                    <p className="text-[10px] text-zinc-500">Original</p>
+                    <p className="text-xs font-mono">
+                      {(processingInfo.originalSize / 1048576).toFixed(1)} MB
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] text-zinc-500">Final</p>
+                    <p className="text-xs font-mono text-cyan-300">
+                      {(processingInfo.finalSize / 1048576).toFixed(1)} MB
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] text-zinc-500">Saved</p>
+                    <p className="text-xs font-mono text-emerald-300">
+                      {processingInfo.compressionRatio}%
+                    </p>
+                  </div>
+                </div>
+
+                {selectedMusic.url && (
+                  <p className="text-[10px] text-pink-300 mt-3">
+                    🎵 {selectedMusic.name} will be embedded into the final video.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {isUploading ? (
+              <div className="p-5 bg-black/90 border border-cyan-400/50 rounded-3xl space-y-4">
+                <div className="flex items-center justify-between text-xs font-black">
+                  <span className="text-cyan-300 flex items-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    {uploadStatusText}
+                  </span>
+                  <span className="font-mono text-cyan-300">
+                    {uploadProgress}%
+                  </span>
+                </div>
+
+                <div className="w-full h-3 bg-zinc-900 rounded-full overflow-hidden">
+                  <motion.div
+                    animate={{ width: `${uploadProgress}%` }}
+                    className="h-full bg-gradient-to-r from-cyan-500 via-pink-500 to-teal-400 rounded-full"
+                  />
+                </div>
+
+                <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                  <span>{uploadStage.toUpperCase()}</span>
+                  <span>{currentFilterObj.name}</span>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={!videoFile}
+                className="w-full py-4 bg-gradient-to-r from-cyan-500 via-pink-500 to-rose-600 text-white font-black text-sm uppercase tracking-widest rounded-2xl shadow-[0_0_30px_rgba(236,72,153,0.5)] disabled:opacity-40"
+              >
+                <Zap size={18} className="inline mr-2 fill-white" />
+                Broadcast Video Now
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
-  );
+
+    <footer className="md:hidden border-t border-cyan-500/15 bg-black/90 p-3 flex items-center justify-between gap-2 shrink-0">
+      {currentStepIndex > 0 ? (
+        <button
+          type="button"
+          disabled={isUploading}
+          onClick={goToPrevStep}
+          className="px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1"
+        >
+          <ChevronLeft size={16} />
+          Back
+        </button>
+      ) : (
+        <div />
+      )}
+
+      {activeStep !== 'publish' && preview ? (
+        <button
+          type="button"
+          disabled={isUploading}
+          onClick={goToNextStep}
+          className="flex-1 max-w-[200px] py-2.5 bg-gradient-to-r from-cyan-500 to-teal-400 text-black font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5"
+        >
+          Next Step
+          <ChevronRight size={16} />
+        </button>
+      ) : activeStep === 'publish' && !isUploading ? (
+        <button
+          type="button"
+          onClick={handleUpload}
+          disabled={!videoFile}
+          className="flex-1 py-2.5 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-xs uppercase rounded-xl disabled:opacity-40"
+        >
+          <Zap size={15} className="inline mr-1 fill-white" />
+          Broadcast
+        </button>
+      ) : null}
+    </footer>
+  </motion.div>
+</div>
+```
+
+);
 };
 
 export default Upload;
