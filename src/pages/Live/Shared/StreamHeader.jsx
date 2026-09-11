@@ -1062,107 +1062,370 @@ const StreamHeader = ({
                             : 'border-amber-600';
 
                       return (
-    <>
-      <header className="absolute inset-x-0 top-0 z-50 pointer-events-none select-none px-2.5 pt-2.5 sm:px-4 sm:pt-4">
-        <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-2">
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-            <div className="flex min-w-0 items-center gap-1.5 sm:gap-2 pointer-events-auto">
-              <div className="flex min-w-0 items-center gap-1.5 sm:gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 px-1.5 py-1.5 shadow-lg shadow-black/30 backdrop-blur-xl">
-                <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-white/20 bg-zinc-800 sm:h-10 sm:w-10">
-                  <img src={hostAvatar} className="h-full w-full object-cover" alt={`${hostUsername} profile`} loading="eager" />
-                  <span className="absolute bottom-0.5 right-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-zinc-950" aria-label="Live" />
-                </div>
-                <div className="min-w-0 max-w-[115px] leading-none sm:max-w-[180px]">
-                  <div className="flex min-w-0 items-center gap-1">
-                    <span className="truncate text-[11px] font-semibold text-white sm:text-xs">{hostUsername}</span>
-                    {isVerified && <CheckCircle2 size={11} className="shrink-0 text-cyan-400" aria-label="Verified creator" />}
+                        <div
+                          key={gifter.sender_id}
+                          title={`${gifter.profiles?.username || 'Top Gifter'} • ${formatGiftValue(gifter.price_total)}`}
+                          className={`
+                            relative h-7 w-7 overflow-hidden
+                            rounded-full border-2 bg-zinc-900
+                            ${rankClass}
+                          `}
+                        >
+                          <img
+                            src={avatar}
+                            className="h-full w-full object-cover"
+                            alt={`${gifter.profiles?.username || 'Top gifter'} avatar`}
+                            loading="lazy"
+                          />
+
+                          <span
+                            className="
+                              absolute bottom-0 right-0
+                              min-w-2.5 h-2.5 rounded-full
+                              bg-black/80 px-0.5
+                              text-center text-[6px]
+                              font-bold text-white
+                            "
+                          >
+                            {gifter.rank}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="mt-1 flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-[9px] text-zinc-400 sm:text-[10px]">{formattedLikes} likes</span>
-                    {isAgeRestricted && <span className="shrink-0 rounded-md border border-red-400/20 bg-red-500/10 px-1 text-[7px] font-bold text-red-300">18+</span>}
-                  </div>
-                </div>
-                {!isHost && (
-                  <motion.button type="button" disabled={isFollowLoading} whileTap={{ scale: isFollowLoading ? 1 : 0.92 }} onClick={handleToggleFollow} aria-label={isFollowing ? `Unfollow ${hostUsername}` : `Follow ${hostUsername}`} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all ${isFollowing ? 'border border-cyan-400/20 bg-cyan-400/10 text-cyan-400' : 'border border-rose-400/30 bg-rose-500 text-white shadow-md shadow-rose-500/20'} ${isFollowLoading ? 'cursor-wait opacity-50' : ''}`}>
-                    {isFollowLoading ? <Loader2 size={13} className="animate-spin" /> : isFollowing ? <CheckCircle2 size={13} /> : <Plus size={14} className="stroke-[3]" />}
-                  </motion.button>
                 )}
               </div>
-              <div className="flex h-[42px] shrink-0 items-center gap-1.5 rounded-2xl border border-white/10 bg-zinc-950/80 px-2.5 shadow-lg shadow-black/30 backdrop-blur-xl" aria-label={`${viewerCount || 0} viewers`}>
-                <Users size={13} className="text-cyan-400" />
-                <span className="text-[10px] font-semibold text-white sm:text-[11px]">{formattedViewerCount}</span>
-              </div>
-            </div>
 
-            <div className="flex shrink-0 items-center gap-1.5 pointer-events-auto">
-              <div className="hidden h-[42px] items-center gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 px-2.5 shadow-lg shadow-black/30 backdrop-blur-xl sm:flex" aria-label={`Gift value ${formatGiftValue(giftValue)}`}>
-                <Gift size={13} className="text-yellow-400" />
-                {giftLoading ? <Loader2 size={12} className="animate-spin text-zinc-500" /> : <span className="text-[9px] font-semibold text-zinc-200">{formatGiftValue(giftValue)}</span>}
-                {topGifters.length > 0 && <div className="ml-0.5 flex items-center -space-x-1.5">{topGifters.map((gifter, index) => {
-                  const avatar = getAvatarUrl(gifter.profiles?.avatar_url, gifter.sender_id);
-                  const rankClass = index === 0 ? 'border-yellow-400' : index === 1 ? 'border-zinc-300' : 'border-amber-600';
-                  return <div key={gifter.sender_id} title={`${gifter.profiles?.username || 'Top Gifter'} • ${formatGiftValue(gifter.price_total)}`} className={`relative h-7 w-7 overflow-hidden rounded-full border-2 bg-zinc-900 ${rankClass}`}><img src={avatar} className="h-full w-full object-cover" alt={`${gifter.profiles?.username || 'Top gifter'} avatar`} loading="lazy" /><span className="absolute bottom-0 right-0 min-w-2.5 h-2.5 rounded-full bg-black/80 px-0.5 text-center text-[6px] font-bold text-white">{gifter.rank}</span></div>;
-                })}</div>}
-              </div>
-              <button type="button" onClick={handleShare} disabled={isShareLoading} aria-label="Share live stream" className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-zinc-950/80 text-zinc-200 shadow-lg shadow-black/30 backdrop-blur-xl transition hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300 active:scale-95 disabled:cursor-wait disabled:opacity-60">
-                {isShareLoading ? <Loader2 size={15} className="animate-spin" /> : shareCopied ? <Check size={15} /> : <Share2 size={15} />}
+              <button
+                type="button"
+                onClick={handleShare}
+                disabled={isShareLoading}
+                aria-label="Share live stream"
+                className="
+                  flex h-[42px] w-[42px] shrink-0
+                  items-center justify-center
+                  rounded-2xl border border-white/10
+                  bg-zinc-950/80 text-zinc-200
+                  backdrop-blur-xl transition
+                  hover:border-cyan-400/40
+                  hover:bg-cyan-400/10
+                  hover:text-cyan-300
+                  active:scale-95
+                  disabled:cursor-wait disabled:opacity-60
+                "
+              >
+                {isShareLoading ? (
+                  <Loader2
+                    size={15}
+                    className="animate-spin"
+                  />
+                ) : shareCopied ? (
+                  <Check size={15} />
+                ) : (
+                  <Share2 size={15} />
+                )}
               </button>
-              <button type="button" onClick={handleLeave} aria-label={isHost ? 'End or leave live stream' : 'Leave live stream'} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 text-red-400 shadow-lg shadow-black/20 backdrop-blur-xl transition hover:border-red-400/50 hover:bg-red-500/20 hover:text-red-300 active:scale-95">
+
+              <button
+                type="button"
+                onClick={handleLeave}
+                aria-label={
+                  isHost
+                    ? 'End or leave live stream'
+                    : 'Leave live stream'
+                }
+                className="
+                  flex h-[42px] w-[42px] shrink-0
+                  items-center justify-center
+                  rounded-2xl border border-red-500/20
+                  bg-red-500/10 text-red-400
+                  backdrop-blur-xl transition
+                  hover:border-red-400/50
+                  hover:bg-red-500/20
+                  hover:text-red-300
+                  active:scale-95
+                "
+              >
                 <X size={17} />
               </button>
             </div>
           </div>
 
-          {(streamTitle || streamCategory || streamLanguage || streamRegion) && (
-            <div className="pointer-events-auto min-w-0 max-w-full sm:max-w-[620px]">
-              <div className="min-w-0 max-w-full rounded-xl border border-white/10 bg-zinc-950/75 px-2.5 py-2 shadow-lg shadow-black/20 backdrop-blur-xl">
-                {streamTitle && <p className="truncate text-[10px] font-semibold text-white sm:text-[11px]">{streamTitle}</p>}
-                {(streamCategory || streamLanguage || streamRegion) && <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-                  {streamCategory && <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[7px] font-medium text-zinc-300">{streamCategory}</span>}
-                  {streamLanguage && <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[7px] font-medium text-zinc-300">{streamLanguage}</span>}
-                  {streamRegion && <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[7px] font-medium text-zinc-300">{streamRegion}</span>}
-                  {isAgeRestricted && <span className="rounded-md bg-red-500/10 px-1.5 py-0.5 text-[7px] font-bold text-red-300">18+</span>}
-                </div>}
+          {(streamTitle ||
+            streamCategory ||
+            streamLanguage ||
+            streamRegion) && (
+            <div className="pointer-events-auto flex min-w-0 max-w-[min(100%,520px)]">
+              <div
+                className="
+                  min-w-0 max-w-full
+                  rounded-xl border border-white/10
+                  bg-zinc-950/75 px-2.5 py-2
+                  backdrop-blur-xl shadow-lg shadow-black/20
+                "
+              >
+                {streamTitle && (
+                  <p className="truncate text-[10px] sm:text-[11px] font-semibold text-white">
+                    {streamTitle}
+                  </p>
+                )}
+
+                {(streamCategory ||
+                  streamLanguage ||
+                  streamRegion) && (
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+                    {streamCategory && (
+                      <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[7px] font-medium text-zinc-300">
+                        {streamCategory}
+                      </span>
+                    )}
+
+                    {streamLanguage && (
+                      <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[7px] font-medium text-zinc-300">
+                        {streamLanguage}
+                      </span>
+                    )}
+
+                    {streamRegion && (
+                      <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[7px] font-medium text-zinc-300">
+                        {streamRegion}
+                      </span>
+                    )}
+
+                    {isAgeRestricted && (
+                      <span className="rounded-md bg-red-500/10 px-1.5 py-0.5 text-[7px] font-bold text-red-300">
+                        18+
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start justify-between gap-2 min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5 pointer-events-auto">
-              <div className="flex h-7 items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-950/75 px-2.5 backdrop-blur-xl" aria-label={`Live duration ${duration}`}>
-                <Clock3 size={10} className="text-red-400" />
-                <span className="font-mono text-[9px] font-semibold tracking-wide text-zinc-200">{duration}</span>
+              <div
+                className="
+                  flex h-7 items-center gap-1.5
+                  rounded-xl border border-white/10
+                  bg-zinc-950/75 px-2.5
+                  backdrop-blur-xl
+                "
+                aria-label={`Live duration ${duration}`}
+              >
+                <Clock3
+                  size={10}
+                  className="text-red-400"
+                />
+
+                <span className="font-mono text-[9px] font-semibold tracking-wide text-zinc-200">
+                  {duration}
+                </span>
               </div>
-              <div className={`flex h-7 items-center gap-1.5 rounded-xl border px-2 backdrop-blur-xl ${connectionState === 'connected' ? 'border-emerald-400/20 bg-emerald-500/10' : connectionState === 'connecting' ? 'border-cyan-400/20 bg-cyan-500/10' : 'border-amber-400/20 bg-amber-500/10'}`} aria-live="polite">
-                <ConnectionIcon size={10} className={connectionState === 'connected' ? 'text-emerald-400' : connectionState === 'connecting' ? 'animate-spin text-cyan-400' : 'text-amber-400'} />
-                <span className={`text-[8px] font-semibold uppercase tracking-wide ${connectionState === 'connected' ? 'text-emerald-300' : connectionState === 'connecting' ? 'text-cyan-300' : 'text-amber-300'}`}>{connectionLabel}</span>
+
+              <div
+                className={`
+                  flex h-7 items-center gap-1.5
+                  rounded-xl border px-2
+                  backdrop-blur-xl
+                  ${
+                    connectionState === 'connected'
+                      ? 'border-emerald-400/20 bg-emerald-500/10'
+                      : connectionState === 'connecting'
+                        ? 'border-cyan-400/20 bg-cyan-500/10'
+                        : 'border-amber-400/20 bg-amber-500/10'
+                  }
+                `}
+                aria-live="polite"
+              >
+                <ConnectionIcon
+                  size={10}
+                  className={`
+                    ${
+                      connectionState === 'connected'
+                        ? 'text-emerald-400'
+                        : connectionState === 'connecting'
+                          ? 'text-cyan-400 animate-spin'
+                          : 'text-amber-400'
+                    }
+                  `}
+                />
+
+                <span
+                  className={`
+                    text-[8px] font-semibold
+                    uppercase tracking-wide
+                    ${
+                      connectionState === 'connected'
+                        ? 'text-emerald-300'
+                        : connectionState === 'connecting'
+                          ? 'text-cyan-300'
+                          : 'text-amber-300'
+                    }
+                  `}
+                >
+                  {connectionLabel}
+                </span>
               </div>
-              {metricsError && <div className="flex h-7 items-center gap-1 rounded-xl border border-red-400/20 bg-red-500/10 px-2 backdrop-blur-xl"><AlertCircle size={10} className="text-red-400" /><span className="text-[8px] font-semibold text-red-300">Sync issue</span></div>}
-              <AnimatePresence>{connectionState !== 'connected' && <motion.div initial={{ opacity: 0, y: -3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} className="flex h-7 items-center gap-1 rounded-xl border border-amber-500/20 bg-amber-500/10 px-2 backdrop-blur-xl"><WifiOff size={10} className="text-amber-400" /><span className="text-[8px] font-semibold uppercase tracking-wide text-amber-300">{connectionState === 'connecting' ? 'Connecting' : 'Reconnecting'}</span></motion.div>}</AnimatePresence>
+
+              <AnimatePresence>
+                {metricsError && (
+                  <motion.div
+                    initial={{
+                      opacity: 0,
+                      y: -3
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0
+                    }}
+                    exit={{
+                      opacity: 0,
+                      y: -3
+                    }}
+                    className="
+                      flex h-7 items-center gap-1
+                      rounded-xl border
+                      border-red-400/20
+                      bg-red-500/10 px-2
+                      backdrop-blur-xl
+                    "
+                  >
+                    <AlertCircle
+                      size={10}
+                      className="text-red-400"
+                    />
+
+                    <span className="text-[8px] font-semibold text-red-300">
+                      Sync issue
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence>
+                {connectionState !== 'connected' && (
+                  <motion.div
+                    initial={{
+                      opacity: 0,
+                      y: -3
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0
+                    }}
+                    exit={{
+                      opacity: 0,
+                      y: -3
+                    }}
+                    className="
+                      flex h-7 items-center gap-1
+                      rounded-xl border
+                      border-amber-500/20
+                      bg-amber-500/10 px-2
+                      backdrop-blur-xl
+                    "
+                  >
+                    <WifiOff
+                      size={10}
+                      className="text-amber-400"
+                    />
+
+                    <span className="text-[8px] font-semibold uppercase tracking-wide text-amber-300">
+                      Reconnecting
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            <div className="pointer-events-auto w-full shrink-0 rounded-xl border border-white/10 bg-zinc-950/80 p-2 shadow-lg shadow-black/20 backdrop-blur-xl sm:w-[200px]" aria-label={`Gift goal ${Math.round(goalPercent)} percent complete`}>
+            <div
+              className="
+                pointer-events-auto
+                w-[150px] sm:w-[200px]
+                shrink-0 rounded-xl
+                border border-white/10
+                bg-zinc-950/80 p-2
+                backdrop-blur-xl
+                shadow-lg shadow-black/20
+              "
+              aria-label={`Gift goal ${Math.round(goalPercent)} percent complete`}
+            >
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <Target size={11} className={isGoalExceeded ? 'shrink-0 text-yellow-400' : 'shrink-0 text-amber-400'} />
-                  <span className={`truncate text-[8px] font-semibold uppercase tracking-wider sm:text-[9px] ${isGoalExceeded ? 'text-yellow-300' : 'text-amber-300'}`}>{isGoalExceeded ? 'Goal reached' : 'Live goal'}</span>
-                </div>
-                <span className="shrink-0 font-mono text-[8px] font-semibold text-zinc-300 sm:text-[9px]">{formatGiftValue(liveMetrics.current_goal)}/{formatGiftValue(liveMetrics.total_goal)}</span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                <motion.div initial={{ width: 0 }} animate={{ width: `${goalPercent}%` }} transition={{ type: 'spring', stiffness: 50, damping: 15 }} className={`h-full rounded-full ${isGoalExceeded ? 'bg-yellow-400' : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300'}`} />
-              </div>
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-[7px] text-zinc-500">{Math.round(goalPercent)}% complete</span>
-                {giftValue > 0 && <span className="flex items-center gap-1 text-[7px] text-zinc-500"><Gift size={8} />{formatGiftValue(giftValue)}</span>}
-              </div>
-            </div>
-          </div>
+                  <Target
+                    size={11}
+                    className={
+                      isGoalExceeded
+                        ? 'shrink-0 text-yellow-400'
+                        : 'shrink-0 text-amber-400'
+                    }
+                  />
 
-          <div className="flex items-center justify-end pointer-events-auto sm:hidden">
-            <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-950/80 px-2 py-1.5 shadow-lg shadow-black/20 backdrop-blur-xl">
-              <Gift size={11} className="text-yellow-400" />
-              <span className="text-[8px] font-semibold text-zinc-300">{giftLoading ? '...' : formatGiftValue(giftValue)} gifts</span>
+                  <span
+                    className={`
+                      truncate text-[8px] sm:text-[9px]
+                      font-semibold uppercase
+                      tracking-wider
+                      ${
+                        isGoalExceeded
+                          ? 'text-yellow-300'
+                          : 'text-amber-300'
+                      }
+                    `}
+                  >
+                    {isGoalExceeded
+                      ? 'Goal reached'
+                      : 'Live goal'}
+                  </span>
+                </div>
+
+                <span className="shrink-0 font-mono text-[8px] sm:text-[9px] font-semibold text-zinc-300">
+                  {formatGiftValue(
+                    liveMetrics.current_goal
+                  )}
+                  /
+                  {formatGiftValue(
+                    liveMetrics.total_goal
+                  )}
+                </span>
+              </div>
+
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${goalPercent}%`
+                  }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 50,
+                    damping: 15
+                  }}
+                  className={`
+                    h-full rounded-full
+                    ${
+                      isGoalExceeded
+                        ? 'bg-yellow-400'
+                        : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300'
+                    }
+                  `}
+                />
+              </div>
+
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[7px] text-zinc-500">
+                  {Math.round(goalPercent)}% complete
+                </span>
+
+                {giftValue > 0 && (
+                  <span className="flex items-center gap-1 text-[7px] text-zinc-500">
+                    <Gift size={8} />
+                    {formatGiftValue(giftValue)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1170,10 +1433,57 @@ const StreamHeader = ({
 
       <AnimatePresence>
         {toast && (
-          <motion.div initial={{ opacity: 0, y: -10, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.96 }} className="pointer-events-none fixed left-1/2 top-4 z-[100] -translate-x-1/2 rounded-xl border border-white/10 bg-zinc-950/95 px-3 py-2 shadow-2xl shadow-black/40 backdrop-blur-xl" role="status" aria-live="polite">
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: -10,
+              scale: 0.96
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: 1
+            }}
+            exit={{
+              opacity: 0,
+              y: -10,
+              scale: 0.96
+            }}
+            className="
+              pointer-events-none
+              fixed left-1/2 top-4 z-[100]
+              -translate-x-1/2
+              rounded-xl border
+              border-white/10
+              bg-zinc-950/95
+              px-3 py-2
+              shadow-2xl shadow-black/40
+              backdrop-blur-xl
+            "
+            role="status"
+            aria-live="polite"
+          >
             <div className="flex items-center gap-2">
-              {toast.type === 'success' ? <CheckCircle2 size={14} className="text-emerald-400" /> : toast.type === 'error' ? <AlertCircle size={14} className="text-red-400" /> : <Wifi size={14} className="text-cyan-400" />}
-              <span className="text-[10px] font-medium text-white">{toast.message}</span>
+              {toast.type === 'success' ? (
+                <CheckCircle2
+                  size={14}
+                  className="text-emerald-400"
+                />
+              ) : toast.type === 'error' ? (
+                <AlertCircle
+                  size={14}
+                  className="text-red-400"
+                />
+              ) : (
+                <Wifi
+                  size={14}
+                  className="text-cyan-400"
+                />
+              )}
+
+              <span className="text-[10px] font-medium text-white">
+                {toast.message}
+              </span>
             </div>
           </motion.div>
         )}
@@ -1181,18 +1491,99 @@ const StreamHeader = ({
 
       <AnimatePresence>
         {leaveConfirm && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm pointer-events-auto" role="dialog" aria-modal="true" aria-labelledby="leave-live-title">
-            <motion.div initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.96 }} className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl shadow-black/50">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="
+              fixed inset-0 z-[90]
+              flex items-center justify-center
+              bg-black/60 px-4
+              backdrop-blur-sm
+              pointer-events-auto
+            "
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-live-title"
+          >
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: 12,
+                scale: 0.96
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                scale: 1
+              }}
+              exit={{
+                opacity: 0,
+                y: 12,
+                scale: 0.96
+              }}
+              className="
+                w-full max-w-sm
+                rounded-2xl border
+                border-white/10
+                bg-zinc-950
+                p-5 shadow-2xl
+                shadow-black/50
+              "
+            >
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-400"><X size={18} /></div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+                  <X size={18} />
+                </div>
+
                 <div className="min-w-0">
-                  <h2 id="leave-live-title" className="text-sm font-semibold text-white">Leave live stream?</h2>
-                  <p className="mt-1 text-xs leading-5 text-zinc-400">You are currently hosting this live. Leaving may end your active host session depending on the room controller.</p>
+                  <h2
+                    id="leave-live-title"
+                    className="text-sm font-semibold text-white"
+                  >
+                    Leave live stream?
+                  </h2>
+
+                  <p className="mt-1 text-xs leading-5 text-zinc-400">
+                    You are currently hosting this live.
+                    Leaving may end your active host session
+                    depending on the room controller.
+                  </p>
                 </div>
               </div>
+
               <div className="mt-5 flex gap-2">
-                <button type="button" onClick={() => setLeaveConfirm(false)} className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-semibold text-zinc-200 transition hover:bg-white/10">Stay</button>
-                <button type="button" onClick={confirmLeave} className="flex-1 rounded-xl bg-red-500 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-red-400 active:scale-[0.98]">Leave</button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLeaveConfirm(false)
+                  }
+                  className="
+                    flex-1 rounded-xl
+                    border border-white/10
+                    bg-white/5 px-3 py-2.5
+                    text-xs font-semibold
+                    text-zinc-200 transition
+                    hover:bg-white/10
+                  "
+                >
+                  Stay
+                </button>
+
+                <button
+                  type="button"
+                  onClick={confirmLeave}
+                  className="
+                    flex-1 rounded-xl
+                    bg-red-500 px-3 py-2.5
+                    text-xs font-semibold
+                    text-white transition
+                    hover:bg-red-400
+                    active:scale-[0.98]
+                  "
+                >
+                  Leave
+                </button>
               </div>
             </motion.div>
           </motion.div>
