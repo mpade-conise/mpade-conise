@@ -1535,6 +1535,7 @@ const LivePlayer = () => {
             </AnimatePresence>
           </div>
         </div>
+        </div>
       </div>
 
       {/* GIFT PANEL
