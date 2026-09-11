@@ -1,40 +1,48 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { io } from 'socket.io-client';
-import { PhoneOff, Mic, MicOff, Video, VideoOff, Shield, Monitor, MessageSquare, Send, X } from 'lucide-react';
+import {
+  PhoneOff,
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  Shield,
+  Monitor,
+  MessageSquare,
+  Send,
+  X
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { startRingbackTone, stopRingbackTone } from '../utils/callNotificationEngine';
+import {
+  startRingbackTone,
+  stopRingbackTone
+} from '../utils/callNotificationEngine';
 
-const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
+const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
 
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
-    { urls: "stun:stun.relay.metered.ca:80" },
-    {
-      urls: "turn:global.relay.metered.ca:80",
-      username: "28087eceaa61e6de7d551200",
-      credential: "KW6Vsm7ZTUwjjDWn"
-    },
-    {
-      urls: "turn:global.relay.metered.ca:80?transport=tcp",
-      username: "28087eceaa61e6de7d551200",
-      credential: "KW6Vsm7ZTUwjjDWn"
-    },
-    {
-      urls: "turn:global.relay.metered.ca:443",
-      username: "28087eceaa61e6de7d551200",
-      credential: "KW6Vsm7ZTUwjjDWn"
-    },
-    {
-      urls: "turns:global.relay.metered.ca:443?transport=tcp",
-      username: "28087eceaa61e6de7d551200",
-      credential: "KW6Vsm7ZTUwjjDWn"
-    }
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' }
   ],
   iceCandidatePoolSize: 10,
-  bundlePolicy: "max-bundle",
-  rtcpMuxPolicy: "require"
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require'
+};
+
+const ACTIVE_CALL_STORAGE_KEY = 'made_universe_active_call';
+
+const createCallId = () => {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+  } catch {}
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 };
 
 const VideoCall = () => {
@@ -46,14 +54,14 @@ const VideoCall = () => {
 
   const [currentUserId, setCurrentUserId] = useState(null);
   const [peerProfile, setPeerProfile] = useState(null);
-  const [callStatus, setCallStatus] = useState("Initializing...");
+  const [callStatus, setCallStatus] = useState('Initializing...');
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [showChat, setShowChat] = useState(false);
   const [inCallMessages, setInCallMessages] = useState([]);
-  const [chatInput, setChatInput] = useState("");
+  const [chatInput, setChatInput] = useState('');
   const [floatingReactions, setFloatingReactions] = useState([]);
 
   const socketRef = useRef(null);
@@ -61,64 +69,331 @@ const VideoCall = () => {
   const localStreamRef = useRef(null);
   const screenTrackRef = useRef(null);
 
-  const iceQueueRef = useRef([]);
-  const realtimeChannelsRef = useRef([]);
-
-  const cleanupRef = useRef(null);
-
-  const isCleaningUpRef = useRef(false);
-  const isMountedRef = useRef(true);
-  const hasNavigatedRef = useRef(false);
-
-  const callInitializedRef = useRef(false);
-  const callEndedRef = useRef(false);
-
-  const offerSentRef = useRef(false);
-  const answerSentRef = useRef(false);
-
-  const remoteOfferHandledRef = useRef(false);
-  const remoteAnswerHandledRef = useRef(false);
-
-  const incomingCallSentRef = useRef(false);
-
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
-  useEffect(() => {
-    isMountedRef.current = true;
+  const iceQueueRef = useRef([]);
+  const iceCandidateKeysRef = useRef(new Set());
 
-    return () => {
-      isMountedRef.current = false;
-    };
+  const callIdRef = useRef(createCallId());
+  const roomIdRef = useRef(null);
+  const callRoleRef = useRef(null);
+
+  const invitationSentRef = useRef(false);
+  const offerSentRef = useRef(false);
+  const answerSentRef = useRef(false);
+
+  const lastOfferSdpRef = useRef(null);
+  const lastAnswerSdpRef = useRef(null);
+
+  const peerReadyRef = useRef(false);
+  const callEndedRef = useRef(false);
+  const cleanupPromiseRef = useRef(null);
+  const hasNavigatedRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const activeCallLockRef = useRef(false);
+
+  const realtimeChannelsRef = useRef([]);
+
+  const getRoomId = useCallback(() => {
+    if (!currentUserId || !peerUserId) return null;
+    return [currentUserId, peerUserId].sort().join('-');
+  }, [currentUserId, peerUserId]);
+
+  const setSafeStatus = useCallback((status) => {
+    if (!isMountedRef.current || callEndedRef.current) return;
+    setCallStatus(status);
   }, []);
 
+  const removeActiveCallLock = useCallback(() => {
+    try {
+      const existing = localStorage.getItem(ACTIVE_CALL_STORAGE_KEY);
+
+      if (!existing) return;
+
+      const parsed = JSON.parse(existing);
+
+      if (
+        parsed?.callId === callIdRef.current ||
+        parsed?.roomId === roomIdRef.current
+      ) {
+        localStorage.removeItem(ACTIVE_CALL_STORAGE_KEY);
+      }
+    } catch {
+      localStorage.removeItem(ACTIVE_CALL_STORAGE_KEY);
+    }
+
+    activeCallLockRef.current = false;
+  }, []);
+
+  const acquireActiveCallLock = useCallback(() => {
+    try {
+      const existing = localStorage.getItem(ACTIVE_CALL_STORAGE_KEY);
+
+      if (existing) {
+        const parsed = JSON.parse(existing);
+
+        if (
+          parsed?.callId &&
+          parsed.callId !== callIdRef.current &&
+          parsed?.roomId &&
+          parsed.roomId !== roomIdRef.current
+        ) {
+          return false;
+        }
+      }
+
+      localStorage.setItem(
+        ACTIVE_CALL_STORAGE_KEY,
+        JSON.stringify({
+          callId: callIdRef.current,
+          roomId: roomIdRef.current,
+          peerUserId,
+          createdAt: Date.now()
+        })
+      );
+
+      activeCallLockRef.current = true;
+      return true;
+    } catch {
+      activeCallLockRef.current = true;
+      return true;
+    }
+  }, [peerUserId]);
+
+  const removeRealtimeChannels = useCallback(async () => {
+    const channels = [...realtimeChannelsRef.current];
+    realtimeChannelsRef.current = [];
+
+    for (const channel of channels) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch {}
+    }
+  }, []);
+
+  const processIceQueue = useCallback(async () => {
+    const pc = pcRef.current;
+
+    if (
+      !pc ||
+      pc.signalingState === 'closed' ||
+      !pc.remoteDescription ||
+      !pc.remoteDescription.type
+    ) {
+      return;
+    }
+
+    const queuedCandidates = [...iceQueueRef.current];
+    iceQueueRef.current = [];
+
+    for (const candidate of queuedCandidates) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.warn('Unable to process queued ICE candidate:', error);
+      }
+    }
+  }, []);
+
+  const emitHangupOnce = useCallback(() => {
+    const socket = socketRef.current;
+
+    if (
+      !socket ||
+      !socket.connected ||
+      !peerUserId ||
+      !roomIdRef.current ||
+      callEndedRef.current
+    ) {
+      return;
+    }
+
+    socket.emit('peer_hung_up', {
+      roomId: roomIdRef.current,
+      streamId: roomIdRef.current,
+      callId: callIdRef.current,
+      from: currentUserId,
+      fromUserId: currentUserId,
+      to: peerUserId,
+      targetUserId: peerUserId,
+      receiverId: peerUserId
+    });
+  }, [currentUserId, peerUserId]);
+
+  const cleanUpCall = useCallback(
+    async (notifyPeer = true, shouldNavigate = true, finalStatus = 'Call Ended') => {
+      if (cleanupPromiseRef.current) {
+        return cleanupPromiseRef.current;
+      }
+
+      cleanupPromiseRef.current = (async () => {
+        if (callEndedRef.current) {
+          removeActiveCallLock();
+
+          if (
+            shouldNavigate &&
+            !hasNavigatedRef.current &&
+            isMountedRef.current
+          ) {
+            hasNavigatedRef.current = true;
+            navigate(-1);
+          }
+
+          return;
+        }
+
+        callEndedRef.current = true;
+
+        stopRingbackTone();
+
+        if (isMountedRef.current) {
+          setCallStatus(finalStatus);
+        }
+
+        if (notifyPeer) {
+          try {
+            emitHangupOnce();
+          } catch (error) {
+            console.warn('Unable to notify peer about call ending:', error);
+          }
+        }
+
+        if (screenTrackRef.current) {
+          try {
+            screenTrackRef.current.stop();
+          } catch {}
+
+          screenTrackRef.current = null;
+        }
+
+        const localStream = localStreamRef.current;
+
+        if (localStream) {
+          localStream.getTracks().forEach((track) => {
+            try {
+              track.stop();
+            } catch {}
+          });
+
+          localStreamRef.current = null;
+        }
+
+        if (localVideoRef.current) {
+          try {
+            localVideoRef.current.pause();
+            localVideoRef.current.srcObject = null;
+          } catch {}
+        }
+
+        if (remoteVideoRef.current) {
+          try {
+            remoteVideoRef.current.pause();
+            remoteVideoRef.current.srcObject = null;
+          } catch {}
+        }
+
+        const pc = pcRef.current;
+
+        if (pc) {
+          try {
+            pc.ontrack = null;
+            pc.onicecandidate = null;
+            pc.onconnectionstatechange = null;
+            pc.oniceconnectionstatechange = null;
+            pc.onsignalingstatechange = null;
+            pc.onnegotiationneeded = null;
+          } catch {}
+
+          try {
+            if (pc.signalingState !== 'closed') {
+              pc.close();
+            }
+          } catch {}
+
+          pcRef.current = null;
+        }
+
+        iceQueueRef.current = [];
+        iceCandidateKeysRef.current.clear();
+
+        offerSentRef.current = false;
+        answerSentRef.current = false;
+        peerReadyRef.current = false;
+        invitationSentRef.current = false;
+        lastOfferSdpRef.current = null;
+        lastAnswerSdpRef.current = null;
+
+        const socket = socketRef.current;
+
+        if (socket) {
+          try {
+            socket.removeAllListeners();
+          } catch {}
+
+          try {
+            socket.disconnect();
+          } catch {}
+
+          socketRef.current = null;
+        }
+
+        await removeRealtimeChannels();
+        removeActiveCallLock();
+
+        if (
+          shouldNavigate &&
+          !hasNavigatedRef.current &&
+          isMountedRef.current
+        ) {
+          hasNavigatedRef.current = true;
+          navigate(-1);
+        }
+      })();
+
+      return cleanupPromiseRef.current;
+    },
+    [
+      emitHangupOnce,
+      navigate,
+      removeActiveCallLock,
+      removeRealtimeChannels
+    ]
+  );
+
+  // Call duration timer
   useEffect(() => {
     let timer = null;
 
-    if (callStatus === "Connected") {
+    if (callStatus === 'Connected' && !callEndedRef.current) {
       timer = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
+        setCallDuration((previous) => previous + 1);
       }, 1000);
-    } else {
+    } else if (callStatus !== 'Connected') {
       setCallDuration(0);
     }
 
     return () => {
-      if (timer) {
-        clearInterval(timer);
-      }
+      if (timer) clearInterval(timer);
     };
   }, [callStatus]);
 
+  // Ringback sound
   useEffect(() => {
-    const statusLower = callStatus.toLowerCase();
+    if (callEndedRef.current) {
+      stopRingbackTone();
+      return undefined;
+    }
 
-    if (
-      statusLower.includes("calling") ||
-      statusLower.includes("connecting") ||
-      statusLower.includes("initializing") ||
-      statusLower.includes("accessing")
-    ) {
+    const status = callStatus.toLowerCase();
+
+    const shouldRing =
+      status.includes('calling') ||
+      status.includes('connecting') ||
+      status.includes('initializing') ||
+      status.includes('awaiting');
+
+    if (shouldRing) {
       startRingbackTone();
     } else {
       stopRingbackTone();
@@ -127,261 +402,38 @@ const VideoCall = () => {
     return () => stopRingbackTone();
   }, [callStatus]);
 
-  const processIceQueue = async () => {
-    const pc = pcRef.current;
-
-    if (
-      !pc ||
-      pc.signalingState === "closed" ||
-      !pc.remoteDescription ||
-      iceQueueRef.current.length === 0
-    ) {
-      return;
-    }
-
-    const candidates = [...iceQueueRef.current];
-    iceQueueRef.current = [];
-
-    for (const candidate of candidates) {
-      try {
-        if (
-          pc.signalingState !== "closed" &&
-          pc.remoteDescription
-        ) {
-          await pc.addIceCandidate(
-            new RTCIceCandidate(candidate)
-          );
-        }
-      } catch (error) {
-        console.warn(
-          "Error processing queued ICE candidate:",
-          error
-        );
-      }
-    }
-  };
-
-  const removeRealtimeChannels = async () => {
-    const channels = [...realtimeChannelsRef.current];
-    realtimeChannelsRef.current = [];
-
-    for (const channel of channels) {
-      try {
-        await supabase.removeChannel(channel);
-      } catch (error) {
-        console.warn(
-          "Failed removing realtime call channel:",
-          error
-        );
-      }
-    }
-  };
-
-  const performCleanup = async (
-    shouldNotifyPeer = true,
-    shouldNavigate = true
-  ) => {
-    if (isCleaningUpRef.current) {
-      return;
-    }
-
-    isCleaningUpRef.current = true;
-    callEndedRef.current = true;
-
-    stopRingbackTone();
-
-    const socket = socketRef.current;
-    const pc = pcRef.current;
-    const localStream = localStreamRef.current;
-    const screenTrack = screenTrackRef.current;
-
-    const hasValidPeer = Boolean(
-      currentUserId &&
-      peerUserId &&
-      peerUserId !== "undefined"
-    );
-
-    const roomId = hasValidPeer
-      ? [currentUserId, peerUserId].sort().join("-")
-      : null;
-
-    if (
-      shouldNotifyPeer &&
-      socket?.connected &&
-      hasValidPeer &&
-      roomId
-    ) {
-      try {
-        socket.emit("peer_hung_up", {
-          roomId,
-          to: peerUserId,
-          callerId: currentUserId,
-          receiverId: peerUserId
-        });
-      } catch (error) {
-        console.warn(
-          "Failed sending hangup signal:",
-          error
-        );
-      }
-    }
-
-    if (screenTrack) {
-      try {
-        screenTrack.onended = null;
-        screenTrack.stop();
-      } catch (error) {
-        console.warn(
-          "Failed stopping screen track:",
-          error
-        );
-      }
-
-      screenTrackRef.current = null;
-    }
-
-    if (localStream) {
-      try {
-        localStream.getTracks().forEach((track) => {
-          track.stop();
-        });
-      } catch (error) {
-        console.warn(
-          "Failed stopping local media tracks:",
-          error
-        );
-      }
-
-      localStreamRef.current = null;
-    }
-
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
-    }
-
-    if (pc) {
-      try {
-        pc.ontrack = null;
-        pc.onicecandidate = null;
-        pc.oniceconnectionstatechange = null;
-        pc.onconnectionstatechange = null;
-        pc.onsignalingstatechange = null;
-        pc.close();
-      } catch (error) {
-        console.warn(
-          "Failed closing peer connection:",
-          error
-        );
-      }
-
-      pcRef.current = null;
-    }
-
-    iceQueueRef.current = [];
-
-    if (socket) {
-      try {
-        socket.removeAllListeners();
-        socket.disconnect();
-      } catch (error) {
-        console.warn(
-          "Failed closing signaling socket:",
-          error
-        );
-      }
-
-      socketRef.current = null;
-    }
-
-    await removeRealtimeChannels();
-
-    offerSentRef.current = false;
-    answerSentRef.current = false;
-    remoteOfferHandledRef.current = false;
-    remoteAnswerHandledRef.current = false;
-    incomingCallSentRef.current = false;
-
-    setIsScreenSharing(false);
-    setIsMuted(false);
-    setIsVideoOff(false);
-    setFloatingReactions([]);
-    setCallDuration(0);
-
-    if (
-      shouldNavigate &&
-      !hasNavigatedRef.current &&
-      isMountedRef.current
-    ) {
-      hasNavigatedRef.current = true;
-      navigate(-1);
-    }
-  };
-
-  cleanupRef.current = performCleanup;
-
+  // Authentication + peer profile
   useEffect(() => {
     let cancelled = false;
 
     const initProfiles = async () => {
-      try {
-        const {
-          data: { user }
-        } = await supabase.auth.getUser();
+      if (!peerUserId || peerUserId === 'undefined') {
+        setCallStatus('Invalid Call');
+        return;
+      }
 
-        if (!user) {
-          if (!cancelled) {
-            navigate("/");
-          }
-          return;
-        }
+      const {
+        data: { user },
+        error: authError
+      } = await supabase.auth.getUser();
 
-        if (cancelled || !isMountedRef.current) {
-          return;
-        }
+      if (cancelled) return;
 
-        setCurrentUserId(user.id);
+      if (authError || !user) {
+        navigate('/');
+        return;
+      }
 
-        if (
-          !peerUserId ||
-          peerUserId === "undefined" ||
-          peerUserId === user.id
-        ) {
-          console.error(
-            "Invalid peer user ID:",
-            peerUserId
-          );
+      setCurrentUserId(user.id);
 
-          setCallStatus("Invalid Call");
-          return;
-        }
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', peerUserId)
+        .single();
 
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", peerUserId)
-          .single();
-
-        if (
-          !cancelled &&
-          !error &&
-          data &&
-          isMountedRef.current
-        ) {
-          setPeerProfile(data);
-        }
-      } catch (error) {
-        console.error(
-          "Failed initializing call profile:",
-          error
-        );
-
-        if (!cancelled && isMountedRef.current) {
-          setCallStatus("Profile Error");
-        }
+      if (!cancelled && !error && data) {
+        setPeerProfile(data);
       }
     };
 
@@ -392,349 +444,395 @@ const VideoCall = () => {
     };
   }, [peerUserId, navigate]);
 
+  // Main call engine
   useEffect(() => {
     if (
       !currentUserId ||
       !peerUserId ||
-      peerUserId === "undefined" ||
-      peerUserId === currentUserId
+      peerUserId === 'undefined'
     ) {
-      return;
+      return undefined;
     }
 
-    let isComponentMounted = true;
+    let componentAlive = true;
+    let localSocket = null;
+    let localPc = null;
 
     const callRole =
-      URLRole === "caller" || URLRole === "receiver"
+      URLRole === 'caller' || URLRole === 'receiver'
         ? URLRole
         : currentUserId < peerUserId
-          ? "caller"
-          : "receiver";
+          ? 'caller'
+          : 'receiver';
 
-    const roomId = [currentUserId, peerUserId]
-      .sort()
-      .join("-");
+    const roomId = [currentUserId, peerUserId].sort().join('-');
+
+    roomIdRef.current = roomId;
+    callRoleRef.current = callRole;
 
     console.log(
-      `Setting up signaling as [${callRole}] for Room: ${roomId}`
+      `☎️ WebRTC call ${callIdRef.current} | role=${callRole} | room=${roomId}`
     );
 
-    const createAndSendOffer = async () => {
+    if (!acquireActiveCallLock()) {
+      setCallStatus('Another call is already active');
+      setTimeout(() => {
+        if (componentAlive && !hasNavigatedRef.current) {
+          hasNavigatedRef.current = true;
+          navigate(-1);
+        }
+      }, 900);
+
+      return () => {
+        componentAlive = false;
+      };
+    }
+
+    const isUsableSocket = () => {
+      return (
+        localSocket &&
+        localSocket.connected &&
+        componentAlive &&
+        !callEndedRef.current
+      );
+    };
+
+    const sendOffer = async (forceIceRestart = false) => {
       const pc = pcRef.current;
       const socket = socketRef.current;
 
       if (
-        offerSentRef.current ||
-        callEndedRef.current ||
-        !isComponentMounted ||
         !pc ||
         !socket ||
         !socket.connected ||
-        pc.signalingState === "closed"
+        callEndedRef.current ||
+        callRoleRef.current !== 'caller'
       ) {
         return;
       }
 
-      if (pc.signalingState !== "stable") {
-        console.log(
-          "Offer skipped because signaling state is:",
-          pc.signalingState
-        );
+      if (pc.signalingState !== 'stable') {
+        return;
+      }
+
+      if (offerSentRef.current && !forceIceRestart) {
         return;
       }
 
       try {
-        offerSentRef.current = true;
+        setSafeStatus('Connecting...');
 
-        setCallStatus("Calling user...");
-
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true
-        });
+        const offer = await pc.createOffer(
+          forceIceRestart
+            ? { iceRestart: true }
+            : {
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+              }
+        );
 
         if (
-          !isComponentMounted ||
           callEndedRef.current ||
-          pc.signalingState === "closed"
+          !componentAlive ||
+          pc.signalingState === 'closed'
         ) {
-          offerSentRef.current = false;
           return;
         }
 
         await pc.setLocalDescription(offer);
 
         if (
-          !isComponentMounted ||
-          callEndedRef.current ||
-          !socket.connected
+          !pc.localDescription ||
+          !socket.connected ||
+          callEndedRef.current
         ) {
           return;
         }
 
-        socket.emit("send_webrtc_offer", {
+        offerSentRef.current = true;
+        lastOfferSdpRef.current = pc.localDescription.sdp || null;
+
+        socket.emit('send_webrtc_offer', {
           roomId,
           streamId: roomId,
-          offer,
+          callId: callIdRef.current,
+          offer: pc.localDescription,
           targetViewerId: peerUserId,
-          to: peerUserId
+          targetUserId: peerUserId,
+          to: peerUserId,
+          from: currentUserId
         });
 
-        console.log(
-          "WebRTC offer sent once:",
-          roomId
-        );
+        console.log('📤 WebRTC offer sent once:', callIdRef.current);
       } catch (error) {
         offerSentRef.current = false;
+        console.error('WebRTC offer creation failed:', error);
 
-        console.error(
-          "Failed creating signaling offer:",
-          error
-        );
+        if (componentAlive && !callEndedRef.current) {
+          setCallStatus('Connection Failed');
+        }
       }
     };
 
     const initializeMediaAndSignaling = async () => {
-      if (
-        callInitializedRef.current ||
-        callEndedRef.current ||
-        !isComponentMounted
-      ) {
-        return;
-      }
-
-      callInitializedRef.current = true;
-
       try {
-        setCallStatus("Accessing devices...");
+        setSafeStatus(
+          callRole === 'caller'
+            ? 'Accessing devices...'
+            : 'Preparing call...'
+        );
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
+        const mediaConstraints = {
+          video: {
+            width: { ideal: 1280, max: 1280 },
+            height: { ideal: 720, max: 720 },
+            frameRate: { ideal: 30, max: 30 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000,
+            sampleSize: 16
+          }
+        };
+
+        let stream;
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(
+            mediaConstraints
+          );
+        } catch (mediaError) {
+          console.warn(
+            'HD media failed, trying lightweight media:',
+            mediaError
+          );
+
+          stream = await navigator.mediaDevices.getUserMedia({
             video: {
-              width: {
-                ideal: 1280,
-                max: 1280
-              },
-              height: {
-                ideal: 720,
-                max: 720
-              },
-              frameRate: {
-                ideal: 30,
-                max: 30
-              }
+              width: { ideal: 640, max: 1280 },
+              height: { ideal: 360, max: 720 },
+              frameRate: { ideal: 24, max: 30 }
             },
             audio: {
               echoCancellation: true,
               noiseSuppression: true,
-              autoGainControl: true
+              autoGainControl: true,
+              channelCount: 1
             }
           });
+        }
 
-        if (
-          !isComponentMounted ||
-          callEndedRef.current
-        ) {
-          stream
-            .getTracks()
-            .forEach((track) => track.stop());
-
+        if (!componentAlive || callEndedRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
           return;
         }
 
         localStreamRef.current = stream;
 
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
+        const audioTrack = stream.getAudioTracks()[0];
+
+        if (audioTrack) {
+          try {
+            await audioTrack.applyConstraints({
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1
+            });
+          } catch (audioConstraintError) {
+            console.warn(
+              'Advanced audio constraints not supported:',
+              audioConstraintError
+            );
+          }
         }
 
-        const pc = new RTCPeerConnection(
-          GLOBAL_ICE_CONFIG
-        );
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
 
-        pcRef.current = pc;
+          try {
+            await localVideoRef.current.play();
+          } catch {}
+        }
+
+        localPc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
+        pcRef.current = localPc;
 
         stream.getTracks().forEach((track) => {
-          pc.addTrack(track, stream);
+          localPc.addTrack(track, stream);
         });
 
-        pc.ontrack = (event) => {
+        localPc.ontrack = (event) => {
           if (
-            !isComponentMounted ||
-            callEndedRef.current
+            !componentAlive ||
+            callEndedRef.current ||
+            !event.streams?.[0]
           ) {
             return;
           }
 
-          const remoteStream =
-            event.streams?.[0];
+          const remoteStream = event.streams[0];
 
-          if (
-            remoteStream &&
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+
+            remoteVideoRef.current.muted = false;
+            remoteVideoRef.current.volume = 1;
+
             remoteVideoRef.current
+              .play()
+              .catch(() => {});
+          }
+
+          setSafeStatus('Connected');
+        };
+
+        localPc.onicecandidate = (event) => {
+          if (
+            !event.candidate ||
+            !isUsableSocket()
           ) {
-            remoteVideoRef.current.srcObject =
-              remoteStream;
+            return;
+          }
 
-            const playPromise =
-              remoteVideoRef.current.play();
+          const candidate = event.candidate.toJSON
+            ? event.candidate.toJSON()
+            : event.candidate;
 
-            if (playPromise?.catch) {
-              playPromise.catch((error) => {
-                console.warn(
-                  "Remote video autoplay was blocked:",
-                  error
-                );
-              });
+          const candidateKey = [
+            candidate.candidate,
+            candidate.sdpMid,
+            candidate.sdpMLineIndex
+          ].join('|');
+
+          if (iceCandidateKeysRef.current.has(candidateKey)) {
+            return;
+          }
+
+          iceCandidateKeysRef.current.add(candidateKey);
+
+          localSocket.emit('webrtc_ice_candidate', {
+            roomId,
+            streamId: roomId,
+            callId: callIdRef.current,
+            candidate,
+            to: peerUserId,
+            from: currentUserId
+          });
+        };
+
+        localPc.onconnectionstatechange = () => {
+          if (!componentAlive || callEndedRef.current) return;
+
+          const state = localPc.connectionState;
+
+          console.log('🔗 WebRTC connection state:', state);
+
+          if (state === 'connected') {
+            setSafeStatus('Connected');
+            stopRingbackTone();
+            return;
+          }
+
+          if (state === 'connecting') {
+            setSafeStatus('Connecting...');
+            return;
+          }
+
+          if (state === 'disconnected') {
+            setSafeStatus('Reconnecting...');
+            return;
+          }
+
+          if (state === 'failed') {
+            setSafeStatus('Connection Failed');
+          }
+
+          if (state === 'closed') {
+            setSafeStatus('Call Ended');
+          }
+        };
+
+        localPc.oniceconnectionstatechange = () => {
+          if (!componentAlive || callEndedRef.current) return;
+
+          const state = localPc.iceConnectionState;
+
+          console.log('🧊 ICE state:', state);
+
+          if (state === 'checking') {
+            if (callRole === 'caller') {
+              setSafeStatus('Connecting...');
             }
           }
 
-          setCallStatus("Connected");
-        };
+          if (state === 'connected' || state === 'completed') {
+            setSafeStatus('Connected');
+          }
 
-        pc.onicecandidate = (event) => {
-          if (
-            event.candidate &&
-            socketRef.current?.connected &&
-            isComponentMounted &&
-            !callEndedRef.current
-          ) {
-            socketRef.current.emit(
-              "webrtc_ice_candidate",
-              {
-                roomId,
-                streamId: roomId,
-                candidate: event.candidate,
-                to: peerUserId
-              }
-            );
+          if (state === 'failed') {
+            setSafeStatus('Connection Failed');
           }
         };
 
-        pc.onconnectionstatechange = () => {
-          if (
-            !isComponentMounted ||
-            callEndedRef.current
-          ) {
-            return;
-          }
-
-          const state = pc.connectionState;
+        localPc.onsignalingstatechange = () => {
+          if (!componentAlive || callEndedRef.current) return;
 
           console.log(
-            "WebRTC connection state:",
-            state
+            '📡 Signaling state:',
+            localPc.signalingState
           );
-
-          if (state === "connected") {
-            setCallStatus("Connected");
-          } else if (state === "connecting") {
-            setCallStatus("Connecting...");
-          } else if (state === "disconnected") {
-            setCallStatus("Reconnecting...");
-          } else if (state === "failed") {
-            setCallStatus("Connection Failed");
-          } else if (state === "closed") {
-            setCallStatus("Call Ended");
-          }
         };
 
-        pc.oniceconnectionstatechange = () => {
-          if (
-            !isComponentMounted ||
-            callEndedRef.current
-          ) {
-            return;
-          }
+        const socket = io(SOCKET_SERVER_URL, {
+          transports: ['websocket', 'polling'],
+          upgrade: true,
+          rememberUpgrade: true,
+          timeout: 10000,
+          reconnection: true,
+          reconnectionAttempts: 5,
+          reconnectionDelay: 500,
+          reconnectionDelayMax: 3000,
+          forceNew: true
+        });
 
-          console.log(
-            "ICE connection state:",
-            pc.iceConnectionState
-          );
-
-          if (
-            pc.iceConnectionState === "connected" ||
-            pc.iceConnectionState === "completed"
-          ) {
-            setCallStatus("Connected");
-          }
-
-          if (
-            pc.iceConnectionState === "failed"
-          ) {
-            setCallStatus(
-              "Connection Failed"
-            );
-          }
-        };
-
-        const socket = io(
-          SOCKET_SERVER_URL,
-          {
-            transports: ["websocket", "polling"],
-            forceNew: true,
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 500,
-            reconnectionDelayMax: 2000,
-            timeout: 8000
-          }
-        );
-
+        localSocket = socket;
         socketRef.current = socket;
 
-        socket.on("connect", async () => {
-          if (
-            !isComponentMounted ||
-            callEndedRef.current
-          ) {
-            return;
-          }
+        socket.on('connect', async () => {
+          if (!componentAlive || callEndedRef.current) return;
 
           console.log(
-            `Connected to signaling server. Socket ID: ${socket.id} | Room: ${roomId}`
+            `🟢 Signaling connected: ${socket.id}`
           );
 
-          socket.emit(
-            "register_user_session",
-            {
-              userId: currentUserId
-            }
-          );
+          socket.emit('register_user_session', {
+            userId: currentUserId,
+            callId: callIdRef.current,
+            roomId
+          });
 
-          socket.emit(
-            "join_call_room",
-            {
-              roomId,
-              userId: currentUserId,
-              targetPeerId: peerUserId
-            }
-          );
+          socket.emit('join_call_room', {
+            roomId,
+            userId: currentUserId,
+            targetPeerId: peerUserId,
+            callId: callIdRef.current
+          });
 
-          if (callRole === "caller") {
-            setCallStatus("Calling user...");
+          if (callRole === 'caller') {
+            if (!invitationSentRef.current) {
+              invitationSentRef.current = true;
 
-            if (!incomingCallSentRef.current) {
-              incomingCallSentRef.current = true;
+              const { data: myProfile } = await supabase
+                .from('profiles')
+                .select('username, avatar_url')
+                .eq('id', currentUserId)
+                .maybeSingle();
 
-              const { data: myProfile } =
-                await supabase
-                  .from("profiles")
-                  .select(
-                    "username, avatar_url"
-                  )
-                  .eq(
-                    "id",
-                    currentUserId
-                  )
-                  .maybeSingle();
-
-              if (
-                !isComponentMounted ||
-                callEndedRef.current
-              ) {
-                return;
-              }
+              if (!componentAlive || callEndedRef.current) return;
 
               const callSignalData = {
                 receiverId: peerUserId,
@@ -742,146 +840,138 @@ const VideoCall = () => {
                 targetUserId: peerUserId,
                 callerId: currentUserId,
                 fromUserId: currentUserId,
-                callerName:
-                  myProfile?.username ||
-                  "User",
-                callerUsername:
-                  myProfile?.username ||
-                  "User",
-                callerAvatar:
-                  myProfile?.avatar_url ||
-                  null,
-                callType: "video",
-                roomId
+                callerName: myProfile?.username || 'User',
+                callerUsername: myProfile?.username || 'User',
+                callerAvatar: myProfile?.avatar_url || null,
+                callType: 'video',
+                roomId,
+                callId: callIdRef.current
               };
 
+              // ONE canonical incoming-call signal only.
               socket.emit(
-                "incoming_call",
+                'initiate_call_signal',
                 callSignalData
               );
 
+              setSafeStatus('Calling user...');
+
               console.log(
-                "Incoming call notification sent once."
+                '📞 Incoming-call invitation sent once:',
+                callIdRef.current
               );
             }
-          } else {
-            setCallStatus(
-              "Awaiting Connection..."
-            );
 
-            socket.emit(
-              "peer_ready",
-              {
-                roomId,
-                userId: currentUserId
-              }
-            );
+            if (peerReadyRef.current && !offerSentRef.current) {
+              await sendOffer(false);
+            }
+          } else {
+            setSafeStatus('Waiting for caller...');
+
+            socket.emit('peer_ready', {
+              roomId,
+              userId: currentUserId,
+              targetPeerId: peerUserId,
+              callId: callIdRef.current
+            });
+          }
+        });
+
+        socket.on('connect_error', (error) => {
+          if (!componentAlive || callEndedRef.current) return;
+
+          console.warn(
+            'Signaling connection error:',
+            error?.message || error
+          );
+
+          setSafeStatus('Connecting...');
+        });
+
+        socket.on('peer_ready', async (data) => {
+          if (
+            !componentAlive ||
+            callEndedRef.current ||
+            callRole !== 'caller'
+          ) {
+            return;
+          }
+
+          if (
+            data?.callId &&
+            data.callId !== callIdRef.current
+          ) {
+            return;
+          }
+
+          peerReadyRef.current = true;
+
+          console.log('⚡ Receiver is ready');
+
+          if (
+            localPc &&
+            localPc.signalingState === 'stable' &&
+            !offerSentRef.current
+          ) {
+            await sendOffer(false);
           }
         });
 
         socket.on(
-          "connect_error",
-          (error) => {
+          'webrtc_offer_received',
+          async ({ offer, callId }) => {
             if (
-              !isComponentMounted ||
-              callEndedRef.current
-            ) {
-              return;
-            }
-
-            console.warn(
-              "Signaling connection error:",
-              error?.message || error
-            );
-
-            setCallStatus(
-              "Connecting..."
-            );
-          }
-        );
-
-        socket.on(
-          "peer_ready",
-          async () => {
-            if (
-              !isComponentMounted ||
+              !componentAlive ||
               callEndedRef.current ||
-              callRole !== "caller"
-            ) {
-              return;
-            }
-
-            console.log(
-              "Peer is ready. Sending single WebRTC offer."
-            );
-
-            await createAndSendOffer();
-          }
-        );
-
-        socket.on(
-          "webrtc_offer_received",
-          async ({ offer }) => {
-            if (
-              !isComponentMounted ||
-              callEndedRef.current ||
-              callRole !== "receiver" ||
-              !offer ||
-              remoteOfferHandledRef.current
-            ) {
-              return;
-            }
-
-            const currentPc = pcRef.current;
-
-            if (
-              !currentPc ||
-              currentPc.signalingState === "closed"
+              !localPc ||
+              callRole === 'caller'
             ) {
               return;
             }
 
             if (
-              currentPc.signalingState !==
-              "stable"
+              callId &&
+              callId !== callIdRef.current
+            ) {
+              return;
+            }
+
+            if (!offer?.sdp) return;
+
+            // Prevent the same offer from being processed repeatedly.
+            if (lastOfferSdpRef.current === offer.sdp) {
+              console.log('⏭️ Duplicate offer ignored');
+              return;
+            }
+
+            if (
+              localPc.signalingState !== 'stable' &&
+              localPc.signalingState !== 'have-remote-offer'
             ) {
               console.log(
-                "Duplicate/invalid offer ignored. Signaling state:",
-                currentPc.signalingState
+                '⏭️ Offer ignored because signaling state is:',
+                localPc.signalingState
               );
               return;
             }
 
-            remoteOfferHandledRef.current = true;
-
             try {
-              setCallStatus(
-                "Answering call..."
+              setSafeStatus('Answering call...');
+
+              lastOfferSdpRef.current = offer.sdp;
+
+              await localPc.setRemoteDescription(
+                new RTCSessionDescription(offer)
               );
 
-              await currentPc.setRemoteDescription(
-                new RTCSessionDescription(
-                  offer
-                )
-              );
+              await processIceQueue();
+
+              const answer = await localPc.createAnswer();
+
+              await localPc.setLocalDescription(answer);
 
               if (
-                callEndedRef.current ||
-                currentPc.signalingState ===
-                  "closed"
-              ) {
-                return;
-              }
-
-              const answer =
-                await currentPc.createAnswer();
-
-              await currentPc.setLocalDescription(
-                answer
-              );
-
-              if (
-                !isComponentMounted ||
+                !localPc.localDescription ||
                 callEndedRef.current ||
                 !socket.connected
               ) {
@@ -889,220 +979,283 @@ const VideoCall = () => {
               }
 
               answerSentRef.current = true;
+              lastAnswerSdpRef.current =
+                localPc.localDescription.sdp || null;
 
-              socket.emit(
-                "send_webrtc_answer",
-                {
-                  roomId,
-                  streamId: roomId,
-                  answer,
-                  to: peerUserId
-                }
-              );
+              socket.emit('send_webrtc_answer', {
+                roomId,
+                streamId: roomId,
+                callId: callIdRef.current,
+                answer: localPc.localDescription,
+                to: peerUserId,
+                from: currentUserId
+              });
 
-              await processIceQueue();
+              console.log('📤 WebRTC answer sent');
 
-              console.log(
-                "WebRTC answer sent once."
-              );
+              setSafeStatus('Connecting...');
             } catch (error) {
-              remoteOfferHandledRef.current =
-                false;
-
               console.error(
-                "Failed executing WebRTC offer handshake:",
+                'Failed processing WebRTC offer:',
                 error
               );
+
+              if (componentAlive && !callEndedRef.current) {
+                setSafeStatus('Connection Failed');
+              }
             }
           }
         );
 
         socket.on(
-          "webrtc_answer_received",
-          async ({ answer }) => {
+          'webrtc_answer_received',
+          async ({ answer, callId }) => {
             if (
-              !isComponentMounted ||
+              !componentAlive ||
               callEndedRef.current ||
-              !answer ||
-              remoteAnswerHandledRef.current
-            ) {
-              return;
-            }
-
-            const currentPc = pcRef.current;
-
-            if (
-              !currentPc ||
-              currentPc.signalingState ===
-                "closed"
+              !localPc ||
+              callRole !== 'caller'
             ) {
               return;
             }
 
             if (
-              currentPc.signalingState !==
-              "have-local-offer"
+              callId &&
+              callId !== callIdRef.current
+            ) {
+              return;
+            }
+
+            if (!answer?.sdp) return;
+
+            if (lastAnswerSdpRef.current === answer.sdp) {
+              console.log('⏭️ Duplicate answer ignored');
+              return;
+            }
+
+            if (
+              localPc.signalingState !== 'have-local-offer'
             ) {
               console.log(
-                "Duplicate/late answer ignored. Signaling state:",
-                currentPc.signalingState
+                '⏭️ Answer ignored. Current signaling state:',
+                localPc.signalingState
               );
               return;
             }
-
-            remoteAnswerHandledRef.current = true;
 
             try {
-              await currentPc.setRemoteDescription(
-                new RTCSessionDescription(
-                  answer
-                )
+              lastAnswerSdpRef.current = answer.sdp;
+
+              await localPc.setRemoteDescription(
+                new RTCSessionDescription(answer)
               );
 
               await processIceQueue();
 
+              setSafeStatus('Connecting...');
+
               console.log(
-                "WebRTC answer accepted once."
+                '📥 WebRTC answer accepted'
               );
             } catch (error) {
-              remoteAnswerHandledRef.current =
-                false;
-
               console.error(
-                "Failed setting remote WebRTC answer:",
+                'Failed setting WebRTC answer:',
                 error
               );
+
+              if (componentAlive && !callEndedRef.current) {
+                setSafeStatus('Connection Failed');
+              }
             }
           }
         );
 
         socket.on(
-          "incoming_ice_candidate",
-          async ({ candidate }) => {
+          'incoming_ice_candidate',
+          async ({ candidate, callId }) => {
             if (
-              !isComponentMounted ||
+              !componentAlive ||
               callEndedRef.current ||
               !candidate
             ) {
               return;
             }
 
-            const currentPc = pcRef.current;
+            if (
+              callId &&
+              callId !== callIdRef.current
+            ) {
+              return;
+            }
+
+            const candidateKey = [
+              candidate.candidate,
+              candidate.sdpMid,
+              candidate.sdpMLineIndex
+            ].join('|');
 
             if (
-              currentPc &&
-              currentPc.signalingState !==
-                "closed" &&
-              currentPc.remoteDescription
+              iceCandidateKeysRef.current.has(candidateKey)
+            ) {
+              return;
+            }
+
+            iceCandidateKeysRef.current.add(candidateKey);
+
+            const pc = pcRef.current;
+
+            if (
+              pc &&
+              pc.remoteDescription &&
+              pc.remoteDescription.type
             ) {
               try {
-                await currentPc.addIceCandidate(
-                  new RTCIceCandidate(
-                    candidate
-                  )
+                await pc.addIceCandidate(
+                  new RTCIceCandidate(candidate)
                 );
               } catch (error) {
                 console.warn(
-                  "Skipped invalid ICE candidate:",
+                  'ICE candidate rejected:',
                   error
                 );
               }
             } else {
-              iceQueueRef.current.push(
-                candidate
-              );
+              iceQueueRef.current.push(candidate);
             }
           }
+        );
+
+        // Caller receives this when receiver declines/hangs up.
+        const handleRemoteCallEnded = (data = {}) => {
+          if (!componentAlive || callEndedRef.current) {
+            return;
+          }
+
+          if (
+            data?.callId &&
+            data.callId !== callIdRef.current
+          ) {
+            return;
+          }
+
+          const statusText =
+            callRole === 'caller'
+              ? 'Call Declined'
+              : 'Call Ended';
+
+          stopRingbackTone();
+
+          cleanUpCall(false, true, statusText);
+        };
+
+        // Listen to the possible backend decline/end events,
+        // but cleanup is idempotent so duplicates cannot create problems.
+        socket.on(
+          'call_declined',
+          handleRemoteCallEnded
         );
 
         socket.on(
-          "peer_hung_up",
-          async () => {
-            if (
-              !isComponentMounted ||
-              callEndedRef.current
-            ) {
-              return;
-            }
-
-            setCallStatus("Call Ended");
-
-            await performCleanup(
-              false,
-              true
-            );
-          }
+          'call_rejected',
+          handleRemoteCallEnded
         );
 
         socket.on(
-          "in_call_text_message",
-          (data) => {
-            if (
-              !isComponentMounted ||
-              callEndedRef.current
-            ) {
-              return;
-            }
-
-            setInCallMessages(
-              (prev) => [...prev, data]
-            );
-          }
+          'incoming_call_declined',
+          handleRemoteCallEnded
         );
 
         socket.on(
-          "in_call_reaction_burst",
-          (data) => {
-            if (
-              !isComponentMounted ||
-              callEndedRef.current ||
-              !data?.emoji
-            ) {
-              return;
-            }
-
-            const reactionId =
-              Date.now() + Math.random();
-
-            setFloatingReactions(
-              (prev) => [
-                ...prev,
-                {
-                  id: reactionId,
-                  emoji: data.emoji
-                }
-              ]
-            );
-
-            setTimeout(() => {
-              if (
-                isMountedRef.current
-              ) {
-                setFloatingReactions(
-                  (prev) =>
-                    prev.filter(
-                      (reaction) =>
-                        reaction.id !==
-                        reactionId
-                    )
-                );
-              }
-            }, 2500);
-          }
+          'decline_call',
+          handleRemoteCallEnded
         );
+
+        socket.on(
+          'reject_incoming_call',
+          handleRemoteCallEnded
+        );
+
+        socket.on(
+          'peer_hung_up',
+          handleRemoteCallEnded
+        );
+
+        socket.on(
+          'call_cancelled_by_caller',
+          handleRemoteCallEnded
+        );
+
+        socket.on(
+          'cancel_call_signal',
+          handleRemoteCallEnded
+        );
+
+        socket.on('in_call_text_message', (data) => {
+          if (!componentAlive || callEndedRef.current) return;
+
+          if (
+            data?.senderId &&
+            data.senderId === currentUserId
+          ) {
+            return;
+          }
+
+          setInCallMessages((previous) => [
+            ...previous,
+            data
+          ]);
+        });
+
+        socket.on('in_call_reaction_burst', (data) => {
+          if (!componentAlive || callEndedRef.current) {
+            return;
+          }
+
+          const reactionId =
+            Date.now() + Math.random();
+
+          setFloatingReactions((previous) => [
+            ...previous,
+            {
+              id: reactionId,
+              emoji: data?.emoji || '❤️'
+            }
+          ]);
+
+          setTimeout(() => {
+            if (!isMountedRef.current) return;
+
+            setFloatingReactions((previous) =>
+              previous.filter(
+                (reaction) =>
+                  reaction.id !== reactionId
+              )
+            );
+          }, 2500);
+        });
+
+        socket.on('call_busy', () => {
+          if (!componentAlive || callEndedRef.current) {
+            return;
+          }
+
+          cleanUpCall(
+            false,
+            true,
+            'User is already on another call'
+          );
+        });
       } catch (error) {
         console.error(
-          "System device acquisition or socket binding fault:",
+          'Call initialization failed:',
           error
         );
 
         if (
-          isComponentMounted &&
+          componentAlive &&
           !callEndedRef.current
         ) {
-          setCallStatus(
-            "Hardware Error"
-          );
+          setSafeStatus('Hardware Error');
         }
       }
     };
@@ -1110,28 +1263,72 @@ const VideoCall = () => {
     initializeMediaAndSignaling();
 
     return () => {
-      isComponentMounted = false;
+      componentAlive = false;
 
-      if (cleanupRef.current) {
-        cleanupRef.current(
-          false,
-          false
-        );
-      }
+      cleanUpCall(
+        false,
+        false,
+        'Call Ended'
+      );
     };
   }, [
     currentUserId,
     peerUserId,
-    URLRole
+    URLRole,
+    acquireActiveCallLock,
+    cleanUpCall,
+    navigate,
+    processIceQueue,
+    setSafeStatus
   ]);
 
-  const toggleScreenShare = async () => {
-    const pc = pcRef.current;
+  // Stop the call if another tab/window starts another call.
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (
+        event.key !== ACTIVE_CALL_STORAGE_KEY ||
+        !event.newValue ||
+        callEndedRef.current
+      ) {
+        return;
+      }
 
+      try {
+        const activeCall = JSON.parse(event.newValue);
+
+        if (
+          activeCall?.callId &&
+          activeCall.callId !== callIdRef.current &&
+          activeCall?.roomId !== roomIdRef.current
+        ) {
+          cleanUpCall(
+            false,
+            true,
+            'Another call is active'
+          );
+        }
+      } catch {}
+    };
+
+    window.addEventListener(
+      'storage',
+      handleStorage
+    );
+
+    return () => {
+      window.removeEventListener(
+        'storage',
+        handleStorage
+      );
+    };
+  }, [cleanUpCall]);
+
+  // Toggle screen sharing
+  const toggleScreenShare = async () => {
     if (
-      !pc ||
-      pc.signalingState === "closed" ||
-      callEndedRef.current
+      !pcRef.current ||
+      callEndedRef.current ||
+      callStatus !== 'Connected'
     ) {
       return;
     }
@@ -1139,30 +1336,25 @@ const VideoCall = () => {
     try {
       if (isScreenSharing) {
         if (screenTrackRef.current) {
-          screenTrackRef.current.onended =
-            null;
-
           screenTrackRef.current.stop();
-
-          screenTrackRef.current =
-            null;
+          screenTrackRef.current = null;
         }
 
-        const videoTrack =
-          localStreamRef.current
-            ?.getVideoTracks()[0];
+        const cameraTrack =
+          localStreamRef.current?.getVideoTracks()?.[0];
 
-        if (videoTrack) {
+        if (cameraTrack) {
           const sender =
-            pc.getSenders().find(
-              (item) =>
-                item.track?.kind ===
-                "video"
-            );
+            pcRef.current
+              .getSenders()
+              .find(
+                (item) =>
+                  item.track?.kind === 'video'
+              );
 
           if (sender) {
             await sender.replaceTrack(
-              videoTrack
+              cameraTrack
             );
           }
         }
@@ -1172,11 +1364,23 @@ const VideoCall = () => {
       }
 
       const screenStream =
-        await navigator.mediaDevices.getDisplayMedia(
-          {
-            video: true
-          }
-        );
+        await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            frameRate: { ideal: 30, max: 30 }
+          },
+          audio: false
+        });
+
+      if (
+        callEndedRef.current ||
+        !pcRef.current
+      ) {
+        screenStream
+          .getTracks()
+          .forEach((track) => track.stop());
+
+        return;
+      }
 
       const screenTrack =
         screenStream.getVideoTracks()[0];
@@ -1184,21 +1388,20 @@ const VideoCall = () => {
       if (!screenTrack) {
         screenStream
           .getTracks()
-          .forEach((track) =>
-            track.stop()
-          );
+          .forEach((track) => track.stop());
 
         return;
       }
 
-      screenTrackRef.current =
-        screenTrack;
+      screenTrackRef.current = screenTrack;
 
       const sender =
-        pc.getSenders().find(
-          (item) =>
-            item.track?.kind === "video"
-        );
+        pcRef.current
+          .getSenders()
+          .find(
+            (item) =>
+              item.track?.kind === 'video'
+          );
 
       if (sender) {
         await sender.replaceTrack(
@@ -1206,117 +1409,103 @@ const VideoCall = () => {
         );
       }
 
-      screenTrack.onended = () => {
+      screenTrack.onended = async () => {
         if (
-          isMountedRef.current &&
-          screenTrackRef.current ===
-            screenTrack &&
-          !callEndedRef.current
+          !isMountedRef.current ||
+          callEndedRef.current
         ) {
-          screenTrackRef.current =
-            null;
+          return;
+        }
 
-          setIsScreenSharing(false);
-
+        try {
           const cameraTrack =
-            localStreamRef.current
-              ?.getVideoTracks()[0];
+            localStreamRef.current?.getVideoTracks()?.[0];
+
+          const currentSender =
+            pcRef.current
+              ?.getSenders()
+              .find(
+                (item) =>
+                  item.track?.kind === 'video'
+              );
 
           if (
-            cameraTrack &&
-            pcRef.current &&
-            pcRef.current.signalingState !==
-              "closed"
+            currentSender &&
+            cameraTrack
           ) {
-            const cameraSender =
-              pcRef.current
-                .getSenders()
-                .find(
-                  (item) =>
-                    item.track?.kind ===
-                    "video"
-                );
-
-            if (cameraSender) {
-              cameraSender
-                .replaceTrack(
-                  cameraTrack
-                )
-                .catch((error) => {
-                  console.warn(
-                    "Failed restoring camera track:",
-                    error
-                  );
-                });
-            }
+            await currentSender.replaceTrack(
+              cameraTrack
+            );
           }
+        } catch {}
+
+        screenTrackRef.current = null;
+
+        if (isMountedRef.current) {
+          setIsScreenSharing(false);
         }
       };
 
       setIsScreenSharing(true);
     } catch (error) {
       console.warn(
-        "Screen share cancelled or failed:",
+        'Screen sharing cancelled or failed:',
         error
       );
     }
   };
 
+  // Send in-call message
   const sendInCallMessage = (event) => {
     event?.preventDefault();
 
-    const text = chatInput.trim();
-
     if (
-      !text ||
-      !currentUserId ||
-      !peerUserId ||
-      callEndedRef.current
+      !chatInput.trim() ||
+      callEndedRef.current ||
+      callStatus !== 'Connected'
     ) {
       return;
     }
 
+    const message = chatInput.trim();
+
     const msgPayload = {
-      id: `${currentUserId}-${Date.now()}-${Math.random()}`,
+      id: `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 7)}`,
       senderId: currentUserId,
-      text,
+      text: message,
       time: new Date().toLocaleTimeString(
         [],
         {
-          hour: "2-digit",
-          minute: "2-digit"
+          hour: '2-digit',
+          minute: '2-digit'
         }
       )
     };
 
-    setInCallMessages(
-      (prev) => [...prev, msgPayload]
-    );
-
-    const roomId = [
-      currentUserId,
-      peerUserId
-    ]
-      .sort()
-      .join("-");
+    setInCallMessages((previous) => [
+      ...previous,
+      msgPayload
+    ]);
 
     socketRef.current?.emit(
-      "in_call_text_message",
+      'in_call_text_message',
       {
-        roomId,
+        roomId: roomIdRef.current,
+        callId: callIdRef.current,
         ...msgPayload
       }
     );
 
-    setChatInput("");
+    setChatInput('');
   };
 
+  // Send reaction
   const sendReactionBurst = (emoji) => {
     if (
-      !emoji ||
       callEndedRef.current ||
-      !currentUserId ||
-      !peerUserId
+      callStatus !== 'Connected'
     ) {
       return;
     }
@@ -1324,94 +1513,64 @@ const VideoCall = () => {
     const reactionId =
       Date.now() + Math.random();
 
-    setFloatingReactions(
-      (prev) => [
-        ...prev,
-        {
-          id: reactionId,
-          emoji
-        }
-      ]
-    );
+    setFloatingReactions((previous) => [
+      ...previous,
+      {
+        id: reactionId,
+        emoji
+      }
+    ]);
 
     setTimeout(() => {
-      if (isMountedRef.current) {
-        setFloatingReactions(
-          (prev) =>
-            prev.filter(
-              (reaction) =>
-                reaction.id !==
-                reactionId
-            )
-        );
-      }
+      if (!isMountedRef.current) return;
+
+      setFloatingReactions((previous) =>
+        previous.filter(
+          (reaction) =>
+            reaction.id !== reactionId
+        )
+      );
     }, 2500);
 
-    const roomId = [
-      currentUserId,
-      peerUserId
-    ]
-      .sort()
-      .join("-");
-
     socketRef.current?.emit(
-      "in_call_reaction_burst",
+      'in_call_reaction_burst',
       {
-        roomId,
+        roomId: roomIdRef.current,
+        callId: callIdRef.current,
         emoji
       }
     );
   };
 
+  // Mute/unmute
   useEffect(() => {
-    const stream =
-      localStreamRef.current;
+    const tracks =
+      localStreamRef.current?.getAudioTracks() || [];
 
-    if (!stream) {
-      return;
-    }
-
-    stream
-      .getAudioTracks()
-      .forEach((track) => {
-        track.enabled = !isMuted;
-      });
+    tracks.forEach((track) => {
+      track.enabled = !isMuted;
+    });
   }, [isMuted]);
 
+  // Camera on/off
   useEffect(() => {
-    const stream =
-      localStreamRef.current;
+    const tracks =
+      localStreamRef.current?.getVideoTracks() || [];
 
-    if (!stream) {
-      return;
-    }
-
-    stream
-      .getVideoTracks()
-      .forEach((track) => {
-        track.enabled = !isVideoOff;
-      });
+    tracks.forEach((track) => {
+      track.enabled = !isVideoOff;
+    });
   }, [isVideoOff]);
 
-  const cleanUpCall = async () => {
-    await performCleanup(
-      true,
-      true
-    );
-  };
-
-  const formatTime = (secs) => {
-    const mins = Math.floor(
-      secs / 60
-    );
-
-    const remSecs = secs % 60;
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
 
     return `${mins
       .toString()
-      .padStart(2, "0")}:${remSecs
+      .padStart(2, '0')}:${secs
       .toString()
-      .padStart(2, "0")}`;
+      .padStart(2, '0')}`;
   };
 
   return (
@@ -1422,18 +1581,15 @@ const VideoCall = () => {
             size={16}
             className="text-cyan-400"
           />
-
           <span className="text-[10px] sm:text-xs font-semibold tracking-wide text-zinc-300 uppercase">
-            Encrypted
+            Peer-to-Peer
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          {callStatus === "Connected" && (
+          {callStatus === 'Connected' && (
             <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-              {formatTime(
-                callDuration
-              )}
+              {formatTime(callDuration)}
             </span>
           )}
 
@@ -1453,57 +1609,38 @@ const VideoCall = () => {
 
         <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
           <AnimatePresence>
-            {floatingReactions.map(
-              (reaction) => (
-                <motion.div
-                  key={reaction.id}
-                  initial={{
-                    y: 200,
-                    opacity: 0,
-                    scale: 0.5,
-                    x:
-                      Math.random() *
-                        100 -
-                      50
-                  }}
-                  animate={{
-                    y: -150,
-                    opacity: [
-                      0,
-                      1,
-                      1,
-                      0
-                    ],
-                    scale: [
-                      0.5,
-                      1.8,
-                      2,
-                      1
-                    ]
-                  }}
-                  exit={{
-                    opacity: 0
-                  }}
-                  transition={{
-                    duration: 2.2,
-                    ease: "easeOut"
-                  }}
-                  className="absolute bottom-10 left-1/2 text-4xl drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]"
-                >
-                  {reaction.emoji}
-                </motion.div>
-              )
-            )}
+            {floatingReactions.map((reaction) => (
+              <motion.div
+                key={reaction.id}
+                initial={{
+                  y: 200,
+                  opacity: 0,
+                  scale: 0.5,
+                  x: Math.random() * 100 - 50
+                }}
+                animate={{
+                  y: -150,
+                  opacity: [0, 1, 1, 0],
+                  scale: [0.5, 1.8, 2, 1]
+                }}
+                exit={{ opacity: 0 }}
+                transition={{
+                  duration: 2.2,
+                  ease: 'easeOut'
+                }}
+                className="absolute bottom-10 left-1/2 text-4xl drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]"
+              >
+                {reaction.emoji}
+              </motion.div>
+            ))}
           </AnimatePresence>
         </div>
 
-        {callStatus !== "Connected" && (
+        {callStatus !== 'Connected' && (
           <div className="absolute inset-0 bg-zinc-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-4 z-20">
             {peerProfile?.avatar_url ? (
               <img
-                src={
-                  peerProfile.avatar_url
-                }
+                src={peerProfile.avatar_url}
                 alt="Peer Avatar"
                 className="w-24 h-24 rounded-full object-cover border-4 border-cyan-500/40 animate-pulse shadow-2xl shadow-cyan-500/20"
               />
@@ -1518,9 +1655,7 @@ const VideoCall = () => {
 
             <div className="text-center">
               <h2 className="text-xl font-black tracking-tight text-white">
-                @
-                {peerProfile?.username ||
-                  "User"}
+                @{peerProfile?.username || 'User'}
               </h2>
 
               <p className="text-xs text-cyan-400 font-mono mt-1 capitalize animate-pulse">
@@ -1537,16 +1672,13 @@ const VideoCall = () => {
             muted
             playsInline
             className={`w-full h-full object-cover ${
-              isVideoOff
-                ? "hidden"
-                : ""
+              isVideoOff ? 'hidden' : ''
             }`}
           />
 
           {isVideoOff && (
             <div className="flex flex-col items-center gap-1 text-zinc-500">
               <VideoOff size={18} />
-
               <p className="text-[9px] font-bold uppercase tracking-wider">
                 Cam Off
               </p>
@@ -1554,22 +1686,20 @@ const VideoCall = () => {
           )}
         </div>
 
-        {callStatus === "Connected" && (
+        {callStatus === 'Connected' && (
           <div className="absolute top-4 left-4 z-20 flex gap-1.5 bg-black/40 backdrop-blur-md p-1.5 rounded-2xl border border-white/10">
             {[
-              "❤️",
-              "🔥",
-              "👏",
-              "🎉",
-              "😮"
+              '❤️',
+              '🔥',
+              '👏',
+              '🎉',
+              '😮'
             ].map((emoji) => (
               <button
                 key={emoji}
                 type="button"
                 onClick={() =>
-                  sendReactionBurst(
-                    emoji
-                  )
+                  sendReactionBurst(emoji)
                 }
                 className="p-1.5 hover:bg-white/10 rounded-xl transition-transform active:scale-125 text-base"
               >
@@ -1598,9 +1728,7 @@ const VideoCall = () => {
             >
               <div className="flex justify-between items-center border-b border-white/10 pb-2">
                 <span className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                  <MessageSquare
-                    size={14}
-                  />
+                  <MessageSquare size={14} />
                   In-Call Chat
                 </span>
 
@@ -1616,67 +1744,52 @@ const VideoCall = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto my-3 space-y-2 pr-1 no-scrollbar text-xs">
-                {inCallMessages.length ===
-                0 ? (
+                {inCallMessages.length === 0 ? (
                   <p className="text-center text-zinc-600 italic py-6">
-                    No chat messages
-                    yet. Type below!
+                    No chat messages yet. Type below!
                   </p>
                 ) : (
-                  inCallMessages.map(
-                    (msg) => {
-                      const isMe =
-                        msg.senderId ===
-                        currentUserId;
+                  inCallMessages.map((msg) => {
+                    const isMe =
+                      msg.senderId === currentUserId;
 
-                      return (
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex flex-col ${
+                          isMe
+                            ? 'items-end'
+                            : 'items-start'
+                        }`}
+                      >
                         <div
-                          key={msg.id}
-                          className={`flex flex-col ${
+                          className={`px-3 py-1.5 rounded-xl max-w-[80%] ${
                             isMe
-                              ? "items-end"
-                              : "items-start"
+                              ? 'bg-cyan-500 text-black font-semibold'
+                              : 'bg-zinc-800 text-white border border-white/10'
                           }`}
                         >
-                          <div
-                            className={`px-3 py-1.5 rounded-xl max-w-[80%] ${
-                              isMe
-                                ? "bg-cyan-500 text-black font-semibold"
-                                : "bg-zinc-800 text-white border border-white/10"
-                            }`}
-                          >
-                            <p>
-                              {
-                                msg.text
-                              }
-                            </p>
-                          </div>
-
-                          <span className="text-[8px] text-zinc-500 mt-0.5">
-                            {
-                              msg.time
-                            }
-                          </span>
+                          <p>{msg.text}</p>
                         </div>
-                      );
-                    }
-                  )
+
+                        <span className="text-[8px] text-zinc-500 mt-0.5">
+                          {msg.time}
+                        </span>
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
               <form
-                onSubmit={
-                  sendInCallMessage
-                }
+                onSubmit={sendInCallMessage}
                 className="flex gap-2"
               >
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(event) =>
-                    setChatInput(
-                      event.target.value
-                    )
+                    setChatInput(event.target.value)
                   }
                   placeholder="Send a quick text..."
                   className="flex-1 bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
@@ -1698,17 +1811,17 @@ const VideoCall = () => {
         <button
           type="button"
           onClick={() =>
-            setIsMuted((prev) => !prev)
+            setIsMuted((previous) => !previous)
           }
           title={
             isMuted
-              ? "Unmute Mic"
-              : "Mute Mic"
+              ? 'Unmute Mic'
+              : 'Mute Mic'
           }
           className={`p-3.5 rounded-2xl transition-all ${
             isMuted
-              ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
-              : "bg-white/5 text-zinc-200 hover:bg-white/10"
+              ? 'bg-red-500 text-white shadow-lg shadow-red-500/30'
+              : 'bg-white/5 text-zinc-200 hover:bg-white/10'
           }`}
         >
           {isMuted ? (
@@ -1721,19 +1834,17 @@ const VideoCall = () => {
         <button
           type="button"
           onClick={() =>
-            setIsVideoOff(
-              (prev) => !prev
-            )
+            setIsVideoOff((previous) => !previous)
           }
           title={
             isVideoOff
-              ? "Turn On Cam"
-              : "Turn Off Cam"
+              ? 'Turn On Cam'
+              : 'Turn Off Cam'
           }
           className={`p-3.5 rounded-2xl transition-all ${
             isVideoOff
-              ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
-              : "bg-white/5 text-zinc-200 hover:bg-white/10"
+              ? 'bg-red-500 text-white shadow-lg shadow-red-500/30'
+              : 'bg-white/5 text-zinc-200 hover:bg-white/10'
           }`}
         >
           {isVideoOff ? (
@@ -1745,18 +1856,16 @@ const VideoCall = () => {
 
         <button
           type="button"
-          onClick={
-            toggleScreenShare
-          }
+          onClick={toggleScreenShare}
           title={
             isScreenSharing
-              ? "Stop Screen Share"
-              : "Share Screen"
+              ? 'Stop Screen Share'
+              : 'Share Screen'
           }
           className={`p-3.5 rounded-2xl transition-all ${
             isScreenSharing
-              ? "bg-cyan-500 text-black shadow-lg shadow-cyan-500/30"
-              : "bg-white/5 text-zinc-200 hover:bg-white/10"
+              ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/30'
+              : 'bg-white/5 text-zinc-200 hover:bg-white/10'
           }`}
         >
           <Monitor size={18} />
@@ -1765,23 +1874,18 @@ const VideoCall = () => {
         <button
           type="button"
           onClick={() =>
-            setShowChat(
-              (prev) => !prev
-            )
+            setShowChat((previous) => !previous)
           }
           title="Toggle In-Call Chat"
           className={`p-3.5 rounded-2xl transition-all relative ${
             showChat
-              ? "bg-cyan-500 text-black"
-              : "bg-white/5 text-zinc-200 hover:bg-white/10"
+              ? 'bg-cyan-500 text-black'
+              : 'bg-white/5 text-zinc-200 hover:bg-white/10'
           }`}
         >
-          <MessageSquare
-            size={18}
-          />
+          <MessageSquare size={18} />
 
-          {inCallMessages.length >
-            0 &&
+          {inCallMessages.length > 0 &&
             !showChat && (
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse" />
             )}
@@ -1789,8 +1893,12 @@ const VideoCall = () => {
 
         <button
           type="button"
-          onClick={
-            cleanUpCall
+          onClick={() =>
+            cleanUpCall(
+              true,
+              true,
+              'Call Ended'
+            )
           }
           title="End Call"
           className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl transition-transform active:scale-95 shadow-xl shadow-red-600/40"
