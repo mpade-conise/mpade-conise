@@ -3,75 +3,131 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { supabase } from '../supabaseClient';
 import {
-  X, UploadCloud, Camera, Film, Music, Search, Play, Pause, Check, Loader2,
-  ChevronLeft, ChevronRight, Volume2, VolumeX, Mic, MicOff, Video, VideoOff,
-  RotateCcw, Sparkles, SlidersHorizontal, Image as ImageIcon, Globe2, Lock,
-  Users, MapPin, Hash, AtSign, MessageCircle, Download, Scissors, Layers,
-  Wand2, Clock3, Send, Trash2, Plus, Minus, Settings2, Zap, ShieldCheck,
-  AlertCircle, CheckCircle2, RefreshCw, Smartphone, MonitorPlay, Eye, EyeOff
+  ArrowLeft,
+  ArrowRight,
+  AudioLines,
+  Camera,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleHelp,
+  Clock3,
+  Download,
+  Eye,
+  EyeOff,
+  Film,
+  Globe2,
+  Hash,
+  Image as ImageIcon,
+  Layers3,
+  Loader2,
+  Lock,
+  MapPin,
+  Mic,
+  Mic2,
+  Music,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  Send,
+  Settings2,
+  Sparkles,
+  Tag,
+  Trash2,
+  UploadCloud,
+  Users,
+  Video,
+  VideoOff,
+  Volume2,
+  VolumeX,
+  Wand2,
+  X,
+  Zap
 } from 'lucide-react';
 
-const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'https://mpade-backend.onrender.com').replace(/\/+$/, '');
+const API_BASE = 'https://mpade-backend.onrender.com';
 
-const MAX_VIDEO_SIZE = 1024 * 1024 * 1024;
-const MAX_THUMBNAIL_SIZE = 8 * 1024 * 1024;
+const STEPS = [
+  { id: 'media', label: 'Media', icon: Film },
+  { id: 'sound', label: 'Sound', icon: Music },
+  { id: 'edit', label: 'Edit', icon: Wand2 },
+  { id: 'publish', label: 'Publish', icon: Send }
+];
 
 const FILTERS = [
   { id: 'original', name: 'Original', css: 'none' },
-  { id: 'neon_cyber', name: 'Neon', css: 'saturate(1.35) contrast(1.12) hue-rotate(8deg)' },
-  { id: 'electric', name: 'Electric', css: 'saturate(1.55) contrast(1.2) brightness(1.04)' },
-  { id: 'cinema', name: 'Cinema', css: 'contrast(1.16) saturate(.82) brightness(.96)' },
-  { id: 'golden_hour', name: 'Golden', css: 'sepia(.18) saturate(1.25) contrast(1.05) brightness(1.04)' },
-  { id: 'vintage', name: 'Vintage', css: 'sepia(.35) saturate(.78) contrast(1.06)' },
-  { id: 'midnight', name: 'Midnight', css: 'brightness(.78) contrast(1.2) saturate(.82)' },
-  { id: 'vibrant_pop', name: 'Vibrant', css: 'saturate(1.7) contrast(1.08) brightness(1.03)' }
+  { id: 'neon_cyber', name: 'Neon', css: 'saturate(1.35) contrast(1.15) hue-rotate(12deg)' },
+  { id: 'electric', name: 'Electric', css: 'saturate(1.5) contrast(1.2) brightness(1.05)' },
+  { id: 'cinema', name: 'Cinema', css: 'contrast(1.12) saturate(0.88) brightness(0.96)' },
+  { id: 'golden_hour', name: 'Golden', css: 'sepia(.18) saturate(1.3) contrast(1.05) brightness(1.05)' },
+  { id: 'vintage', name: 'Vintage', css: 'sepia(.35) saturate(.8) contrast(1.05)' },
+  { id: 'midnight', name: 'Midnight', css: 'brightness(.78) contrast(1.2) saturate(.9)' },
+  { id: 'vibrant_pop', name: 'Vibrant', css: 'saturate(1.65) contrast(1.1)' }
 ];
 
 const CATEGORIES = [
-  'Entertainment', 'Music', 'Comedy', 'Education', 'Gaming', 'Sports',
-  'Lifestyle', 'Fashion', 'Food', 'Technology', 'Travel', 'News', 'Other'
+  'Entertainment',
+  'Music',
+  'Comedy',
+  'Education',
+  'Technology',
+  'Gaming',
+  'Sports',
+  'Lifestyle',
+  'Fashion',
+  'Food',
+  'Travel',
+  'News',
+  'Art',
+  'Business',
+  'Other'
 ];
 
 const PRIVACY_OPTIONS = [
-  { id: 'public', label: 'Everyone', icon: Globe2 },
-  { id: 'followers', label: 'Followers', icon: Users },
-  { id: 'private', label: 'Only me', icon: Lock }
+  { value: 'public', label: 'Everyone', description: 'Anyone can discover this video', icon: Globe2 },
+  { value: 'followers', label: 'Followers', description: 'Only people who follow you', icon: Users },
+  { value: 'private', label: 'Only me', description: 'Only you can view this video', icon: Lock }
 ];
 
 const AUDIO_ENHANCEMENTS = [
-  { id: 'none', name: 'Original', description: 'Keep the audio natural' },
-  { id: 'crystal_voice', name: 'Clear Voice', description: 'Improve speech clarity' },
-  { id: 'studio_master', name: 'Studio', description: 'Balanced compression and limiting' },
-  { id: 'bass_boost', name: 'Bass Boost', description: 'Add low-end presence' }
+  { id: 'none', name: 'Original', description: 'Keep the original sound' },
+  { id: 'crystal_voice', name: 'Clear Voice', description: 'Improve voice clarity' },
+  { id: 'studio_master', name: 'Studio', description: 'Balanced loudness and clarity' },
+  { id: 'bass_boost', name: 'Bass Boost', description: 'Add low-end depth' }
+];
+
+const AI_HOOKS = [
+  'Watch until the end 👀',
+  'You need to see this 🔥',
+  'Wait for it...',
+  'This changed everything.',
+  'Malawi, what do you think? 🇲🇼',
+  'Would you try this?'
 ];
 
 const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-const getExtension = (name = '', type = '') => {
-  const fromName = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-  if (fromName) return fromName;
-  if (type.includes('webm')) return 'webm';
-  if (type.includes('quicktime')) return 'mov';
-  if (type.includes('ogg')) return 'ogv';
-  return 'mp4';
+const getExtension = (fileName = '', fallback = 'mp4') => {
+  const match = fileName.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match?.[1] || fallback;
+};
+
+const formatBytes = bytes => {
+  if (!bytes) return '0 KB';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 };
 
 const formatTime = seconds => {
-  if (!Number.isFinite(seconds)) return '0:00';
+  if (!Number.isFinite(seconds)) return '00:00';
   const total = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(total / 60);
-  const secs = String(total % 60).padStart(2, '0');
-  return `${minutes}:${secs}`;
-};
-
-const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const revokeObjectUrl = url => {
-  if (url && url.startsWith('blob:')) {
-    try {
-      URL.revokeObjectURL(url);
-    } catch {}
-  }
+  const secs = total % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 };
 
 const getSessionToken = async () => {
@@ -89,283 +145,270 @@ const apiRequest = async (path, options = {}) => {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options.headers || {})
     }
   });
 
-  const text = await response.text();
-  let data = {};
-
+  let payload = null;
   try {
-    data = text ? JSON.parse(text) : {};
+    payload = await response.json();
   } catch {
-    data = { message: text };
+    payload = null;
   }
 
   if (!response.ok) {
-    throw new Error(data?.message || data?.error || `Request failed (${response.status})`);
+    throw new Error(payload?.error || payload?.message || `Request failed (${response.status})`);
   }
 
-  return data;
+  return payload;
 };
 
-const uploadToSignedUrl = (url, file, onProgress) => new Promise((resolve, reject) => {
-  const xhr = new XMLHttpRequest();
+const uploadToB2 = ({ uploadUrl, file, onProgress }) =>
+  new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
 
-  xhr.open('PUT', url, true);
-  xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.open('PUT', uploadUrl, true);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
 
-  xhr.upload.onprogress = event => {
-    if (event.lengthComputable && onProgress) {
-      onProgress(Math.round((event.loaded / event.total) * 100));
-    }
-  };
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable) {
+        onProgress?.(Math.round((event.loaded / event.total) * 100));
+      }
+    };
 
-  xhr.onload = () => {
-    if (xhr.status >= 200 && xhr.status < 300) {
-      resolve();
-    } else {
-      reject(new Error(`Storage upload failed (${xhr.status})`));
-    }
-  };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`Media upload failed (${xhr.status})`));
+      }
+    };
 
-  xhr.onerror = () => reject(new Error('Network error while uploading media.'));
-  xhr.ontimeout = () => reject(new Error('Media upload timed out.'));
-  xhr.timeout = 0;
-  xhr.send(file);
-});
-
-const requestUploadUrl = async ({ folder, fileName, contentType, fileSize }) => {
-  return apiRequest('/api/storage/upload-url', {
-    method: 'POST',
-    body: JSON.stringify({ folder, fileName, contentType, fileSize })
+    xhr.onerror = () => reject(new Error('Network error while uploading media.'));
+    xhr.ontimeout = () => reject(new Error('Media upload timed out.'));
+    xhr.timeout = 30 * 60 * 1000;
+    xhr.send(file);
   });
-};
 
-const createThumbnail = (video, time = 0, filterCss = 'none', coverText = '') => new Promise((resolve, reject) => {
-  if (!video) {
-    reject(new Error('Video preview is unavailable.'));
-    return;
-  }
+const generateVideoThumbnail = (file, time = 0) =>
+  new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(file);
 
-  const canvas = document.createElement('canvas');
-  const width = 720;
-  const height = Math.round((video.videoHeight / video.videoWidth) * width) || 1280;
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
 
-  canvas.width = width;
-  canvas.height = height;
+    video.onloadedmetadata = () => {
+      const targetTime = Math.min(Math.max(0, time), Math.max(0, video.duration || 0));
+      video.currentTime = targetTime;
+    };
 
-  const draw = () => {
-    try {
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas is unavailable.');
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const width = Math.min(video.videoWidth || 720, 1280);
+        const height = Math.round(width * ((video.videoHeight || 1280) / (video.videoWidth || 720)));
 
-      ctx.save();
-      ctx.filter = filterCss && filterCss !== 'none' ? filterCss : 'none';
-      ctx.drawImage(video, 0, 0, width, height);
-      ctx.restore();
+        canvas.width = width;
+        canvas.height = height;
 
-      if (coverText.trim()) {
-        const fontSize = Math.max(28, Math.round(width * 0.045));
-        const padding = Math.round(width * 0.045);
+        const context = canvas.getContext('2d', { alpha: false });
+        context.drawImage(video, 0, 0, width, height);
 
-        ctx.fillStyle = 'rgba(0,0,0,.58)';
-        ctx.fillRect(0, height - fontSize * 2.8, width, fontSize * 2.8);
-
-        ctx.fillStyle = '#fff';
-        ctx.font = `700 ${fontSize}px Arial`;
-        ctx.textBaseline = 'middle';
-
-        const maxWidth = width - padding * 2;
-        const words = coverText.trim().split(/\s+/);
-        const lines = [];
-        let current = '';
-
-        words.forEach(word => {
-          const test = current ? `${current} ${word}` : word;
-          if (ctx.measureText(test).width <= maxWidth) {
-            current = test;
-          } else {
-            if (current) lines.push(current);
-            current = word;
-          }
-        });
-
-        if (current) lines.push(current);
-
-        lines.slice(0, 2).forEach((line, index) => {
-          ctx.fillText(
-            line,
-            padding,
-            height - fontSize * (1.7 - index * 0.9)
-          );
-        });
+        canvas.toBlob(
+          blob => {
+            URL.revokeObjectURL(url);
+            if (!blob) {
+              reject(new Error('Could not create thumbnail.'));
+              return;
+            }
+            resolve(blob);
+          },
+          'image/jpeg',
+          0.86
+        );
+      } catch (error) {
+        URL.revokeObjectURL(url);
+        reject(error);
       }
+    };
 
-      canvas.toBlob(blob => {
-        if (!blob) {
-          reject(new Error('Could not create thumbnail.'));
-          return;
-        }
-        resolve(blob);
-      }, 'image/jpeg', 0.88);
-    } catch (error) {
-      reject(error);
-    }
-  };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read video for thumbnail.'));
+    };
 
-  const previousTime = video.currentTime;
-  const wasPaused = video.paused;
+    video.src = url;
+  });
 
-  const finish = () => {
-    video.removeEventListener('seeked', finish);
-    try {
-      if (wasPaused) video.pause();
-      video.currentTime = previousTime;
-    } catch {}
-    draw();
-  };
-
-  try {
-    video.pause();
-    video.currentTime = Math.max(0, Math.min(time, video.duration || 0));
-    video.addEventListener('seeked', finish, { once: true });
-
-    setTimeout(() => {
-      if (video.readyState >= 2) {
-        video.removeEventListener('seeked', finish);
-        draw();
-      }
-    }, 500);
-  } catch {
-    draw();
-  }
+const normalizeMusicResult = track => ({
+  id: track.trackId || track.collectionId || createId(),
+  name: track.trackName || 'Unknown track',
+  artist: track.artistName || 'Unknown artist',
+  album: track.collectionName || '',
+  artwork: track.artworkUrl100 || track.artworkUrl60 || '',
+  url: track.previewUrl || '',
+  source: 'itunes'
 });
 
-const parseTags = text => {
-  const matches = text.match(/#[\p{L}\p{N}_-]+/gu) || [];
-  return [...new Set(matches.map(item => item.slice(1).toLowerCase()))].slice(0, 30);
-};
-
-const parseMentions = text => {
-  const matches = text.match(/@[\p{L}\p{N}_.-]+/gu) || [];
-  return [...new Set(matches.map(item => item.slice(1)))].slice(0, 30);
-};
-
-const Upload = ({ onComplete, onClose }) => {
+function Upload({ onComplete, onClose }) {
   const [step, setStep] = useState('media');
   const [ingestMode, setIngestMode] = useState('dropzone');
-
   const [videoFile, setVideoFile] = useState(null);
   const [videoPreview, setVideoPreview] = useState('');
   const [videoMetadata, setVideoMetadata] = useState({
     width: 0,
     height: 0,
     duration: 0,
-    size: 0,
-    type: ''
+    size: 0
   });
 
   const [thumbnailBlob, setThumbnailBlob] = useState(null);
   const [thumbnailPreview, setThumbnailPreview] = useState('');
-  const [thumbScrubTime, setThumbScrubTime] = useState(0);
+  const [thumbnailTime, setThumbnailTime] = useState(0);
 
-  const [isDragging, setIsDragging] = useState(false);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-
-  const [selectedFilter, setSelectedFilter] = useState(() => {
-    try {
-      return localStorage.getItem('made-universe-upload-filter') || 'original';
-    } catch {
-      return 'original';
-    }
-  });
-
-  const [audioEnhancement, setAudioEnhancement] = useState('none');
-  const [videoVolume, setVideoVolume] = useState(100);
-  const [musicVolume, setMusicVolume] = useState(65);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const [selectedMusic, setSelectedMusic] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [playingTrackUrl, setPlayingTrackUrl] = useState('');
-  const [musicError, setMusicError] = useState('');
+  const [playingTrackId, setPlayingTrackId] = useState(null);
+
+  const [videoVolume, setVideoVolume] = useState(100);
+  const [musicVolume, setMusicVolume] = useState(70);
+  const [audioEnhancement, setAudioEnhancement] = useState('none');
+  const [musicLoop, setMusicLoop] = useState(true);
+
+  const [selectedFilter, setSelectedFilter] = useState(
+    () => localStorage.getItem('made_universe_upload_filter') || 'original'
+  );
+
+  const [coverText, setCoverText] = useState('');
+  const [coverBadgeStyle, setCoverBadgeStyle] = useState('clean');
 
   const [caption, setCaption] = useState('');
-  const [privacy, setPrivacy] = useState('public');
   const [category, setCategory] = useState('Entertainment');
+  const [privacy, setPrivacy] = useState('public');
   const [location, setLocation] = useState('');
-  const [commentsEnabled, setCommentsEnabled] = useState(true);
+  const [tags, setTags] = useState([]);
+  const [tagInput, setTagInput] = useState('');
+  const [mentions, setMentions] = useState([]);
+  const [mentionInput, setMentionInput] = useState('');
+
+  const [allowComments, setAllowComments] = useState(true);
   const [allowDownload, setAllowDownload] = useState(true);
   const [allowDuet, setAllowDuet] = useState(true);
   const [allowStitch, setAllowStitch] = useState(true);
   const [ageRestricted, setAgeRestricted] = useState(false);
+
   const [commercialContent, setCommercialContent] = useState(false);
   const [sponsorTag, setSponsorTag] = useState('');
 
-  const [coverText, setCoverText] = useState('');
+  const [pollData, setPollData] = useState({
+    enabled: false,
+    question: '',
+    options: ['', '']
+  });
+
   const [productLink, setProductLink] = useState('');
-  const [pollData, setPollData] = useState(null);
   const [chapters, setChapters] = useState([]);
   const [subtitles, setSubtitles] = useState('');
+  const [hookText, setHookText] = useState('');
 
-  const [scheduledAt, setScheduledAt] = useState('');
-  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
 
-  const [recording, setRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [cameraActive, setCameraActive] = useState(false);
   const [cameraFacing, setCameraFacing] = useState('user');
   const [cameraMuted, setCameraMuted] = useState(false);
-  const [cameraReady, setCameraReady] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
 
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStage, setUploadStage] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+
   const [uploading, setUploading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
+  const [uploadStage, setUploadStage] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
 
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const [showThumbnailEditor, setShowThumbnailEditor] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
-
-  const [videoDuration, setVideoDuration] = useState(0);
-  const [networkOnline, setNetworkOnline] = useState(navigator.onLine);
-
-  const videoRef = useRef(null);
-  const editorVideoRef = useRef(null);
-  const cameraVideoRef = useRef(null);
+  const [showCoverEditor, setShowCoverEditor] = useState(false);
+  const [showPollEditor, setShowPollEditor] = useState(false);
+  const [showProductEditor, setShowProductEditor] = useState(false);
 
   const fileInputRef = useRef(null);
-  const thumbnailInputRef = useRef(null);
-
-  const mediaRecorderRef = useRef(null);
+  const videoRef = useRef(null);
+  const cameraVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
-  const chunksRef = useRef([]);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
+  const musicAudioRef = useRef(null);
+  const objectUrlsRef = useRef(new Set());
 
-  const audioPreviewRef = useRef(null);
-
-  const selectedFilterObject = useMemo(
+  const selectedFilterData = useMemo(
     () => FILTERS.find(item => item.id === selectedFilter) || FILTERS[0],
     [selectedFilter]
   );
 
-  const progressStep = useMemo(() => {
-    if (step === 'media') return 1;
-    if (step === 'audio') return 2;
-    if (step === 'edit') return 3;
-    return 4;
-  }, [step]);
+  const currentStepIndex = STEPS.findIndex(item => item.id === step);
 
-  const hasMedia = !!videoFile;
-  const hasMusic = !!selectedMusic;
-  const videoAspect = videoMetadata.width && videoMetadata.height
-    ? videoMetadata.width / videoMetadata.height
-    : 9 / 16;
+  const registerObjectUrl = useCallback(url => {
+    if (url) objectUrlsRef.current.add(url);
+    return url;
+  }, []);
+
+  const revokeObjectUrl = useCallback(url => {
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    objectUrlsRef.current.delete(url);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      objectUrlsRef.current.clear();
+
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+
+      if (musicAudioRef.current) {
+        musicAudioRef.current.pause();
+        musicAudioRef.current.src = '';
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('made_universe_upload_filter', selectedFilter);
+  }, [selectedFilter]);
+
+  useEffect(() => {
+    if (!videoPreview || !videoRef.current) return;
+
+    videoRef.current.load();
+    setCurrentTime(0);
+    setIsPlaying(false);
+  }, [videoPreview]);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    videoRef.current.volume = videoVolume / 100;
+  }, [videoVolume]);
+
+  useEffect(() => {
+    if (!musicAudioRef.current) return;
+    musicAudioRef.current.volume = musicVolume / 100;
+  }, [musicVolume]);
 
   const stopCamera = useCallback(() => {
     if (cameraStreamRef.current) {
@@ -377,7 +420,7 @@ const Upload = ({ onComplete, onClose }) => {
       cameraVideoRef.current.srcObject = null;
     }
 
-    setCameraReady(false);
+    setCameraActive(false);
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -395,131 +438,265 @@ const Upload = ({ onComplete, onClose }) => {
 
       cameraStreamRef.current = stream;
 
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) audioTrack.enabled = !cameraMuted;
+
       if (cameraVideoRef.current) {
         cameraVideoRef.current.srcObject = stream;
         await cameraVideoRef.current.play().catch(() => {});
       }
 
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) audioTrack.enabled = !cameraMuted;
-
-      setCameraReady(true);
-      setErrorMessage('');
+      setCameraActive(true);
     } catch (error) {
-      setErrorMessage(error?.message || 'Camera permission could not be granted.');
-      setCameraReady(false);
+      setUploadError(error?.message || 'Camera permission was denied or unavailable.');
     }
   }, [cameraFacing, cameraMuted, stopCamera]);
 
   useEffect(() => {
-    const online = () => setNetworkOnline(true);
-    const offline = () => setNetworkOnline(false);
+    if (ingestMode === 'camera') {
+      startCamera();
+    } else {
+      stopCamera();
+    }
 
-    window.addEventListener('online', online);
-    window.addEventListener('offline', offline);
+    return () => stopCamera();
+  }, [ingestMode, startCamera, stopCamera]);
 
-    return () => {
-      window.removeEventListener('online', online);
-      window.removeEventListener('offline', offline);
-    };
+  const toggleCameraMute = () => {
+    const stream = cameraStreamRef.current;
+    const track = stream?.getAudioTracks?.()[0];
+
+    if (track) {
+      track.enabled = cameraMuted;
+    }
+
+    setCameraMuted(value => !value);
+  };
+
+  const switchCamera = async () => {
+    setCameraFacing(value => (value === 'user' ? 'environment' : 'user'));
+  };
+
+  const stopRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    setRecording(false);
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('made-universe-upload-filter', selectedFilter);
-    } catch {}
-  }, [selectedFilter]);
+  const startRecording = () => {
+    const stream = cameraStreamRef.current;
 
-  useEffect(() => {
+    if (!stream) {
+      setUploadError('Camera is not ready.');
+      return;
+    }
+
+    recordedChunksRef.current = [];
+
+    let mimeType = 'video/webm;codecs=vp9,opus';
+
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      mimeType = 'video/webm;codecs=vp8,opus';
+    }
+
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      mimeType = 'video/webm';
+    }
+
+    try {
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 4_500_000,
+        audioBitsPerSecond: 128_000
+      });
+
+      recorder.ondataavailable = event => {
+        if (event.data?.size) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = event => {
+        setUploadError(event.error?.message || 'Camera recording failed.');
+        setRecording(false);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, {
+          type: mimeType
+        });
+
+        if (!blob.size) {
+          setUploadError('The recording was empty.');
+          return;
+        }
+
+        const file = new File(
+          [blob],
+          `made-universe-${Date.now()}.webm`,
+          { type: mimeType }
+        );
+
+        handleVideoFile(file);
+        setIngestMode('dropzone');
+        setStep('media');
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start(250);
+
+      setRecording(true);
+      setRecordingSeconds(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(seconds => seconds + 1);
+      }, 1000);
+    } catch (error) {
+      setUploadError(error?.message || 'Unable to start recording.');
+    }
+  };
+
+  const handleVideoFile = async file => {
+    if (!file) return;
+
+    setUploadError('');
+
+    if (!file.type.startsWith('video/')) {
+      setUploadError('Please select a video file.');
+      return;
+    }
+
+    if (file.size > 1024 * 1024 * 1024) {
+      setUploadError('Video is larger than the 1 GB upload limit.');
+      return;
+    }
+
+    if (videoPreview) revokeObjectUrl(videoPreview);
+    if (thumbnailPreview) revokeObjectUrl(thumbnailPreview);
+
+    const previewUrl = registerObjectUrl(URL.createObjectURL(file));
+
+    setVideoFile(file);
+    setVideoPreview(previewUrl);
+    setThumbnailBlob(null);
+    setThumbnailPreview('');
+    setCurrentTime(0);
+
+    const metadataVideo = document.createElement('video');
+    const metadataUrl = URL.createObjectURL(file);
+
+    metadataVideo.preload = 'metadata';
+
+    metadataVideo.onloadedmetadata = async () => {
+      const metadata = {
+        width: metadataVideo.videoWidth || 0,
+        height: metadataVideo.videoHeight || 0,
+        duration: Number.isFinite(metadataVideo.duration) ? metadataVideo.duration : 0,
+        size: file.size
+      };
+
+      setVideoMetadata(metadata);
+
+      try {
+        const thumbnail = await generateVideoThumbnail(file, 0);
+        const thumbnailUrl = registerObjectUrl(URL.createObjectURL(thumbnail));
+
+        setThumbnailBlob(thumbnail);
+        setThumbnailPreview(thumbnailUrl);
+      } catch {
+        setThumbnailBlob(null);
+        setThumbnailPreview('');
+      }
+
+      URL.revokeObjectURL(metadataUrl);
+    };
+
+    metadataVideo.onerror = () => {
+      URL.revokeObjectURL(metadataUrl);
+      setUploadError('Could not read the selected video.');
+    };
+
+    metadataVideo.src = metadataUrl;
+  };
+
+  const handleFileInput = event => {
+    const file = event.target.files?.[0];
+    if (file) handleVideoFile(file);
+    event.target.value = '';
+  };
+
+  const handleDrop = event => {
+    event.preventDefault();
+    setIsDragging(false);
+
+    const file = event.dataTransfer.files?.[0];
+    if (file) handleVideoFile(file);
+  };
+
+  const clearVideo = () => {
+    if (videoPreview) revokeObjectUrl(videoPreview);
+    if (thumbnailPreview) revokeObjectUrl(thumbnailPreview);
+
+    setVideoFile(null);
+    setVideoPreview('');
+    setThumbnailBlob(null);
+    setThumbnailPreview('');
+    setVideoMetadata({
+      width: 0,
+      height: 0,
+      duration: 0,
+      size: 0
+    });
+    setCurrentTime(0);
+    setIsPlaying(false);
+  };
+
+  const togglePreview = async () => {
+    if (!videoRef.current) return;
+
+    if (videoRef.current.paused) {
+      await videoRef.current.play().catch(() => {});
+    } else {
+      videoRef.current.pause();
+    }
+  };
+
+  const handleVideoTimeUpdate = () => {
+    if (!videoRef.current) return;
+    setCurrentTime(videoRef.current.currentTime);
+  };
+
+  const seekVideo = event => {
+    const value = Number(event.target.value);
+    if (!videoRef.current) return;
+
+    videoRef.current.currentTime = value;
+    setCurrentTime(value);
+  };
+
+  const updateThumbnail = async time => {
     if (!videoFile) return;
 
-    const url = URL.createObjectURL(videoFile);
-    setVideoPreview(url);
-
-    return () => revokeObjectUrl(url);
-  }, [videoFile]);
-
-  useEffect(() => {
-    return () => {
-      revokeObjectUrl(videoPreview);
-      revokeObjectUrl(thumbnailPreview);
-      stopCamera();
-
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-      }
-
-      if (audioPreviewRef.current) {
-        audioPreviewRef.current.pause();
-        audioPreviewRef.current.src = '';
-      }
-    };
-  }, [stopCamera]);
-
-  useEffect(() => {
-    if (!cameraVideoRef.current?.srcObject) return;
-
-    const audioTrack = cameraVideoRef.current.srcObject.getAudioTracks()[0];
-    if (audioTrack) audioTrack.enabled = !cameraMuted;
-  }, [cameraMuted]);
-
-  useEffect(() => {
-    if (!showCamera) {
-      stopCamera();
-      return;
-    }
-
-    startCamera();
-  }, [showCamera, cameraFacing, startCamera, stopCamera]);
-
-  useEffect(() => {
-    if (!selectedMusic?.previewUrl) {
-      if (audioPreviewRef.current) {
-        audioPreviewRef.current.pause();
-        audioPreviewRef.current.src = '';
-      }
-      setPlayingTrackUrl('');
-      return;
-    }
-
-    if (!audioPreviewRef.current) {
-      audioPreviewRef.current = new Audio();
-      audioPreviewRef.current.preload = 'none';
-    }
-
-    const audio = audioPreviewRef.current;
-    audio.src = selectedMusic.previewUrl;
-    audio.volume = Math.max(0, Math.min(1, musicVolume / 100));
-    audio.onended = () => setPlayingTrackUrl('');
-  }, [selectedMusic, musicVolume]);
-
-  const toggleTrackPreview = async track => {
-    if (!track?.previewUrl) {
-      setMusicError('This track does not provide a playable preview.');
-      return;
-    }
-
     try {
-      if (!audioPreviewRef.current) {
-        audioPreviewRef.current = new Audio();
-      }
+      const blob = await generateVideoThumbnail(videoFile, time);
+      const nextUrl = registerObjectUrl(URL.createObjectURL(blob));
 
-      const audio = audioPreviewRef.current;
+      if (thumbnailPreview) revokeObjectUrl(thumbnailPreview);
 
-      if (playingTrackUrl === track.previewUrl) {
-        audio.pause();
-        setPlayingTrackUrl('');
-        return;
-      }
-
-      audio.src = track.previewUrl;
-      audio.volume = Math.max(0, Math.min(1, musicVolume / 100));
-      await audio.play();
-      setPlayingTrackUrl(track.previewUrl);
-      setMusicError('');
+      setThumbnailBlob(blob);
+      setThumbnailPreview(nextUrl);
+      setThumbnailTime(time);
     } catch {
-      setPlayingTrackUrl('');
-      setMusicError('This online preview could not be played.');
+      setUploadError('Could not generate the selected cover image.');
     }
   };
 
@@ -532,385 +709,180 @@ const Upload = ({ onComplete, onClose }) => {
     }
 
     setIsSearching(true);
-    setMusicError('');
 
     try {
       const response = await fetch(
-        `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=25`
+        `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=20`
       );
 
-      if (!response.ok) throw new Error('Music search failed.');
+      if (!response.ok) {
+        throw new Error('Music search failed.');
+      }
 
       const data = await response.json();
 
-      const tracks = (data.results || [])
-        .filter(track => track.previewUrl)
-        .map(track => ({
-          id: String(track.trackId),
-          title: track.trackName || 'Unknown track',
-          artist: track.artistName || 'Unknown artist',
-          album: track.collectionName || '',
-          artwork: track.artworkUrl100 || '',
-          previewUrl: track.previewUrl,
-          source: 'iTunes'
-        }));
-
-      setSearchResults(tracks);
+      setSearchResults(
+        (data.results || [])
+          .filter(track => track.previewUrl)
+          .map(normalizeMusicResult)
+      );
     } catch (error) {
-      setSearchResults([]);
-      setMusicError(error?.message || 'Could not search online music.');
+      setUploadError(error?.message || 'Unable to search music right now.');
     } finally {
       setIsSearching(false);
     }
   };
 
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (searchQuery.trim().length >= 2) searchMusic();
-    }, 500);
+  const previewMusic = track => {
+    if (!track?.url) return;
 
-    return () => clearTimeout(timeout);
-  }, [searchQuery]);
-
-  const loadVideoFile = file => {
-    if (!file) return;
-
-    if (!file.type.startsWith('video/')) {
-      setErrorMessage('Please select a valid video file.');
+    if (playingTrackId === track.id) {
+      musicAudioRef.current?.pause();
+      setPlayingTrackId(null);
       return;
     }
 
-    if (file.size > MAX_VIDEO_SIZE) {
-      setErrorMessage('This video is larger than the 1 GB upload limit.');
-      return;
+    if (!musicAudioRef.current) {
+      musicAudioRef.current = new Audio();
     }
 
-    setErrorMessage('');
-    setVideoFile(file);
-    setThumbnailBlob(null);
-    setThumbnailPreview('');
-    setCurrentTime(0);
-    setVideoDuration(0);
+    const audio = musicAudioRef.current;
+    audio.src = track.url;
+    audio.volume = musicVolume / 100;
+    audio.currentTime = 0;
 
-    const probeUrl = URL.createObjectURL(file);
-    const probe = document.createElement('video');
+    audio.onended = () => setPlayingTrackId(null);
 
-    probe.preload = 'metadata';
-    probe.onloadedmetadata = () => {
-      setVideoMetadata({
-        width: probe.videoWidth,
-        height: probe.videoHeight,
-        duration: probe.duration || 0,
-        size: file.size,
-        type: file.type
+    audio.play()
+      .then(() => setPlayingTrackId(track.id))
+      .catch(() => {
+        setUploadError('This music preview could not be played.');
+        setPlayingTrackId(null);
       });
-      setVideoDuration(probe.duration || 0);
-      URL.revokeObjectUrl(probeUrl);
-    };
-
-    probe.onerror = () => {
-      URL.revokeObjectUrl(probeUrl);
-      setErrorMessage('The selected video could not be read.');
-    };
-
-    probe.src = probeUrl;
   };
 
-  const handleFileInput = event => {
-    const file = event.target.files?.[0];
-    if (file) loadVideoFile(file);
-    event.target.value = '';
-  };
-
-  const handleDrop = event => {
-    event.preventDefault();
-    setIsDragging(false);
-
-    const file = event.dataTransfer.files?.[0];
-    if (file) loadVideoFile(file);
-  };
-
-  const removeVideo = () => {
-    setVideoFile(null);
-    setVideoPreview('');
-    setVideoMetadata({
-      width: 0,
-      height: 0,
-      duration: 0,
-      size: 0,
-      type: ''
-    });
-    setThumbnailBlob(null);
-    setThumbnailPreview('');
-    setCurrentTime(0);
-    setVideoDuration(0);
-    setStep('media');
-  };
-
-  const generateCurrentThumbnail = async () => {
-    const sourceVideo = editorVideoRef.current || videoRef.current;
-
-    if (!sourceVideo || !videoFile) return;
-
-    try {
-      const blob = await createThumbnail(
-        sourceVideo,
-        thumbScrubTime,
-        selectedFilterObject.css,
-        coverText
-      );
-
-      if (blob.size > MAX_THUMBNAIL_SIZE) {
-        setErrorMessage('Generated thumbnail is too large.');
-        return;
-      }
-
-      const url = URL.createObjectURL(blob);
-
-      setThumbnailBlob(blob);
-      setThumbnailPreview(previous => {
-        revokeObjectUrl(previous);
-        return url;
-      });
-
-      setErrorMessage('');
-    } catch (error) {
-      setErrorMessage(error?.message || 'Could not generate thumbnail.');
-    }
-  };
-
-  const handleThumbnailFile = event => {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setErrorMessage('Please select an image thumbnail.');
-      return;
-    }
-
-    if (file.size > MAX_THUMBNAIL_SIZE) {
-      setErrorMessage('Thumbnail must be smaller than 8 MB.');
-      return;
-    }
-
-    const url = URL.createObjectURL(file);
-
-    setThumbnailBlob(file);
-    setThumbnailPreview(previous => {
-      revokeObjectUrl(previous);
-      return url;
-    });
-
-    event.target.value = '';
-  };
-
-  const chooseMusic = track => {
+  const selectMusic = track => {
     setSelectedMusic(track);
-    setMusicError('');
-    setPlayingTrackUrl('');
+    setPlayingTrackId(null);
 
-    if (audioPreviewRef.current) {
-      audioPreviewRef.current.pause();
+    if (musicAudioRef.current) {
+      musicAudioRef.current.pause();
     }
   };
 
-  const clearMusic = () => {
-    if (audioPreviewRef.current) {
-      audioPreviewRef.current.pause();
-    }
-
+  const removeMusic = () => {
     setSelectedMusic(null);
-    setPlayingTrackUrl('');
-    setMusicError('');
+
+    if (musicAudioRef.current) {
+      musicAudioRef.current.pause();
+      musicAudioRef.current.src = '';
+    }
+
+    setPlayingTrackId(null);
   };
 
-  const startRecording = async () => {
-    if (!cameraStreamRef.current) {
-      await startCamera();
-    }
+  const addTag = () => {
+    const value = tagInput.trim().replace(/^#/, '');
 
-    const stream = cameraStreamRef.current;
+    if (!value || tags.includes(value)) return;
 
-    if (!stream) {
-      setErrorMessage('Camera is not ready.');
-      return;
-    }
-
-    let mimeType = '';
-
-    const candidates = [
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp8,opus',
-      'video/webm'
-    ];
-
-    mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
-
-    if (!mimeType) {
-      setErrorMessage('This browser cannot record video in a supported format.');
-      return;
-    }
-
-    try {
-      chunksRef.current = [];
-
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 4_000_000,
-        audioBitsPerSecond: 128_000
-      });
-
-      recorder.ondataavailable = event => {
-        if (event.data?.size) chunksRef.current.push(event.data);
-      };
-
-      recorder.onerror = event => {
-        setErrorMessage(event?.error?.message || 'Recording failed.');
-        setRecording(false);
-      };
-
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-
-        if (!blob.size) {
-          setErrorMessage('No recorded video was produced.');
-          return;
-        }
-
-        const extension = mimeType.includes('webm') ? 'webm' : 'mp4';
-        const file = new File(
-          [blob],
-          `made-universe-recording-${Date.now()}.${extension}`,
-          { type: mimeType, lastModified: Date.now() }
-        );
-
-        loadVideoFile(file);
-        setShowCamera(false);
-        setRecording(false);
-        setRecordingSeconds(0);
-
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current);
-          recordingTimerRef.current = null;
-        }
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start(1000);
-
-      setRecording(true);
-      setRecordingSeconds(0);
-
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds(previous => previous + 1);
-      }, 1000);
-    } catch (error) {
-      setErrorMessage(error?.message || 'Could not start recording.');
-    }
+    setTags(current => [...current, value]);
+    setTagInput('');
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
+  const removeTag = tag => {
+    setTags(current => current.filter(item => item !== tag));
   };
 
-  const toggleCameraFacing = () => {
-    setCameraFacing(previous => previous === 'user' ? 'environment' : 'user');
+  const addMention = () => {
+    const value = mentionInput.trim().replace(/^@/, '');
+
+    if (!value || mentions.includes(value)) return;
+
+    setMentions(current => [...current, value]);
+    setMentionInput('');
   };
 
-  const toggleCameraMute = () => {
-    setCameraMuted(previous => !previous);
+  const removeMention = mention => {
+    setMentions(current => current.filter(item => item !== mention));
   };
 
   const addChapter = () => {
-    const time = Math.max(0, Math.min(currentTime, videoDuration || 0));
+    const nextTime = Math.floor(currentTime);
 
-    setChapters(previous => [
-      ...previous,
+    if (chapters.some(item => Math.abs(item.time - nextTime) < 2)) return;
+
+    setChapters(current => [
+      ...current,
       {
         id: createId(),
-        time,
-        title: `Chapter ${previous.length + 1}`
+        time: nextTime,
+        title: `Chapter ${current.length + 1}`
       }
     ].sort((a, b) => a.time - b.time));
   };
 
-  const updateChapter = (id, field, value) => {
-    setChapters(previous => previous.map(chapter => (
-      chapter.id === id ? { ...chapter, [field]: value } : chapter
-    )));
-  };
-
   const removeChapter = id => {
-    setChapters(previous => previous.filter(chapter => chapter.id !== id));
+    setChapters(current => current.filter(item => item.id !== id));
   };
 
-  const addPoll = () => {
-    setPollData({
-      question: '',
-      options: ['', '']
-    });
+  const updateChapter = (id, title) => {
+    setChapters(current =>
+      current.map(item => item.id === id ? { ...item, title } : item)
+    );
   };
 
-  const updatePollOption = (index, value) => {
-    setPollData(previous => {
-      if (!previous) return previous;
-
-      const options = [...previous.options];
-      options[index] = value;
-
-      return { ...previous, options };
-    });
+  const applyHook = hook => {
+    setHookText(hook);
+    setCaption(current => current ? `${hook}\n${current}` : hook);
   };
 
   const addPollOption = () => {
-    setPollData(previous => {
-      if (!previous || previous.options.length >= 4) return previous;
-      return { ...previous, options: [...previous.options, ''] };
-    });
+    if (pollData.options.length >= 4) return;
+
+    setPollData(current => ({
+      ...current,
+      options: [...current.options, '']
+    }));
   };
 
   const removePollOption = index => {
-    setPollData(previous => {
-      if (!previous || previous.options.length <= 2) return previous;
+    if (pollData.options.length <= 2) return;
 
-      return {
-        ...previous,
-        options: previous.options.filter((_, optionIndex) => optionIndex !== index)
-      };
-    });
+    setPollData(current => ({
+      ...current,
+      options: current.options.filter((_, optionIndex) => optionIndex !== index)
+    }));
   };
 
-  const validateBeforeUpload = () => {
+  const updatePollOption = (index, value) => {
+    setPollData(current => ({
+      ...current,
+      options: current.options.map((option, optionIndex) =>
+        optionIndex === index ? value : option
+      )
+    }));
+  };
+
+  const validateBeforePublish = () => {
     if (!videoFile) {
-      setErrorMessage('Add a video before publishing.');
+      setUploadError('Add a video before publishing.');
       setStep('media');
       return false;
     }
 
-    if (!networkOnline) {
-      setErrorMessage('You are offline. Reconnect to the internet before publishing.');
-      return false;
-    }
-
     if (!caption.trim()) {
-      setErrorMessage('Add a caption before publishing.');
+      setUploadError('Add a caption so people know what your video is about.');
       setStep('publish');
       return false;
     }
 
-    if (isScheduled && scheduledAt) {
-      const date = new Date(scheduledAt);
+    if (pollData.enabled) {
+      const validOptions = pollData.options.filter(option => option.trim());
 
-      if (Number.isNaN(date.getTime()) || date <= new Date()) {
-        setErrorMessage('Choose a valid future publishing time.');
+      if (!pollData.question.trim() || validOptions.length < 2) {
+        setUploadError('Complete the poll question and at least two options.');
+        setStep('edit');
         return false;
       }
     }
@@ -918,389 +890,336 @@ const Upload = ({ onComplete, onClose }) => {
     return true;
   };
 
+  const uploadThumbnail = async () => {
+    if (!thumbnailBlob) return null;
+
+    const fileName = `cover-${Date.now()}.jpg`;
+
+    const signed = await apiRequest('/api/storage/upload-url', {
+      method: 'POST',
+      body: JSON.stringify({
+        folder: 'covers',
+        fileName,
+        contentType: 'image/jpeg',
+        fileSize: thumbnailBlob.size
+      })
+    });
+
+    const thumbnailFile = new File([thumbnailBlob], fileName, {
+      type: 'image/jpeg'
+    });
+
+    await uploadToB2({
+      uploadUrl: signed.uploadUrl,
+      file: thumbnailFile,
+      onProgress: () => {}
+    });
+
+    return signed.objectKey;
+  };
+
+  const uploadSourceVideo = async () => {
+    const fileName = videoFile.name || `source-${Date.now()}.${getExtension(videoFile.name, 'webm')}`;
+
+    const signed = await apiRequest('/api/storage/upload-url', {
+      method: 'POST',
+      body: JSON.stringify({
+        folder: 'videos',
+        fileName,
+        contentType: videoFile.type || 'video/webm',
+        fileSize: videoFile.size
+      })
+    });
+
+    await uploadToB2({
+      uploadUrl: signed.uploadUrl,
+      file: videoFile,
+      onProgress: progress => {
+        setUploadProgress(Math.round(progress * 0.45));
+      }
+    });
+
+    return signed.objectKey;
+  };
+
+  const processVideo = async sourceObjectKey => {
+    setUploadStage(selectedMusic ? 'Mixing audio and encoding video' : 'Encoding video');
+    setUploadProgress(48);
+
+    const response = await apiRequest('/api/storage/merge-video', {
+      method: 'POST',
+      body: JSON.stringify({
+        sourceObjectKey,
+        audioUrl: selectedMusic?.url || null,
+        videoVolume,
+        musicVolume: selectedMusic ? musicVolume : 0,
+        musicLoop,
+        audioEnhancement,
+        filter: selectedFilter,
+        title: caption.slice(0, 100)
+      })
+    });
+
+    setUploadProgress(80);
+
+    if (!response?.objectKey) {
+      throw new Error('The server did not return the final video.');
+    }
+
+    return response;
+  };
+
+  const insertVideoRecord = async ({
+    finalObjectKey,
+    thumbnailObjectKey,
+    sourceObjectKey
+  }) => {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+
+    if (userError) throw userError;
+
+    const user = userData?.user;
+
+    if (!user?.id) {
+      throw new Error('Your account session is no longer available.');
+    }
+
+    const isPrivate = privacy === 'private';
+
+    const basePayload = {
+      video_url: finalObjectKey,
+      caption: caption.trim(),
+      music_name: selectedMusic?.name || null,
+      music_url: selectedMusic?.url || null,
+      user_id: user.id,
+      is_private: isPrivate,
+      views: 0,
+      likes_count: 0,
+      comments_count: 0
+    };
+
+    const extendedPayload = {
+      ...basePayload,
+      category,
+      privacy,
+      location: location.trim() || null,
+      tags,
+      mentions,
+      thumbnail_url: thumbnailObjectKey,
+      thumbnail_object_key: thumbnailObjectKey,
+      video_object_key: finalObjectKey,
+      source_object_key: sourceObjectKey,
+      filter_style: selectedFilter,
+      audio_enhancement: audioEnhancement,
+      video_volume: videoVolume,
+      music_volume: selectedMusic ? musicVolume : 0,
+      allow_comments: allowComments,
+      allow_download: allowDownload,
+      allow_duet: allowDuet,
+      allow_stitch: allowStitch,
+      age_restricted: ageRestricted,
+      commercial_content: commercialContent,
+      sponsor_tag: sponsorTag.trim() || null,
+      cover_text: coverText.trim() || null,
+      cover_badge_style: coverBadgeStyle,
+      subtitles: subtitles.trim() || null,
+      chapters,
+      poll_data: pollData.enabled
+        ? {
+            question: pollData.question.trim(),
+            options: pollData.options.filter(option => option.trim())
+          }
+        : null,
+      product_link: productLink.trim() || null,
+      hook_text: hookText.trim() || null,
+      scheduled_for: scheduleEnabled && scheduleDate ? scheduleDate : null
+    };
+
+    const firstInsert = await supabase
+      .from('videos')
+      .insert(extendedPayload)
+      .select()
+      .single();
+
+    if (!firstInsert.error) {
+      return firstInsert.data;
+    }
+
+    const fallback = await supabase
+      .from('videos')
+      .insert(basePayload)
+      .select()
+      .single();
+
+    if (fallback.error) {
+      throw fallback.error;
+    }
+
+    return fallback.data;
+  };
+
   const handleUpload = async () => {
-    if (!validateBeforeUpload()) return;
+    if (uploading) return;
+    if (!validateBeforePublish()) return;
 
     setUploading(true);
-    setErrorMessage('');
-    setStatusMessage('');
+    setUploadError('');
     setUploadProgress(0);
 
     let sourceObjectKey = null;
-    let finalObjectKey = null;
-    let thumbnailObjectKey = null;
 
     try {
-      const {
-        data: { user },
-        error: userError
-      } = await supabase.auth.getUser();
+      setUploadStage('Preparing upload');
 
-      if (userError) throw userError;
-      if (!user) throw new Error('You must be signed in to publish.');
+      sourceObjectKey = await uploadSourceVideo();
 
-      const sourceExtension = getExtension(videoFile.name, videoFile.type);
+      setUploadStage('Source uploaded');
+      setUploadProgress(46);
 
-      setUploadStage('Preparing source video');
-      setStatusMessage('Preparing your video for secure upload…');
-      setUploadProgress(3);
+      const finalVideo = await processVideo(sourceObjectKey);
 
-      const sourceUpload = await requestUploadUrl({
-        folder: 'videos',
-        fileName: `source-${Date.now()}.${sourceExtension}`,
-        contentType: videoFile.type || 'video/webm',
-        fileSize: videoFile.size
-      });
+      setUploadStage('Creating cover');
+      setUploadProgress(84);
 
-      sourceObjectKey = sourceUpload.objectKey;
-
-      setUploadStage('Uploading source video');
-      setStatusMessage('Uploading source video directly to storage…');
-
-      await uploadToSignedUrl(
-        sourceUpload.uploadUrl,
-        videoFile,
-        progress => setUploadProgress(5 + Math.round(progress * 0.55))
-      );
-
-      setUploadProgress(62);
-
-      const needsProcessing =
-        sourceExtension !== 'mp4' ||
-        !!selectedMusic ||
-        selectedFilter !== 'original' ||
-        videoVolume !== 100 ||
-        musicVolume !== 100 ||
-        audioEnhancement !== 'none';
-
-      if (needsProcessing) {
-        setUploadStage('Processing video');
-        setStatusMessage(
-          selectedMusic
-            ? 'Embedding the selected music into the final MP4…'
-            : 'Converting and preparing the final MP4…'
-        );
-        setUploadProgress(64);
-
-        const mergeResponse = await apiRequest('/api/storage/merge-video', {
-          method: 'POST',
-          body: JSON.stringify({
-            sourceObjectKey,
-            audioUrl: selectedMusic?.previewUrl || null,
-            audioName: selectedMusic?.title || null,
-            videoVolume: Number(videoVolume),
-            musicVolume: Number(musicVolume),
-            audioEnhancement,
-            filter: selectedFilter
-          })
-        });
-
-        finalObjectKey = mergeResponse.objectKey;
-
-        setUploadProgress(82);
-      } else {
-        finalObjectKey = sourceObjectKey;
-        setUploadProgress(80);
-      }
-
-      if (!thumbnailBlob) {
-        setUploadStage('Creating cover');
-        setStatusMessage('Generating your video cover…');
-
-        const sourceVideo = editorVideoRef.current || videoRef.current;
-
-        if (sourceVideo) {
-          try {
-            const generatedThumbnail = await createThumbnail(
-              sourceVideo,
-              thumbScrubTime,
-              selectedFilterObject.css,
-              coverText
-            );
-
-            setThumbnailBlob(generatedThumbnail);
-          } catch {}
-        }
-      }
-
-      const finalThumbnail = thumbnailBlob;
-
-      if (finalThumbnail) {
-        setUploadStage('Uploading cover');
-        setStatusMessage('Uploading video cover…');
-
-        const thumbnailUpload = await requestUploadUrl({
-          folder: 'covers',
-          fileName: `cover-${Date.now()}.jpg`,
-          contentType: finalThumbnail.type || 'image/jpeg',
-          fileSize: finalThumbnail.size
-        });
-
-        thumbnailObjectKey = thumbnailUpload.objectKey;
-
-        await uploadToSignedUrl(
-          thumbnailUpload.uploadUrl,
-          finalThumbnail,
-          progress => setUploadProgress(82 + Math.round(progress * 0.08))
-        );
-      }
+      const thumbnailObjectKey = await uploadThumbnail();
 
       setUploadStage('Publishing');
-      setStatusMessage('Saving your post…');
       setUploadProgress(92);
 
-      const tags = parseTags(caption);
-      const mentions = parseMentions(caption);
-
-      const payload = {
-        user_id: user.id,
-        video_url: finalObjectKey,
-        caption: caption.trim(),
-        music_name: selectedMusic?.title || null,
-        music_url: selectedMusic?.previewUrl || null,
-        is_private: privacy === 'private',
-        views: 0,
-        likes_count: 0,
-        comments_count: 0,
-        category,
-        privacy,
-        location: location.trim() || null,
-        tags,
-        mentions,
-        filter_style: selectedFilter,
-        thumbnail_url: thumbnailObjectKey,
-        comments_enabled: commentsEnabled,
-        allow_download: allowDownload,
-        allow_duet: allowDuet,
-        allow_stitch: allowStitch,
-        age_restricted: ageRestricted,
-        commercial_content: commercialContent,
-        sponsor_tag: sponsorTag.trim() || null,
-        cover_text: coverText.trim() || null,
-        product_link: productLink.trim() || null,
-        poll_data: pollData,
-        chapters,
-        subtitles: subtitles.trim() || null,
-        scheduled_at: isScheduled && scheduledAt ? new Date(scheduledAt).toISOString() : null,
-        status: isScheduled ? 'scheduled' : 'published'
-      };
-
-      let insertResult = await supabase
-        .from('videos')
-        .insert(payload)
-        .select()
-        .single();
-
-      if (insertResult.error) {
-        const fallbackPayload = {
-          user_id: user.id,
-          video_url: finalObjectKey,
-          caption: caption.trim(),
-          music_name: selectedMusic?.title || null,
-          music_url: selectedMusic?.previewUrl || null,
-          is_private: privacy === 'private',
-          views: 0,
-          likes_count: 0,
-          comments_count: 0,
-          category
-        };
-
-        insertResult = await supabase
-          .from('videos')
-          .insert(fallbackPayload)
-          .select()
-          .single();
-      }
-
-      if (insertResult.error) {
-        throw insertResult.error;
-      }
-
-      setUploadProgress(100);
-      setUploadStage('Complete');
-      setStatusMessage(isScheduled ? 'Your video has been scheduled.' : 'Your video is now published.');
-
-      confetti({
-        particleCount: 110,
-        spread: 75,
-        origin: { y: 0.65 }
+      const videoRecord = await insertVideoRecord({
+        finalObjectKey: finalVideo.objectKey,
+        thumbnailObjectKey,
+        sourceObjectKey
       });
 
-      if (onComplete) {
-        onComplete(insertResult.data);
-      }
+      setUploadStage('Published');
+      setUploadProgress(100);
+
+      confetti({
+        particleCount: 120,
+        spread: 80,
+        origin: { y: 0.7 }
+      });
+
+      onComplete?.(videoRecord);
 
       setTimeout(() => {
         if (onClose) onClose();
       }, 900);
     } catch (error) {
       console.error('Upload failed:', error);
-
-      setErrorMessage(error?.message || 'Upload failed. Please try again.');
-      setStatusMessage('');
-
-      setUploadStage('Upload failed');
-
-      if (sourceObjectKey && finalObjectKey && finalObjectKey !== sourceObjectKey) {
-        try {
-          await apiRequest('/api/storage/object', {
-            method: 'DELETE',
-            body: JSON.stringify({ objectKey: finalObjectKey })
-          });
-        } catch {}
-      }
+      setUploadError(error?.message || 'Upload failed. Please try again.');
+      setUploadStage('');
     } finally {
       setUploading(false);
     }
   };
 
-  const nextStep = () => {
-    if (step === 'media') {
-      if (!videoFile) {
-        setErrorMessage('Add a video first.');
-        return;
-      }
-      setErrorMessage('');
-      setStep('audio');
+  const goNext = () => {
+    setUploadError('');
+
+    if (step === 'media' && !videoFile) {
+      setUploadError('Add a video first.');
       return;
     }
 
-    if (step === 'audio') {
-      setErrorMessage('');
-      setStep('edit');
-      return;
-    }
-
-    if (step === 'edit') {
-      setErrorMessage('');
-      setStep('publish');
+    if (currentStepIndex < STEPS.length - 1) {
+      setStep(STEPS[currentStepIndex + 1].id);
     }
   };
 
-  const previousStep = () => {
+  const goBack = () => {
+    setUploadError('');
+
+    if (currentStepIndex > 0) {
+      setStep(STEPS[currentStepIndex - 1].id);
+    }
+  };
+
+  const closeUpload = () => {
     if (uploading) return;
 
-    if (step === 'audio') setStep('media');
-    else if (step === 'edit') setStep('audio');
-    else if (step === 'publish') setStep('edit');
+    stopCamera();
+    onClose?.();
   };
 
-  const setVideoTime = value => {
-    const time = Number(value);
-    setCurrentTime(time);
-
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-    }
-
-    if (editorVideoRef.current) {
-      editorVideoRef.current.currentTime = time;
-    }
+  const setPreviewPlaying = playing => {
+    setIsPlaying(playing);
   };
 
-  const toggleVideoPlayback = async () => {
-    const video = editorVideoRef.current || videoRef.current;
+  const duration = videoMetadata.duration || 0;
+  const progressPercent = duration
+    ? Math.min(100, (currentTime / duration) * 100)
+    : 0;
 
-    if (!video) return;
-
-    try {
-      if (video.paused) {
-        await video.play();
-        setIsVideoPlaying(true);
-      } else {
-        video.pause();
-        setIsVideoPlaying(false);
-      }
-    } catch {}
-  };
-
-  const handleVideoTimeUpdate = event => {
-    const time = event.currentTarget.currentTime || 0;
-    setCurrentTime(time);
-
-    if (step === 'media') {
-      setThumbScrubTime(time);
-    }
-  };
-
-  const handleVideoLoadedMetadata = event => {
-    const video = event.currentTarget;
-    setVideoDuration(video.duration || 0);
-
-    if (!videoMetadata.width || !videoMetadata.height) {
-      setVideoMetadata(previous => ({
-        ...previous,
-        width: video.videoWidth,
-        height: video.videoHeight,
-        duration: video.duration || 0
-      }));
-    }
-  };
-
-  const selectPrivacy = id => {
-    setPrivacy(id);
-  };
-
-  const renderPreview = (compact = false) => (
-    <div className={`relative flex items-center justify-center overflow-hidden rounded-[28px] bg-black ${compact ? 'h-full w-full' : 'aspect-[9/16] w-full max-w-[430px]'}`}>
+  const renderPreview = () => (
+    <div className="relative flex h-full min-h-[420px] w-full items-center justify-center overflow-hidden rounded-[28px] bg-black">
       {videoPreview ? (
         <>
           <video
-            ref={compact ? editorVideoRef : videoRef}
+            ref={videoRef}
             src={videoPreview}
-            className="h-full w-full object-contain"
-            style={{ filter: selectedFilterObject.css }}
+            className="h-full max-h-[720px] w-full object-contain"
+            style={{ filter: selectedFilterData.css }}
             playsInline
             preload="metadata"
             onTimeUpdate={handleVideoTimeUpdate}
-            onLoadedMetadata={handleVideoLoadedMetadata}
-            onPlay={() => setIsVideoPlaying(true)}
-            onPause={() => setIsVideoPlaying(false)}
-            onEnded={() => setIsVideoPlaying(false)}
+            onPlay={() => setPreviewPlaying(true)}
+            onPause={() => setPreviewPlaying(false)}
+            onEnded={() => setPreviewPlaying(false)}
           />
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between p-4">
-            <div className="rounded-full bg-black/55 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-md">
-              {formatTime(currentTime)} / {formatTime(videoDuration)}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/20" />
+
+          {hookText && (
+            <div className="pointer-events-none absolute left-5 right-5 top-6">
+              <div className="mx-auto w-fit max-w-full rounded-full bg-black/65 px-4 py-2 text-center text-sm font-semibold text-white backdrop-blur-md">
+                {hookText}
+              </div>
+            </div>
+          )}
+
+          {coverText && (
+            <div className="pointer-events-none absolute bottom-20 left-5 right-5">
+              <div className="text-center text-2xl font-black text-white drop-shadow-lg">
+                {coverText}
+              </div>
+            </div>
+          )}
+
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-white transition-all"
+                style={{ width: `${progressPercent}%` }}
+              />
             </div>
 
-            {selectedMusic && (
-              <div className="flex max-w-[55%] items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-[11px] text-white backdrop-blur-md">
-                <Music size={12} />
-                <span className="truncate">{selectedMusic.title}</span>
-              </div>
-            )}
+            <div className="flex items-center justify-between text-xs text-white/80">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
           </div>
 
-          <div className="absolute inset-x-0 bottom-0 flex items-center gap-3 bg-gradient-to-t from-black/75 via-black/25 to-transparent p-5 pt-14">
-            <button
-              type="button"
-              onClick={toggleVideoPlayback}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black transition hover:scale-105"
-            >
-              {isVideoPlaying ? <Pause size={17} /> : <Play size={17} fill="currentColor" />}
-            </button>
+          <button
+            type="button"
+            onClick={togglePreview}
+            className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-xl transition hover:scale-105 hover:bg-white/25"
+          >
+            {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
+          </button>
 
-            <input
-              type="range"
-              min="0"
-              max={videoDuration || 0}
-              step="0.01"
-              value={Math.min(currentTime, videoDuration || 0)}
-              onChange={event => setVideoTime(event.target.value)}
-              className="w-full accent-white"
-            />
-          </div>
+          {selectedMusic && (
+            <div className="absolute left-4 top-4 flex max-w-[75%] items-center gap-2 rounded-full bg-black/55 px-3 py-2 text-xs text-white backdrop-blur-xl">
+              <Music size={13} />
+              <span className="truncate">{selectedMusic.name}</span>
+            </div>
+          )}
         </>
       ) : (
-        <div className="flex flex-col items-center justify-center gap-4 px-8 text-center text-white/60">
-          <div className="grid h-16 w-16 place-items-center rounded-2xl bg-white/10">
-            <Film size={28} />
-          </div>
-          <div>
-            <p className="font-semibold text-white">Your preview appears here</p>
-            <p className="mt-1 text-sm">Choose a video or record one with your camera.</p>
-          </div>
+        <div className="flex flex-col items-center justify-center px-8 text-center text-white/50">
+          <Film size={48} strokeWidth={1.2} />
+          <p className="mt-4 text-sm">Your video preview will appear here</p>
         </div>
       )}
     </div>
@@ -1308,233 +1227,300 @@ const Upload = ({ onComplete, onClose }) => {
 
   const renderMediaStep = () => (
     <div className="space-y-5">
+      <SectionHeader
+        icon={<Film size={18} />}
+        title="Add your video"
+        description="Upload an existing video or record one directly from your camera."
+      />
+
       {!videoFile ? (
-        <>
-          <div className="grid grid-cols-2 gap-2 rounded-2xl bg-white/[0.04] p-1">
-            <button
-              type="button"
-              onClick={() => setIngestMode('dropzone')}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${ingestMode === 'dropzone' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
-            >
-              Upload
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIngestMode('camera');
-                setShowCamera(true);
-              }}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${ingestMode === 'camera' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
-            >
-              Camera
-            </button>
+        <div className="grid gap-4 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => {
+              setIngestMode('dropzone');
+              fileInputRef.current?.click();
+            }}
+            className="group rounded-3xl border border-white/10 bg-white/[0.035] p-7 text-left transition hover:border-white/20 hover:bg-white/[0.055]"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
+              <UploadCloud size={22} />
+            </div>
+            <h3 className="mt-5 text-lg font-bold">Upload video</h3>
+            <p className="mt-2 text-sm leading-6 text-white/45">
+              MP4, WebM and other browser-supported video formats up to 1 GB.
+            </p>
+            <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-white/75">
+              Choose video <ArrowRight size={15} />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIngestMode('camera')}
+            className="group rounded-3xl border border-white/10 bg-white/[0.035] p-7 text-left transition hover:border-white/20 hover:bg-white/[0.055]"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
+              <Camera size={22} />
+            </div>
+            <h3 className="mt-5 text-lg font-bold">Record video</h3>
+            <p className="mt-2 text-sm leading-6 text-white/45">
+              Use your camera and microphone. The recording is converted to MP4 during processing.
+            </p>
+            <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-white/75">
+              Open camera <ArrowRight size={15} />
+            </span>
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{videoFile.name}</p>
+                <p className="mt-1 text-xs text-white/40">
+                  {formatBytes(videoFile.size)} · {videoMetadata.width}×{videoMetadata.height} · {formatTime(videoMetadata.duration)}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={clearVideo}
+                className="flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:bg-white/10"
+              >
+                <Trash2 size={14} />
+                Replace
+              </button>
+            </div>
           </div>
 
           <div
+            className={`relative overflow-hidden rounded-3xl border transition ${
+              isDragging ? 'border-white/50 bg-white/[0.08]' : 'border-white/10 bg-white/[0.025]'
+            }`}
             onDragOver={event => {
               event.preventDefault();
               setIsDragging(true);
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`group cursor-pointer rounded-[28px] border border-dashed p-8 text-center transition md:p-12 ${
-              isDragging
-                ? 'border-white bg-white/10'
-                : 'border-white/15 bg-white/[0.025] hover:border-white/30 hover:bg-white/[0.05]'
-            }`}
           >
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-white/10 transition group-hover:scale-105">
-              <UploadCloud size={29} />
+            {renderPreview()}
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={togglePreview}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-black"
+              >
+                {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+              </button>
+
+              <input
+                type="range"
+                min="0"
+                max={duration || 0}
+                step="0.01"
+                value={Math.min(currentTime, duration || 0)}
+                onChange={seekVideo}
+                className="min-w-0 flex-1 accent-white"
+              />
+
+              <span className="w-20 text-right text-xs text-white/45">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
             </div>
+          </div>
 
-            <h3 className="mt-5 text-lg font-bold">Drop your video here</h3>
-            <p className="mt-2 text-sm text-white/45">
-              MP4, WebM, MOV and other browser-supported video formats
-            </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <SettingCard
+              icon={<Volume2 size={17} />}
+              title="Original audio"
+              description={`${videoVolume}% volume`}
+            >
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={videoVolume}
+                onChange={event => setVideoVolume(Number(event.target.value))}
+                className="w-full accent-white"
+              />
+            </SettingCard>
 
-            <div className="mt-5 inline-flex rounded-full bg-white px-5 py-2.5 text-sm font-bold text-black">
-              Choose video
-            </div>
+            <SettingCard
+              icon={<ImageIcon size={17} />}
+              title="Cover frame"
+              description={thumbnailPreview ? `Frame at ${formatTime(thumbnailTime)}` : 'Use the first frame'}
+            >
+              <div className="flex items-center gap-3">
+                {thumbnailPreview ? (
+                  <img
+                    src={thumbnailPreview}
+                    alt="Video cover"
+                    className="h-16 w-12 rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="flex h-16 w-12 items-center justify-center rounded-lg bg-white/10">
+                    <ImageIcon size={18} />
+                  </div>
+                )}
 
-            <p className="mt-4 text-xs text-white/30">Maximum file size: 1 GB</p>
+                <button
+                  type="button"
+                  onClick={() => setShowCoverEditor(true)}
+                  className="rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-white/70 hover:bg-white/10"
+                >
+                  Choose frame
+                </button>
+              </div>
+            </SettingCard>
+          </div>
+        </div>
+      )}
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/*"
-              onChange={handleFileInput}
-              className="hidden"
+      {ingestMode === 'camera' && (
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-black">
+          <div className="relative aspect-[9/16] max-h-[620px] w-full">
+            <video
+              ref={cameraVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="h-full w-full object-cover"
             />
-          </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              [Zap, 'Fast upload', 'Direct storage upload'],
-              [Music, 'Audio mixing', 'Embed music into MP4'],
-              [ShieldCheck, 'Secure storage', 'Private B2 media']
-            ].map(([Icon, title, description]) => (
-              <div key={title} className="rounded-2xl border border-white/8 bg-white/[0.025] p-4">
-                <Icon size={18} className="text-white/80" />
-                <p className="mt-3 text-sm font-semibold">{title}</p>
-                <p className="mt-1 text-xs leading-5 text-white/35">{description}</p>
+            {!cameraActive && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black px-6 text-center">
+                <Camera size={42} className="text-white/40" />
+                <p className="mt-4 text-sm text-white/55">
+                  Camera permission is required.
+                </p>
               </div>
-            ))}
-          </div>
-        </>
-      ) : (
-        <div className="space-y-4">
-          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.025]">
-            <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10">
-                  <Film size={18} />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{videoFile.name}</p>
-                  <p className="mt-0.5 text-xs text-white/35">
-                    {(videoFile.size / 1024 / 1024).toFixed(1)} MB · {formatTime(videoDuration)}
-                  </p>
-                </div>
-              </div>
+            )}
+
+            <div className="absolute left-0 right-0 top-0 flex items-center justify-between p-4">
+              <button
+                type="button"
+                onClick={() => setIngestMode('dropzone')}
+                className="rounded-full bg-black/50 p-2 text-white backdrop-blur-md"
+              >
+                <X size={18} />
+              </button>
+
+              <span className="rounded-full bg-black/50 px-3 py-1.5 text-xs text-white/75 backdrop-blur-md">
+                {recording ? `Recording ${formatTime(recordingSeconds)}` : 'Camera'}
+              </span>
 
               <button
                 type="button"
-                onClick={removeVideo}
-                className="grid h-9 w-9 place-items-center rounded-xl text-white/45 transition hover:bg-red-500/10 hover:text-red-300"
+                onClick={switchCamera}
+                className="rounded-full bg-black/50 p-2 text-white backdrop-blur-md"
               >
-                <Trash2 size={17} />
+                <RefreshCw size={18} />
               </button>
             </div>
 
-            <div className="p-3">
-              {renderPreview()}
+            <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-5 bg-gradient-to-t from-black/80 to-transparent p-6 pt-16">
+              <button
+                type="button"
+                onClick={toggleCameraMute}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md"
+              >
+                {cameraMuted ? <MicOffIcon /> : <Mic2 size={18} />}
+              </button>
+
+              <button
+                type="button"
+                disabled={!cameraActive}
+                onClick={recording ? stopRecording : startRecording}
+                className={`flex h-16 w-16 items-center justify-center rounded-full border-4 border-white/40 ${
+                  recording ? 'bg-white text-black' : 'bg-red-500 text-white'
+                } disabled:opacity-40`}
+              >
+                {recording ? <SquareIcon /> : <span className="h-7 w-7 rounded-full bg-white" />}
+              </button>
+
+              <div className="h-11 w-11" />
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setShowFilters(previous => !previous)}
-            className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-4"
-          >
-            <span className="flex items-center gap-3">
-              <SlidersHorizontal size={18} />
-              <span>
-                <span className="block text-left text-sm font-semibold">Visual filter</span>
-                <span className="block text-left text-xs text-white/35">{selectedFilterObject.name}</span>
-              </span>
-            </span>
-            <ChevronRight size={17} className={`transition ${showFilters ? 'rotate-90' : ''}`} />
-          </button>
-
-          <AnimatePresence>
-            {showFilters && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {FILTERS.map(filter => (
-                    <button
-                      key={filter.id}
-                      type="button"
-                      onClick={() => setSelectedFilter(filter.id)}
-                      className={`rounded-2xl border p-3 text-left transition ${
-                        selectedFilter === filter.id
-                          ? 'border-white bg-white text-black'
-                          : 'border-white/8 bg-white/[0.025] hover:border-white/20'
-                      }`}
-                    >
-                      <div
-                        className="mb-3 aspect-video overflow-hidden rounded-xl bg-neutral-900"
-                        style={{ filter: filter.css }}
-                      >
-                        {videoPreview && (
-                          <video
-                            src={videoPreview}
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="h-full w-full object-cover"
-                          />
-                        )}
-                      </div>
-                      <p className="text-xs font-semibold">{filter.name}</p>
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowCamera(true);
-              setIngestMode('camera');
-            }}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-sm font-semibold transition hover:bg-white/[0.06]"
-          >
-            <Camera size={17} />
-            Record another video
-          </button>
         </div>
       )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*"
+        hidden
+        onChange={handleFileInput}
+      />
     </div>
   );
 
-  const renderAudioStep = () => (
+  const renderSoundStep = () => (
     <div className="space-y-5">
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-        <div className="flex items-start justify-between gap-4">
+      <SectionHeader
+        icon={<Music size={18} />}
+        title="Sound"
+        description="Choose online music and control how it is mixed with your original audio."
+      />
+
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-bold">Audio mix</p>
-            <p className="mt-1 text-xs leading-5 text-white/40">
-              Your selected online track will be mixed into the final MP4 on the server.
+            <p className="text-sm font-bold">Final audio mix</p>
+            <p className="mt-1 text-xs text-white/40">
+              The selected music is sent to the server and embedded into the final MP4.
             </p>
           </div>
-          <div className="rounded-full bg-emerald-400/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
-            Embedded
+
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/60">
+            <Zap size={13} />
+            Server-side mix
           </div>
         </div>
 
-        <div className="mt-6 space-y-5">
-          <div>
-            <div className="mb-2 flex justify-between text-xs">
-              <span className="text-white/55">Original video audio</span>
-              <span className="font-semibold">{videoVolume}%</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={videoVolume}
-              onChange={event => setVideoVolume(Number(event.target.value))}
-              className="w-full accent-white"
-            />
-          </div>
+        <div className="mt-6 grid gap-5 md:grid-cols-2">
+          <VolumeControl
+            icon={<Volume2 size={16} />}
+            label="Original video"
+            value={videoVolume}
+            onChange={setVideoVolume}
+          />
 
-          <div>
-            <div className="mb-2 flex justify-between text-xs">
-              <span className="text-white/55">Music volume</span>
-              <span className="font-semibold">{musicVolume}%</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={musicVolume}
-              onChange={event => setMusicVolume(Number(event.target.value))}
-              className="w-full accent-white"
-            />
-          </div>
+          <VolumeControl
+            icon={<Music size={16} />}
+            label="Selected music"
+            value={selectedMusic ? musicVolume : 0}
+            onChange={setMusicVolume}
+            disabled={!selectedMusic}
+          />
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <SelectField
+            label="Audio enhancement"
+            value={audioEnhancement}
+            onChange={setAudioEnhancement}
+            options={AUDIO_ENHANCEMENTS.map(item => ({
+              value: item.id,
+              label: item.name
+            }))}
+          />
+
+          <ToggleRow
+            label="Loop music when necessary"
+            description="Repeat the selected track if it ends before the video."
+            enabled={musicLoop}
+            onChange={setMusicLoop}
+          />
         </div>
       </div>
 
-      {selectedMusic ? (
-        <div className="rounded-[26px] border border-white/10 bg-white/[0.035] p-4">
+      {selectedMusic && (
+        <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
           <div className="flex items-center gap-4">
             {selectedMusic.artwork ? (
               <img
@@ -1543,75 +1529,45 @@ const Upload = ({ onComplete, onClose }) => {
                 className="h-16 w-16 rounded-2xl object-cover"
               />
             ) : (
-              <div className="grid h-16 w-16 place-items-center rounded-2xl bg-white/10">
-                <Music size={24} />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
+                <Music size={22} />
               </div>
             )}
 
             <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold">{selectedMusic.title}</p>
-              <p className="mt-1 truncate text-sm text-white/40">{selectedMusic.artist}</p>
-              <p className="mt-2 text-[10px] uppercase tracking-wider text-white/25">
-                Online preview · {selectedMusic.source}
+              <p className="truncate text-sm font-bold">{selectedMusic.name}</p>
+              <p className="mt-1 truncate text-xs text-white/45">{selectedMusic.artist}</p>
+              <p className="mt-2 text-[11px] text-white/30">
+                Audio will be embedded into your published video.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() => toggleTrackPreview(selectedMusic)}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black"
+              onClick={removeMusic}
+              className="rounded-xl p-2 text-white/40 hover:bg-white/10 hover:text-white"
             >
-              {playingTrackUrl === selectedMusic.previewUrl
-                ? <Pause size={16} />
-                : <Play size={16} fill="currentColor" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={clearMusic}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white/45 hover:bg-white/10 hover:text-white"
-            >
-              <X size={17} />
+              <X size={18} />
             </button>
           </div>
-
-          <div className="mt-4 flex items-center gap-2 rounded-xl bg-emerald-400/5 px-3 py-2.5 text-xs text-emerald-200/75">
-            <CheckCircle2 size={15} />
-            This audio is sent to the backend for final video mixing.
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-[26px] border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
-          <Music size={25} className="mx-auto text-white/40" />
-          <p className="mt-3 text-sm font-semibold">No music selected</p>
-          <p className="mt-1 text-xs text-white/35">
-            Your original video audio will be preserved.
-          </p>
         </div>
       )}
 
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/10">
-            <Search size={17} />
-          </div>
-          <div>
-            <p className="text-sm font-bold">Find online music</p>
-            <p className="text-xs text-white/35">Search available previews</p>
-          </div>
-        </div>
-
-        <div className="mt-4 flex gap-2">
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+            <Search
+              size={17}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30"
+            />
             <input
               value={searchQuery}
               onChange={event => setSearchQuery(event.target.value)}
               onKeyDown={event => {
                 if (event.key === 'Enter') searchMusic();
               }}
-              placeholder="Search song or artist"
-              className="h-11 w-full rounded-xl border border-white/8 bg-black/20 pl-10 pr-3 text-sm outline-none placeholder:text-white/25 focus:border-white/25"
+              placeholder="Search music..."
+              className="h-12 w-full rounded-2xl border border-white/10 bg-black/20 pl-11 pr-4 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/25"
             />
           </div>
 
@@ -1619,97 +1575,84 @@ const Upload = ({ onComplete, onClose }) => {
             type="button"
             onClick={searchMusic}
             disabled={isSearching}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white text-black disabled:opacity-50"
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-sm font-bold text-black disabled:opacity-50"
           >
             {isSearching ? <Loader2 size={17} className="animate-spin" /> : <Search size={17} />}
+            Search
           </button>
         </div>
 
-        {musicError && (
-          <div className="mt-3 flex gap-2 rounded-xl bg-red-500/10 p-3 text-xs text-red-200">
-            <AlertCircle size={15} className="mt-0.5 shrink-0" />
-            <span>{musicError}</span>
-          </div>
-        )}
-
-        <div className="mt-4 max-h-[390px] space-y-2 overflow-y-auto pr-1">
-          {searchResults.map(track => (
-            <div
-              key={track.id}
-              className="flex items-center gap-3 rounded-2xl border border-white/6 bg-black/15 p-3 transition hover:border-white/15"
-            >
-              {track.artwork ? (
-                <img
-                  src={track.artwork}
-                  alt=""
-                  className="h-12 w-12 rounded-xl object-cover"
-                />
-              ) : (
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-white/10">
-                  <Music size={17} />
-                </div>
-              )}
-
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{track.title}</p>
-                <p className="mt-0.5 truncate text-xs text-white/40">{track.artist}</p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => toggleTrackPreview(track)}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/8 text-white/70 hover:bg-white/15 hover:text-white"
-              >
-                {playingTrackUrl === track.previewUrl
-                  ? <Pause size={14} />
-                  : <Play size={14} />}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => chooseMusic(track)}
-                className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-black"
-              >
-                Add
-              </button>
+        <div className="mt-5 space-y-2">
+          {isSearching ? (
+            <div className="flex items-center justify-center py-12 text-sm text-white/40">
+              <Loader2 size={20} className="mr-2 animate-spin" />
+              Searching music...
             </div>
-          ))}
+          ) : searchResults.length ? (
+            searchResults.map(track => (
+              <div
+                key={track.id}
+                className="flex items-center gap-3 rounded-2xl border border-transparent p-3 transition hover:border-white/10 hover:bg-white/[0.04]"
+              >
+                {track.artwork ? (
+                  <img
+                    src={track.artwork}
+                    alt=""
+                    className="h-12 w-12 rounded-xl object-cover"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10">
+                    <Music size={17} />
+                  </div>
+                )}
 
-          {!isSearching && searchQuery.trim() && searchResults.length === 0 && (
-            <div className="py-8 text-center text-xs text-white/30">
-              No playable previews found.
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{track.name}</p>
+                  <p className="truncate text-xs text-white/40">{track.artist}</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => previewMusic(track)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-white/70 hover:bg-white/10"
+                >
+                  {playingTrackId === track.id ? (
+                    <Pause size={14} />
+                  ) : (
+                    <Play size={14} fill="currentColor" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => selectMusic(track)}
+                  className="flex h-9 items-center gap-1.5 rounded-full bg-white px-3 text-xs font-bold text-black"
+                >
+                  <Plus size={14} />
+                  Use
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="py-12 text-center">
+              <Music size={30} className="mx-auto text-white/20" />
+              <p className="mt-3 text-sm text-white/35">
+                Search for a song to add music.
+              </p>
             </div>
           )}
         </div>
       </div>
 
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-        <div className="mb-4 flex items-center gap-3">
-          <SlidersHorizontal size={18} />
-          <div>
-            <p className="text-sm font-bold">Audio enhancement</p>
-            <p className="text-xs text-white/35">Applied during final encoding</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          {AUDIO_ENHANCEMENTS.map(item => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setAudioEnhancement(item.id)}
-              className={`rounded-2xl border p-3 text-left transition ${
-                audioEnhancement === item.id
-                  ? 'border-white bg-white text-black'
-                  : 'border-white/8 bg-black/15 hover:border-white/20'
-              }`}
-            >
-              <p className="text-xs font-bold">{item.name}</p>
-              <p className={`mt-1 text-[10px] leading-4 ${audioEnhancement === item.id ? 'text-black/55' : 'text-white/35'}`}>
-                {item.description}
-              </p>
-            </button>
-          ))}
+      <div className="rounded-2xl border border-white/10 bg-amber-500/[0.05] p-4 text-xs leading-5 text-white/45">
+        <div className="flex gap-3">
+          <CircleHelp size={16} className="mt-0.5 shrink-0 text-white/50" />
+          <p>
+            Music previews can be used to select a track, but publishing music should comply
+            with the applicable rights and licensing rules. The selected audio is embedded
+            during final server-side processing rather than being played as a separate
+            browser audio layer.
+          </p>
         </div>
       </div>
     </div>
@@ -1717,319 +1660,282 @@ const Upload = ({ onComplete, onClose }) => {
 
   const renderEditStep = () => (
     <div className="space-y-5">
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold">Video cover</p>
-            <p className="mt-1 text-xs text-white/35">Choose what appears before playback.</p>
-          </div>
+      <SectionHeader
+        icon={<Wand2 size={18} />}
+        title="Edit"
+        description="Make the video look and sound right before publishing."
+      />
 
-          <button
-            type="button"
-            onClick={() => setShowThumbnailEditor(previous => !previous)}
-            className="rounded-xl bg-white/8 px-3 py-2 text-xs font-semibold hover:bg-white/15"
-          >
-            {showThumbnailEditor ? 'Close' : 'Edit'}
-          </button>
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold">Visual style</p>
+            <p className="mt-1 text-xs text-white/40">
+              The selected style is preserved with the video metadata.
+            </p>
+          </div>
+          <Settings2 size={18} className="text-white/35" />
         </div>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-[150px_1fr]">
-          <div className="aspect-[9/16] overflow-hidden rounded-2xl bg-black">
-            {thumbnailPreview ? (
-              <img src={thumbnailPreview} alt="Video cover" className="h-full w-full object-cover" />
-            ) : videoPreview ? (
-              <video
-                src={videoPreview}
-                muted
-                playsInline
-                preload="metadata"
-                className="h-full w-full object-cover"
-                style={{ filter: selectedFilterObject.css }}
-              />
-            ) : (
-              <div className="grid h-full place-items-center">
-                <ImageIcon size={25} className="text-white/25" />
+        <div className="mt-5 grid grid-cols-4 gap-2 sm:grid-cols-8">
+          {FILTERS.map(filter => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => setSelectedFilter(filter.id)}
+              className={`group overflow-hidden rounded-2xl border ${
+                selectedFilter === filter.id
+                  ? 'border-white/60 bg-white/10'
+                  : 'border-white/10 bg-white/[0.025]'
+              }`}
+            >
+              <div className="aspect-[3/4] overflow-hidden bg-black">
+                {videoPreview ? (
+                  <video
+                    src={videoPreview}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="h-full w-full object-cover"
+                    style={{ filter: filter.css }}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <Film size={18} className="text-white/25" />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            <input
-              value={coverText}
-              onChange={event => setCoverText(event.target.value)}
-              placeholder="Optional cover text"
-              maxLength={80}
-              className="h-11 w-full rounded-xl border border-white/8 bg-black/20 px-3 text-sm outline-none placeholder:text-white/25 focus:border-white/25"
-            />
-
-            <input
-              ref={thumbnailInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleThumbnailFile}
-              className="hidden"
-            />
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={generateCurrentThumbnail}
-                className="flex items-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-bold text-black"
-              >
-                <Sparkles size={14} />
-                Generate cover
-              </button>
-
-              <button
-                type="button"
-                onClick={() => thumbnailInputRef.current?.click()}
-                className="flex items-center gap-2 rounded-xl bg-white/8 px-3 py-2.5 text-xs font-semibold hover:bg-white/15"
-              >
-                <ImageIcon size={14} />
-                Use image
-              </button>
-            </div>
-
-            {showThumbnailEditor && (
-              <div className="rounded-2xl bg-black/20 p-4">
-                <div className="mb-2 flex justify-between text-[11px] text-white/40">
-                  <span>Frame position</span>
-                  <span>{formatTime(thumbScrubTime)}</span>
-                </div>
-
-                <input
-                  type="range"
-                  min="0"
-                  max={videoDuration || 0}
-                  step="0.01"
-                  value={Math.min(thumbScrubTime, videoDuration || 0)}
-                  onChange={event => setThumbScrubTime(Number(event.target.value))}
-                  className="w-full accent-white"
-                />
+              <div className="px-1 py-2 text-[10px] font-semibold text-white/55">
+                {filter.name}
               </div>
-            )}
-          </div>
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold">Chapters</p>
-            <p className="mt-1 text-xs text-white/35">Optional timestamps for longer videos.</p>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+          <div className="flex items-center gap-3">
+            <Sparkles size={17} />
+            <div>
+              <p className="text-sm font-bold">Opening hook</p>
+              <p className="mt-1 text-xs text-white/40">Optional caption starter.</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {AI_HOOKS.map(hook => (
+              <button
+                key={hook}
+                type="button"
+                onClick={() => applyHook(hook)}
+                className={`rounded-full border px-3 py-2 text-xs transition ${
+                  hookText === hook
+                    ? 'border-white/40 bg-white/10 text-white'
+                    : 'border-white/10 text-white/55 hover:bg-white/10'
+                }`}
+              >
+                {hook}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+          <div className="flex items-center gap-3">
+            <Layers3 size={17} />
+            <div>
+              <p className="text-sm font-bold">Chapters</p>
+              <p className="mt-1 text-xs text-white/40">Add useful points in longer videos.</p>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={addChapter}
-            className="flex items-center gap-2 rounded-xl bg-white/8 px-3 py-2 text-xs font-semibold hover:bg-white/15"
+            className="mt-4 flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-white/65 hover:bg-white/10"
           >
             <Plus size={14} />
-            Add
+            Add current position
           </button>
-        </div>
 
-        {chapters.length ? (
-          <div className="space-y-2">
+          <div className="mt-3 space-y-2">
             {chapters.map(chapter => (
-              <div key={chapter.id} className="flex items-center gap-2 rounded-xl bg-black/20 p-2">
-                <input
-                  type="number"
-                  min="0"
-                  max={videoDuration}
-                  step="1"
-                  value={Math.round(chapter.time)}
-                  onChange={event => updateChapter(chapter.id, 'time', Number(event.target.value))}
-                  className="w-20 rounded-lg bg-white/8 px-2 py-2 text-xs outline-none"
-                />
-
+              <div key={chapter.id} className="flex items-center gap-2">
+                <span className="w-12 text-xs text-white/35">
+                  {formatTime(chapter.time)}
+                </span>
                 <input
                   value={chapter.title}
-                  onChange={event => updateChapter(chapter.id, 'title', event.target.value)}
-                  className="min-w-0 flex-1 rounded-lg bg-white/8 px-2 py-2 text-xs outline-none"
+                  onChange={event => updateChapter(chapter.id, event.target.value)}
+                  className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs outline-none"
                 />
-
                 <button
                   type="button"
                   onClick={() => removeChapter(chapter.id)}
-                  className="grid h-8 w-8 place-items-center rounded-lg text-white/40 hover:bg-red-500/10 hover:text-red-300"
+                  className="rounded-lg p-2 text-white/35 hover:bg-white/10 hover:text-white"
                 >
                   <X size={14} />
                 </button>
               </div>
             ))}
           </div>
-        ) : (
-          <div className="rounded-xl bg-black/15 p-4 text-center text-xs text-white/30">
-            No chapters added.
-          </div>
-        )}
+        </div>
       </div>
 
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
+      <div className="grid gap-5 lg:grid-cols-2">
+        <EditorCard
+          icon={<Hash size={17} />}
+          title="Tags"
+          description="Help people discover your video."
+        >
+          <div className="flex gap-2">
+            <input
+              value={tagInput}
+              onChange={event => setTagInput(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  addTag();
+                }
+              }}
+              placeholder="Add hashtag"
+              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs outline-none"
+            />
+            <button
+              type="button"
+              onClick={addTag}
+              className="rounded-xl bg-white px-3 text-black"
+            >
+              <Plus size={15} />
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {tags.map(tag => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs"
+              >
+                #{tag}
+                <button type="button" onClick={() => removeTag(tag)}>
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        </EditorCard>
+
+        <EditorCard
+          icon={<Tag size={17} />}
+          title="Mentions"
+          description="Mention people connected to the video."
+        >
+          <div className="flex gap-2">
+            <input
+              value={mentionInput}
+              onChange={event => setMentionInput(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  addMention();
+                }
+              }}
+              placeholder="@username"
+              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs outline-none"
+            />
+            <button
+              type="button"
+              onClick={addMention}
+              className="rounded-xl bg-white px-3 text-black"
+            >
+              <Plus size={15} />
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {mentions.map(mention => (
+              <span
+                key={mention}
+                className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs"
+              >
+                @{mention}
+                <button type="button" onClick={() => removeMention(mention)}>
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        </EditorCard>
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035]">
         <button
           type="button"
-          onClick={() => setShowAdvanced(previous => !previous)}
-          className="flex w-full items-center justify-between"
+          onClick={() => setShowAdvanced(value => !value)}
+          className="flex w-full items-center justify-between p-5 text-left"
         >
-          <span className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <Settings2 size={18} />
-            <span className="text-sm font-bold">Advanced options</span>
-          </span>
-          <ChevronRight size={17} className={`transition ${showAdvanced ? 'rotate-90' : ''}`} />
+            <div>
+              <p className="text-sm font-bold">Advanced tools</p>
+              <p className="mt-1 text-xs text-white/40">
+                Polls, products, subtitles and additional metadata.
+              </p>
+            </div>
+          </div>
+
+          <ChevronDown
+            size={18}
+            className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+          />
         </button>
 
-        <AnimatePresence>
+        <AnimatePresence initial={false}>
           {showAdvanced && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="mt-5 space-y-5 border-t border-white/8 pt-5">
-                <div>
-                  <label className="mb-2 block text-xs font-semibold text-white/55">
-                    Subtitles / captions
-                  </label>
+              <div className="grid gap-3 border-t border-white/10 p-5 md:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPollEditor(true)}
+                  className="rounded-2xl border border-white/10 bg-black/10 p-4 text-left hover:bg-white/[0.05]"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold">Poll</span>
+                    {pollData.enabled && <Check size={15} />}
+                  </div>
+                  <p className="mt-2 text-xs text-white/40">
+                    Ask viewers a question.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowProductEditor(true)}
+                  className="rounded-2xl border border-white/10 bg-black/10 p-4 text-left hover:bg-white/[0.05]"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold">Product</span>
+                    {productLink && <Check size={15} />}
+                  </div>
+                  <p className="mt-2 text-xs text-white/40">
+                    Attach a product or external link.
+                  </p>
+                </button>
+
+                <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+                  <label className="text-sm font-bold">Subtitles</label>
                   <textarea
                     value={subtitles}
                     onChange={event => setSubtitles(event.target.value)}
-                    rows={4}
-                    placeholder="Optional subtitle text or caption data"
-                    className="w-full resize-none rounded-xl border border-white/8 bg-black/20 p-3 text-sm outline-none placeholder:text-white/25 focus:border-white/25"
-                  />
-                </div>
-
-                <div className="rounded-2xl bg-black/15 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold">Interactive poll</p>
-                      <p className="mt-1 text-xs text-white/35">Add a poll to the post.</p>
-                    </div>
-
-                    {pollData ? (
-                      <button
-                        type="button"
-                        onClick={() => setPollData(null)}
-                        className="rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-300"
-                      >
-                        Remove
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={addPoll}
-                        className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-black"
-                      >
-                        Add poll
-                      </button>
-                    )}
-                  </div>
-
-                  {pollData && (
-                    <div className="mt-4 space-y-2">
-                      <input
-                        value={pollData.question}
-                        onChange={event => setPollData(previous => ({
-                          ...previous,
-                          question: event.target.value
-                        }))}
-                        placeholder="Poll question"
-                        className="h-10 w-full rounded-xl bg-white/8 px-3 text-xs outline-none"
-                      />
-
-                      {pollData.options.map((option, index) => (
-                        <div key={index} className="flex gap-2">
-                          <input
-                            value={option}
-                            onChange={event => updatePollOption(index, event.target.value)}
-                            placeholder={`Option ${index + 1}`}
-                            className="h-10 min-w-0 flex-1 rounded-xl bg-white/8 px-3 text-xs outline-none"
-                          />
-                          {pollData.options.length > 2 && (
-                            <button
-                              type="button"
-                              onClick={() => removePollOption(index)}
-                              className="grid h-10 w-10 place-items-center rounded-xl bg-white/8"
-                            >
-                              <Minus size={14} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-
-                      {pollData.options.length < 4 && (
-                        <button
-                          type="button"
-                          onClick={addPollOption}
-                          className="text-xs font-semibold text-white/55 hover:text-white"
-                        >
-                          + Add option
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {[
-                    ['Allow downloads', allowDownload, setAllowDownload, Download],
-                    ['Allow Duet', allowDuet, setAllowDuet, Users],
-                    ['Allow Stitch', allowStitch, setAllowStitch, Layers],
-                    ['Age restricted', ageRestricted, setAgeRestricted, ShieldCheck]
-                  ].map(([label, value, setter, Icon]) => (
-                    <button
-                      type="button"
-                      key={label}
-                      onClick={() => setter(previous => !previous)}
-                      className="flex items-center justify-between rounded-xl bg-black/15 p-3"
-                    >
-                      <span className="flex items-center gap-2 text-xs font-semibold">
-                        <Icon size={15} />
-                        {label}
-                      </span>
-
-                      <span className={`h-5 w-9 rounded-full p-0.5 transition ${value ? 'bg-white' : 'bg-white/15'}`}>
-                        <span className={`block h-4 w-4 rounded-full transition ${value ? 'translate-x-4 bg-black' : 'bg-white/45'}`} />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center justify-between rounded-xl bg-black/15 p-3">
-                  <div>
-                    <p className="text-xs font-semibold">Commercial content</p>
-                    <p className="mt-1 text-[10px] text-white/30">Declare sponsored content.</p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setCommercialContent(previous => !previous)}
-                    className={`rounded-full px-3 py-1.5 text-[10px] font-bold ${commercialContent ? 'bg-white text-black' : 'bg-white/8 text-white/45'}`}
-                  >
-                    {commercialContent ? 'Enabled' : 'Off'}
-                  </button>
-                </div>
-
-                {commercialContent && (
-                  <input
-                    value={sponsorTag}
-                    onChange={event => setSponsorTag(event.target.value)}
-                    placeholder="Sponsor or brand name"
-                    className="h-11 w-full rounded-xl bg-black/20 px-3 text-sm outline-none"
-                  />
-                )}
-
-                <div>
-                  <label className="mb-2 block text-xs font-semibold text-white/55">
-                    Product link
-                  </label>
-                  <input
-                    value={productLink}
-                    onChange={event => setProductLink(event.target.value)}
-                    placeholder="https://..."
-                    className="h-11 w-full rounded-xl bg-black/20 px-3 text-sm outline-none placeholder:text-white/25"
+                    placeholder="Paste subtitle text..."
+                    rows={3}
+                    className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-xs outline-none"
                   />
                 </div>
               </div>
@@ -2042,470 +1948,764 @@ const Upload = ({ onComplete, onClose }) => {
 
   const renderPublishStep = () => (
     <div className="space-y-5">
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-        <div className="flex items-center gap-3">
-          <MessageCircle size={18} />
-          <div>
-            <p className="text-sm font-bold">Caption</p>
-            <p className="text-xs text-white/35">Tell people what your video is about.</p>
-          </div>
-        </div>
+      <SectionHeader
+        icon={<Send size={18} />}
+        title="Publish"
+        description="Add your caption, visibility and publishing options."
+      />
+
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+        <label className="text-sm font-bold">Caption</label>
 
         <textarea
           value={caption}
           onChange={event => setCaption(event.target.value)}
-          rows={6}
+          rows={5}
           maxLength={2200}
-          placeholder="Write a caption… #MadeUniverse"
-          className="mt-4 w-full resize-none rounded-2xl border border-white/8 bg-black/20 p-4 text-sm leading-6 outline-none placeholder:text-white/25 focus:border-white/25"
+          placeholder="Tell people what this video is about..."
+          className="mt-3 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 outline-none placeholder:text-white/25 focus:border-white/25"
         />
 
-        <div className="mt-2 flex justify-between text-[10px] text-white/25">
-          <span>
-            {parseTags(caption).length} hashtags · {parseMentions(caption).length} mentions
-          </span>
-          <span>{caption.length}/2200</span>
+        <div className="mt-2 flex justify-end text-[11px] text-white/30">
+          {caption.length}/2200
         </div>
       </div>
 
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-        <div className="mb-4 flex items-center gap-3">
-          <Globe2 size={18} />
-          <div>
-            <p className="text-sm font-bold">Audience</p>
-            <p className="text-xs text-white/35">Choose who can see your post.</p>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+          <div className="flex items-center gap-3">
+            <Eye size={17} />
+            <div>
+              <p className="text-sm font-bold">Visibility</p>
+              <p className="mt-1 text-xs text-white/40">Choose who can view it.</p>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {PRIVACY_OPTIONS.map(option => {
+              const Icon = option.icon;
+              const active = privacy === option.value;
+
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setPrivacy(option.value)}
+                  className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition ${
+                    active
+                      ? 'border-white/30 bg-white/[0.08]'
+                      : 'border-white/10 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
+                    <Icon size={16} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold">{option.label}</p>
+                    <p className="mt-1 text-[11px] text-white/35">
+                      {option.description}
+                    </p>
+                  </div>
+
+                  {active && <Check size={16} />}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3">
-          {PRIVACY_OPTIONS.map(item => {
-            const Icon = item.icon;
-
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => selectPrivacy(item.id)}
-                className={`rounded-2xl border p-4 text-left transition ${
-                  privacy === item.id
-                    ? 'border-white bg-white text-black'
-                    : 'border-white/8 bg-black/15 hover:border-white/20'
-                }`}
-              >
-                <Icon size={18} />
-                <p className="mt-3 text-xs font-bold">{item.label}</p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-          <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-white/55">
-            <Hash size={15} />
-            Category
-          </label>
-
-          <select
-            value={category}
-            onChange={event => setCategory(event.target.value)}
-            className="h-11 w-full rounded-xl border border-white/8 bg-black/20 px-3 text-sm outline-none"
-          >
-            {CATEGORIES.map(item => (
-              <option key={item} value={item} className="bg-neutral-900">
-                {item}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-          <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-white/55">
-            <MapPin size={15} />
-            Location
-          </label>
-
-          <input
-            value={location}
-            onChange={event => setLocation(event.target.value)}
-            placeholder="Optional location"
-            className="h-11 w-full rounded-xl border border-white/8 bg-black/20 px-3 text-sm outline-none placeholder:text-white/25"
-          />
-        </div>
-      </div>
-
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-bold">Comments</p>
-            <p className="mt-1 text-xs text-white/35">Allow people to comment on this post.</p>
+        <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+          <div className="flex items-center gap-3">
+            <Layers3 size={17} />
+            <div>
+              <p className="text-sm font-bold">Post details</p>
+              <p className="mt-1 text-xs text-white/40">Category and location.</p>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setCommentsEnabled(previous => !previous)}
-            className={`rounded-full px-4 py-2 text-xs font-bold ${commentsEnabled ? 'bg-white text-black' : 'bg-white/8 text-white/45'}`}
-          >
-            {commentsEnabled ? 'On' : 'Off'}
-          </button>
+          <div className="mt-4 space-y-4">
+            <SelectField
+              label="Category"
+              value={category}
+              onChange={setCategory}
+              options={CATEGORIES.map(item => ({
+                value: item,
+                label: item
+              }))}
+            />
+
+            <div>
+              <label className="mb-2 block text-xs font-semibold text-white/55">
+                Location
+              </label>
+
+              <div className="relative">
+                <MapPin
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30"
+                />
+                <input
+                  value={location}
+                  onChange={event => setLocation(event.target.value)}
+                  placeholder="Optional location"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-black/20 pl-10 pr-3 text-xs outline-none"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="rounded-[26px] border border-white/8 bg-white/[0.025] p-5">
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
         <div className="flex items-center gap-3">
-          <Clock3 size={18} />
+          <Settings2 size={17} />
           <div>
-            <p className="text-sm font-bold">Publishing</p>
-            <p className="text-xs text-white/35">Publish now or schedule it.</p>
+            <p className="text-sm font-bold">Viewer controls</p>
+            <p className="mt-1 text-xs text-white/40">Control interactions on the post.</p>
           </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-between rounded-2xl bg-black/15 p-4">
-          <div>
-            <p className="text-xs font-semibold">Schedule post</p>
-            <p className="mt-1 text-[10px] text-white/30">
-              {isScheduled ? 'The video will publish later.' : 'Publish immediately.'}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsScheduled(previous => !previous)}
-            className={`rounded-full px-4 py-2 text-xs font-bold ${isScheduled ? 'bg-white text-black' : 'bg-white/8 text-white/45'}`}
-          >
-            {isScheduled ? 'Scheduled' : 'Now'}
-          </button>
-        </div>
-
-        {isScheduled && (
-          <input
-            type="datetime-local"
-            value={scheduledAt}
-            min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
-            onChange={event => setScheduledAt(event.target.value)}
-            className="mt-3 h-11 w-full rounded-xl border border-white/8 bg-black/20 px-3 text-sm outline-none"
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <ToggleRow
+            label="Allow comments"
+            description="People can comment on the video."
+            enabled={allowComments}
+            onChange={setAllowComments}
           />
+
+          <ToggleRow
+            label="Allow downloads"
+            description="Allow viewers to save the video."
+            enabled={allowDownload}
+            onChange={setAllowDownload}
+          />
+
+          <ToggleRow
+            label="Allow Duet"
+            description="Allow other creators to duet."
+            enabled={allowDuet}
+            onChange={setAllowDuet}
+          />
+
+          <ToggleRow
+            label="Allow Stitch"
+            description="Allow clips from this video."
+            enabled={allowStitch}
+            onChange={setAllowStitch}
+          />
+
+          <ToggleRow
+            label="Age restricted"
+            description="Restrict this content to adults."
+            enabled={ageRestricted}
+            onChange={setAgeRestricted}
+          />
+
+          <ToggleRow
+            label="Commercial content"
+            description="Mark sponsored or commercial content."
+            enabled={commercialContent}
+            onChange={setCommercialContent}
+          />
+        </div>
+
+        {commercialContent && (
+          <div className="mt-3">
+            <input
+              value={sponsorTag}
+              onChange={event => setSponsorTag(event.target.value)}
+              placeholder="Brand or sponsor name"
+              className="h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs outline-none"
+            />
+          </div>
         )}
       </div>
 
-      <div className="rounded-[26px] border border-emerald-400/10 bg-emerald-400/[0.035] p-5">
-        <div className="flex gap-3">
-          <ShieldCheck size={20} className="shrink-0 text-emerald-300" />
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+        <div className="flex items-center gap-3">
+          <Clock3 size={17} />
           <div>
-            <p className="text-sm font-bold text-emerald-100">Ready to publish</p>
-            <p className="mt-1 text-xs leading-5 text-emerald-100/50">
-              Your source is uploaded directly to secure storage. If music is selected,
-              the backend creates one final MP4 with the audio embedded before publishing.
+            <p className="text-sm font-bold">Schedule</p>
+            <p className="mt-1 text-xs text-white/40">
+              Publish now or schedule for later.
             </p>
           </div>
         </div>
+
+        <div className="mt-4">
+          <ToggleRow
+            label="Schedule this video"
+            description="Keep it unpublished until the selected time."
+            enabled={scheduleEnabled}
+            onChange={setScheduleEnabled}
+          />
+
+          {scheduleEnabled && (
+            <input
+              type="datetime-local"
+              value={scheduleDate}
+              onChange={event => setScheduleDate(event.target.value)}
+              className="mt-3 h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs text-white outline-none"
+            />
+          )}
+        </div>
       </div>
+
+      {selectedMusic && (
+        <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+          <div className="flex items-center gap-3">
+            <AudioLines size={18} />
+            <div>
+              <p className="text-sm font-bold">Final audio</p>
+              <p className="mt-1 text-xs text-white/40">
+                {selectedMusic.name} · {selectedMusic.artist}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <SummaryItem label="Original" value={`${videoVolume}%`} />
+            <SummaryItem label="Music" value={`${musicVolume}%`} />
+            <SummaryItem
+              label="Enhancement"
+              value={
+                AUDIO_ENHANCEMENTS.find(item => item.id === audioEnhancement)?.name ||
+                'Original'
+              }
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 
-  const renderCameraModal = () => {
-    if (!showCamera) return null;
-
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4 backdrop-blur-xl">
-        <div className="relative flex h-[min(850px,94vh)] w-full max-w-[480px] flex-col overflow-hidden rounded-[30px] border border-white/10 bg-neutral-950 shadow-2xl">
-          <div className="flex items-center justify-between px-4 py-4">
-            <div>
-              <p className="text-sm font-bold">Record video</p>
-              <p className="mt-1 text-[10px] text-white/35">Your recording will be converted during publishing.</p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (recording) stopRecording();
-                setShowCamera(false);
-              }}
-              className="grid h-10 w-10 place-items-center rounded-xl bg-white/8"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="relative min-h-0 flex-1 bg-black">
-            <video
-              ref={cameraVideoRef}
-              muted
-              playsInline
-              className="h-full w-full object-cover"
-            />
-
-            {!cameraReady && (
-              <div className="absolute inset-0 grid place-items-center">
-                <Loader2 size={30} className="animate-spin text-white/40" />
-              </div>
-            )}
-
-            {recording && (
-              <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-red-500 px-3 py-1.5 text-xs font-bold">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
-                {formatTime(recordingSeconds)}
-              </div>
-            )}
-
-            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black via-black/60 to-transparent p-5 pt-20">
-              <button
-                type="button"
-                onClick={toggleCameraMute}
-                className="grid h-11 w-11 place-items-center rounded-full bg-white/10"
-              >
-                {cameraMuted ? <MicOff size={18} /> : <Mic size={18} />}
-              </button>
-
-              <button
-                type="button"
-                onClick={recording ? stopRecording : startRecording}
-                className={`grid h-20 w-20 place-items-center rounded-full border-[5px] ${
-                  recording ? 'border-red-400 bg-red-500' : 'border-white bg-white/15'
-                }`}
-              >
-                {recording ? <span className="h-7 w-7 rounded-md bg-white" /> : <div className="h-14 w-14 rounded-full bg-red-500" />}
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleCameraFacing}
-                className="grid h-11 w-11 place-items-center rounded-full bg-white/10"
-              >
-                <RotateCcw size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <>
-      <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/80 p-3 backdrop-blur-xl sm:p-5">
-        <div className="mx-auto flex min-h-[calc(100vh-24px)] max-w-[1400px] flex-col overflow-hidden rounded-[32px] border border-white/10 bg-[#0b0b0d] shadow-2xl sm:min-h-[calc(100vh-40px)]">
-          <header className="flex shrink-0 items-center justify-between border-b border-white/8 px-4 py-3 sm:px-6">
-            <div className="flex items-center gap-3">
-              {step !== 'media' && !uploading && (
-                <button
-                  type="button"
-                  onClick={previousStep}
-                  className="grid h-10 w-10 place-items-center rounded-xl bg-white/6 hover:bg-white/10"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-              )}
-
-              <div>
-                <div className="flex items-center gap-2">
-                  <Sparkles size={17} />
-                  <h1 className="text-base font-bold">Create</h1>
-                </div>
-                <p className="mt-0.5 text-[10px] text-white/30">
-                  {step === 'media' && 'Add your video'}
-                  {step === 'audio' && 'Build your sound'}
-                  {step === 'edit' && 'Polish your post'}
-                  {step === 'publish' && 'Publish to Made Universe'}
-                </p>
-              </div>
-            </div>
-
+    <div className="fixed inset-0 z-[100] bg-[#070707] text-white">
+      <div className="flex h-full min-h-0 flex-col">
+        <header className="relative z-30 flex h-[68px] shrink-0 items-center justify-between border-b border-white/10 bg-[#080808]/95 px-4 backdrop-blur-xl sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
+              onClick={closeUpload}
               disabled={uploading}
-              onClick={onClose}
-              className="grid h-10 w-10 place-items-center rounded-xl bg-white/6 text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 text-white/70 transition hover:bg-white/10 disabled:opacity-40"
             >
               <X size={18} />
             </button>
-          </header>
 
-          <div className="shrink-0 border-b border-white/8 px-4 py-3 sm:px-6">
-            <div className="mx-auto flex max-w-3xl items-center justify-center gap-1 sm:gap-3">
-              {[
-                ['media', 'Media'],
-                ['audio', 'Sound'],
-                ['edit', 'Edit'],
-                ['publish', 'Publish']
-              ].map(([id, label], index) => {
-                const active = step === id;
-                const completed = progressStep > index + 1;
-
-                return (
-                  <React.Fragment key={id}>
-                    <button
-                      type="button"
-                      disabled={uploading}
-                      onClick={() => {
-                        if (completed) setStep(id);
-                      }}
-                      className={`flex items-center gap-2 rounded-full px-3 py-2 text-[11px] font-semibold transition sm:px-4 ${
-                        active
-                          ? 'bg-white text-black'
-                          : completed
-                            ? 'bg-white/10 text-white'
-                            : 'text-white/30'
-                      }`}
-                    >
-                      <span className="grid h-5 w-5 place-items-center rounded-full bg-black/10">
-                        {completed ? <Check size={12} /> : index + 1}
-                      </span>
-                      <span className="hidden sm:block">{label}</span>
-                    </button>
-
-                    {index < 3 && (
-                      <div className={`h-px w-5 sm:w-10 ${completed ? 'bg-white/35' : 'bg-white/8'}`} />
-                    )}
-                  </React.Fragment>
-                );
-              })}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-bold sm:text-base">
+                  Create video
+                </span>
+                <span className="hidden rounded-full border border-white/10 px-2 py-0.5 text-[9px] uppercase tracking-wider text-white/35 sm:inline-flex">
+                  Made Universe
+                </span>
+              </div>
+              <p className="text-[11px] text-white/35">
+                {STEPS[currentStepIndex]?.label}
+              </p>
             </div>
           </div>
 
-          <main className="grid min-h-0 flex-1 lg:grid-cols-[minmax(360px,0.85fr)_minmax(500px,1.15fr)]">
-            <section className="hidden min-h-0 border-r border-white/8 bg-[#070709] p-5 lg:flex lg:flex-col">
-              <div className="flex min-h-0 flex-1 items-center justify-center">
-                <div className="w-full max-w-[420px]">
+          <div className="hidden items-center gap-2 md:flex">
+            {STEPS.map((item, index) => {
+              const Icon = item.icon;
+              const active = item.id === step;
+              const complete = index < currentStepIndex;
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (!uploading && (complete || active)) setStep(item.id);
+                  }}
+                  className={`flex items-center gap-2 rounded-full px-3 py-2 text-xs transition ${
+                    active
+                      ? 'bg-white text-black'
+                      : complete
+                        ? 'text-white/75 hover:bg-white/10'
+                        : 'text-white/30'
+                  }`}
+                >
+                  {complete ? <Check size={14} /> : <Icon size={14} />}
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {videoFile && (
+              <span className="hidden items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-[10px] text-white/45 sm:flex">
+                <Film size={12} />
+                {formatBytes(videoFile.size)}
+              </span>
+            )}
+          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="h-full overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20">
+            <div className="mx-auto grid max-w-[1500px] gap-6 px-4 pb-[180px] pt-5 sm:px-6 lg:grid-cols-[minmax(320px,0.8fr)_minmax(520px,1.2fr)] lg:px-8 lg:pb-[170px] lg:pt-7">
+              <aside className="lg:sticky lg:top-6 lg:h-[calc(100vh-150px)]">
+                <div className="h-full min-h-[430px] rounded-[30px] border border-white/10 bg-white/[0.025] p-2">
                   {renderPreview()}
                 </div>
-              </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                <div className="rounded-2xl bg-white/[0.035] p-3">
-                  <p className="text-[10px] text-white/30">Duration</p>
-                  <p className="mt-1 text-sm font-bold">{formatTime(videoDuration)}</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.035] p-3">
-                  <p className="text-[10px] text-white/30">Format</p>
-                  <p className="mt-1 truncate text-sm font-bold">
-                    {videoFile ? getExtension(videoFile.name, videoFile.type).toUpperCase() : '—'}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.035] p-3">
-                  <p className="text-[10px] text-white/30">Audio</p>
-                  <p className="mt-1 truncate text-sm font-bold">
-                    {selectedMusic ? 'Mixed' : 'Original'}
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <section className="min-h-0 overflow-y-auto">
-              <div className="mx-auto w-full max-w-2xl p-4 sm:p-6 lg:p-8">
-                <div className="mb-5 lg:hidden">
-                  <div className="mx-auto max-w-[360px]">
-                    {renderPreview()}
+                <div className="mt-3 hidden rounded-2xl border border-white/10 bg-white/[0.025] p-3 lg:block">
+                  <div className="flex items-center gap-2 text-xs text-white/45">
+                    <AudioLines size={14} />
+                    {selectedMusic
+                      ? `Mixing ${selectedMusic.name}`
+                      : 'Original video audio'}
                   </div>
                 </div>
+              </aside>
 
-                {!networkOnline && (
-                  <div className="mb-4 flex items-center gap-3 rounded-2xl border border-yellow-400/10 bg-yellow-400/5 p-3 text-xs text-yellow-100/75">
-                    <AlertCircle size={16} />
-                    You are offline. Publishing is disabled until the connection returns.
+              <main className="min-w-0">
+                <div className="mb-5 flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.025] p-1 md:hidden">
+                  {STEPS.map(item => {
+                    const Icon = item.icon;
+                    const active = item.id === step;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setStep(item.id)}
+                        className={`flex min-w-[92px] flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${
+                          active ? 'bg-white text-black' : 'text-white/40'
+                        }`}
+                      >
+                        <Icon size={14} />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    {step === 'media' && renderMediaStep()}
+                    {step === 'sound' && renderSoundStep()}
+                    {step === 'edit' && renderEditStep()}
+                    {step === 'publish' && renderPublishStep()}
+                  </motion.div>
+                </AnimatePresence>
+
+                {uploadError && !uploading && (
+                  <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-400/[0.06] p-4 text-sm text-red-200">
+                    <div className="flex gap-3">
+                      <CircleHelp size={17} className="mt-0.5 shrink-0" />
+                      <span>{uploadError}</span>
+                    </div>
                   </div>
                 )}
+              </main>
+            </div>
+          </div>
+        </div>
 
-                {errorMessage && (
-                  <div className="mb-4 flex items-start gap-3 rounded-2xl border border-red-400/10 bg-red-500/8 p-3.5 text-xs text-red-100/80">
-                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                    <span>{errorMessage}</span>
-                    <button
-                      type="button"
-                      onClick={() => setErrorMessage('')}
-                      className="ml-auto text-red-100/40 hover:text-red-100"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-40">
+          <div className="pointer-events-auto border-t border-white/10 bg-[#080808]/98 px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-4 shadow-[0_-18px_50px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:px-6">
+            <div className="mx-auto max-w-[1500px]">
+              {uploading ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10">
+                        <Loader2 size={18} className="animate-spin" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold">{uploadStage || 'Processing...'}</p>
+                        <p className="mt-1 text-[11px] text-white/35">
+                          Please keep this window open while your video is being processed.
+                        </p>
+                      </div>
+                    </div>
 
-                {step === 'media' && renderMediaStep()}
-                {step === 'audio' && renderAudioStep()}
-                {step === 'edit' && renderEditStep()}
-                {step === 'publish' && renderPublishStep()}
-              </div>
-            </section>
-          </main>
-
-          <footer className="shrink-0 border-t border-white/8 bg-[#0b0b0d] px-4 py-3 sm:px-6">
-            {uploading ? (
-              <div className="mx-auto flex max-w-3xl items-center gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="mb-2 flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-2 font-semibold">
-                      <Loader2 size={13} className="animate-spin" />
-                      {uploadStage || 'Processing'}
+                    <span className="shrink-0 text-xs font-bold text-white/70">
+                      {uploadProgress}%
                     </span>
-                    <span className="text-white/45">{uploadProgress}%</span>
                   </div>
 
-                  <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <motion.div
                       className="h-full rounded-full bg-white"
-                      initial={{ width: 0 }}
                       animate={{ width: `${uploadProgress}%` }}
-                      transition={{ duration: 0.25 }}
+                      transition={{ duration: 0.2 }}
                     />
                   </div>
-
-                  <p className="mt-2 truncate text-[10px] text-white/30">
-                    {statusMessage}
-                  </p>
                 </div>
-              </div>
-            ) : (
-              <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-                <div className="hidden text-[10px] text-white/25 sm:block">
-                  {step === 'publish'
-                    ? 'Review your settings before publishing.'
-                    : 'Your changes are saved locally while creating.'}
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    disabled={currentStepIndex === 0}
+                    className="flex h-11 items-center gap-2 rounded-xl border border-white/10 px-4 text-xs font-semibold text-white/65 transition hover:bg-white/10 disabled:pointer-events-none disabled:opacity-0"
+                  >
+                    <ChevronLeft size={17} />
+                    Back
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <span className="hidden text-[11px] text-white/30 sm:inline">
+                      Step {currentStepIndex + 1} of {STEPS.length}
+                    </span>
+
+                    {currentStepIndex < STEPS.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={goNext}
+                        className="flex h-11 items-center gap-2 rounded-xl bg-white px-5 text-xs font-bold text-black transition hover:bg-white/90"
+                      >
+                        Continue
+                        <ChevronRight size={16} />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleUpload}
+                        disabled={!videoFile}
+                        className="flex h-11 items-center gap-2 rounded-xl bg-white px-5 text-xs font-bold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <UploadCloud size={16} />
+                        {scheduleEnabled ? 'Schedule video' : 'Publish video'}
+                      </button>
+                    )}
+                  </div>
                 </div>
+              )}
+            </div>
+          </div>
+        </div>
 
-                <div className="ml-auto flex items-center gap-2">
-                  {step !== 'media' && (
-                    <button
-                      type="button"
-                      onClick={previousStep}
-                      className="flex items-center gap-2 rounded-xl bg-white/7 px-4 py-2.5 text-xs font-semibold hover:bg-white/12"
-                    >
-                      <ChevronLeft size={14} />
-                      Back
-                    </button>
-                  )}
-
-                  {step !== 'publish' ? (
-                    <button
-                      type="button"
-                      onClick={nextStep}
-                      disabled={step === 'media' && !videoFile}
-                      className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-xs font-bold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                      Continue
-                      <ChevronRight size={14} />
-                    </button>
+        <AnimatePresence>
+          {showCoverEditor && videoFile && (
+            <Modal title="Choose cover frame" onClose={() => setShowCoverEditor(false)}>
+              <div className="space-y-5">
+                <div className="overflow-hidden rounded-2xl bg-black">
+                  {thumbnailPreview ? (
+                    <img
+                      src={thumbnailPreview}
+                      alt="Selected cover"
+                      className="mx-auto max-h-[420px] w-full object-contain"
+                    />
                   ) : (
-                    <button
-                      type="button"
-                      onClick={handleUpload}
-                      disabled={uploading || !videoFile || !networkOnline}
-                      className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-xs font-bold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                      {isScheduled ? <Clock3 size={14} /> : <Send size={14} />}
-                      {isScheduled ? 'Schedule video' : 'Publish video'}
-                    </button>
+                    <div className="flex h-64 items-center justify-center">
+                      <ImageIcon size={32} className="text-white/20" />
+                    </div>
                   )}
                 </div>
+
+                <div>
+                  <div className="mb-3 flex items-center justify-between text-xs text-white/45">
+                    <span>Video position</span>
+                    <span>{formatTime(thumbnailTime)}</span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min="0"
+                    max={duration || 0}
+                    step="0.01"
+                    value={thumbnailTime}
+                    onChange={event => {
+                      const time = Number(event.target.value);
+                      setThumbnailTime(time);
+                      updateThumbnail(time);
+                    }}
+                    className="w-full accent-white"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowCoverEditor(false)}
+                    className="rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-black"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
-            )}
-          </footer>
+            </Modal>
+          )}
+
+          {showPollEditor && (
+            <Modal title="Add poll" onClose={() => setShowPollEditor(false)}>
+              <div className="space-y-4">
+                <ToggleRow
+                  label="Enable poll"
+                  description="Add a question for viewers."
+                  enabled={pollData.enabled}
+                  onChange={enabled => setPollData(current => ({ ...current, enabled }))}
+                />
+
+                <input
+                  value={pollData.question}
+                  onChange={event =>
+                    setPollData(current => ({
+                      ...current,
+                      question: event.target.value
+                    }))
+                  }
+                  placeholder="Ask a question..."
+                  className="h-11 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-xs outline-none"
+                />
+
+                {pollData.options.map((option, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      value={option}
+                      onChange={event => updatePollOption(index, event.target.value)}
+                      placeholder={`Option ${index + 1}`}
+                      className="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 text-xs outline-none"
+                    />
+                    {pollData.options.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => removePollOption(index)}
+                        className="rounded-xl border border-white/10 px-3 text-white/45 hover:bg-white/10"
+                      >
+                        <X size={15} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {pollData.options.length < 4 && (
+                  <button
+                    type="button"
+                    onClick={addPollOption}
+                    className="flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-white/60 hover:bg-white/10"
+                  >
+                    <Plus size={14} />
+                    Add option
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowPollEditor(false)}
+                  className="w-full rounded-xl bg-white py-3 text-xs font-bold text-black"
+                >
+                  Save poll
+                </button>
+              </div>
+            </Modal>
+          )}
+
+          {showProductEditor && (
+            <Modal title="Product or link" onClose={() => setShowProductEditor(false)}>
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold text-white/55">
+                    Link
+                  </label>
+                  <input
+                    value={productLink}
+                    onChange={event => setProductLink(event.target.value)}
+                    placeholder="https://..."
+                    className="h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm outline-none"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowProductEditor(false)}
+                  className="w-full rounded-xl bg-white py-3 text-xs font-bold text-black"
+                >
+                  Save link
+                </button>
+              </div>
+            </Modal>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ icon, title, description }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+        {icon}
+      </div>
+      <div>
+        <h2 className="text-lg font-bold">{title}</h2>
+        <p className="mt-1 max-w-2xl text-xs leading-5 text-white/40">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function SettingCard({ icon, title, description, children }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
+          {icon}
+        </div>
+        <div>
+          <p className="text-xs font-bold">{title}</p>
+          <p className="mt-1 text-[11px] text-white/35">{description}</p>
         </div>
       </div>
-
-      {renderCameraModal()}
-    </>
+      <div className="mt-4">{children}</div>
+    </div>
   );
-};
+}
+
+function EditorCard({ icon, title, description, children }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
+          {icon}
+        </div>
+        <div>
+          <p className="text-sm font-bold">{title}</p>
+          <p className="mt-1 text-xs text-white/40">{description}</p>
+        </div>
+      </div>
+      <div className="mt-4">{children}</div>
+    </div>
+  );
+}
+
+function VolumeControl({ icon, label, value, onChange, disabled = false }) {
+  return (
+    <div className={disabled ? 'opacity-40' : ''}>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs font-semibold text-white/65">
+          {icon}
+          {label}
+        </div>
+        <span className="text-xs text-white/40">{value}%</span>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={value}
+        disabled={disabled}
+        onChange={event => onChange(Number(event.target.value))}
+        className="w-full accent-white"
+      />
+    </div>
+  );
+}
+
+function ToggleRow({ label, description, enabled, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!enabled)}
+      className="flex w-full items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/10 p-3 text-left transition hover:bg-white/[0.04]"
+    >
+      <div className="min-w-0">
+        <p className="text-xs font-semibold">{label}</p>
+        <p className="mt-1 text-[11px] leading-4 text-white/35">{description}</p>
+      </div>
+
+      <span
+        className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+          enabled ? 'bg-white' : 'bg-white/10'
+        }`}
+      >
+        <span
+          className={`absolute top-1 h-4 w-4 rounded-full transition ${
+            enabled ? 'left-6 bg-black' : 'left-1 bg-white/45'
+          }`}
+        />
+      </span>
+    </button>
+  );
+}
+
+function SelectField({ label, value, onChange, options }) {
+  return (
+    <div>
+      <label className="mb-2 block text-xs font-semibold text-white/55">{label}</label>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          className="h-11 w-full appearance-none rounded-xl border border-white/10 bg-black/20 px-3 pr-10 text-xs text-white outline-none"
+        >
+          {options.map(option => (
+            <option
+              key={option.value}
+              value={option.value}
+              className="bg-[#111] text-white"
+            >
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={15}
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/35"
+        />
+      </div>
+    </div>
+  );
+}
+
+function SummaryItem({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+      <p className="text-[10px] uppercase tracking-wider text-white/30">{label}</p>
+      <p className="mt-1 text-xs font-bold text-white/75">{value}</p>
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="flex max-h-[calc(100vh-32px)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#111]"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+          <h3 className="text-sm font-bold">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-2 text-white/45 hover:bg-white/10 hover:text-white"
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="min-h-0 overflow-y-auto p-5 pb-8 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20">
+          {children}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function MicOffIcon() {
+  return <Mic size={18} className="opacity-60" />;
+}
+
+function SquareIcon() {
+  return <span className="h-5 w-5 rounded-md bg-black" />;
+}
 
 export default Upload;
