@@ -7,7 +7,7 @@ import {
   ChevronLeft, ChevronRight, Check, Volume2, VolumeX, SlidersHorizontal,
   Sparkles, Image as ImageIcon, Globe2, Lock, Users, MapPin, Hash,
   MessageCircle, Download, Shield, Loader2, RefreshCw, Plus, Minus,
-  Clock3, CalendarDays, Film, Mic2, Wand2, Eye, EyeOff, RotateCcw
+  Clock3, CalendarDays, Film, Mic2, Wand2, Eye, EyeOff, RotateCcw, Layers
 } from 'lucide-react';
 
 const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'https://mpade-backend.onrender.com').replace(/\/+$/, '');
@@ -1587,7 +1587,7 @@ function Upload({ onComplete }) {
             ['Allow comments', allowComments, setAllowComments, MessageCircle],
             ['Allow downloads', allowDownload, setAllowDownload, Download],
             ['Allow Duet', allowDuet, setAllowDuet, Users],
-            ['Allow Stitch', allowStitch, setAllowStitch, LayersIcon]
+            ['Allow Stitch', allowStitch, setAllowStitch, Layers]
           ].map(([label, value, setter, Icon]) => (
             <button
               type="button"
