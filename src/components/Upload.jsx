@@ -241,6 +241,45 @@ function Upload({ onComplete }) {
 
   const hasMusic = Boolean(selectedMusic?.previewUrl || selectedMusic?.url);
 
+  /*
+   * FAST PATH
+   *
+   * The source video is already uploaded directly to private B2.
+   * There is no reason to send it through Render/FFmpeg when the
+   * user has not requested a transformation.
+   *
+   * Server processing is required only when:
+   * - music is selected
+   * - a non-original filter is selected
+   * - audio enhancement is selected
+   * - original video volume has been changed
+   */
+  const needsServerProcessing = useMemo(() => {
+    const filterNeedsProcessing =
+      selectedFilter !== 'original';
+
+    const enhancementNeedsProcessing =
+      audioEnhancement !== 'none';
+
+    const musicNeedsProcessing =
+      hasMusic;
+
+    const volumeNeedsProcessing =
+      Number(videoVolume) !== 100;
+
+    return (
+      filterNeedsProcessing ||
+      enhancementNeedsProcessing ||
+      musicNeedsProcessing ||
+      volumeNeedsProcessing
+    );
+  }, [
+    selectedFilter,
+    audioEnhancement,
+    hasMusic,
+    videoVolume
+  ]);
+
   const tabs = useMemo(
     () => [
       { id: 'media', label: 'Media', icon: Film },
@@ -258,7 +297,10 @@ function Upload({ onComplete }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem('made_universe_upload_filter', selectedFilter);
+      localStorage.setItem(
+        'made_universe_upload_filter',
+        selectedFilter
+      );
     } catch {}
   }, [selectedFilter]);
 
@@ -379,7 +421,10 @@ function Upload({ onComplete }) {
   };
 
   const switchCamera = async () => {
-    const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
+    const nextFacing =
+      cameraFacing === 'user'
+        ? 'environment'
+        : 'user';
 
     setCameraFacing(nextFacing);
     setCameraError('');
@@ -503,7 +548,10 @@ function Upload({ onComplete }) {
               return;
             }
 
-            context.filter = filter.css === 'none' ? 'none' : filter.css;
+            context.filter =
+              filter.css === 'none'
+                ? 'none'
+                : filter.css;
 
             context.drawImage(
               video,
@@ -514,32 +562,52 @@ function Upload({ onComplete }) {
             );
 
             if (coverText.trim()) {
-              const padding = Math.max(20, canvas.width * 0.035);
-              const fontSize = Math.max(28, canvas.width * 0.045);
+              const padding = Math.max(
+                20,
+                canvas.width * 0.035
+              );
+
+              const fontSize = Math.max(
+                28,
+                canvas.width * 0.045
+              );
 
               context.filter = 'none';
               context.font = `700 ${fontSize}px Arial`;
               context.textBaseline = 'bottom';
 
-              const textWidth = context.measureText(coverText.trim()).width;
+              const textWidth =
+                context.measureText(
+                  coverText.trim()
+                ).width;
 
               if (coverBadgeStyle === 'dark') {
-                context.fillStyle = 'rgba(0,0,0,.72)';
-              } else if (coverBadgeStyle === 'light') {
-                context.fillStyle = 'rgba(255,255,255,.82)';
+                context.fillStyle =
+                  'rgba(0,0,0,.72)';
+              } else if (
+                coverBadgeStyle === 'light'
+              ) {
+                context.fillStyle =
+                  'rgba(255,255,255,.82)';
               } else {
-                context.fillStyle = 'rgba(0,0,0,.58)';
+                context.fillStyle =
+                  'rgba(0,0,0,.58)';
               }
 
               context.fillRect(
                 padding - 12,
-                canvas.height - padding - fontSize - 18,
+                canvas.height -
+                  padding -
+                  fontSize -
+                  18,
                 textWidth + 24,
                 fontSize + 28
               );
 
               context.fillStyle =
-                coverBadgeStyle === 'light' ? '#000' : '#fff';
+                coverBadgeStyle === 'light'
+                  ? '#000'
+                  : '#fff';
 
               context.fillText(
                 coverText.trim(),
@@ -577,7 +645,9 @@ function Upload({ onComplete }) {
     }
 
     if (file.size > 1024 * 1024 * 1024) {
-      setUploadError('The maximum supported video size is 1 GB.');
+      setUploadError(
+        'The maximum supported video size is 1 GB.'
+      );
       return;
     }
 
@@ -625,14 +695,23 @@ function Upload({ onComplete }) {
       video.playsInline = true;
 
       video.onloadedmetadata = () => {
-        const duration = getSafeDuration(video.duration);
+        const duration = getSafeDuration(
+          video.duration
+        );
+
         const width = Number(video.videoWidth);
         const height = Number(video.videoHeight);
 
         finish({
           duration,
-          width: Number.isFinite(width) && width > 0 ? width : 0,
-          height: Number.isFinite(height) && height > 0 ? height : 0
+          width:
+            Number.isFinite(width) && width > 0
+              ? width
+              : 0,
+          height:
+            Number.isFinite(height) && height > 0
+              ? height
+              : 0
         });
       };
 
@@ -649,12 +728,14 @@ function Upload({ onComplete }) {
 
     setVideoMetadata(metadata);
 
-    const thumbnail = await generateThumbnail(file);
+    const thumbnail =
+      await generateThumbnail(file);
 
     if (thumbnail) {
       setThumbnailBlob(thumbnail);
 
-      const thumbnailUrl = URL.createObjectURL(thumbnail);
+      const thumbnailUrl =
+        URL.createObjectURL(thumbnail);
 
       setThumbnailPreview(prev => {
         if (prev) {
@@ -707,21 +788,27 @@ function Upload({ onComplete }) {
     const stream = mediaStreamRef.current;
 
     if (!stream) {
-      setCameraError('Start the camera before recording.');
+      setCameraError(
+        'Start the camera before recording.'
+      );
       return;
     }
 
     if (!window.MediaRecorder) {
-      setCameraError('Video recording is not supported by this browser.');
+      setCameraError(
+        'Video recording is not supported by this browser.'
+      );
       return;
     }
 
     recordedChunksRef.current = [];
 
-    let mimeType = 'video/webm;codecs=vp9,opus';
+    let mimeType =
+      'video/webm;codecs=vp9,opus';
 
     if (!MediaRecorder.isTypeSupported(mimeType)) {
-      mimeType = 'video/webm;codecs=vp8,opus';
+      mimeType =
+        'video/webm;codecs=vp8,opus';
     }
 
     if (!MediaRecorder.isTypeSupported(mimeType)) {
@@ -737,13 +824,16 @@ function Upload({ onComplete }) {
 
       recorder.ondataavailable = event => {
         if (event.data?.size) {
-          recordedChunksRef.current.push(event.data);
+          recordedChunksRef.current.push(
+            event.data
+          );
         }
       };
 
       recorder.onerror = event => {
         setCameraError(
-          event.error?.message || 'Recording failed.'
+          event.error?.message ||
+            'Recording failed.'
         );
 
         setIsRecording(false);
@@ -752,8 +842,12 @@ function Upload({ onComplete }) {
 
       recorder.onstop = async () => {
         try {
-          if (!recordedChunksRef.current.length) {
-            setCameraError('No video data was recorded.');
+          if (
+            !recordedChunksRef.current.length
+          ) {
+            setCameraError(
+              'No video data was recorded.'
+            );
             return;
           }
 
@@ -762,9 +856,10 @@ function Upload({ onComplete }) {
             { type: mimeType }
           );
 
-          const extension = mimeType.includes('webm')
-            ? 'webm'
-            : 'mp4';
+          const extension =
+            mimeType.includes('webm')
+              ? 'webm'
+              : 'mp4';
 
           const file = new File(
             [blob],
@@ -775,7 +870,8 @@ function Upload({ onComplete }) {
           await loadVideoFile(file);
         } catch (error) {
           setCameraError(
-            error?.message || 'Unable to prepare the recording.'
+            error?.message ||
+              'Unable to prepare the recording.'
           );
         } finally {
           recordedChunksRef.current = [];
@@ -784,6 +880,7 @@ function Upload({ onComplete }) {
       };
 
       mediaRecorderRef.current = recorder;
+
       recorder.start(500);
 
       setRecordingSeconds(0);
@@ -791,12 +888,16 @@ function Upload({ onComplete }) {
 
       stopRecordingTimer();
 
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds(value => value + 1);
-      }, 1000);
+      recordingTimerRef.current =
+        setInterval(() => {
+          setRecordingSeconds(
+            value => value + 1
+          );
+        }, 1000);
     } catch (error) {
       setCameraError(
-        error?.message || 'Unable to start recording.'
+        error?.message ||
+          'Unable to start recording.'
       );
     }
   };
@@ -806,7 +907,8 @@ function Upload({ onComplete }) {
 
     if (
       mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== 'inactive'
+      mediaRecorderRef.current.state !==
+        'inactive'
     ) {
       try {
         mediaRecorderRef.current.stop();
@@ -839,13 +941,20 @@ function Upload({ onComplete }) {
 
     if (!video) return;
 
-    const currentTime = Number(video.currentTime);
-    const duration = getSafeDuration(video.duration);
+    const currentTime =
+      Number(video.currentTime);
+
+    const duration = getSafeDuration(
+      video.duration
+    );
 
     if (!Number.isFinite(currentTime)) return;
 
     setPreviewCurrentTime(
-      getSafeCurrentTime(currentTime, duration)
+      getSafeCurrentTime(
+        currentTime,
+        duration
+      )
     );
   };
 
@@ -854,43 +963,57 @@ function Upload({ onComplete }) {
 
     if (!video) return;
 
-    const duration = getSafeDuration(video.duration);
+    const duration = getSafeDuration(
+      video.duration
+    );
 
     if (duration > 0) {
       setVideoMetadata(current => ({
         ...current,
         duration,
-        width: Number.isFinite(video.videoWidth)
-          ? video.videoWidth
-          : current.width,
-        height: Number.isFinite(video.videoHeight)
-          ? video.videoHeight
-          : current.height
+        width:
+          Number.isFinite(video.videoWidth)
+            ? video.videoWidth
+            : current.width,
+        height:
+          Number.isFinite(video.videoHeight)
+            ? video.videoHeight
+            : current.height
       }));
 
       setPreviewCurrentTime(
-        getSafeCurrentTime(video.currentTime, duration)
+        getSafeCurrentTime(
+          video.currentTime,
+          duration
+        )
       );
     }
   };
 
   const seekVideo = event => {
-    const requested = Number(event.target.value);
+    const requested =
+      Number(event.target.value);
+
     const video = videoRef.current;
 
     const duration = getSafeDuration(
-      video?.duration || videoMetadata.duration
+      video?.duration ||
+        videoMetadata.duration
     );
 
     if (!Number.isFinite(requested)) return;
 
-    const safeValue = getSafeCurrentTime(
-      requested,
-      duration
-    );
+    const safeValue =
+      getSafeCurrentTime(
+        requested,
+        duration
+      );
 
     if (video && duration > 0) {
-      seekMediaSafely(video, safeValue);
+      seekMediaSafely(
+        video,
+        safeValue
+      );
     }
 
     setPreviewCurrentTime(safeValue);
@@ -910,7 +1033,9 @@ function Upload({ onComplete }) {
       );
 
       if (!response.ok) {
-        throw new Error('Music search failed.');
+        throw new Error(
+          'Music search failed.'
+        );
       }
 
       const data = await response.json();
@@ -919,21 +1044,31 @@ function Upload({ onComplete }) {
         .filter(track => track.previewUrl)
         .map(track => ({
           id: String(track.trackId),
-          title: track.trackName || 'Unknown track',
-          artist: track.artistName || 'Unknown artist',
-          album: track.collectionName || '',
-          artwork: track.artworkUrl100 || '',
-          previewUrl: track.previewUrl,
-          duration: track.trackTimeMillis
-            ? track.trackTimeMillis / 1000
-            : 30,
+          title:
+            track.trackName ||
+            'Unknown track',
+          artist:
+            track.artistName ||
+            'Unknown artist',
+          album:
+            track.collectionName || '',
+          artwork:
+            track.artworkUrl100 || '',
+          previewUrl:
+            track.previewUrl,
+          duration:
+            track.trackTimeMillis
+              ? track.trackTimeMillis /
+                1000
+              : 30,
           provider: 'itunes'
         }));
 
       setSearchResults(tracks);
     } catch (error) {
       setUploadError(
-        error?.message || 'Unable to search music right now.'
+        error?.message ||
+          'Unable to search music right now.'
       );
     } finally {
       setIsSearching(false);
@@ -942,7 +1077,9 @@ function Upload({ onComplete }) {
 
   const selectMusic = track => {
     setSelectedMusic(track);
-    setPlayingTrackUrl(track.previewUrl || '');
+    setPlayingTrackUrl(
+      track.previewUrl || ''
+    );
     setIsPlayingTrack(false);
     setUploadError('');
   };
@@ -952,11 +1089,15 @@ function Upload({ onComplete }) {
 
     if (!url) return;
 
-    const audio = audioPreviewRef.current;
+    const audio =
+      audioPreviewRef.current;
 
     if (!audio) return;
 
-    if (playingTrackUrl === url && isPlayingTrack) {
+    if (
+      playingTrackUrl === url &&
+      isPlayingTrack
+    ) {
       audio.pause();
       setIsPlayingTrack(false);
       return;
@@ -966,9 +1107,13 @@ function Upload({ onComplete }) {
 
     try {
       audio.src = url;
+
       audio.volume = Math.max(
         0,
-        Math.min(1, Number(musicVolume) / 100)
+        Math.min(
+          1,
+          Number(musicVolume) / 100
+        )
       );
 
       audio.load();
@@ -981,7 +1126,8 @@ function Upload({ onComplete }) {
   };
 
   const clearMusic = () => {
-    const audio = audioPreviewRef.current;
+    const audio =
+      audioPreviewRef.current;
 
     if (audio) {
       try {
@@ -995,178 +1141,237 @@ function Upload({ onComplete }) {
     setIsPlayingTrack(false);
   };
 
-  const uploadToB2 = async (file, folder, onProgress) => {
+  const uploadToB2 = async (
+    file,
+    folder,
+    onProgress
+  ) => {
     if (!file) {
-      throw new Error('No file was provided for upload.');
+      throw new Error(
+        'No file was provided for upload.'
+      );
     }
 
-    const response = await authenticatedFetch(
-      `${API_BASE}/api/storage/upload-url`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          folder,
-          fileName: file.name,
-          contentType: file.type || 'application/octet-stream',
-          fileSize: file.size
-        })
-      }
-    );
+    const response =
+      await authenticatedFetch(
+        `${API_BASE}/api/storage/upload-url`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            folder,
+            fileName: file.name,
+            contentType:
+              file.type ||
+              'application/octet-stream',
+            fileSize: file.size
+          })
+        }
+      );
 
-    const data = await response.json().catch(() => ({}));
+    const data =
+      await response.json().catch(
+        () => ({})
+      );
 
-    if (!response.ok || !data?.uploadUrl || !data?.objectKey) {
+    if (
+      !response.ok ||
+      !data?.uploadUrl ||
+      !data?.objectKey
+    ) {
       if (response.status === 503) {
         throw new Error(
           data?.error ||
-          data?.message ||
-          'Storage service is temporarily unavailable. The backend storage authentication is not configured or is currently unavailable.'
+            data?.message ||
+            'Storage service is temporarily unavailable. The backend storage authentication is not configured or is currently unavailable.'
         );
       }
 
       throw new Error(
         data?.error ||
-        data?.message ||
-        `Unable to create upload URL${response.status ? ` (${response.status})` : ''}.`
+          data?.message ||
+          `Unable to create upload URL${
+            response.status
+              ? ` (${response.status})`
+              : ''
+          }.`
       );
     }
 
-    await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+    await new Promise(
+      (resolve, reject) => {
+        const xhr =
+          new XMLHttpRequest();
 
-      xhr.open('PUT', data.uploadUrl);
+        xhr.open(
+          'PUT',
+          data.uploadUrl
+        );
 
-      xhr.setRequestHeader(
-        'Content-Type',
-        file.type || 'application/octet-stream'
-      );
+        xhr.setRequestHeader(
+          'Content-Type',
+          file.type ||
+            'application/octet-stream'
+        );
 
-      xhr.upload.onprogress = event => {
-        if (event.lengthComputable && onProgress) {
-          const percent = Math.round(
-            (event.loaded / event.total) * 100
-          );
+        xhr.upload.onprogress =
+          event => {
+            if (
+              event.lengthComputable &&
+              onProgress
+            ) {
+              const percent =
+                Math.round(
+                  (event.loaded /
+                    event.total) *
+                    100
+                );
 
-          if (Number.isFinite(percent)) {
-            onProgress(Math.max(0, Math.min(100, percent)));
+              if (
+                Number.isFinite(
+                  percent
+                )
+              ) {
+                onProgress(
+                  Math.max(
+                    0,
+                    Math.min(
+                      100,
+                      percent
+                    )
+                  )
+                );
+              }
+            }
+          };
+
+        xhr.onload = () => {
+          if (
+            xhr.status >= 200 &&
+            xhr.status < 300
+          ) {
+            resolve();
+          } else {
+            reject(
+              new Error(
+                `B2 upload failed with status ${xhr.status}.`
+              )
+            );
           }
-        }
-      };
+        };
 
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-        } else {
+        xhr.onerror = () => {
           reject(
             new Error(
-              `B2 upload failed with status ${xhr.status}.`
+              'Network error while uploading to B2.'
             )
           );
-        }
-      };
+        };
 
-      xhr.onerror = () => {
-        reject(
-          new Error('Network error while uploading to B2.')
-        );
-      };
+        xhr.onabort = () => {
+          reject(
+            new Error(
+              'Upload was cancelled.'
+            )
+          );
+        };
 
-      xhr.onabort = () => {
-        reject(new Error('Upload was cancelled.'));
-      };
-
-      xhr.send(file);
-    });
+        xhr.send(file);
+      }
+    );
 
     return data.objectKey;
   };
 
-  const mergeVideoOnServer = async sourceObjectKey => {
-    if (!sourceObjectKey) {
-      throw new Error('The source video was not uploaded.');
-    }
+  const mergeVideoOnServer =
+    async sourceObjectKey => {
+      if (!sourceObjectKey) {
+        throw new Error(
+          'The source video was not uploaded.'
+        );
+      }
 
-    const payload = {
-      sourceObjectKey,
-      audioUrl: selectedMusic?.previewUrl || null,
-      videoVolume,
-      musicVolume: hasMusic ? musicVolume : 0,
-      audioEnhancement,
-      filter: selectedFilter
+      const payload = {
+        sourceObjectKey,
+        audioUrl:
+          selectedMusic?.previewUrl ||
+          null,
+        videoVolume,
+        musicVolume: hasMusic
+          ? musicVolume
+          : 0,
+        audioEnhancement,
+        filter: selectedFilter
+      };
+
+      const response =
+        await authenticatedFetch(
+          `${API_BASE}/api/storage/merge-video`,
+          {
+            method: 'POST',
+            body: JSON.stringify(
+              payload
+            )
+          }
+        );
+
+      const data =
+        await response.json().catch(
+          () => ({})
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            data?.message ||
+            `Video processing failed${
+              response.status
+                ? ` (${response.status})`
+                : ''
+            }.`
+        );
+      }
+
+      if (!data?.objectKey) {
+        throw new Error(
+          'The server did not return the processed video.'
+        );
+      }
+
+      return data;
     };
 
-    const response = await authenticatedFetch(
-      `${API_BASE}/api/storage/merge-video`,
-      {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      }
-    );
+  const createThumbnailUpload =
+    async () => {
+      if (!thumbnailBlob) return null;
 
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(
-        data?.error ||
-        data?.message ||
-        `Video processing failed${response.status ? ` (${response.status})` : ''}.`
+      const file = new File(
+        [thumbnailBlob],
+        `cover-${Date.now()}.jpg`,
+        { type: 'image/jpeg' }
       );
-    }
 
-    if (!data?.objectKey) {
-      throw new Error(
-        'The server did not return the processed video.'
+      return uploadToB2(
+        file,
+        'covers',
+        () => {}
       );
-    }
+    };
 
-    return data;
-  };
-
-  const createThumbnailUpload = async () => {
-    if (!thumbnailBlob) return null;
-
-    const file = new File(
-      [thumbnailBlob],
-      `cover-${Date.now()}.jpg`,
-      { type: 'image/jpeg' }
-    );
-
-    return uploadToB2(file, 'covers', () => {});
-  };
-
-  /*
-   * IMPORTANT:
-   * The existing videos table does not currently expose all of the newer
-   * upload metadata columns used by the UI.
-   *
-   * The previous implementation sent fields such as:
-   * category, thumbnail_url, location, tags, mentions, privacy,
-   * allow_comments, allow_download, allow_duet, allow_stitch,
-   * age_restricted, filter_style, audio_enhancement, video_volume,
-   * music_volume and scheduled_at.
-   *
-   * PostgREST rejects the entire INSERT when even one of those columns
-   * does not exist. Therefore the publishing operation first uses only
-   * columns already confirmed to exist in the current videos table.
-   *
-   * This keeps B2/FFmpeg publishing working without deleting any UI
-   * functionality. The additional metadata can be enabled later after
-   * the corresponding columns are added to public.videos.
-   */
   const insertVideoRecord = async ({
     videoObjectKey,
     thumbnailObjectKey
   }) => {
     if (!videoObjectKey) {
       throw new Error(
-        'The processed video object key is missing.'
+        'The video object key is missing.'
       );
     }
 
     const {
       data: userData,
       error: userError
-    } = await supabase.auth.getUser();
+    } =
+      await supabase.auth.getUser();
 
     if (userError) {
       throw userError;
@@ -1178,20 +1383,21 @@ function Upload({ onComplete }) {
       );
     }
 
-    const userId = userData.user.id;
+    const userId =
+      userData.user.id;
 
-    /*
-     * These are the existing/confirmed core columns from the current
-     * videos table. Do not add newer UI-only fields here until the DB
-     * schema contains them.
-     */
     const corePayload = {
       user_id: userId,
       video_url: videoObjectKey,
       caption: caption.trim(),
-      music_name: selectedMusic?.title || null,
-      music_url: selectedMusic?.previewUrl || null,
-      is_private: privacy === 'private'
+      music_name:
+        selectedMusic?.title ||
+        null,
+      music_url:
+        selectedMusic?.previewUrl ||
+        null,
+      is_private:
+        privacy === 'private'
     };
 
     console.log(
@@ -1221,41 +1427,55 @@ function Upload({ onComplete }) {
 
       throw new Error(
         error.message ||
-        'Unable to save the video record.'
+          'Unable to save the video record.'
       );
     }
 
-    /*
-     * Keep the returned object enriched locally so the rest of the app
-     * can immediately access the upload settings even before the DB
-     * metadata columns are added.
-     */
     return {
       ...data,
       upload_metadata: {
         category,
-        thumbnail_url: thumbnailObjectKey || null,
-        location: location.trim() || null,
+        thumbnail_url:
+          thumbnailObjectKey || null,
+        location:
+          location.trim() || null,
         tags: tags
           .split(',')
-          .map(tag => tag.trim().replace(/^#/, ''))
+          .map(tag =>
+            tag
+              .trim()
+              .replace(/^#/, '')
+          )
           .filter(Boolean),
         mentions: mentions
           .split(',')
-          .map(item => item.trim().replace(/^@/, ''))
+          .map(item =>
+            item
+              .trim()
+              .replace(/^@/, '')
+          )
           .filter(Boolean),
         privacy,
-        allow_comments: allowComments,
-        allow_download: allowDownload,
+        allow_comments:
+          allowComments,
+        allow_download:
+          allowDownload,
         allow_duet: allowDuet,
         allow_stitch: allowStitch,
-        age_restricted: ageRestricted,
-        filter_style: selectedFilter,
-        audio_enhancement: audioEnhancement,
-        video_volume: videoVolume,
-        music_volume: musicVolume,
+        age_restricted:
+          ageRestricted,
+        filter_style:
+          selectedFilter,
+        audio_enhancement:
+          audioEnhancement,
+        video_volume:
+          videoVolume,
+        music_volume:
+          musicVolume,
         scheduled_at:
-          scheduleEnabled && scheduleDate && scheduleTime
+          scheduleEnabled &&
+          scheduleDate &&
+          scheduleTime
             ? new Date(
                 `${scheduleDate}T${scheduleTime}`
               ).toISOString()
@@ -1273,7 +1493,11 @@ function Upload({ onComplete }) {
       return;
     }
 
-    if (scheduleEnabled && (!scheduleDate || !scheduleTime)) {
+    if (
+      scheduleEnabled &&
+      (!scheduleDate ||
+        !scheduleTime)
+    ) {
       setUploadError(
         'Choose both a schedule date and time.'
       );
@@ -1287,68 +1511,144 @@ function Upload({ onComplete }) {
     setUploadProgress(0);
 
     try {
-      setUploadStage('Preparing your video');
-      setUploadMessage(
-        'Preparing the source file...'
-      );
-
-      const sourceObjectKey = await uploadToB2(
-        videoFile,
-        'videos',
-        progress => {
-          setUploadStage(
-            'Uploading source video'
-          );
-
-          setUploadMessage(
-            `${progress}% uploaded`
-          );
-
-          setUploadProgress(
-            Math.round(progress * 0.35)
-          );
-        }
-      );
-
+      /*
+       * STEP 1
+       *
+       * Upload the original source directly from the browser
+       * to the private B2 bucket.
+       *
+       * This is the expensive part for large files, so it gets
+       * the majority of the progress bar.
+       */
       setUploadStage(
-        hasMusic
-          ? 'Mixing video and music'
-          : 'Converting video'
+        'Uploading video'
       );
 
       setUploadMessage(
-        hasMusic
-          ? 'Embedding the selected audio into the final MP4...'
-          : 'Preparing the final MP4...'
+        'Securely uploading directly to storage...'
       );
 
-      setUploadProgress(45);
+      const sourceObjectKey =
+        await uploadToB2(
+          videoFile,
+          'videos',
+          progress => {
+            setUploadStage(
+              'Uploading video'
+            );
 
-      const merged = await mergeVideoOnServer(
-        sourceObjectKey
+            setUploadMessage(
+              `${progress}% uploaded`
+            );
+
+            /*
+             * Keep room for thumbnail + publish.
+             * On the fast path this means the large source upload
+             * can reach 85% without waiting for Render.
+             */
+            setUploadProgress(
+              Math.round(
+                progress * 0.85
+              )
+            );
+          }
+        );
+
+      /*
+       * STEP 2
+       *
+       * FAST PATH:
+       *
+       * If the user selected Original, no music, no enhancement
+       * and left original audio at 100%, the B2 source itself is
+       * already the published video.
+       *
+       * No Render request.
+       * No FFmpeg.
+       * No download from B2 to Render.
+       * No second upload from Render to B2.
+       */
+      let finalVideoObjectKey =
+        sourceObjectKey;
+
+      if (needsServerProcessing) {
+        setUploadStage(
+          hasMusic
+            ? 'Mixing video and music'
+            : 'Processing video'
+        );
+
+        setUploadMessage(
+          hasMusic
+            ? 'Processing the selected audio and video...'
+            : 'Applying your selected video settings...'
+        );
+
+        setUploadProgress(87);
+
+        const merged =
+          await mergeVideoOnServer(
+            sourceObjectKey
+          );
+
+        finalVideoObjectKey =
+          merged.objectKey;
+      } else {
+        setUploadStage(
+          'Video uploaded'
+        );
+
+        setUploadMessage(
+          'No server processing required. Using the secure original file.'
+        );
+
+        setUploadProgress(87);
+      }
+
+      /*
+       * STEP 3
+       *
+       * Thumbnail is generated locally and uploaded directly
+       * to B2. It never passes through Render.
+       */
+      setUploadStage(
+        'Creating cover'
       );
 
-      setUploadStage('Creating cover');
       setUploadMessage(
         'Preparing your video thumbnail...'
       );
-      setUploadProgress(75);
+
+      setUploadProgress(90);
 
       const thumbnailObjectKey =
         await createThumbnailUpload();
 
-      setUploadStage('Publishing');
+      /*
+       * STEP 4
+       *
+       * Save the database record.
+       */
+      setUploadStage(
+        'Publishing'
+      );
+
       setUploadMessage(
         'Saving your video details...'
       );
-      setUploadProgress(88);
 
-      const record = await insertVideoRecord({
-        videoObjectKey: merged.objectKey,
-        thumbnailObjectKey
-      });
+      setUploadProgress(96);
 
-      setUploadStage('Complete');
+      const record =
+        await insertVideoRecord({
+          videoObjectKey:
+            finalVideoObjectKey,
+          thumbnailObjectKey
+        });
+
+      setUploadStage(
+        'Complete'
+      );
 
       setUploadMessage(
         scheduleEnabled
@@ -1364,7 +1664,10 @@ function Upload({ onComplete }) {
         origin: { y: 0.65 }
       });
 
-      if (typeof onComplete === 'function') {
+      if (
+        typeof onComplete ===
+        'function'
+      ) {
         await onComplete(record);
       }
     } catch (error) {
@@ -1375,7 +1678,7 @@ function Upload({ onComplete }) {
 
       setUploadError(
         error?.message ||
-        'Something went wrong while publishing your video.'
+          'Something went wrong while publishing your video.'
       );
 
       setUploadStage('');
@@ -1389,6 +1692,7 @@ function Upload({ onComplete }) {
     if (uploading) return;
 
     setVideoFile(null);
+
     setVideoMetadata({
       duration: 0,
       width: 0,
@@ -1423,18 +1727,26 @@ function Upload({ onComplete }) {
   };
 
   const goToNextTab = () => {
-    if (activeTab === 'media' && !videoFile) {
+    if (
+      activeTab === 'media' &&
+      !videoFile
+    ) {
       setUploadError(
         'Select or record a video before continuing.'
       );
       return;
     }
 
-    if (activeTabIndex < tabs.length - 1) {
+    if (
+      activeTabIndex <
+      tabs.length - 1
+    ) {
       setUploadError('');
 
       setActiveTab(
-        tabs[activeTabIndex + 1].id
+        tabs[
+          activeTabIndex + 1
+        ].id
       );
     }
   };
@@ -1444,7 +1756,9 @@ function Upload({ onComplete }) {
       setUploadError('');
 
       setActiveTab(
-        tabs[activeTabIndex - 1].id
+        tabs[
+          activeTabIndex - 1
+        ].id
       );
     }
   };
@@ -1534,14 +1848,16 @@ function Upload({ onComplete }) {
       );
     }
 
-    const safeDuration = getSafeDuration(
-      videoMetadata.duration
-    );
+    const safeDuration =
+      getSafeDuration(
+        videoMetadata.duration
+      );
 
-    const safePreviewTime = getSafeCurrentTime(
-      previewCurrentTime,
-      safeDuration
-    );
+    const safePreviewTime =
+      getSafeCurrentTime(
+        previewCurrentTime,
+        safeDuration
+      );
 
     return (
       <div className="relative h-full w-full overflow-hidden bg-black">
@@ -1551,12 +1867,24 @@ function Upload({ onComplete }) {
           playsInline
           muted={false}
           preload="metadata"
-          onLoadedMetadata={handleVideoLoadedMetadata}
-          onTimeUpdate={handleVideoTimeUpdate}
-          onPlay={() => setPreviewPlaying(true)}
-          onPause={() => setPreviewPlaying(false)}
-          onEnded={() => setPreviewPlaying(false)}
-          onError={() => setPreviewPlaying(false)}
+          onLoadedMetadata={
+            handleVideoLoadedMetadata
+          }
+          onTimeUpdate={
+            handleVideoTimeUpdate
+          }
+          onPlay={() =>
+            setPreviewPlaying(true)
+          }
+          onPause={() =>
+            setPreviewPlaying(false)
+          }
+          onEnded={() =>
+            setPreviewPlaying(false)
+          }
+          onError={() =>
+            setPreviewPlaying(false)
+          }
           className="h-full w-full object-contain"
           style={{
             filter: filter.css
@@ -1628,8 +1956,13 @@ function Upload({ onComplete }) {
             />
 
             <span className="text-[11px] tabular-nums text-white/65">
-              {formatTime(safePreviewTime)} /{' '}
-              {formatTime(safeDuration)}
+              {formatTime(
+                safePreviewTime
+              )}{' '}
+              /{' '}
+              {formatTime(
+                safeDuration
+              )}
             </span>
           </div>
         </div>
@@ -1639,79 +1972,82 @@ function Upload({ onComplete }) {
 
   const renderMediaTab = () => (
     <div className="space-y-5">
-      {!videoFile && !isCameraOpen && (
-        <div
-          onDragOver={event => {
-            event.preventDefault();
-            setDragActive(true);
-          }}
-          onDragLeave={() =>
-            setDragActive(false)
-          }
-          onDrop={handleDrop}
-          onClick={() =>
-            fileInputRef.current?.click()
-          }
-          className={`group flex min-h-[270px] cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed p-8 text-center transition ${
-            dragActive
-              ? 'border-white/50 bg-white/[.09]'
-              : 'border-white/10 bg-white/[.025] hover:border-white/25 hover:bg-white/[.045]'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/*"
-            className="hidden"
-            onChange={handleFileInput}
-          />
+      {!videoFile &&
+        !isCameraOpen && (
+          <div
+            onDragOver={event => {
+              event.preventDefault();
+              setDragActive(true);
+            }}
+            onDragLeave={() =>
+              setDragActive(false)
+            }
+            onDrop={handleDrop}
+            onClick={() =>
+              fileInputRef.current?.click()
+            }
+            className={`group flex min-h-[270px] cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed p-8 text-center transition ${
+              dragActive
+                ? 'border-white/50 bg-white/[.09]'
+                : 'border-white/10 bg-white/[.025] hover:border-white/25 hover:bg-white/[.045]'
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={handleFileInput}
+            />
 
-          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[.07] text-white">
-            <UploadCloud size={28} />
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[.07] text-white">
+              <UploadCloud size={28} />
+            </div>
+
+            <h3 className="text-base font-semibold text-white">
+              Drop your video here
+            </h3>
+
+            <p className="mt-2 max-w-sm text-sm leading-6 text-white/45">
+              MP4, WebM, MOV and other browser-supported video formats.
+              Maximum size: 1 GB.
+            </p>
+
+            <button
+              type="button"
+              onClick={event => {
+                event.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+              className="mt-5 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/90"
+            >
+              Choose video
+            </button>
           </div>
+        )}
 
-          <h3 className="text-base font-semibold text-white">
-            Drop your video here
-          </h3>
+      {!videoFile &&
+        !isCameraOpen && (
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-xs text-white/30">
+              or
+            </span>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+        )}
 
-          <p className="mt-2 max-w-sm text-sm leading-6 text-white/45">
-            MP4, WebM, MOV and other browser-supported video formats.
-            Maximum size: 1 GB.
-          </p>
-
+      {!videoFile &&
+        !isCameraOpen && (
           <button
             type="button"
-            onClick={event => {
-              event.stopPropagation();
-              fileInputRef.current?.click();
-            }}
-            className="mt-5 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/90"
+            onClick={startCamera}
+            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] px-5 py-4 text-sm font-medium text-white transition hover:bg-white/[.08]"
           >
-            Choose video
+            <Camera size={19} />
+            Record with camera
           </button>
-        </div>
-      )}
-
-      {!videoFile && !isCameraOpen && (
-        <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-white/10" />
-          <span className="text-xs text-white/30">
-            or
-          </span>
-          <div className="h-px flex-1 bg-white/10" />
-        </div>
-      )}
-
-      {!videoFile && !isCameraOpen && (
-        <button
-          type="button"
-          onClick={startCamera}
-          className="flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] px-5 py-4 text-sm font-medium text-white transition hover:bg-white/[.08]"
-        >
-          <Camera size={19} />
-          Record with camera
-        </button>
-      )}
+        )}
 
       {cameraError && (
         <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-200">
@@ -1719,48 +2055,54 @@ function Upload({ onComplete }) {
         </div>
       )}
 
-      {videoFile && !isCameraOpen && (
-        <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-14 w-14 overflow-hidden rounded-xl bg-white/[.05]">
-              {thumbnailPreview ? (
-                <img
-                  src={thumbnailPreview}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center">
-                  <Film
-                    size={19}
-                    className="text-white/40"
+      {videoFile &&
+        !isCameraOpen && (
+          <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-14 w-14 overflow-hidden rounded-xl bg-white/[.05]">
+                {thumbnailPreview ? (
+                  <img
+                    src={thumbnailPreview}
+                    alt=""
+                    className="h-full w-full object-cover"
                   />
-                </div>
-              )}
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Film
+                      size={19}
+                      className="text-white/40"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-white">
+                  {videoFile.name}
+                </p>
+
+                <p className="mt-1 text-xs text-white/40">
+                  {formatBytes(
+                    videoFile.size
+                  )}{' '}
+                  ·{' '}
+                  {formatTime(
+                    videoMetadata.duration
+                  )}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={removeVideo}
+                disabled={uploading}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-white/45 transition hover:bg-red-500/10 hover:text-red-300 disabled:opacity-30"
+              >
+                <Trash2 size={17} />
+              </button>
             </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">
-                {videoFile.name}
-              </p>
-
-              <p className="mt-1 text-xs text-white/40">
-                {formatBytes(videoFile.size)} ·{' '}
-                {formatTime(videoMetadata.duration)}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={removeVideo}
-              disabled={uploading}
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-white/45 transition hover:bg-red-500/10 hover:text-red-300 disabled:opacity-30"
-            >
-              <Trash2 size={17} />
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
       {videoFile && (
         <div className="grid grid-cols-2 gap-3">
@@ -1801,8 +2143,7 @@ function Upload({ onComplete }) {
             </p>
 
             <p className="mt-1 text-xs leading-5 text-white/40">
-              Your original and final media are uploaded directly to secure object storage.
-              The browser does not need to store the published video on Vercel.
+              Your media is uploaded directly to secure private object storage using a temporary authorized upload URL.
             </p>
           </div>
         </div>
@@ -1827,7 +2168,7 @@ function Upload({ onComplete }) {
             </h3>
 
             <p className="mt-1 text-xs text-white/40">
-              Both audio sources are mixed into one final MP4 on the server.
+              Music or audio changes require server processing. Original audio at 100% can use the fast upload path.
             </p>
           </div>
         </div>
@@ -1864,7 +2205,9 @@ function Upload({ onComplete }) {
                 value={videoVolume}
                 onChange={event =>
                   setVideoVolume(
-                    Number(event.target.value)
+                    Number(
+                      event.target.value
+                    )
                   )
                 }
                 className="flex-1 accent-white"
@@ -1899,7 +2242,9 @@ function Upload({ onComplete }) {
                 disabled={!hasMusic}
                 onChange={event =>
                   setMusicVolume(
-                    Number(event.target.value)
+                    Number(
+                      event.target.value
+                    )
                   )
                 }
                 className="flex-1 accent-white disabled:opacity-30"
@@ -1940,7 +2285,9 @@ function Upload({ onComplete }) {
             <button
               type="button"
               onClick={() =>
-                toggleMusicPreview(selectedMusic)
+                toggleMusicPreview(
+                  selectedMusic
+                )
               }
               className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black"
             >
@@ -1967,7 +2314,7 @@ function Upload({ onComplete }) {
             />
 
             <span className="text-xs text-emerald-100/70">
-              The selected audio will be embedded into the final video.
+              This selection requires server-side audio processing.
             </span>
           </div>
         </div>
@@ -1984,10 +2331,14 @@ function Upload({ onComplete }) {
             <input
               value={searchQuery}
               onChange={event =>
-                setSearchQuery(event.target.value)
+                setSearchQuery(
+                  event.target.value
+                )
               }
               onKeyDown={event => {
-                if (event.key === 'Enter') {
+                if (
+                  event.key === 'Enter'
+                ) {
                   searchMusic();
                 }
               }}
@@ -2017,71 +2368,83 @@ function Upload({ onComplete }) {
           </button>
         </div>
 
-        {searchResults.length > 0 && (
+        {searchResults.length >
+          0 && (
           <div className="mt-4 max-h-[360px] space-y-1 overflow-y-auto pr-1">
-            {searchResults.map(track => (
-              <div
-                key={track.id}
-                className="flex items-center gap-3 rounded-2xl p-2.5 transition hover:bg-white/[.05]"
-              >
-                {track.artwork ? (
-                  <img
-                    src={track.artwork}
-                    alt=""
-                    className="h-11 w-11 rounded-xl object-cover"
-                  />
-                ) : (
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/[.05]">
-                    <Music
-                      size={16}
-                      className="text-white/35"
+            {searchResults.map(
+              track => (
+                <div
+                  key={track.id}
+                  className="flex items-center gap-3 rounded-2xl p-2.5 transition hover:bg-white/[.05]"
+                >
+                  {track.artwork ? (
+                    <img
+                      src={
+                        track.artwork
+                      }
+                      alt=""
+                      className="h-11 w-11 rounded-xl object-cover"
                     />
-                  </div>
-                )}
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-white">
-                    {track.title}
-                  </p>
-
-                  <p className="truncate text-xs text-white/35">
-                    {track.artist}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    toggleMusicPreview(track)
-                  }
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-white/65 hover:bg-white/[.06]"
-                >
-                  {playingTrackUrl ===
-                    track.previewUrl &&
-                  isPlayingTrack ? (
-                    <Pause size={14} />
                   ) : (
-                    <Play size={14} />
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/[.05]">
+                      <Music
+                        size={16}
+                        className="text-white/35"
+                      />
+                    </div>
                   )}
-                </button>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    selectMusic(track)
-                  }
-                  className="rounded-xl bg-white/[.08] px-3 py-2 text-xs font-medium text-white hover:bg-white/[.13]"
-                >
-                  Add
-                </button>
-              </div>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-white">
+                      {track.title}
+                    </p>
+
+                    <p className="truncate text-xs text-white/35">
+                      {track.artist}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      toggleMusicPreview(
+                        track
+                      )
+                    }
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-white/65 hover:bg-white/[.06]"
+                  >
+                    {playingTrackUrl ===
+                      track.previewUrl &&
+                    isPlayingTrack ? (
+                      <Pause
+                        size={14}
+                      />
+                    ) : (
+                      <Play
+                        size={14}
+                      />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      selectMusic(
+                        track
+                      )
+                    }
+                    className="rounded-xl bg-white/[.08] px-3 py-2 text-xs font-medium text-white hover:bg-white/[.13]"
+                  >
+                    Add
+                  </button>
+                </div>
+              )
+            )}
           </div>
         )}
 
         <p className="mt-4 text-[11px] leading-5 text-white/30">
-          Online previews are used for selection and preview. Publishing requires
-          the server to be able to retrieve the selected audio source.
+          Online previews are used for selection and preview. Publishing with music requires server processing.
         </p>
       </div>
 
@@ -2098,34 +2461,39 @@ function Upload({ onComplete }) {
             </p>
 
             <p className="text-xs text-white/35">
-              Applied during final processing.
+              Applied only when you publish with processing enabled.
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          {AUDIO_ENHANCEMENTS.map(item => (
-            <button
-              type="button"
-              key={item.id}
-              onClick={() =>
-                setAudioEnhancement(item.id)
-              }
-              className={`rounded-2xl border p-3 text-left transition ${
-                audioEnhancement === item.id
-                  ? 'border-white/25 bg-white/[.09]'
-                  : 'border-white/10 bg-white/[.025] hover:bg-white/[.05]'
-              }`}
-            >
-              <p className="text-xs font-semibold text-white">
-                {item.name}
-              </p>
+          {AUDIO_ENHANCEMENTS.map(
+            item => (
+              <button
+                type="button"
+                key={item.id}
+                onClick={() =>
+                  setAudioEnhancement(
+                    item.id
+                  )
+                }
+                className={`rounded-2xl border p-3 text-left transition ${
+                  audioEnhancement ===
+                  item.id
+                    ? 'border-white/25 bg-white/[.09]'
+                    : 'border-white/10 bg-white/[.025] hover:bg-white/[.05]'
+                }`}
+              >
+                <p className="text-xs font-semibold text-white">
+                  {item.name}
+                </p>
 
-              <p className="mt-1 text-[10px] leading-4 text-white/35">
-                {item.description}
-              </p>
-            </button>
-          ))}
+                <p className="mt-1 text-[10px] leading-4 text-white/35">
+                  {item.description}
+                </p>
+              </button>
+            )
+          )}
         </div>
       </div>
     </div>
@@ -2157,10 +2525,13 @@ function Upload({ onComplete }) {
               type="button"
               key={item.id}
               onClick={() =>
-                setSelectedFilter(item.id)
+                setSelectedFilter(
+                  item.id
+                )
               }
               className={`overflow-hidden rounded-xl border transition ${
-                selectedFilter === item.id
+                selectedFilter ===
+                item.id
                   ? 'border-white/40 bg-white/[.08]'
                   : 'border-white/10 bg-white/[.025]'
               }`}
@@ -2201,7 +2572,9 @@ function Upload({ onComplete }) {
         <input
           value={coverText}
           onChange={event =>
-            setCoverText(event.target.value)
+            setCoverText(
+              event.target.value
+            )
           }
           placeholder="Optional cover text"
           maxLength={70}
@@ -2209,15 +2582,22 @@ function Upload({ onComplete }) {
         />
 
         <div className="mt-3 flex gap-2">
-          {['none', 'dark', 'light'].map(style => (
+          {[
+            'none',
+            'dark',
+            'light'
+          ].map(style => (
             <button
               type="button"
               key={style}
               onClick={() =>
-                setCoverBadgeStyle(style)
+                setCoverBadgeStyle(
+                  style
+                )
               }
               className={`rounded-xl border px-3 py-2 text-xs ${
-                coverBadgeStyle === style
+                coverBadgeStyle ===
+                style
                   ? 'border-white/30 bg-white/[.08] text-white'
                   : 'border-white/10 text-white/40'
               }`}
@@ -2254,7 +2634,9 @@ function Upload({ onComplete }) {
           <input
             value={tags}
             onChange={event =>
-              setTags(event.target.value)
+              setTags(
+                event.target.value
+              )
             }
             placeholder="Tags, separated by commas"
             className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/25"
@@ -2263,7 +2645,9 @@ function Upload({ onComplete }) {
           <input
             value={mentions}
             onChange={event =>
-              setMentions(event.target.value)
+              setMentions(
+                event.target.value
+              )
             }
             placeholder="Mentions, separated by commas"
             className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/25"
@@ -2278,7 +2662,9 @@ function Upload({ onComplete }) {
             <input
               value={location}
               onChange={event =>
-                setLocation(event.target.value)
+                setLocation(
+                  event.target.value
+                )
               }
               placeholder="Location"
               className="w-full rounded-xl border border-white/10 bg-black/20 py-3 pl-9 pr-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/25"
@@ -2332,11 +2718,18 @@ function Upload({ onComplete }) {
               Layers
             ]
           ].map(
-            ([label, value, setter, Icon]) => (
+            ([
+              label,
+              value,
+              setter,
+              Icon
+            ]) => (
               <button
                 type="button"
                 key={label}
-                onClick={() => setter(!value)}
+                onClick={() =>
+                  setter(!value)
+                }
                 className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left hover:bg-white/[.04]"
               >
                 <Icon
@@ -2370,7 +2763,9 @@ function Upload({ onComplete }) {
           <button
             type="button"
             onClick={() =>
-              setAgeRestricted(!ageRestricted)
+              setAgeRestricted(
+                !ageRestricted
+              )
             }
             className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left hover:bg-white/[.04]"
           >
@@ -2427,7 +2822,9 @@ function Upload({ onComplete }) {
         <textarea
           value={caption}
           onChange={event =>
-            setCaption(event.target.value)
+            setCaption(
+              event.target.value
+            )
           }
           maxLength={2200}
           rows={5}
@@ -2459,33 +2856,38 @@ function Upload({ onComplete }) {
         </div>
 
         <div className="grid grid-cols-3 gap-2">
-          {PRIVACY_OPTIONS.map(option => {
-            const Icon = option.icon;
+          {PRIVACY_OPTIONS.map(
+            option => {
+              const Icon = option.icon;
 
-            return (
-              <button
-                type="button"
-                key={option.id}
-                onClick={() =>
-                  setPrivacy(option.id)
-                }
-                className={`rounded-2xl border p-3 transition ${
-                  privacy === option.id
-                    ? 'border-white/30 bg-white/[.09]'
-                    : 'border-white/10 bg-white/[.025]'
-                }`}
-              >
-                <Icon
-                  size={17}
-                  className="mx-auto text-white/65"
-                />
+              return (
+                <button
+                  type="button"
+                  key={option.id}
+                  onClick={() =>
+                    setPrivacy(
+                      option.id
+                    )
+                  }
+                  className={`rounded-2xl border p-3 transition ${
+                    privacy ===
+                    option.id
+                      ? 'border-white/30 bg-white/[.09]'
+                      : 'border-white/10 bg-white/[.025]'
+                  }`}
+                >
+                  <Icon
+                    size={17}
+                    className="mx-auto text-white/65"
+                  />
 
-                <span className="mt-2 block text-xs text-white/70">
-                  {option.label}
-                </span>
-              </button>
-            );
-          })}
+                  <span className="mt-2 block text-xs text-white/70">
+                    {option.label}
+                  </span>
+                </button>
+              );
+            }
+          )}
         </div>
 
         <div className="mt-4">
@@ -2496,19 +2898,23 @@ function Upload({ onComplete }) {
           <select
             value={category}
             onChange={event =>
-              setCategory(event.target.value)
+              setCategory(
+                event.target.value
+              )
             }
             className="made-upload-select w-full rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none"
           >
-            {CATEGORIES.map(item => (
-              <option
-                key={item}
-                value={item}
-                className="bg-neutral-900"
-              >
-                {item}
-              </option>
-            ))}
+            {CATEGORIES.map(
+              item => (
+                <option
+                  key={item}
+                  value={item}
+                  className="bg-neutral-900"
+                >
+                  {item}
+                </option>
+              )
+            )}
           </select>
         </div>
       </div>
@@ -2517,7 +2923,9 @@ function Upload({ onComplete }) {
         <button
           type="button"
           onClick={() =>
-            setScheduleEnabled(!scheduleEnabled)
+            setScheduleEnabled(
+              !scheduleEnabled
+            )
           }
           className="flex w-full items-center gap-3 text-left"
         >
@@ -2606,14 +3014,52 @@ function Upload({ onComplete }) {
 
           <div>
             <p className="text-sm font-semibold text-white">
-              Final processing
+              Smart upload processing
             </p>
 
             <p className="mt-1 text-xs leading-5 text-white/40">
-              Your source video is uploaded to secure storage. The backend then
-              converts it into a browser-friendly MP4 and embeds the selected
-              music into the final file before publishing.
+              Your video uploads directly to private storage. When no editing or audio processing is requested, Made Universe publishes the uploaded file directly without sending it through the processing server.
             </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+          <div className="flex items-center gap-3">
+            {needsServerProcessing ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="text-amber-300"
+                />
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-white">
+                    Server processing required
+                  </p>
+
+                  <p className="mt-1 text-[10px] text-white/35">
+                    Your selected edits will be processed before publishing.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Check
+                  size={16}
+                  className="text-emerald-300"
+                />
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-white">
+                    Fast upload enabled
+                  </p>
+
+                  <p className="mt-1 text-[10px] text-white/35">
+                    No FFmpeg processing is required for this video.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -2734,6 +3180,7 @@ function Upload({ onComplete }) {
         <div className="hidden items-center gap-2 md:flex">
           {tabs.map(tab => {
             const Icon = tab.icon;
+
             const isActive =
               activeTab === tab.id;
 
@@ -2744,7 +3191,9 @@ function Upload({ onComplete }) {
                 onClick={() => {
                   if (!uploading) {
                     setUploadError('');
-                    setActiveTab(tab.id);
+                    setActiveTab(
+                      tab.id
+                    );
                   }
                 }}
                 disabled={uploading}
@@ -2763,7 +3212,8 @@ function Upload({ onComplete }) {
 
         <div className="ml-3 flex items-center gap-2">
           <span className="hidden text-xs text-white/30 sm:block">
-            {activeTabIndex + 1}/{tabs.length}
+            {activeTabIndex + 1}/
+            {tabs.length}
           </span>
 
           <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,.6)]" />
@@ -2791,8 +3241,10 @@ function Upload({ onComplete }) {
               <div className="grid grid-cols-4 gap-1 rounded-2xl border border-white/10 bg-white/[.025] p-1">
                 {tabs.map(tab => {
                   const Icon = tab.icon;
+
                   const active =
-                    activeTab === tab.id;
+                    activeTab ===
+                    tab.id;
 
                   return (
                     <button
@@ -2801,7 +3253,9 @@ function Upload({ onComplete }) {
                       onClick={() => {
                         if (!uploading) {
                           setUploadError('');
-                          setActiveTab(tab.id);
+                          setActiveTab(
+                            tab.id
+                          );
                         }
                       }}
                       disabled={uploading}
@@ -2851,11 +3305,12 @@ function Upload({ onComplete }) {
               </div>
             )}
 
-            {uploadMessage && !uploading && (
-              <div className="mt-5 rounded-2xl border border-emerald-400/15 bg-emerald-500/10 px-4 py-3 text-sm leading-6 text-emerald-100">
-                {uploadMessage}
-              </div>
-            )}
+            {uploadMessage &&
+              !uploading && (
+                <div className="mt-5 rounded-2xl border border-emerald-400/15 bg-emerald-500/10 px-4 py-3 text-sm leading-6 text-emerald-100">
+                  {uploadMessage}
+                </div>
+              )}
           </div>
         </main>
       </div>
@@ -2872,7 +3327,8 @@ function Upload({ onComplete }) {
                   />
 
                   <span className="truncate text-xs font-medium text-white/75">
-                    {uploadStage || 'Processing'}
+                    {uploadStage ||
+                      'Processing'}
                   </span>
                 </div>
 
@@ -2887,7 +3343,9 @@ function Upload({ onComplete }) {
                         0,
                         Math.min(
                           100,
-                          Number(uploadProgress) || 0
+                          Number(
+                            uploadProgress
+                          ) || 0
                         )
                       )}%`
                     }}
@@ -2912,9 +3370,9 @@ function Upload({ onComplete }) {
                 </p>
 
                 <p className="mt-1 text-[10px] text-white/30">
-                  {hasMusic
-                    ? 'Video + music will be merged into one final MP4.'
-                    : 'Ready when you are.'}
+                  {needsServerProcessing
+                    ? 'Server processing will be used for your selected edits.'
+                    : 'Fast direct-to-storage upload is ready.'}
                 </p>
               </div>
             )}
@@ -2923,7 +3381,9 @@ function Upload({ onComplete }) {
           <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
             <button
               type="button"
-              onClick={goToPreviousTab}
+              onClick={
+                goToPreviousTab
+              }
               disabled={
                 uploading ||
                 activeTabIndex === 0
@@ -2941,17 +3401,23 @@ function Upload({ onComplete }) {
             tabs.length - 1 ? (
               <button
                 type="button"
-                onClick={goToNextTab}
+                onClick={
+                  goToNextTab
+                }
                 disabled={uploading}
                 className="flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Continue
-                <ChevronRight size={17} />
+                <ChevronRight
+                  size={17}
+                />
               </button>
             ) : (
               <button
                 type="button"
-                onClick={handleUpload}
+                onClick={
+                  handleUpload
+                }
                 disabled={
                   uploading ||
                   !videoFile
@@ -2968,7 +3434,9 @@ function Upload({ onComplete }) {
                   </>
                 ) : (
                   <>
-                    <UploadCloud size={17} />
+                    <UploadCloud
+                      size={17}
+                    />
                     {scheduleEnabled
                       ? 'Schedule'
                       : 'Publish'}
