@@ -126,13 +126,8 @@ function getSafeCurrentTime(value, duration = 0) {
   const safeDuration = getSafeDuration(duration);
   const time = Number(value);
 
-  if (!Number.isFinite(time) || time < 0) {
-    return 0;
-  }
-
-  if (!safeDuration) {
-    return 0;
-  }
+  if (!Number.isFinite(time) || time < 0) return 0;
+  if (!safeDuration) return 0;
 
   return Math.min(time, safeDuration);
 }
@@ -142,19 +137,14 @@ function seekMediaSafely(media, requestedTime = 0) {
 
   const duration = Number(media.duration);
 
-  if (!Number.isFinite(duration) || duration <= 0) {
-    return false;
-  }
+  if (!Number.isFinite(duration) || duration <= 0) return false;
 
   const requested = Number(requestedTime);
   const safeRequested = Number.isFinite(requested) ? requested : 0;
-
   const maxSeek = Math.max(0, duration - 0.05);
   const safeTime = Math.min(Math.max(safeRequested, 0), maxSeek);
 
-  if (!Number.isFinite(safeTime)) {
-    return false;
-  }
+  if (!Number.isFinite(safeTime)) return false;
 
   try {
     media.currentTime = safeTime;
@@ -490,7 +480,12 @@ function Upload({ onComplete }) {
             const width = video.videoWidth || 1080;
             const height = video.videoHeight || 1920;
 
-            if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+            if (
+              !Number.isFinite(width) ||
+              !Number.isFinite(height) ||
+              width <= 0 ||
+              height <= 0
+            ) {
               finish(null);
               return;
             }
@@ -509,6 +504,7 @@ function Upload({ onComplete }) {
             }
 
             context.filter = filter.css === 'none' ? 'none' : filter.css;
+
             context.drawImage(
               video,
               0,
@@ -618,6 +614,7 @@ function Upload({ onComplete }) {
 
       const finish = result => {
         if (resolved) return;
+
         resolved = true;
         cleanup();
         resolve(result);
@@ -845,9 +842,7 @@ function Upload({ onComplete }) {
     const currentTime = Number(video.currentTime);
     const duration = getSafeDuration(video.duration);
 
-    if (!Number.isFinite(currentTime)) {
-      return;
-    }
+    if (!Number.isFinite(currentTime)) return;
 
     setPreviewCurrentTime(
       getSafeCurrentTime(currentTime, duration)
@@ -882,13 +877,12 @@ function Upload({ onComplete }) {
   const seekVideo = event => {
     const requested = Number(event.target.value);
     const video = videoRef.current;
+
     const duration = getSafeDuration(
       video?.duration || videoMetadata.duration
     );
 
-    if (!Number.isFinite(requested)) {
-      return;
-    }
+    if (!Number.isFinite(requested)) return;
 
     const safeValue = getSafeCurrentTime(
       requested,
@@ -1140,18 +1134,45 @@ function Upload({ onComplete }) {
     return uploadToB2(file, 'covers', () => {});
   };
 
+  /*
+   * IMPORTANT:
+   * The existing videos table does not currently expose all of the newer
+   * upload metadata columns used by the UI.
+   *
+   * The previous implementation sent fields such as:
+   * category, thumbnail_url, location, tags, mentions, privacy,
+   * allow_comments, allow_download, allow_duet, allow_stitch,
+   * age_restricted, filter_style, audio_enhancement, video_volume,
+   * music_volume and scheduled_at.
+   *
+   * PostgREST rejects the entire INSERT when even one of those columns
+   * does not exist. Therefore the publishing operation first uses only
+   * columns already confirmed to exist in the current videos table.
+   *
+   * This keeps B2/FFmpeg publishing working without deleting any UI
+   * functionality. The additional metadata can be enabled later after
+   * the corresponding columns are added to public.videos.
+   */
   const insertVideoRecord = async ({
     videoObjectKey,
     thumbnailObjectKey
   }) => {
+    if (!videoObjectKey) {
+      throw new Error(
+        'The processed video object key is missing.'
+      );
+    }
+
     const {
       data: userData,
       error: userError
     } = await supabase.auth.getUser();
 
-    if (userError) throw userError;
+    if (userError) {
+      throw userError;
+    }
 
-    if (!userData?.user) {
+    if (!userData?.user?.id) {
       throw new Error(
         'You must be signed in to publish.'
       );
@@ -1159,77 +1180,88 @@ function Upload({ onComplete }) {
 
     const userId = userData.user.id;
 
-    const cleanTags = tags
-      .split(',')
-      .map(tag => tag.trim().replace(/^#/, ''))
-      .filter(Boolean);
-
-    const cleanMentions = mentions
-      .split(',')
-      .map(item => item.trim().replace(/^@/, ''))
-      .filter(Boolean);
-
-    const payload = {
+    /*
+     * These are the existing/confirmed core columns from the current
+     * videos table. Do not add newer UI-only fields here until the DB
+     * schema contains them.
+     */
+    const corePayload = {
       user_id: userId,
       video_url: videoObjectKey,
       caption: caption.trim(),
       music_name: selectedMusic?.title || null,
       music_url: selectedMusic?.previewUrl || null,
-      is_private: privacy === 'private',
-      category,
-      thumbnail_url: thumbnailObjectKey || null,
-      location: location.trim() || null,
-      tags: cleanTags.length ? cleanTags : null,
-      mentions: cleanMentions.length ? cleanMentions : null,
-      privacy,
-      allow_comments: allowComments,
-      allow_download: allowDownload,
-      allow_duet: allowDuet,
-      allow_stitch: allowStitch,
-      age_restricted: ageRestricted,
-      filter_style: selectedFilter,
-      audio_enhancement: audioEnhancement,
-      video_volume: videoVolume,
-      music_volume: musicVolume,
-      scheduled_at:
-        scheduleEnabled && scheduleDate && scheduleTime
-          ? new Date(
-              `${scheduleDate}T${scheduleTime}`
-            ).toISOString()
-          : null
+      is_private: privacy === 'private'
     };
 
-    const firstAttempt = await supabase
+    console.log(
+      'Publishing video with core payload:',
+      corePayload
+    );
+
+    const {
+      data,
+      error
+    } = await supabase
       .from('videos')
-      .insert(payload)
+      .insert(corePayload)
       .select()
       .single();
 
-    if (!firstAttempt.error) {
-      return firstAttempt.data;
+    if (error) {
+      console.error(
+        'Supabase videos insert failed:',
+        {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        }
+      );
+
+      throw new Error(
+        error.message ||
+        'Unable to save the video record.'
+      );
     }
 
-    const basePayload = {
-      user_id: userId,
-      video_url: videoObjectKey,
-      caption: caption.trim(),
-      music_name: selectedMusic?.title || null,
-      music_url: selectedMusic?.previewUrl || null,
-      is_private: privacy === 'private',
-      category
+    /*
+     * Keep the returned object enriched locally so the rest of the app
+     * can immediately access the upload settings even before the DB
+     * metadata columns are added.
+     */
+    return {
+      ...data,
+      upload_metadata: {
+        category,
+        thumbnail_url: thumbnailObjectKey || null,
+        location: location.trim() || null,
+        tags: tags
+          .split(',')
+          .map(tag => tag.trim().replace(/^#/, ''))
+          .filter(Boolean),
+        mentions: mentions
+          .split(',')
+          .map(item => item.trim().replace(/^@/, ''))
+          .filter(Boolean),
+        privacy,
+        allow_comments: allowComments,
+        allow_download: allowDownload,
+        allow_duet: allowDuet,
+        allow_stitch: allowStitch,
+        age_restricted: ageRestricted,
+        filter_style: selectedFilter,
+        audio_enhancement: audioEnhancement,
+        video_volume: videoVolume,
+        music_volume: musicVolume,
+        scheduled_at:
+          scheduleEnabled && scheduleDate && scheduleTime
+            ? new Date(
+                `${scheduleDate}T${scheduleTime}`
+              ).toISOString()
+            : null
+      }
     };
-
-    const fallback = await supabase
-      .from('videos')
-      .insert(basePayload)
-      .select()
-      .single();
-
-    if (fallback.error) {
-      throw fallback.error;
-    }
-
-    return fallback.data;
   };
 
   const handleUpload = async () => {
@@ -1268,7 +1300,9 @@ function Upload({ onComplete }) {
             'Uploading source video'
           );
 
-          setUploadMessage(`${progress}% uploaded`);
+          setUploadMessage(
+            `${progress}% uploaded`
+          );
 
           setUploadProgress(
             Math.round(progress * 0.35)
@@ -1334,7 +1368,10 @@ function Upload({ onComplete }) {
         await onComplete(record);
       }
     } catch (error) {
-      console.error('Upload failed:', error);
+      console.error(
+        'Upload failed:',
+        error
+      );
 
       setUploadError(
         error?.message ||
@@ -1395,6 +1432,7 @@ function Upload({ onComplete }) {
 
     if (activeTabIndex < tabs.length - 1) {
       setUploadError('');
+
       setActiveTab(
         tabs[activeTabIndex + 1].id
       );
@@ -1404,6 +1442,7 @@ function Upload({ onComplete }) {
   const goToPreviousTab = () => {
     if (activeTabIndex > 0) {
       setUploadError('');
+
       setActiveTab(
         tabs[activeTabIndex - 1].id
       );
@@ -1519,7 +1558,9 @@ function Upload({ onComplete }) {
           onEnded={() => setPreviewPlaying(false)}
           onError={() => setPreviewPlaying(false)}
           className="h-full w-full object-contain"
-          style={{ filter: filter.css }}
+          style={{
+            filter: filter.css
+          }}
         />
 
         <div className="absolute left-4 right-4 top-4 flex items-center justify-between">
@@ -2126,7 +2167,9 @@ function Upload({ onComplete }) {
             >
               <div
                 className="h-14 bg-gradient-to-br from-indigo-500/30 via-fuchsia-500/20 to-cyan-500/20"
-                style={{ filter: item.css }}
+                style={{
+                  filter: item.css
+                }}
               />
 
               <span className="block truncate px-1.5 py-2 text-[10px] text-white/65">
@@ -2769,6 +2812,7 @@ function Upload({ onComplete }) {
                       }`}
                     >
                       <Icon size={15} />
+
                       <span className="truncate">
                         {tab.label}
                       </span>
@@ -2828,15 +2872,16 @@ function Upload({ onComplete }) {
                   />
 
                   <span className="truncate text-xs font-medium text-white/75">
-                    {uploadStage ||
-                      'Processing'}
+                    {uploadStage || 'Processing'}
                   </span>
                 </div>
 
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                   <motion.div
                     className="h-full rounded-full bg-white"
-                    initial={{ width: 0 }}
+                    initial={{
+                      width: 0
+                    }}
                     animate={{
                       width: `${Math.max(
                         0,
@@ -2886,6 +2931,7 @@ function Upload({ onComplete }) {
               className="flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-4 text-sm text-white/70 transition hover:bg-white/[.08] disabled:cursor-not-allowed disabled:opacity-25"
             >
               <ChevronLeft size={17} />
+
               <span className="hidden sm:inline">
                 Back
               </span>
