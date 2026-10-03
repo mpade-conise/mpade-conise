@@ -58,7 +58,9 @@ const JoinAsGuest = () => {
   const lastRequestRef = useRef(null);
   const currentUserIdRef = useRef(null);
   const hostUserIdRef = useRef(null);
-  const reconnectAttemptsRef = useRef(0);\n  const approvalInFlightRef = useRef(false);\n  const approvedRequestIdRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const approvalInFlightRef = useRef(false);
+  const approvedRequestIdRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [mediaError, setMediaError] = useState('');
