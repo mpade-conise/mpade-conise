@@ -151,6 +151,8 @@ export const useStreamWebRTC = (
     setPrimaryRemoteStream
   ] = useState(null);
 
+  const [remoteStreams, setRemoteStreams] = useState({});
+
   /*
    * ============================================================
    * STREAM CLEANUP
@@ -370,13 +372,13 @@ export const useStreamWebRTC = (
 
   const bindRemoteStreamToDOM =
     useCallback(
-      stream => {
+      (stream, peerId = null) => {
         if (!stream) {
           return;
         }
 
         const streamKey =
-          stream.id || 'primary';
+          peerId || stream.id || 'primary';
 
         const previousStream =
           remoteStreamsRef.current[
@@ -386,6 +388,11 @@ export const useStreamWebRTC = (
         remoteStreamsRef.current[
           streamKey
         ] = stream;
+
+        setRemoteStreams(previous => ({
+          ...previous,
+          [streamKey]: stream
+        }));
 
         setPrimaryRemoteStream(
           previous => {
@@ -1643,6 +1650,15 @@ export const useStreamWebRTC = (
           peerId
         ];
 
+        setRemoteStreams(previous => {
+          if (!Object.prototype.hasOwnProperty.call(previous, peerId)) {
+            return previous;
+          }
+          const next = { ...previous };
+          delete next[peerId];
+          return next;
+        });
+
         negotiatingPeersRef.current.delete(
           peerId
         );
@@ -1985,7 +2001,8 @@ export const useStreamWebRTC = (
 
           if (remoteStream) {
             bindRemoteStreamToDOM(
-              remoteStream
+              remoteStream,
+              targetSocketId
             );
           }
         };
@@ -2795,6 +2812,8 @@ export const useStreamWebRTC = (
     hardwareReady,
 
     primaryRemoteStream,
+
+    remoteStreams,
 
     localStream,
 
