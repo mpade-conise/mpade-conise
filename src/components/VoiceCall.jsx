@@ -55,6 +55,8 @@ const VoiceCall = () => {
 
   const peerUserId = searchParams.get('userId');
   const URLRole = searchParams.get('role');
+  const callId = searchParams.get('callId') || crypto.randomUUID();
+  const requestedRoomId = searchParams.get('roomId');
 
   const [currentUserId, setCurrentUserId] = useState(null);
   const [peerProfile, setPeerProfile] = useState(null);
@@ -220,7 +222,8 @@ const VoiceCall = () => {
         streamId: roomId,
         offer: pc.localDescription,
         targetViewerId: peerUserId,
-        to: peerUserId
+        to: peerUserId,
+        callId
       });
 
       console.log('📤 WebRTC offer sent.');
@@ -453,7 +456,7 @@ const VoiceCall = () => {
         ? 'caller'
         : 'receiver';
 
-    const roomId = [currentUserId, peerUserId]
+    const roomId = requestedRoomId || [currentUserId, peerUserId]
       .sort()
       .join('-');
 
@@ -728,6 +731,7 @@ const VoiceCall = () => {
                 .maybeSingle();
 
             const callSignalData = {
+              callId,
               receiverId: peerUserId,
               to: peerUserId,
               targetUserId: peerUserId,
@@ -752,15 +756,6 @@ const VoiceCall = () => {
               callSignalData
             );
 
-            socket.emit(
-              'incoming_call_signal',
-              callSignalData
-            );
-
-            socket.emit(
-              'incoming_call',
-              callSignalData
-            );
 
             // -----------------------------------------------
             // Supabase realtime fallback
