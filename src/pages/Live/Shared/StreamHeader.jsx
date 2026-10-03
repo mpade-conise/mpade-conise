@@ -865,34 +865,22 @@ const StreamHeader = ({
     <>
       <header
         className="
-          absolute
-          top-0
-          left-0
-          right-0
-          z-50
-          pointer-events-none
-          select-none
-          px-2.5
-          pt-2.5
-          sm:px-4
-          sm:pt-4
+          absolute top-0 left-0 right-0 z-50 h-[10vh] max-h-[10%] overflow-hidden pointer-events-none select-none px-2 pt-1.5 sm:px-3 sm:pt-2
         "
       >
-        <div className="w-full max-w-screen-2xl mx-auto flex flex-col gap-2">
+        <div className="w-full max-w-screen-2xl mx-auto flex flex-col gap-1">
           <div className="flex items-start justify-between gap-2 min-w-0">
             <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 pointer-events-auto">
               <div
                 className="
                   flex items-center min-w-0 gap-1.5 sm:gap-2
-                  rounded-2xl border border-white/10
-                  bg-zinc-950/80 backdrop-blur-xl
-                  px-1.5 py-1.5
+                  rounded-xl border border-white/10 bg-zinc-950/80 backdrop-blur-xl px-1 py-1
                   shadow-lg shadow-black/30
                 "
               >
                 <div
                   className="
-                    relative h-9 w-9 sm:h-10 sm:w-10
+                    relative h-7 w-7 sm:h-8 sm:w-8
                     shrink-0 overflow-hidden rounded-full
                     border border-white/20 bg-zinc-800
                   "
@@ -998,10 +986,9 @@ const StreamHeader = ({
 
               <div
                 className="
-                  flex h-[42px] shrink-0
+                  flex h-8 shrink-0
                   items-center gap-1.5
-                  rounded-2xl border border-white/10
-                  bg-zinc-950/80 px-2.5 sm:px-3
+                  rounded-xl border border-white/10 bg-zinc-950/80 px-2
                   backdrop-blur-xl
                   shadow-lg shadow-black/30
                 "
@@ -1021,7 +1008,7 @@ const StreamHeader = ({
             <div className="flex items-center gap-1.5 shrink-0 pointer-events-auto">
               <div
                 className="
-                  hidden sm:flex h-[42px]
+                  hidden sm:flex h-8
                   items-center gap-2
                   rounded-2xl border border-white/10
                   bg-zinc-950/80 px-2.5
@@ -1066,7 +1053,7 @@ const StreamHeader = ({
                           key={gifter.sender_id}
                           title={`${gifter.profiles?.username || 'Top Gifter'} • ${formatGiftValue(gifter.price_total)}`}
                           className={`
-                            relative h-7 w-7 overflow-hidden
+                            relative h-6 w-6 overflow-hidden
                             rounded-full border-2 bg-zinc-900
                             ${rankClass}
                           `}
@@ -1102,7 +1089,7 @@ const StreamHeader = ({
                 disabled={isShareLoading}
                 aria-label="Share live stream"
                 className="
-                  flex h-[42px] w-[42px] shrink-0
+                  flex h-8 w-8 shrink-0
                   items-center justify-center
                   rounded-2xl border border-white/10
                   bg-zinc-950/80 text-zinc-200
@@ -1135,7 +1122,7 @@ const StreamHeader = ({
                     : 'Leave live stream'
                 }
                 className="
-                  flex h-[42px] w-[42px] shrink-0
+                  flex h-8 w-8 shrink-0
                   items-center justify-center
                   rounded-2xl border border-red-500/20
                   bg-red-500/10 text-red-400
@@ -1159,8 +1146,7 @@ const StreamHeader = ({
               <div
                 className="
                   min-w-0 max-w-full
-                  rounded-xl border border-white/10
-                  bg-zinc-950/75 px-2.5 py-2
+                  rounded-lg border border-white/10 bg-zinc-950/75 px-2 py-1
                   backdrop-blur-xl shadow-lg shadow-black/20
                 "
               >
@@ -1173,7 +1159,7 @@ const StreamHeader = ({
                 {(streamCategory ||
                   streamLanguage ||
                   streamRegion) && (
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+                  <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1">
                     {streamCategory && (
                       <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[7px] font-medium text-zinc-300">
                         {streamCategory}
@@ -1207,7 +1193,7 @@ const StreamHeader = ({
             <div className="flex min-w-0 flex-wrap items-center gap-1.5 pointer-events-auto">
               <div
                 className="
-                  flex h-7 items-center gap-1.5
+                  flex h-6 items-center gap-1
                   rounded-xl border border-white/10
                   bg-zinc-950/75 px-2.5
                   backdrop-blur-xl
@@ -1226,7 +1212,7 @@ const StreamHeader = ({
 
               <div
                 className={`
-                  flex h-7 items-center gap-1.5
+                  flex h-6 items-center gap-1
                   rounded-xl border px-2
                   backdrop-blur-xl
                   ${
@@ -1343,16 +1329,13 @@ const StreamHeader = ({
             <div
               className="
                 pointer-events-auto
-                w-[150px] sm:w-[200px]
-                shrink-0 rounded-xl
-                border border-white/10
-                bg-zinc-950/80 p-2
+                w-[120px] sm:w-[170px] shrink-0 rounded-lg border border-white/10 bg-zinc-950/80 p-1.5
                 backdrop-blur-xl
                 shadow-lg shadow-black/20
               "
               aria-label={`Gift goal ${Math.round(goalPercent)} percent complete`}
             >
-              <div className="mb-1.5 flex items-center justify-between gap-2">
+              <div className="mb-1 flex items-center justify-between gap-1">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <Target
                     size={11}
@@ -1392,205 +1375,9 @@ const StreamHeader = ({
                 </span>
               </div>
 
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{
                     width: `${goalPercent}%`
                   }}
-                  transition={{
-                    type: 'spring',
-                    stiffness: 50,
-                    damping: 15
-                  }}
-                  className={`
-                    h-full rounded-full
-                    ${
-                      isGoalExceeded
-                        ? 'bg-yellow-400'
-                        : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300'
-                    }
-                  `}
-                />
-              </div>
-
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-[7px] text-zinc-500">
-                  {Math.round(goalPercent)}% complete
-                </span>
-
-                {giftValue > 0 && (
-                  <span className="flex items-center gap-1 text-[7px] text-zinc-500">
-                    <Gift size={8} />
-                    {formatGiftValue(giftValue)}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{
-              opacity: 0,
-              y: -10,
-              scale: 0.96
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              scale: 1
-            }}
-            exit={{
-              opacity: 0,
-              y: -10,
-              scale: 0.96
-            }}
-            className="
-              pointer-events-none
-              fixed left-1/2 top-4 z-[100]
-              -translate-x-1/2
-              rounded-xl border
-              border-white/10
-              bg-zinc-950/95
-              px-3 py-2
-              shadow-2xl shadow-black/40
-              backdrop-blur-xl
-            "
-            role="status"
-            aria-live="polite"
-          >
-            <div className="flex items-center gap-2">
-              {toast.type === 'success' ? (
-                <CheckCircle2
-                  size={14}
-                  className="text-emerald-400"
-                />
-              ) : toast.type === 'error' ? (
-                <AlertCircle
-                  size={14}
-                  className="text-red-400"
-                />
-              ) : (
-                <Wifi
-                  size={14}
-                  className="text-cyan-400"
-                />
-              )}
-
-              <span className="text-[10px] font-medium text-white">
-                {toast.message}
-              </span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {leaveConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="
-              fixed inset-0 z-[90]
-              flex items-center justify-center
-              bg-black/60 px-4
-              backdrop-blur-sm
-              pointer-events-auto
-            "
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="leave-live-title"
-          >
-            <motion.div
-              initial={{
-                opacity: 0,
-                y: 12,
-                scale: 0.96
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-                scale: 1
-              }}
-              exit={{
-                opacity: 0,
-                y: 12,
-                scale: 0.96
-              }}
-              className="
-                w-full max-w-sm
-                rounded-2xl border
-                border-white/10
-                bg-zinc-950
-                p-5 shadow-2xl
-                shadow-black/50
-              "
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-400">
-                  <X size={18} />
-                </div>
-
-                <div className="min-w-0">
-                  <h2
-                    id="leave-live-title"
-                    className="text-sm font-semibold text-white"
-                  >
-                    Leave live stream?
-                  </h2>
-
-                  <p className="mt-1 text-xs leading-5 text-zinc-400">
-                    You are currently hosting this live.
-                    Leaving may end your active host session
-                    depending on the room controller.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLeaveConfirm(false)
-                  }
-                  className="
-                    flex-1 rounded-xl
-                    border border-white/10
-                    bg-white/5 px-3 py-2.5
-                    text-xs font-semibold
-                    text-zinc-200 transition
-                    hover:bg-white/10
-                  "
-                >
-                  Stay
-                </button>
-
-                <button
-                  type="button"
-                  onClick={confirmLeave}
-                  className="
-                    flex-1 rounded-xl
-                    bg-red-500 px-3 py-2.5
-                    text-xs font-semibold
-                    text-white transition
-                    hover:bg-red-400
-                    active:scale-[0.98]
-                  "
-                >
-                  Leave
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
-  );
-};
-
-export default StreamHeader;
