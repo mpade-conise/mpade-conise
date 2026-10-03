@@ -39,7 +39,9 @@ const VideoCall = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const peerUserId = searchParams.get('userId');
-  const URLRole = searchParams.get('role'); 
+  const URLRole = searchParams.get('role');
+  const callId = searchParams.get('callId') || crypto.randomUUID();
+  const requestedRoomId = searchParams.get('roomId');
   
   const [currentUserId, setCurrentUserId] = useState(null);
   const [peerProfile, setPeerProfile] = useState(null);
@@ -58,6 +60,9 @@ const VideoCall = () => {
   const localStreamRef = useRef(null);
   const screenTrackRef = useRef(null);
   const iceQueueRef = useRef([]);
+  const remoteEndedRef = useRef(false);
+  const cleanupSentRef = useRef(false);
+  const iceRestartingRef = useRef(false);
   
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -140,7 +145,7 @@ const VideoCall = () => {
       ? URLRole 
       : (currentUserId < peerUserId ? 'caller' : 'receiver');
       
-    const roomId = [currentUserId, peerUserId].sort().join("-");
+    const roomId = requestedRoomId || [currentUserId, peerUserId].sort().join("-");
 
     console.log(`Setting up signaling as [${callRole}] for Room: ${roomId}`);
 
@@ -200,7 +205,8 @@ const VideoCall = () => {
               roomId: roomId,
               streamId: roomId,
               candidate: event.candidate,
-              to: peerUserId
+              to: peerUserId,
+              callId
             });
           }
         };
@@ -246,8 +252,6 @@ const VideoCall = () => {
             };
 
             socket.emit('initiate_call_signal', callSignalData);
-            socket.emit('incoming_call_signal', callSignalData);
-            socket.emit('incoming_call', callSignalData);
 
             // Supabase Realtime broadcast fallback for instant popup
             const realtimeChan = supabase.channel(`user-call-signals-${peerUserId}`);
@@ -293,7 +297,8 @@ const VideoCall = () => {
               roomId: roomId,
               streamId: roomId, 
               answer,
-              to: peerUserId
+              to: peerUserId,
+              callId
             });
 
             await processIceQueue();
@@ -329,7 +334,10 @@ const VideoCall = () => {
         });
 
         socket.on('peer_hung_up', () => {
-          if (isComponentMounted) cleanUpCall();
+          if (isComponentMounted) {
+            remoteEndedRef.current = true;
+            cleanUpCall(false);
+          }
         });
 
         // In-Call Chat & Reaction Event Listeners
@@ -357,7 +365,7 @@ const VideoCall = () => {
       isComponentMounted = false;
       cleanUpCall();
     };
-  }, [currentUserId, peerUserId, URLRole]); 
+  }, [currentUserId, peerUserId, URLRole, requestedRoomId, callId]); 
 
   // Toggle Screen Sharing
   const toggleScreenShare = async () => {
@@ -438,7 +446,7 @@ const VideoCall = () => {
     }
   }, [isVideoOff]);
 
-  const cleanUpCall = () => {
+  const cleanUpCall = (notifyPeer = true) => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
@@ -448,25 +456,11 @@ const VideoCall = () => {
       pcRef.current = null;
     }
     if (socketRef.current && peerUserId && peerUserId !== 'undefined') {
-      const roomId = [currentUserId, peerUserId].sort().join("-");
-      const cancelPayload = { roomId, to: peerUserId, receiverId: peerUserId, callerId: currentUserId };
-
-      socketRef.current.emit('reject_incoming_call', cancelPayload);
-      socketRef.current.emit('call_cancelled_by_caller', cancelPayload);
-      socketRef.current.emit('decline_call', cancelPayload);
-      socketRef.current.emit('cancel_call_signal', cancelPayload);
-
-      const realtimeChan = supabase.channel(`user-call-signals-${peerUserId}`);
-      realtimeChan.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          realtimeChan.send({
-            type: 'broadcast',
-            event: 'cancel_call_broadcast',
-            payload: cancelPayload
-          });
-        }
-      });
-
+      const roomId = requestedRoomId || [currentUserId, peerUserId].sort().join("-");
+      if (notifyPeer && !cleanupSentRef.current && !remoteEndedRef.current) {
+        cleanupSentRef.current = true;
+        socketRef.current.emit('end_call', { roomId, to: peerUserId, receiverId: peerUserId, callerId: currentUserId, userId: currentUserId, callId });
+      }
       socketRef.current.disconnect();
       socketRef.current = null;
     }
