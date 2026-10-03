@@ -20,6 +20,7 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader';
 import BattleOverlay from './BattleOverlay';
 import SettingsPanel from '../Shared/setting';
+import GuestManager from '../Shared/GuestManager';
 
 const StreamDashboard = () => {
   const { streamId } = useParams();
@@ -48,6 +49,8 @@ const StreamDashboard = () => {
   const [battleScores, setBattleScores] = useState({ host: 0, challenger: 0 });
   const [peakViewers, setPeakViewers] = useState(0);
   const [startedAt, setStartedAt] = useState(null);
+  const [activeGuests, setActiveGuests] = useState([]);
+  const [pendingGuestRequests, setPendingGuestRequests] = useState([]);
 
   // DOM node link to explicitly bind remote challenger streams from the WebRTC hook
   const challengerVideoRef = useRef(null);
@@ -730,6 +733,22 @@ const StreamDashboard = () => {
                   <li>
                     <button
                       type="button"
+                      onClick={() => openPanel('guests')}
+                      title="Guest requests"
+                      className={`relative p-2.5 sm:p-3 rounded-full transition-colors ${activePanel === 'guests' ? 'bg-cyan-400 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                    >
+                      <UserPlus size={16} />
+                      {pendingGuestRequests.length > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center border border-zinc-950">
+                          {pendingGuestRequests.length > 9 ? '9+' : pendingGuestRequests.length}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+
+                  <li>
+                    <button
+                      type="button"
                       onClick={() => openPanel('battle')}
                       title="Battle"
                       className={`p-2.5 sm:p-3 rounded-full transition-colors ${activePanel === 'battle' || isBattleMode ? 'bg-cyan-400 text-black' : 'bg-white/5 text-white hover:bg-white/10'}`}
@@ -977,6 +996,18 @@ const StreamDashboard = () => {
                   chatFilter={chatFilter}
                   onChatFilterChange={handleChatFilterChange}
                   onClose={() => setActivePanel(null)}
+                />
+              )}
+
+              {activePanel === 'guests' && (
+                <GuestManager
+                  streamId={streamId}
+                  activeGuests={activeGuests}
+                  setActiveGuests={setActiveGuests}
+                  pendingRequests={pendingGuestRequests}
+                  setPendingRequests={setPendingGuestRequests}
+                  socket={socket}
+                  onBack={() => setActivePanel(null)}
                 />
               )}
 
