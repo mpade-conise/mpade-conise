@@ -314,6 +314,7 @@ const VideoCard = ({ video, currentUser }) => {
   const [showComments, setShowComments] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showPlayIcon, setShowPlayIcon] = useState(false);
+  const [playback, setPlayback] = useState({ currentTime: 0, duration: 0, buffered: 0 });
 
   const [counts, setCounts] = useState({ 
     likes: Number(video?.likes_count) || 0, 
@@ -355,6 +356,11 @@ const VideoCard = ({ video, currentUser }) => {
     }, { threshold: 0.6 });
 
     if (containerRef.current) observer.observe(containerRef.current);
+    const media = videoRef.current;
+    media?.addEventListener('timeupdate', updatePlayback);
+    media?.addEventListener('loadedmetadata', updatePlayback);
+    media?.addEventListener('progress', updatePlayback);
+    media?.addEventListener('durationchange', updatePlayback);
 
     return () => {
       if (videoRef.current) {
@@ -367,9 +373,39 @@ const VideoCard = ({ video, currentUser }) => {
         audioRef.current.removeAttribute('src');
         audioRef.current.load();
       }
+      media?.removeEventListener('timeupdate', updatePlayback);
+      media?.removeEventListener('loadedmetadata', updatePlayback);
+      media?.removeEventListener('progress', updatePlayback);
+      media?.removeEventListener('durationchange', updatePlayback);
       observer.disconnect();
     };
   }, [video.id]);
+
+  const updatePlayback = () => {
+    const el = videoRef.current;
+    if (!el) return;
+    const duration = Number.isFinite(el.duration) ? el.duration : 0;
+    const currentTime = Number.isFinite(el.currentTime) ? el.currentTime : 0;
+    let buffered = 0;
+    try { if (el.buffered.length && duration > 0) buffered = Math.min(100, (el.buffered.end(el.buffered.length - 1) / duration) * 100); } catch {}
+    setPlayback({ currentTime, duration, buffered });
+  };
+
+  const seekVideo = (e) => {
+    e.stopPropagation();
+    const el = videoRef.current;
+    if (!el || !playback.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    el.currentTime = ratio * playback.duration;
+    updatePlayback();
+  };
+
+  const formatTime = (seconds) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+    const total = Math.floor(seconds);
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  };
 
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -409,6 +445,16 @@ const VideoCard = ({ video, currentUser }) => {
     >
       {video.music_url && <audio ref={audioRef} src={video.music_url} loop preload="auto" />}
       <video ref={videoRef} className="h-full w-full object-cover" src={video.video_url} loop playsInline muted={!!video.music_url} />
+      <div className="absolute left-0 right-0 bottom-0 z-30 px-3 pb-2 pointer-events-none">
+        <div className="flex items-center gap-2 text-[9px] font-mono font-bold text-white/80 mb-1.5">
+          <span>{formatTime(playback.currentTime)}</span><span className="ml-auto">{formatTime(playback.duration)}</span>
+        </div>
+        <button type="button" aria-label="Seek video" onClick={seekVideo} className="pointer-events-auto relative block w-full h-1.5 rounded-full bg-white/20 overflow-hidden cursor-pointer touch-none">
+          <span className="absolute inset-y-0 left-0 bg-white/20" style={{ width: `${playback.buffered}%` }} />
+          <span className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-400 via-pink-500 to-yellow-400 shadow-[0_0_10px_rgba(6,182,212,0.8)] transition-[width] duration-100" style={{ width: `${playback.duration ? Math.min(100, (playback.currentTime / playback.duration) * 100) : 0}%` }} />
+          <span className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] -translate-x-1/2" style={{ left: `${playback.duration ? Math.min(100, (playback.currentTime / playback.duration) * 100) : 0}%` }} />
+        </button>
+      </div>
 
       <AnimatePresence>
         {showPlayIcon && (
