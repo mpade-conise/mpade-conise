@@ -1801,7 +1801,7 @@ const Inbox = () => {
             )
         );
 
-        navigate(`/live/watch/${invite.stream_id}`);
+        navigate(`/live/watch/${invite.stream_id}?guest=1`);
       } catch (error) {
         console.error(
           "Accept invite error:",
