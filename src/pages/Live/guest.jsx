@@ -1045,7 +1045,7 @@ const GuestLiveSetup = () => {
   --------------------------------------------------------- */
 
   return (
-    <div className="min-h-[100dvh] bg-[#050507] text-white font-sans overflow-hidden relative">
+    <div className="min-h-[100dvh] bg-[#040507] text-white font-sans overflow-hidden relative selection:bg-cyan-400/20">
 
       {/* BACKGROUND */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -1058,11 +1058,11 @@ const GuestLiveSetup = () => {
           TOP BAR
       ===================================================== */}
 
-      <header className="relative z-50 border-b border-white/[0.07] bg-[#08080c]/90 backdrop-blur-2xl">
+      <header className="sticky top-0 relative z-50 border-b border-white/[0.08] bg-[#07080c]/95 backdrop-blur-2xl shadow-[0_8px_30px_rgba(0,0,0,0.25)]">
 
-        <div className="max-w-[1500px] mx-auto px-3 sm:px-5 lg:px-7 py-3">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-7 py-2.5">
 
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center justify-between gap-3">
 
             <div className="min-w-0 flex-1">
               <StreamHeader
@@ -1091,7 +1091,7 @@ const GuestLiveSetup = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
 
               <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06]">
                 <Circle
@@ -1173,18 +1173,18 @@ const GuestLiveSetup = () => {
           MAIN WORKSPACE
       ===================================================== */}
 
-      <main className="relative z-20 h-[calc(100dvh-150px)] overflow-y-auto">
+      <main className="relative z-20 h-[calc(100dvh-112px)] overflow-y-auto overscroll-contain scroll-smooth">
 
-        <div className="max-w-[1500px] mx-auto p-3 sm:p-5 lg:p-7">
+        <div className="max-w-[1600px] mx-auto p-3 sm:p-4 lg:p-5">
 
           {/* ROOM STATUS */}
-          <section className="mb-4">
+          <section className="mb-3">
 
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-white/[0.07] bg-[#0a0a0e]/90">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl border border-white/[0.08] bg-[#090b10]/90 shadow-lg shadow-black/10">
 
               <div className="flex items-center gap-3">
 
-                <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
                   <Radio
                     size={17}
                     className="text-cyan-400"
@@ -1233,16 +1233,16 @@ const GuestLiveSetup = () => {
           </section>
 
           {/* MAIN TWO COLUMN LAYOUT */}
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3.5 items-start">
 
             {/* =================================================
                 LEFT: STAGE
             ================================================= */}
 
-            <section className="space-y-4">
+            <section className="space-y-3">
 
               {/* HOST STAGE */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#09090d] overflow-hidden">
+              <div className="rounded-xl border border-white/[0.08] bg-[#080a0f]/95 overflow-hidden shadow-xl shadow-black/10">
 
                 <PanelHeader
                   title="Live Stage"
@@ -1255,9 +1255,9 @@ const GuestLiveSetup = () => {
                   }
                 />
 
-                <div className="p-2 sm:p-3">
+                <div className="p-2">
 
-                  <div className="relative aspect-video min-h-[260px] sm:min-h-[380px] lg:min-h-[480px] rounded-xl overflow-hidden bg-black border border-white/[0.08]">
+                  <div className="relative aspect-video min-h-[240px] sm:min-h-[360px] lg:min-h-[430px] rounded-xl overflow-hidden bg-black border border-white/[0.08] shadow-2xl shadow-black/30">
 
                     {isCamOn ? (
                       <video
@@ -1406,7 +1406,7 @@ const GuestLiveSetup = () => {
               </div>
 
               {/* GUEST SEATS */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#09090d] overflow-hidden">
+              <div className="rounded-xl border border-white/[0.08] bg-[#080a0f]/95 overflow-hidden shadow-xl shadow-black/10">
 
                 <PanelHeader
                   title="Co-Host Stage"
@@ -1433,9 +1433,9 @@ const GuestLiveSetup = () => {
                   }
                 />
 
-                <div className="p-3 sm:p-4">
+                <div className="p-2.5 sm:p-3">
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
 
                     {guestSlots.map(
                       slot => (
@@ -1529,7 +1529,7 @@ const GuestLiveSetup = () => {
                 RIGHT: CONTROL CENTER
             ================================================= */}
 
-            <aside className="space-y-4">
+            <aside className="space-y-3 xl:sticky xl:top-3 self-start">
 
               {/* ROOM CONTROLS */}
               <ControlPanel title="Room Controls">
@@ -2276,11 +2276,11 @@ const GuestLiveSetup = () => {
           BOTTOM NAV
       ===================================================== */}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.07] bg-[#07070a]/95 backdrop-blur-2xl">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.08] bg-[#06070b]/98 backdrop-blur-2xl shadow-[0_-10px_35px_rgba(0,0,0,0.3)]">
 
-        <div className="max-w-[1100px] mx-auto px-2 sm:px-4">
+        <div className="max-w-[1600px] mx-auto px-2 sm:px-4">
 
-          <div className="flex items-center justify-center gap-1 sm:gap-3 overflow-x-auto no-scrollbar py-2">
+          <div className="flex items-center justify-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar py-1.5">
 
             {tabs.map(tab => {
               const active =
@@ -2386,7 +2386,7 @@ const ControlPanel = ({
   badge,
   children
 }) => (
-  <section className="rounded-2xl border border-white/[0.08] bg-[#09090d] overflow-hidden">
+  <section className="rounded-xl border border-white/[0.08] bg-[#080a0f]/95 overflow-hidden shadow-lg shadow-black/10">
 
     <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
 
@@ -2402,7 +2402,7 @@ const ControlPanel = ({
 
     </div>
 
-    <div className="p-3">
+    <div className="p-2.5">
       {children}
     </div>
 
