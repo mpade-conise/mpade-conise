@@ -571,7 +571,7 @@ const StreamDashboard = () => {
     <div className="h-[100dvh] w-full bg-zinc-950 text-white overflow-hidden relative font-sans flex flex-row">
       {/* MAIN LIVE VIEWPORT */}
       <div className="relative flex-1 h-full min-w-0 overflow-hidden">
-        <GiftAlertOverlay activeGift={giftsEnabled ? activeGift : null} setActiveGift={setActiveGift} />
+        <GiftAlertOverlay gift={giftsEnabled ? activeGift : null} lowData={false} position="center" />
 
         {/* HEADER */}
         <div className="absolute top-0 left-0 right-0 h-[10%] z-[60] px-4 pt-4 bg-gradient-to-b from-black/80 via-black/30 to-transparent pointer-events-none">
