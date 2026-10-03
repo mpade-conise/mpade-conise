@@ -161,7 +161,8 @@ const VideoCall = () => {
           streamId: roomId, 
           offer, 
           targetViewerId: peerUserId,
-          to: peerUserId
+          to: peerUserId,
+          callId
         });
       } catch (err) {
         console.error("Failed creating signaling offer:", err);
