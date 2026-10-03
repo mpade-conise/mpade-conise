@@ -1122,7 +1122,7 @@ const StreamHeader = ({
                     : 'Leave live stream'
                 }
                 className="
-                  flex h-8 w-8 shrink-0
+                  flex h-[42px] w-[42px] shrink-0
                   items-center justify-center
                   rounded-2xl border border-red-500/20
                   bg-red-500/10 text-red-400
@@ -1212,7 +1212,7 @@ const StreamHeader = ({
 
               <div
                 className={`
-                  flex h-6 items-center gap-1
+                  flex h-7 items-center gap-1.5
                   rounded-xl border px-2
                   backdrop-blur-xl
                   ${
@@ -1381,3 +1381,199 @@ const StreamHeader = ({
                   animate={{
                     width: `${goalPercent}%`
                   }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 50,
+                    damping: 15
+                  }}
+                  className={`
+                    h-full rounded-full
+                    ${
+                      isGoalExceeded
+                        ? 'bg-yellow-400'
+                        : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300'
+                    }
+                  `}
+                />
+              </div>
+
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-[7px] text-zinc-500">
+                  {Math.round(goalPercent)}% complete
+                </span>
+
+                {giftValue > 0 && (
+                  <span className="flex items-center gap-1 text-[7px] text-zinc-500">
+                    <Gift size={8} />
+                    {formatGiftValue(giftValue)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: -10,
+              scale: 0.96
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: 1
+            }}
+            exit={{
+              opacity: 0,
+              y: -10,
+              scale: 0.96
+            }}
+            className="
+              pointer-events-none
+              fixed left-1/2 top-4 z-[100]
+              -translate-x-1/2
+              rounded-xl border
+              border-white/10
+              bg-zinc-950/95
+              px-3 py-2
+              shadow-2xl shadow-black/40
+              backdrop-blur-xl
+            "
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-center gap-2">
+              {toast.type === 'success' ? (
+                <CheckCircle2
+                  size={14}
+                  className="text-emerald-400"
+                />
+              ) : toast.type === 'error' ? (
+                <AlertCircle
+                  size={14}
+                  className="text-red-400"
+                />
+              ) : (
+                <Wifi
+                  size={14}
+                  className="text-cyan-400"
+                />
+              )}
+
+              <span className="text-[10px] font-medium text-white">
+                {toast.message}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {leaveConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="
+              fixed inset-0 z-[90]
+              flex items-center justify-center
+              bg-black/60 px-4
+              backdrop-blur-sm
+              pointer-events-auto
+            "
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-live-title"
+          >
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: 12,
+                scale: 0.96
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                scale: 1
+              }}
+              exit={{
+                opacity: 0,
+                y: 12,
+                scale: 0.96
+              }}
+              className="
+                w-full max-w-sm
+                rounded-2xl border
+                border-white/10
+                bg-zinc-950
+                p-5 shadow-2xl
+                shadow-black/50
+              "
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+                  <X size={18} />
+                </div>
+
+                <div className="min-w-0">
+                  <h2
+                    id="leave-live-title"
+                    className="text-sm font-semibold text-white"
+                  >
+                    Leave live stream?
+                  </h2>
+
+                  <p className="mt-1 text-xs leading-5 text-zinc-400">
+                    You are currently hosting this live.
+                    Leaving may end your active host session
+                    depending on the room controller.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLeaveConfirm(false)
+                  }
+                  className="
+                    flex-1 rounded-xl
+                    border border-white/10
+                    bg-white/5 px-3 py-2.5
+                    text-xs font-semibold
+                    text-zinc-200 transition
+                    hover:bg-white/10
+                  "
+                >
+                  Stay
+                </button>
+
+                <button
+                  type="button"
+                  onClick={confirmLeave}
+                  className="
+                    flex-1 rounded-xl
+                    bg-red-500 px-3 py-2.5
+                    text-xs font-semibold
+                    text-white transition
+                    hover:bg-red-400
+                    active:scale-[0.98]
+                  "
+                >
+                  Leave
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+};
+
+export default StreamHeader;
