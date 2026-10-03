@@ -1167,26 +1167,43 @@ function Upload({ onComplete }) {
       throw new Error('Media storage is not configured with a public delivery URL. Set B2_PUBLIC_URL_BASE on the backend before publishing.');
     }
 
-    await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', data.uploadUrl);
-      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      xhr.upload.onprogress = event => {
-        if (event.lengthComputable && onProgress) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          if (Number.isFinite(percent)) onProgress(Math.max(0, Math.min(100, percent)));
-        }
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve();
-        else reject(new Error(`B2 upload failed with status ${xhr.status}.`));
-      };
-      xhr.onerror = () => reject(new Error('Network error while uploading to B2.'));
-      xhr.onabort = () => reject(new Error('Upload was cancelled.'));
-      xhr.send(file);
-    });
+    const maxAttempts = 3;
+    let lastError = null;
 
-    return { objectKey: data.objectKey, objectUrl: data.objectUrl };
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', data.uploadUrl);
+          xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+          xhr.upload.onprogress = event => {
+            if (event.lengthComputable && onProgress) {
+              const percent = Math.round((event.loaded / event.total) * 100);
+              if (Number.isFinite(percent)) onProgress(Math.max(0, Math.min(100, percent)));
+            }
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else reject(new Error(`B2 upload failed with status ${xhr.status}.`));
+          };
+          xhr.onerror = () => reject(new Error('Network error while uploading to B2.'));
+          xhr.onabort = () => reject(new Error('Upload was cancelled.'));
+          xhr.send(file);
+        });
+
+        return { objectKey: data.objectKey, objectUrl: data.objectUrl };
+      } catch (error) {
+        lastError = error;
+
+        if (attempt >= maxAttempts || error?.message === 'Upload was cancelled.') break;
+
+        const delay = Math.min(4000, 800 * (2 ** (attempt - 1)));
+        setUploadMessage(`Upload interrupted. Retrying (${attempt + 1}/${maxAttempts})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError || new Error('B2 upload failed.');
   };
 
   const mergeVideoOnServer =
