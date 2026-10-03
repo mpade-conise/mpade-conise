@@ -233,7 +233,6 @@ const Messaging = () => {
   const [hudToast, setHudToast] = useState(null);
 
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [incomingCall, setIncomingCall] = useState(null);
 
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 
@@ -2001,104 +2000,6 @@ const Messaging = () => {
               className="text-cyan-400 animate-spin"
             />
             <span>{hudToast}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ===================================================
-          INCOMING CALL
-      =================================================== */}
-
-      <AnimatePresence>
-        {incomingCall && (
-          <motion.div
-            initial={{
-              opacity: 0
-            }}
-            animate={{
-              opacity: 1
-            }}
-            exit={{
-              opacity: 0
-            }}
-            className="fixed inset-0 bg-black/90 backdrop-blur-2xl flex flex-col items-center justify-center z-[140] p-6 text-center"
-          >
-            <div className="relative mb-6">
-
-              <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-500/20 via-pink-500/20 to-purple-500/20 border-2 border-cyan-400/60 flex items-center justify-center shadow-[0_0_30px_rgba(6,182,212,0.6)]">
-
-                {incomingCall.callType ===
-                'video' ? (
-                  <Video
-                    size={40}
-                    className="text-cyan-400"
-                  />
-                ) : (
-                  <Phone
-                    size={40}
-                    className="text-cyan-400"
-                  />
-                )}
-
-              </div>
-
-              <span className="absolute inset-0 rounded-full border border-cyan-400 animate-ping opacity-50" />
-            </div>
-
-            <div className="space-y-1 mb-8">
-
-              <span className="px-3 py-1 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded-full text-[10px] font-mono uppercase tracking-widest font-black">
-                {incomingCall.callType ===
-                'video'
-                  ? 'Holographic Video Stream'
-                  : 'Encrypted Audio Link'}
-              </span>
-
-              <h2 className="text-2xl font-black tracking-tight text-white mt-2">
-                Incoming Transmission
-              </h2>
-
-              <p className="text-sm text-zinc-400 font-medium">
-                @{incomingCall.callerName ||
-                  'user'} is requesting a secure
-                link
-              </p>
-            </div>
-
-            <div className="flex items-center gap-8">
-
-              <button
-                type="button"
-                onClick={
-                  declineIncomingCall
-                }
-                className="w-16 h-16 bg-gradient-to-tr from-red-600 to-rose-600 text-white rounded-2xl flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(244,63,94,0.5)] border border-rose-400/40"
-              >
-                <X size={24} />
-
-                <span className="text-[9px] font-black uppercase tracking-wider mt-0.5">
-                  Decline
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  acceptIncomingCall
-                }
-                className="w-16 h-16 bg-gradient-to-tr from-cyan-400 via-teal-400 to-emerald-400 text-black rounded-2xl flex flex-col items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_0_25px_rgba(6,182,212,0.8)] border border-cyan-300"
-              >
-                <Check
-                  size={26}
-                  className="stroke-[3px]"
-                />
-
-                <span className="text-[9px] font-black uppercase tracking-wider mt-0.5">
-                  Accept
-                </span>
-              </button>
-
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
