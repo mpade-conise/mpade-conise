@@ -850,6 +850,14 @@ const LivePlayer = () => {
     setGuestEngineOpen(true);
   };
 
+  useEffect(() => {
+    if (!streamId || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('guest') === '1') {
+      setGuestEngineOpen(true);
+    }
+  }, [streamId]);
+
   const handleGuestClose = () => {
     if (guestEngineRef.current) {
       if (guestState?.isRequesting) {
