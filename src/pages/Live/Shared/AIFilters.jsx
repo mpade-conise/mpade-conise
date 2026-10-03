@@ -242,6 +242,7 @@ const AIFilters = forwardRef(function AIFilters(
   const videoRef = useRef(null);
   const localStreamRef = useRef(null);
   const canvasRef = useRef(null);
+  const processedStreamRef = useRef(null);
   const frameAnimationRef = useRef(null);
 
   const [stream, setStream] = useState(externalStream);
@@ -831,51 +832,87 @@ const AIFilters = forwardRef(function AIFilters(
   const processFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-
     if (!video || !canvas) return;
 
-    if (
-      video.readyState >= 2 &&
-      video.videoWidth > 0 &&
-      video.videoHeight > 0
-    ) {
-      const context = canvas.getContext("2d", {
-        alpha: false
-      });
-
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      const context = canvas.getContext("2d", { alpha: false });
       if (context) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        const nextZoom = clamp(zoom, 1, 4);
+        const beautyAmount = clamp(beauty, 0, 100) / 100;
+        const backgroundAmount = clamp(backgroundBlur, 0, 100) / 100;
 
-        context.save();
-
-        if (isMirrored) {
-          context.translate(canvas.width, 0);
-          context.scale(-1, 1);
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
         }
 
-        context.drawImage(
-          video,
-          0,
-          0,
-          canvas.width,
-          canvas.height
-        );
+        context.clearRect(0, 0, width, height);
+        const cropWidth = width / nextZoom;
+        const cropHeight = height / nextZoom;
+        const cropX = (width - cropWidth) / 2;
+        const cropY = (height - cropHeight) / 2;
 
+        context.save();
+        if (isMirrored) {
+          context.translate(width, 0);
+          context.scale(-1, 1);
+        }
+        context.filter = effectiveFilter !== "none" ? effectiveFilter : "none";
+        context.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, width, height);
         context.restore();
+
+        if (beautyAmount > 0) {
+          context.save();
+          context.globalAlpha = 0.08 + beautyAmount * 0.2;
+          context.filter = \`blur(\${0.5 + beautyAmount * 2.2}px) saturate(\${1 + beautyAmount * 0.08})\`;
+          if (isMirrored) {
+            context.translate(width, 0);
+            context.scale(-1, 1);
+          }
+          context.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, width, height);
+          context.restore();
+        }
+
+        if (backgroundAmount > 0) {
+          context.save();
+          context.globalAlpha = backgroundAmount * 0.22;
+          context.filter = \`blur(\${backgroundAmount * 8}px)\`;
+          context.drawImage(canvas, 0, 0, width, height);
+          context.restore();
+        }
       }
     }
 
-    frameAnimationRef.current =
-      requestAnimationFrame(processFrame);
-  }, [isMirrored]);
+    frameAnimationRef.current = requestAnimationFrame(processFrame);
+  }, [backgroundBlur, beauty, effectiveFilter, isMirrored, zoom]);
+
+  const getProcessedStream = useCallback(() => {
+    const currentStream = localStreamRef.current || stream;
+    const canvas = canvasRef.current;
+    if (!currentStream || !canvas || typeof canvas.captureStream !== "function") return currentStream;
+
+    const capture = canvas.captureStream(fps || 30);
+    currentStream.getAudioTracks().forEach((track) => {
+      try { capture.addTrack(track); } catch {}
+    });
+
+    if (processedStreamRef.current) {
+      processedStreamRef.current.getVideoTracks().forEach((track) => {
+        try { track.stop(); } catch {}
+      });
+    }
+
+    processedStreamRef.current = capture;
+    return capture;
+  }, [fps, stream]);
 
   const apply = useCallback(() => {
-    const currentStream =
-      localStreamRef.current || stream;
-
+    const currentStream = localStreamRef.current || stream;
     if (!currentStream) return;
 
+    const processedStream = getProcessedStream();
     const settings = {
       filter: selectedFilter,
       filterName: selectedFilterObject.name,
@@ -889,34 +926,13 @@ const AIFilters = forwardRef(function AIFilters(
       facingMode,
       resolution,
       fps,
-      muted: isMuted
+      muted: isMuted,
+      processed: processedStream !== currentStream
     };
 
-    if (onApply) {
-      onApply(currentStream, settings);
-    }
-
-    if (onClose) {
-      onClose();
-    }
-  }, [
-    backgroundBlur,
-    beauty,
-    exposure,
-    facingMode,
-    fps,
-    intensity,
-    isMirrored,
-    isMuted,
-    onApply,
-    onClose,
-    resolution,
-    selectedFilter,
-    selectedFilterObject.name,
-    stream,
-    torchEnabled,
-    zoom
-  ]);
+    if (onApply) onApply(processedStream, settings);
+    if (onClose) onClose();
+  }, [backgroundBlur, beauty, exposure, facingMode, fps, getProcessedStream, intensity, isMirrored, isMuted, onApply, onClose, resolution, selectedFilter, selectedFilterObject.name, stream, torchEnabled, zoom]);
 
   const resetEffects = useCallback(() => {
     setSelectedFilter(defaultFilter);
@@ -936,7 +952,7 @@ const AIFilters = forwardRef(function AIFilters(
     ref,
     () => ({
       getStream: () =>
-        localStreamRef.current || stream,
+        processedStreamRef.current || localStreamRef.current || stream,
 
       getSettings: () => ({
         filter: selectedFilter,
@@ -956,6 +972,10 @@ const AIFilters = forwardRef(function AIFilters(
       restart,
 
       stop: () => {
+        if (processedStreamRef.current) {
+          processedStreamRef.current.getTracks().forEach((track) => { try { track.stop(); } catch {} });
+          processedStreamRef.current = null;
+        }
         stopLocalStream();
         attachStream(null);
         setCameraState("idle");
@@ -1090,6 +1110,13 @@ const AIFilters = forwardRef(function AIFilters(
     return () => {
       if (frameAnimationRef.current) {
         cancelAnimationFrame(frameAnimationRef.current);
+      }
+
+      if (processedStreamRef.current) {
+        processedStreamRef.current.getTracks().forEach((track) => {
+          try { track.stop(); } catch {}
+        });
+        processedStreamRef.current = null;
       }
 
       if (localStreamRef.current) {
@@ -1249,24 +1276,15 @@ const AIFilters = forwardRef(function AIFilters(
                   autoPlay
                   playsInline
                   muted
-                  className="h-full w-full object-contain"
-                  style={videoStyle}
+                  className="absolute h-px w-px opacity-0 pointer-events-none"
+                  aria-hidden="true"
                 />
 
-                {/* Background blur visual layer */}
-                {backgroundBlur > 0 && (
-                  <div
-                    className="pointer-events-none absolute inset-0"
-                    style={{
-                      backdropFilter: `blur(${
-                        backgroundBlur * 0.04
-                      }px)`,
-                      opacity:
-                        backgroundBlur / 100 * 0.25
-                    }}
-                  />
-                )}
-
+                <canvas
+                  ref={canvasRef}
+                  className="h-full w-full object-contain"
+                  aria-label="Processed live camera preview"
+                />
                 {/* Camera grid */}
                 {showGrid && (
                   <div className="pointer-events-none absolute inset-0">
@@ -1373,12 +1391,6 @@ const AIFilters = forwardRef(function AIFilters(
                 </div>
               </div>
 
-              {/* Hidden processing canvas */}
-              <canvas
-                ref={canvasRef}
-                className="pointer-events-none absolute -left-[99999px] top-0 h-px w-px opacity-0"
-                aria-hidden="true"
-              />
             </>
           ) : (
             renderPermissionState()
