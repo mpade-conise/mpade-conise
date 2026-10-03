@@ -1089,14 +1089,31 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
   ]);
 
   const handleLeavePanel = useCallback(async () => {
+    const guestId = currentUserIdRef.current || currentUserId;
+
+    setIsLiveOnPanel(false);
+    setIsRequesting(false);
+    setHostRemoteStream(null);
+    setIsReconnecting(false);
+    setReconnectMessage('');
+    approvedRequestIdRef.current = null;
+    lastRequestRef.current = null;
+
+    cleanupConnection();
+    stopLocalMedia();
+
     try {
-      if (currentUserId && streamId) {
-        await supabase
+      if (guestId && streamId) {
+        const { error } = await supabase
           .from('live_guest_requests')
           .update({ status: 'left' })
           .eq('stream_id', streamId)
-          .eq('user_id', currentUserId)
+          .eq('user_id', guestId)
           .in('status', ['approved', 'pending']);
+
+        if (error) {
+          console.warn('[LEAVE] Request update failed:', error);
+        }
       }
     } catch (error) {
       console.warn('[LEAVE] Request update failed:', error);
@@ -1105,14 +1122,9 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
     if (socketRef.current?.connected) {
       socketRef.current.emit('guest_left_panel', {
         streamId,
-        userId: currentUserIdRef.current
+        userId: guestId
       });
     }
-
-    setIsLiveOnPanel(false);
-    setIsRequesting(false);
-    cleanupConnection();
-    stopLocalMedia();
 
     if (!engineOnly) navigate(`/live/watch/${streamId}`);
   }, [
