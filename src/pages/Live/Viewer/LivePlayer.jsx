@@ -1057,7 +1057,9 @@ const LivePlayer = () => {
         ref={playerRef}
         className="relative w-full h-full z-0 overflow-hidden bg-black"
       >
-        <DynamicStreamGrid
+        {/* VIDEO STAGE: reserved 10% top header + 30% bottom interaction area. */}
+        <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-10 overflow-hidden bg-black">
+          <DynamicStreamGrid
           streamId={streamId}
           hostVideo={
             <VideoPlayer
@@ -1079,7 +1081,10 @@ const LivePlayer = () => {
           coHosts={activeCohostsList}
           isHostView={false}
           isBattleMode={isBattleMode}
+          className="h-full"
         />
+
+        </div>
 
         <JoinAsGuest
           ref={guestEngineRef}
@@ -1089,9 +1094,10 @@ const LivePlayer = () => {
         />
 
         {guestEngineOpen && (
-          <div className="absolute top-[18%] left-3 right-3 z-[46] pointer-events-none">
+          <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-[46] pointer-events-none overflow-hidden">
+            <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
             {guestState?.isLiveOnPanel ? (
-              <div className="w-36 sm:w-44 pointer-events-auto rounded-2xl overflow-hidden border border-cyan-300/50 bg-black/80 shadow-2xl">
+              <div className="w-40 sm:w-48 pointer-events-auto rounded-2xl overflow-hidden border border-cyan-300/50 bg-black/80 shadow-2xl">
                 <div className="relative aspect-[2/1] bg-zinc-950">
                   {guestState.localStream && guestState.assignedMode === 'video' && guestState.isCamOn ? (
                     <video
@@ -1145,7 +1151,7 @@ const LivePlayer = () => {
                 </div>
               </div>
             ) : (
-              <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-black/85 backdrop-blur-2xl p-3 shadow-2xl pointer-events-auto">
+              <div className="w-[min(90vw,360px)] rounded-3xl border border-white/10 bg-black/85 backdrop-blur-2xl p-3 shadow-2xl pointer-events-auto">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-black">Join as guest</p>
@@ -1204,6 +1210,7 @@ const LivePlayer = () => {
                 </div>
               </div>
             )}
+            </div>
           </div>
         )}
 
@@ -1280,7 +1287,7 @@ const LivePlayer = () => {
       </div>
 
       {/* TOP UI */}
-      <div className="fixed top-0 left-0 right-0 z-50 p-4 pt-8 bg-gradient-to-b from-black/90 via-black/30 to-transparent pointer-events-none flex flex-col gap-2.5">
+      <div className="fixed top-0 left-0 right-0 h-[10%] z-50 p-4 pt-8 bg-gradient-to-b from-black/90 via-black/30 to-transparent pointer-events-none flex flex-col gap-2.5">
         <div className="pointer-events-auto">
           <StreamHeader
             data={streamData}
@@ -1423,14 +1430,14 @@ const LivePlayer = () => {
       </div>
 
       {/* BOTTOM UI */}
-      <div className="absolute inset-x-0 bottom-0 z-50 pointer-events-none">
+      <div className="absolute inset-x-0 bottom-0 h-[30%] z-50 pointer-events-none flex flex-col justify-end">
         {/* CHAT + ACTIONS
          *
          * Mobile layout intentionally stacks the chat above the action
          * controls. This prevents the action rail from covering the chat
          * input/messages on narrow phones.
          */}
-        <div className="w-full px-3 pb-3 sm:px-4 sm:pb-4 sm:flex sm:items-end sm:justify-between sm:gap-4">
+        <div className="w-full h-full min-h-0 px-3 pb-3 sm:px-4 sm:pb-4 sm:flex sm:items-end sm:justify-between sm:gap-4">
           {/* CHAT */}
           <AnimatePresence>
             {chatVisible && (
@@ -1438,7 +1445,7 @@ const LivePlayer = () => {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
-                className="w-full sm:max-w-[340px] h-[250px] sm:h-[340px] mb-2 sm:mb-0 pointer-events-auto overflow-hidden hide-scrollbar"
+                className="w-full sm:max-w-[340px] h-full max-h-full mb-2 sm:mb-0 pointer-events-auto overflow-hidden hide-scrollbar"
               >
                 <LiveChat
                   streamId={streamId}
