@@ -13,7 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../../supabaseClient';
 
-const MAX_ACTIVE_GUESTS = 3;
+const MAX_ACTIVE_GUESTS = 8;
 
 const GuestManager = ({
   streamId,
@@ -449,7 +449,7 @@ const GuestManager = ({
       MAX_ACTIVE_GUESTS
     ) {
       alert(
-        'Maximum capacity of 3 guest seats reached!'
+        'Maximum capacity of 8 guest seats reached!'
       );
 
       return;
