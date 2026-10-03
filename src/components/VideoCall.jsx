@@ -240,6 +240,7 @@ const VideoCall = () => {
               .maybeSingle();
 
             const callSignalData = {
+              callId,
               receiverId: peerUserId,
               to: peerUserId,
               targetUserId: peerUserId,
