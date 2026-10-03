@@ -15,6 +15,9 @@ import data from '@emoji-mart/data';
 import confetti from 'canvas-confetti';
 
 const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
+const MESSAGE_PAGE_SIZE = 50;
+const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg','image/png','image/webp','image/gif']);
 
 /* =========================================================
    AUDIO PLAYER
@@ -207,6 +210,8 @@ const Messaging = () => {
 
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
 
   const [replyingTo, setReplyingTo] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
@@ -250,6 +255,8 @@ const Messaging = () => {
   const socketRef = useRef(null);
 
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const shouldScrollToBottomRef = useRef(true);
 
   const currentUserIdRef = useRef(null);
   const peerUserIdRef = useRef(peerUserId);
@@ -305,7 +312,7 @@ const Messaging = () => {
       const [myProf, individualProf] = await Promise.all([
         supabase
           .from('profiles')
-          .select('*')
+          .select('id,username,avatar_url,is_verified,online')
           .eq('id', user.id)
           .single(),
 
@@ -352,36 +359,58 @@ const Messaging = () => {
 
   const loadConversation = useCallback(async () => {
     if (!currentUserId || !peerUserId) return;
-
+    shouldScrollToBottomRef.current = true;
     const { data, error } = await supabase
       .from('messages')
-      .select('*')
-      .or(
-        `and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},receiver_id.eq.${currentUserId})`
-      )
-      .order('updated_at', { ascending: true });
-
+      .select('id,updated_at,user_name,last_msg,unread,online,receiver_id,sender_id,type,metadata,media_url,call_duration,status,reactions,is_edited,is_pinned,is_starred')
+      .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},receiver_id.eq.${currentUserId})`)
+      .order('updated_at', { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE);
     if (error) {
       console.error('Conversation loading failed:', error);
       showToast('Unable to load messages');
       return;
     }
-
-    if (data) {
-      setMessages(data);
-    }
-
-    const { error: updateError } = await supabase
-      .from('messages')
-      .update({ unread: false })
-      .eq('sender_id', peerUserId)
-      .eq('receiver_id', currentUserId)
-      .eq('unread', true);
-
-    if (updateError) {
-      console.error('Unread update failed:', updateError);
-    }
+    setMessages([...(data || [])].reverse());
+    setHasMoreMessages((data || []).length === MESSAGE_PAGE_SIZE);
+    const { error: updateError } = await supabase.from('messages').update({ unread: false }).eq('sender_id', peerUserId).eq('receiver_id', currentUserId).eq('unread', true);
+    if (updateError) console.error('Unread update failed:', updateError);
   }, [currentUserId, peerUserId, showToast]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!currentUserId || !peerUserId || !hasMoreMessages || isLoadingOlder) return;
+    const oldest = messages[0];
+    if (!oldest?.updated_at) return;
+    const container = messagesContainerRef.current;
+    const previousHeight = container?.scrollHeight || 0;
+    const previousTop = container?.scrollTop || 0;
+    setIsLoadingOlder(true);
+    shouldScrollToBottomRef.current = false;
+    const { data, error } = await supabase
+      .from('messages')
+      .select('id,updated_at,user_name,last_msg,unread,online,receiver_id,sender_id,type,metadata,media_url,call_duration,status,reactions,is_edited,is_pinned,is_starred')
+      .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},receiver_id.eq.${currentUserId})`)
+      .lt('updated_at', oldest.updated_at)
+      .order('updated_at', { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE);
+    if (error) {
+      console.error('Older messages loading failed:', error);
+      showToast('Unable to load older messages');
+      setIsLoadingOlder(false);
+      return;
+    }
+    const older = [...(data || [])].reverse();
+    setMessages((previous) => {
+      const ids = new Set(previous.map((message) => message.id));
+      return [...older.filter((message) => !ids.has(message.id)), ...previous];
+    });
+    setHasMoreMessages((data || []).length === MESSAGE_PAGE_SIZE);
+    requestAnimationFrame(() => {
+      const next = messagesContainerRef.current;
+      if (next) next.scrollTop = previousTop + (next.scrollHeight - previousHeight);
+      setIsLoadingOlder(false);
+    });
+  }, [currentUserId, peerUserId, hasMoreMessages, isLoadingOlder, messages, showToast]);
 
   /* =======================================================
      SOCKET CONNECTION
@@ -677,10 +706,13 @@ const Messaging = () => {
   ======================================================= */
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: 'smooth'
-    });
+    if (!shouldScrollToBottomRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isPeerTyping, isPeerRecording]);
+
+  const handleMessagesScroll = useCallback((event) => {
+    if (event.currentTarget.scrollTop <= 80 && hasMoreMessages && !isLoadingOlder) loadOlderMessages();
+  }, [hasMoreMessages, isLoadingOlder, loadOlderMessages]);
 
   /* =======================================================
      TYPING
@@ -696,6 +728,7 @@ const Messaging = () => {
       socket.emit('user_typing_state', {
         room_id: [currentUserId, peerUserId].sort().join('-'),
         userId: currentUserId,
+        receiverId: peerUserId,
         isTyping,
         mode
       });
@@ -962,7 +995,17 @@ const Messaging = () => {
     bucketName = 'message-attachments'
   ) => {
     try {
-      if (!file || !currentUserId) {
+      if (!file || !currentUserId) return null;
+      if (file.size > MAX_ATTACHMENT_SIZE) {
+        showToast('Attachment exceeds the 25 MB limit.');
+        return null;
+      }
+      if (file.type?.startsWith('image/') && !ALLOWED_IMAGE_TYPES.has(file.type)) {
+        showToast('Unsupported image format. Use JPG, PNG, WebP, or GIF.');
+        return null;
+      }
+      if (file.type?.startsWith('video/')) {
+        showToast('Video attachments are not supported in direct messages.');
         return null;
       }
 
@@ -1357,16 +1400,9 @@ const Messaging = () => {
     /*
      * Optimistic UI update.
      */
+    shouldScrollToBottomRef.current = true;
     setMessages((previous) => {
-      if (
-        previous.some(
-          (message) =>
-            message.id === payload.id
-        )
-      ) {
-        return previous;
-      }
-
+      if (previous.some((message) => message.id === payload.id)) return previous;
       return [...previous, payload];
     });
 
@@ -1408,14 +1444,19 @@ const Messaging = () => {
        * Keep the optimistic message visible for now,
        * because the socket may already have delivered it.
        */
-      showToast(
-        'Message sync failed.'
-      );
-
-      return payload;
+      setMessages((previous) => previous.map((message) => message.id === payload.id ? { ...message, status: 'failed' } : message));
+      showToast('Message sync failed. Tap retry to send again.');
+      return { ...payload, status: 'failed' };
     }
 
-    return payload;
+    setMessages((previous) => previous.map((message) => message.id === payload.id ? { ...message, status: 'sent' } : message));
+    return { ...payload, status: 'sent' };
+  };
+
+  const retryMessage = async (message) => {
+    if (!message || message.status !== 'failed') return;
+    const result = await sendStructuredPayload(message.last_msg || '', message.type || 'text', message.media_url || null, message.metadata || {});
+    if (result?.status !== 'failed') setMessages((previous) => previous.filter((item) => item.id !== message.id));
   };
 
   /* =======================================================
@@ -2574,7 +2615,9 @@ const Messaging = () => {
           MESSAGE STREAM
       =================================================== */}
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar relative z-10">
+      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar relative z-10">
+
+        {isLoadingOlder && <div className="sticky top-0 z-10 mx-auto w-fit px-3 py-1 rounded-full bg-[#0d0d16] border border-cyan-500/20 text-[10px] text-cyan-300 font-mono">Loading older messages…</div>}
 
         {filteredConversationMessages.length ===
         0 ? (
@@ -3050,20 +3093,11 @@ const Messaging = () => {
                             : ''}
                         </span>
 
-                        {isMe && (
+                        {isMe && message.status === 'failed' && <button type="button" onClick={() => retryMessage(message)} className="text-[9px] font-black uppercase text-rose-600 hover:text-rose-700 underline">Retry</button>}
+
+                        {isMe && message.status !== 'failed' && (
                           <span className="text-black/70">
-                            {message.status ===
-                            'read' ? (
-                              <CheckCheck
-                                size={11}
-                                className="text-blue-900 stroke-[2.5px]"
-                              />
-                            ) : (
-                              <Check
-                                size={11}
-                                className="stroke-[2.5px]"
-                              />
-                            )}
+                            {message.status === 'read' ? <CheckCheck size={11} className="text-blue-900 stroke-[2.5px]" /> : <Check size={11} className="stroke-[2.5px]" />}
                           </span>
                         )}
 
