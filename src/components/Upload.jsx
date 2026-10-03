@@ -644,9 +644,9 @@ function Upload({ onComplete }) {
       return;
     }
 
-    if (file.size > 1024 * 1024 * 1024) {
+    if (file.size > 50 * 1024 * 1024) {
       setUploadError(
-        'The maximum supported video size is 1 GB.'
+        'The maximum supported video size is 50 MB.'
       );
       return;
     }
@@ -1141,145 +1141,52 @@ function Upload({ onComplete }) {
     setIsPlayingTrack(false);
   };
 
-  const uploadToB2 = async (
-    file,
-    folder,
-    onProgress
-  ) => {
-    if (!file) {
-      throw new Error(
-        'No file was provided for upload.'
-      );
-    }
+  const uploadToB2 = async (file, folder, onProgress) => {
+    if (!file) throw new Error('No file was provided for upload.');
 
-    const response =
-      await authenticatedFetch(
-        `${API_BASE}/api/storage/upload-url`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            folder,
-            fileName: file.name,
-            contentType:
-              file.type ||
-              'application/octet-stream',
-            fileSize: file.size
-          })
-        }
-      );
+    const response = await authenticatedFetch(`${API_BASE}/api/storage/upload-url`, {
+      method: 'POST',
+      body: JSON.stringify({
+        folder,
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        fileSize: file.size
+      })
+    });
 
-    const data =
-      await response.json().catch(
-        () => ({})
-      );
+    const data = await response.json().catch(() => ({}));
 
-    if (
-      !response.ok ||
-      !data?.uploadUrl ||
-      !data?.objectKey
-    ) {
+    if (!response.ok || !data?.uploadUrl || !data?.objectKey) {
       if (response.status === 503) {
-        throw new Error(
-          data?.error ||
-            data?.message ||
-            'Storage service is temporarily unavailable. The backend storage authentication is not configured or is currently unavailable.'
-        );
+        throw new Error(data?.error || data?.message || 'Storage service is temporarily unavailable.');
       }
-
-      throw new Error(
-        data?.error ||
-          data?.message ||
-          `Unable to create upload URL${
-            response.status
-              ? ` (${response.status})`
-              : ''
-          }.`
-      );
+      throw new Error(data?.error || data?.message || `Unable to create upload URL${response.status ? ` (${response.status})` : ''}.`);
     }
 
-    await new Promise(
-      (resolve, reject) => {
-        const xhr =
-          new XMLHttpRequest();
+    if (!data?.objectUrl) {
+      throw new Error('Media storage is not configured with a public delivery URL. Set B2_PUBLIC_URL_BASE on the backend before publishing.');
+    }
 
-        xhr.open(
-          'PUT',
-          data.uploadUrl
-        );
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.uploadUrl);
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable && onProgress) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          if (Number.isFinite(percent)) onProgress(Math.max(0, Math.min(100, percent)));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`B2 upload failed with status ${xhr.status}.`));
+      };
+      xhr.onerror = () => reject(new Error('Network error while uploading to B2.'));
+      xhr.onabort = () => reject(new Error('Upload was cancelled.'));
+      xhr.send(file);
+    });
 
-        xhr.setRequestHeader(
-          'Content-Type',
-          file.type ||
-            'application/octet-stream'
-        );
-
-        xhr.upload.onprogress =
-          event => {
-            if (
-              event.lengthComputable &&
-              onProgress
-            ) {
-              const percent =
-                Math.round(
-                  (event.loaded /
-                    event.total) *
-                    100
-                );
-
-              if (
-                Number.isFinite(
-                  percent
-                )
-              ) {
-                onProgress(
-                  Math.max(
-                    0,
-                    Math.min(
-                      100,
-                      percent
-                    )
-                  )
-                );
-              }
-            }
-          };
-
-        xhr.onload = () => {
-          if (
-            xhr.status >= 200 &&
-            xhr.status < 300
-          ) {
-            resolve();
-          } else {
-            reject(
-              new Error(
-                `B2 upload failed with status ${xhr.status}.`
-              )
-            );
-          }
-        };
-
-        xhr.onerror = () => {
-          reject(
-            new Error(
-              'Network error while uploading to B2.'
-            )
-          );
-        };
-
-        xhr.onabort = () => {
-          reject(
-            new Error(
-              'Upload was cancelled.'
-            )
-          );
-        };
-
-        xhr.send(file);
-      }
-    );
-
-    return data.objectKey;
+    return { objectKey: data.objectKey, objectUrl: data.objectUrl };
   };
 
   const mergeVideoOnServer =
@@ -1350,157 +1257,131 @@ function Upload({ onComplete }) {
         { type: 'image/jpeg' }
       );
 
-      return uploadToB2(
-        file,
-        'covers',
-        () => {}
-      );
+      return uploadToB2(file, 'covers', () => {});
     };
 
-  const insertVideoRecord = async ({
-    videoObjectKey,
-    thumbnailObjectKey
-  }) => {
-    if (!videoObjectKey) {
-      throw new Error(
-        'The video object key is missing.'
-      );
+  const insertVideoRecord = async ({ videoObject, thumbnailObject, finalSize }) => {
+    if (!videoObject?.objectKey || !videoObject?.objectUrl) {
+      throw new Error('The published video media URL is missing.');
     }
 
-    const {
-      data: userData,
-      error: userError
-    } =
-      await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!userData?.user?.id) throw new Error('You must be signed in to publish.');
 
-    if (userError) {
-      throw userError;
-    }
+    const userId = userData.user.id;
+    const safeDuration = getSafeDuration(videoMetadata.duration);
+    const safeWidth = Number.isFinite(Number(videoMetadata.width)) && Number(videoMetadata.width) > 0 ? Number(videoMetadata.width) : null;
+    const safeHeight = Number.isFinite(Number(videoMetadata.height)) && Number(videoMetadata.height) > 0 ? Number(videoMetadata.height) : null;
+    const aspectRatio = safeWidth && safeHeight ? Number((safeWidth / safeHeight).toFixed(4)) : null;
+    const tagList = tags.split(',').map(tag => tag.trim().replace(/^#/, '')).filter(Boolean);
+    const mentionList = mentions.split(',').map(item => item.trim().replace(/^@/, '')).filter(Boolean);
+    const scheduledAt = scheduleEnabled && scheduleDate && scheduleTime ? new Date(`${scheduleDate}T${scheduleTime}`).toISOString() : null;
+    const finalVideoSize = Number.isFinite(Number(finalSize)) && Number(finalSize) > 0 ? Number(finalSize) : Number(videoFile.size) || null;
+    const processingReady = true;
 
-    if (!userData?.user?.id) {
-      throw new Error(
-        'You must be signed in to publish.'
-      );
-    }
-
-    const userId =
-      userData.user.id;
-
-    const corePayload = {
+    const payload = {
       user_id: userId,
-      video_url: videoObjectKey,
+      video_url: videoObject.objectUrl,
       caption: caption.trim(),
-      music_name:
-        selectedMusic?.title ||
-        null,
-      music_url:
-        selectedMusic?.previewUrl ||
-        null,
-      is_private:
-        privacy === 'private'
-    };
-
-    console.log(
-      'Publishing video with core payload:',
-      corePayload
-    );
-
-    const {
-      data,
-      error
-    } = await supabase
-      .from('videos')
-      .insert(corePayload)
-      .select()
-      .single();
-
-    if (error) {
-      console.error(
-        'Supabase videos insert failed:',
-        {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        }
-      );
-
-      throw new Error(
-        error.message ||
-          'Unable to save the video record.'
-      );
-    }
-
-    return {
-      ...data,
-      upload_metadata: {
-        category,
-        thumbnail_url:
-          thumbnailObjectKey || null,
-        location:
-          location.trim() || null,
-        tags: tags
-          .split(',')
-          .map(tag =>
-            tag
-              .trim()
-              .replace(/^#/, '')
-          )
-          .filter(Boolean),
-        mentions: mentions
-          .split(',')
-          .map(item =>
-            item
-              .trim()
-              .replace(/^@/, '')
-          )
-          .filter(Boolean),
-        privacy,
-        allow_comments:
-          allowComments,
-        allow_download:
-          allowDownload,
-        allow_duet: allowDuet,
-        allow_stitch: allowStitch,
-        age_restricted:
-          ageRestricted,
-        filter_style:
-          selectedFilter,
-        audio_enhancement:
-          audioEnhancement,
-        video_volume:
-          videoVolume,
-        music_volume:
-          musicVolume,
-        scheduled_at:
-          scheduleEnabled &&
-          scheduleDate &&
-          scheduleTime
-            ? new Date(
-                `${scheduleDate}T${scheduleTime}`
-              ).toISOString()
-            : null
+      music_name: selectedMusic?.title || 'Original Audio',
+      music_url: selectedMusic?.previewUrl || null,
+      is_private: privacy === 'private',
+      views: 0,
+      likes_count: 0,
+      comments_count: 0,
+      views_count: 0,
+      favorites_count: 0,
+      thumbnail_url: thumbnailObject?.objectUrl || null,
+      tags: tagList,
+      mentions: mentionList,
+      location: location.trim() || null,
+      privacy,
+      allow_duet: Boolean(allowDuet),
+      allow_stitch: Boolean(allowStitch),
+      allow_download: Boolean(allowDownload),
+      allow_comments: Boolean(allowComments),
+      is_commercial: false,
+      sponsor_tag: null,
+      age_restricted: Boolean(ageRestricted),
+      filter_style: selectedFilter,
+      category,
+      poll_data: null,
+      product_link: null,
+      chapters: null,
+      subtitles: null,
+      audio_enhancement: audioEnhancement,
+      scheduled_at: scheduledAt,
+      thumbnail_text: coverText.trim() || null,
+      is_pinned: false,
+      title: null,
+      status: scheduledAt ? 'scheduled' : 'published',
+      archived_at: null,
+      deleted_at: null,
+      is_featured: false,
+      reposts_count: 0,
+      shares_count: 0,
+      saves_count: 0,
+      completion_rate: 0,
+      average_watch_seconds: 0,
+      copyright_status: 'unknown',
+      content_warning: null,
+      ai_generated: false,
+      processing_status: processingReady ? 'ready' : 'processing',
+      processing_progress: 100,
+      language: null,
+      creator_notes: null,
+      audio_embedded: Boolean(needsServerProcessing),
+      audio_source: hasMusic ? 'library' : 'original',
+      video_duration_seconds: safeDuration || null,
+      video_width: safeWidth,
+      video_height: safeHeight,
+      video_fps: null,
+      video_file_size: finalVideoSize,
+      video_codec: null,
+      aspect_ratio: aspectRatio,
+      music_artist: selectedMusic?.artist || null,
+      music_source: hasMusic ? 'library' : 'original',
+      music_offset_seconds: null,
+      music_duration_seconds: null,
+      original_audio_volume: Number(videoVolume) / 100,
+      music_volume: hasMusic ? Number(musicVolume) / 100 : 0,
+      audio_fade_in_seconds: 0,
+      audio_fade_out_seconds: 0,
+      draft_data: null,
+      is_draft: false,
+      processing_error: null,
+      moderation_status: 'pending',
+      editor_data: {
+        filter_style: selectedFilter,
+        audio_enhancement: audioEnhancement,
+        video_volume: Number(videoVolume),
+        music_volume: Number(musicVolume),
+        source_storage: 'backblaze_b2',
+        source_object_key: videoObject.objectKey,
+        final_object_key: videoObject.objectKey
       }
     };
+
+    const { data, error } = await supabase.from('videos').insert(payload).select().single();
+
+    if (error) {
+      console.error('Supabase videos insert failed:', { code: error.code, message: error.message, details: error.details, hint: error.hint });
+      throw new Error(error.message || 'Unable to save the video record.');
+    }
+
+    return data;
   };
 
   const handleUpload = async () => {
     if (!videoFile) {
-      setUploadError(
-        'Please select or record a video first.'
-      );
+      setUploadError('Please select or record a video first.');
       setActiveTab('media');
       return;
     }
 
-    if (
-      scheduleEnabled &&
-      (!scheduleDate ||
-        !scheduleTime)
-    ) {
-      setUploadError(
-        'Choose both a schedule date and time.'
-      );
+    if (scheduleEnabled && (!scheduleDate || !scheduleTime)) {
+      setUploadError('Choose both a schedule date and time.');
       setActiveTab('publish');
       return;
     }
@@ -1510,177 +1391,100 @@ function Upload({ onComplete }) {
     setUploadMessage('');
     setUploadProgress(0);
 
+    let sourceObject = null;
+    let finalVideoObject = null;
+    let thumbnailObject = null;
+    let published = false;
+
     try {
-      /*
-       * STEP 1
-       *
-       * Upload the original source directly from the browser
-       * to the private B2 bucket.
-       *
-       * This is the expensive part for large files, so it gets
-       * the majority of the progress bar.
-       */
-      setUploadStage(
-        'Uploading video'
-      );
+      setUploadStage('Uploading video');
+      setUploadMessage('Securely uploading directly to storage...');
 
-      setUploadMessage(
-        'Securely uploading directly to storage...'
-      );
-
-      const sourceObjectKey =
-        await uploadToB2(
-          videoFile,
-          'videos',
-          progress => {
-            setUploadStage(
-              'Uploading video'
-            );
-
-            setUploadMessage(
-              `${progress}% uploaded`
-            );
-
-            /*
-             * Keep room for thumbnail + publish.
-             * On the fast path this means the large source upload
-             * can reach 85% without waiting for Render.
-             */
-            setUploadProgress(
-              Math.round(
-                progress * 0.85
-              )
-            );
-          }
-        );
-
-      /*
-       * STEP 2
-       *
-       * FAST PATH:
-       *
-       * If the user selected Original, no music, no enhancement
-       * and left original audio at 100%, the B2 source itself is
-       * already the published video.
-       *
-       * No Render request.
-       * No FFmpeg.
-       * No download from B2 to Render.
-       * No second upload from Render to B2.
-       */
-      let finalVideoObjectKey =
-        sourceObjectKey;
-
-      if (needsServerProcessing) {
-        setUploadStage(
-          hasMusic
-            ? 'Mixing video and music'
-            : 'Processing video'
-        );
-
-        setUploadMessage(
-          hasMusic
-            ? 'Processing the selected audio and video...'
-            : 'Applying your selected video settings...'
-        );
-
-        setUploadProgress(87);
-
-        const merged =
-          await mergeVideoOnServer(
-            sourceObjectKey
-          );
-
-        finalVideoObjectKey =
-          merged.objectKey;
-      } else {
-        setUploadStage(
-          'Video uploaded'
-        );
-
-        setUploadMessage(
-          'No server processing required. Using the secure original file.'
-        );
-
-        setUploadProgress(87);
-      }
-
-      /*
-       * STEP 3
-       *
-       * Thumbnail is generated locally and uploaded directly
-       * to B2. It never passes through Render.
-       */
-      setUploadStage(
-        'Creating cover'
-      );
-
-      setUploadMessage(
-        'Preparing your video thumbnail...'
-      );
-
-      setUploadProgress(90);
-
-      const thumbnailObjectKey =
-        await createThumbnailUpload();
-
-      /*
-       * STEP 4
-       *
-       * Save the database record.
-       */
-      setUploadStage(
-        'Publishing'
-      );
-
-      setUploadMessage(
-        'Saving your video details...'
-      );
-
-      setUploadProgress(96);
-
-      const record =
-        await insertVideoRecord({
-          videoObjectKey:
-            finalVideoObjectKey,
-          thumbnailObjectKey
-        });
-
-      setUploadStage(
-        'Complete'
-      );
-
-      setUploadMessage(
-        scheduleEnabled
-          ? 'Your video has been scheduled successfully.'
-          : 'Your video is now ready.'
-      );
-
-      setUploadProgress(100);
-
-      confetti({
-        particleCount: 130,
-        spread: 80,
-        origin: { y: 0.65 }
+      sourceObject = await uploadToB2(videoFile, 'videos', progress => {
+        setUploadStage('Uploading video');
+        setUploadMessage(`${progress}% uploaded`);
+        setUploadProgress(Math.round(progress * 0.85));
       });
 
-      if (
-        typeof onComplete ===
-        'function'
-      ) {
-        await onComplete(record);
+      finalVideoObject = sourceObject;
+      let finalSize = videoFile.size;
+
+      if (needsServerProcessing) {
+        setUploadStage(hasMusic ? 'Mixing video and music' : 'Processing video');
+        setUploadMessage(hasMusic ? 'Processing the selected audio and video...' : 'Applying your selected video settings...');
+        setUploadProgress(87);
+
+        const merged = await mergeVideoOnServer(sourceObject.objectKey);
+        if (!merged?.objectKey || !merged?.objectUrl) {
+          throw new Error('The processed video does not have a public delivery URL.');
+        }
+
+        finalVideoObject = { objectKey: merged.objectKey, objectUrl: merged.objectUrl };
+        finalSize = merged.size || finalSize;
+      } else {
+        setUploadStage('Video uploaded');
+        setUploadMessage('No server processing required. Using the secure original file.');
+        setUploadProgress(87);
       }
+
+      setUploadStage('Creating cover');
+      setUploadMessage('Preparing your video thumbnail...');
+      setUploadProgress(90);
+
+      thumbnailObject = await createThumbnailUpload();
+
+      setUploadStage('Publishing');
+      setUploadMessage('Saving your video details...');
+      setUploadProgress(96);
+
+      const record = await insertVideoRecord({
+        videoObject: finalVideoObject,
+        thumbnailObject,
+        finalSize
+      });
+
+      published = true;
+
+      if (sourceObject?.objectKey && finalVideoObject?.objectKey && sourceObject.objectKey !== finalVideoObject.objectKey) {
+        try {
+          await authenticatedFetch(`${API_BASE}/api/storage/object`, {
+            method: 'DELETE',
+            body: JSON.stringify({ objectKey: sourceObject.objectKey })
+          });
+        } catch (cleanupError) {
+          console.warn('Source cleanup failed after publishing:', cleanupError);
+        }
+      }
+
+      setUploadStage('Complete');
+      setUploadMessage(scheduleEnabled ? 'Your video has been scheduled successfully.' : 'Your video is now ready.');
+      setUploadProgress(100);
+
+      confetti({ particleCount: 130, spread: 80, origin: { y: 0.65 } });
+
+      if (typeof onComplete === 'function') await onComplete(record);
     } catch (error) {
-      console.error(
-        'Upload failed:',
-        error
-      );
+      console.error('Upload failed:', error);
 
-      setUploadError(
-        error?.message ||
-          'Something went wrong while publishing your video.'
-      );
+      const cleanupKeys = new Set();
+      if (!published) {
+        if (sourceObject?.objectKey) cleanupKeys.add(sourceObject.objectKey);
+        if (finalVideoObject?.objectKey) cleanupKeys.add(finalVideoObject.objectKey);
+        if (thumbnailObject?.objectKey) cleanupKeys.add(thumbnailObject.objectKey);
+      }
 
+      for (const objectKey of cleanupKeys) {
+        try {
+          await authenticatedFetch(`${API_BASE}/api/storage/object`, {
+            method: 'DELETE',
+            body: JSON.stringify({ objectKey })
+          });
+        } catch (cleanupError) {
+          console.warn('Upload cleanup failed:', cleanupError);
+        }
+      }
+
+      setUploadError(error?.message || 'Something went wrong while publishing your video.');
       setUploadStage('');
       setUploadMessage('');
     } finally {
