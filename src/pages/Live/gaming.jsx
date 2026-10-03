@@ -185,10 +185,10 @@ const Panel = ({
     `}
   >
     {(title || icon || action) && (
-      <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 border-b border-white/[0.07]">
+      <div className="flex items-center justify-between gap-3 px-3.5 sm:px-5 py-3 border-b border-white/[0.07]">
         <div className="flex items-center gap-3 min-w-0">
           {icon && (
-            <div className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/[0.07] flex items-center justify-center text-cyan-300 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-white/[0.05] border border-white/[0.07] flex items-center justify-center text-cyan-300 shrink-0">
               {icon}
             </div>
           )}
@@ -231,7 +231,7 @@ const StatCard = ({
   };
 
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3">
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-2.5 sm:p-3">
       <div className="flex items-center gap-2">
         <div
           className={`w-7 h-7 rounded-lg border flex items-center justify-center ${
@@ -294,7 +294,7 @@ const ModalShell = ({
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
-    className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-md flex items-center justify-center p-4"
+    className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-3 sm:p-4"
     onMouseDown={(e) => {
       if (e.target === e.currentTarget) onClose?.();
     }}
@@ -306,7 +306,7 @@ const ModalShell = ({
       transition={{ duration: 0.2 }}
       className={`
         w-full ${size}
-        max-h-[90dvh]
+        max-h-[92dvh]
         overflow-y-auto
         rounded-2xl
         border border-white/[0.1]
@@ -327,7 +327,7 @@ const ModalHeader = ({
 }) => (
   <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-white/[0.07]">
     <div className="flex items-center gap-3">
-      <div className="w-9 h-9 rounded-xl bg-cyan-400/10 border border-cyan-400/15 flex items-center justify-center text-cyan-300">
+      <div className="w-8 h-8 rounded-xl bg-cyan-400/10 border border-cyan-400/15 flex items-center justify-center text-cyan-300">
         {icon}
       </div>
 
@@ -1526,7 +1526,7 @@ const MobileGamingSetup = () => {
             ================================= */}
 
             <div className="min-w-0 min-h-0 flex flex-col gap-3">
-              <div className="flex-1 min-h-0 rounded-2xl border border-white/[0.08] bg-[#0b0d12] overflow-hidden relative">
+              <div className="flex-1 min-h-0 rounded-2xl border border-white/[0.08] bg-[#090b10] overflow-hidden relative">
                 <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-black/50 to-transparent z-20 pointer-events-none" />
 
                 {/* Stage header */}
@@ -2229,7 +2229,7 @@ const MobileGamingSetup = () => {
                 }
               />
 
-              <div className="p-4 space-y-4">
+              <div className="p-3.5 sm:p-4 space-y-3.5">
                 <div className="relative">
                   <Search
                     size={15}
@@ -2384,7 +2384,7 @@ const MobileGamingSetup = () => {
                 }
               />
 
-              <div className="p-4 space-y-5">
+              <div className="p-3.5 sm:p-4 space-y-4">
                 {/* QUALITY */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -2738,7 +2738,7 @@ const MobileGamingSetup = () => {
           {/* Main layout */}
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4">
             {/* LEFT */}
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               {/* Preview */}
               <Panel
                 title="Broadcast Preview"
@@ -2933,7 +2933,7 @@ const MobileGamingSetup = () => {
                   <Gamepad2 size={15} />
                 }
               >
-                <div className="p-4">
+                <div className="p-3.5 sm:p-4">
                   <div className="relative mb-3">
                     <Search
                       size={14}
@@ -2996,7 +2996,7 @@ const MobileGamingSetup = () => {
                   <Radio size={15} />
                 }
               >
-                <div className="p-4 space-y-3">
+                <div className="p-3.5 sm:p-4 space-y-2.5">
                   <div>
                     <label className="block mb-2 text-[9px] font-black uppercase tracking-wider text-zinc-500">
                       Stream Title
@@ -3051,7 +3051,7 @@ const MobileGamingSetup = () => {
             </div>
 
             {/* RIGHT */}
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               {/* Configuration */}
               <Panel
                 title="Broadcast Configuration"
@@ -3060,7 +3060,7 @@ const MobileGamingSetup = () => {
                   <Sliders size={15} />
                 }
               >
-                <div className="p-4 space-y-4">
+                <div className="p-3.5 sm:p-4 space-y-3.5">
                   {/* Quality */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -3275,7 +3275,7 @@ const MobileGamingSetup = () => {
               </Panel>
 
               {/* Start */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#0b0d12] p-4">
+              <div className="rounded-2xl border border-white/[0.08] bg-[#090b10] p-4">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-9 h-9 rounded-xl bg-pink-500/10 border border-pink-400/15 flex items-center justify-center text-pink-300">
                     <Play
@@ -3300,7 +3300,7 @@ const MobileGamingSetup = () => {
                     handleStartGamingStream
                   }
                   disabled={loading}
-                  className="w-full h-12 rounded-xl bg-gradient-to-r from-pink-500 to-cyan-400 text-white shadow-[0_12px_35px_rgba(236,72,153,0.18)] hover:brightness-110 active:scale-[0.99] transition flex items-center justify-center gap-2"
+                  className="w-full h-11 sm:h-12 rounded-xl bg-gradient-to-r from-pink-500 to-cyan-400 text-white shadow-[0_12px_35px_rgba(236,72,153,0.18)] hover:brightness-110 active:scale-[0.99] transition flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     <>
@@ -3354,7 +3354,7 @@ const MobileGamingSetup = () => {
               }
             />
 
-            <div className="p-4 space-y-5">
+            <div className="p-3.5 sm:p-4 space-y-4">
               <div>
                 <label className="block mb-2 text-[9px] font-black uppercase tracking-wider text-zinc-500">
                   Stream Quality
@@ -3476,8 +3476,8 @@ const MobileGamingSetup = () => {
           BOTTOM NAV
       ================================================= */}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-[#080a0e]/95 backdrop-blur-xl border-t border-white/[0.07]">
-        <div className="h-full max-w-3xl mx-auto px-2 flex items-center justify-around">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 h-14 sm:h-16 bg-[#080a0e]/95 backdrop-blur-2xl border-t border-white/[0.08] shadow-[0_-18px_50px_rgba(0,0,0,0.35)]">
+        <div className="h-full max-w-4xl mx-auto px-2 sm:px-4 flex items-center justify-around">
           {tabs.map((tab) => {
             const isActive =
               activeTab ===
