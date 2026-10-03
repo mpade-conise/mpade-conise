@@ -3,7 +3,16 @@ import { io } from 'socket.io-client';
 
 const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
 
-const GLOBAL_ICE_CONFIG = {
+const buildIceConfig = () => {
+  const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+  const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
+  const configuredTurnUrls = String(import.meta.env.VITE_TURN_URLS || '').split(',').map(url => url.trim()).filter(Boolean);
+  const iceServers = [{ urls: 'stun:stun.relay.metered.ca:80' }];
+  if (turnUsername && turnCredential && configuredTurnUrls.length) configuredTurnUrls.forEach(url => iceServers.push({ urls: url, username: turnUsername, credential: turnCredential }));
+  return { iceServers, iceCandidatePoolSize: 10 };
+};
+
+const GLOBAL_ICE_CONFIG = buildIceConfig();
   iceServers: [
     {
       urls: 'stun:stun.relay.metered.ca:80',
@@ -66,6 +75,9 @@ const VideoPlayer = ({
 
   // Prevent multiple viewer peer recreations at once
   const creatingViewerPeerRef = useRef(false);
+  const viewerRecoveryTimerRef = useRef(null);
+  const viewerRecoveryAttemptsRef = useRef(0);
+  const [audioUnlockRequired, setAudioUnlockRequired] = useState(false);
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] =
@@ -129,16 +141,15 @@ const VideoPlayer = ({
 
   const playVideo = async () => {
     const video = videoRef.current;
-
-    if (!video) return;
-
+    if (!video) return false;
     try {
       await video.play();
+      if (!isHost) setAudioUnlockRequired(false);
+      return true;
     } catch (error) {
-      console.debug(
-        'Video autoplay pending:',
-        error?.message || error
-      );
+      if (!isHost && error?.name === 'NotAllowedError') setAudioUnlockRequired(true);
+      else console.debug('Video playback pending:', error?.message || error);
+      return false;
     }
   };
 
@@ -246,6 +257,10 @@ const VideoPlayer = ({
     viewerOfferHandledRef.current = false;
     creatingViewerPeerRef.current = false;
     hostSocketIdRef.current = null;
+    if (viewerRecoveryTimerRef.current) {
+      clearTimeout(viewerRecoveryTimerRef.current);
+      viewerRecoveryTimerRef.current = null;
+    }
 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
@@ -443,6 +458,24 @@ const VideoPlayer = ({
       requestHostStream();
     };
 
+    const recoverViewerConnection = reason => {
+      if (isHost || !isComponentMounted || !socket.connected || viewerRecoveryTimerRef.current) return;
+      const attempt = viewerRecoveryAttemptsRef.current + 1;
+      viewerRecoveryAttemptsRef.current = Math.min(attempt, 6);
+      const delay = Math.min(1000 * 2 ** Math.min(attempt - 1, 4), 15000);
+      setIsConnected(false);
+      setConnectionStatus(reason || 'Reconnecting to Live Stream...');
+      viewerRecoveryTimerRef.current = setTimeout(() => {
+        viewerRecoveryTimerRef.current = null;
+        if (!isComponentMounted || !socket.connected) return;
+        closeViewerPeer();
+        viewerOfferHandledRef.current = false;
+        creatingViewerPeerRef.current = false;
+        createViewerPeer();
+        requestHostStream();
+      }, delay);
+    };
+
     socket.on(
       'connect',
       handleSocketConnect
@@ -477,8 +510,8 @@ const VideoPlayer = ({
          * but reset negotiation state.
          */
         viewerOfferHandledRef.current = false;
-
         hostSocketIdRef.current = null;
+        recoverViewerConnection('Signaling connection lost. Reconnecting...');
       }
     };
 
@@ -1162,20 +1195,7 @@ const VideoPlayer = ({
               );
             }
 
-            if (
-              state === 'failed'
-            ) {
-              setIsConnected(false);
-
-              setConnectionStatus(
-                'Connection Failed'
-              );
-
-              /*
-               * Do not immediately destroy the peer.
-               * The signaling connection may still recover.
-               */
-            }
+            if (state === 'failed') recoverViewerConnection('Connection failed. Reconnecting...');
           };
 
         /*
@@ -1225,16 +1245,7 @@ const VideoPlayer = ({
               );
             }
 
-            if (
-              pc.connectionState ===
-              'failed'
-            ) {
-              setIsConnected(false);
-
-              setConnectionStatus(
-                'Connection Failed'
-              );
-            }
+            if (pc.connectionState === 'failed') recoverViewerConnection('Connection failed. Reconnecting...');
           };
 
         /*
@@ -1260,30 +1271,15 @@ const VideoPlayer = ({
               return;
             }
 
-            /*
-             * Save host socket ID immediately.
-             */
-
-            if (
-              payload.hostSocketId
-            ) {
-              hostSocketIdRef.current =
-                payload.hostSocketId;
+            const previousHostSocketId = hostSocketIdRef.current;
+            const hostSessionChanged = Boolean(payload.hostSocketId && previousHostSocketId && previousHostSocketId !== payload.hostSocketId);
+            if (hostSessionChanged) {
+              viewerOfferHandledRef.current = false;
+              closeViewerPeer();
             }
+            if (payload.hostSocketId) hostSocketIdRef.current = payload.hostSocketId;
 
-            /*
-             * A new host socket means this is
-             * a fresh signaling session.
-             */
-
-            if (
-              payload.hostSocketId &&
-              hostSocketIdRef.current !==
-                payload.hostSocketId
-            ) {
-              viewerOfferHandledRef.current =
-                false;
-            }
+            const activePc = hostSessionChanged ? createViewerPeer() : (singleViewerPcRef.current || createViewerPeer());
 
             /*
              * Ignore duplicate offer only when
@@ -1292,7 +1288,7 @@ const VideoPlayer = ({
 
             if (
               viewerOfferHandledRef.current &&
-              pc.remoteDescription
+              activePc.remoteDescription
             ) {
               console.log(
                 'ℹ️ Duplicate WebRTC offer ignored.'
@@ -1324,28 +1320,11 @@ const VideoPlayer = ({
                * recreate it.
                */
 
-              if (
-                pc.connectionState ===
-                  'failed' ||
-                pc.connectionState ===
-                  'closed'
-              ) {
+              if (activePc.connectionState === 'failed' || activePc.connectionState === 'closed') {
                 closeViewerPeer();
-
-                const newPc =
-                  createViewerPeer();
-
-                await handleViewerOffer(
-                  newPc,
-                  payload,
-                  socket
-                );
+                await handleViewerOffer(createViewerPeer(), payload, socket);
               } else {
-                await handleViewerOffer(
-                  pc,
-                  payload,
-                  socket
-                );
+                await handleViewerOffer(activePc, payload, socket);
               }
             } catch (error) {
               console.error(
@@ -1583,12 +1562,7 @@ const VideoPlayer = ({
           return;
         }
 
-        if (
-          payload.hostSocketId
-        ) {
-          hostSocketIdRef.current =
-            payload.hostSocketId;
-        }
+        if (payload.hostSocketId && payload.hostSocketId !== hostSocketIdRef.current) hostSocketIdRef.current = payload.hostSocketId;
 
         if (
           pc.remoteDescription
@@ -1688,6 +1662,11 @@ const VideoPlayer = ({
         handleIncomingIceCandidate
       );
 
+      if (viewerRecoveryTimerRef.current) {
+        clearTimeout(viewerRecoveryTimerRef.current);
+        viewerRecoveryTimerRef.current = null;
+      }
+
       /*
        * Stop host media only when this
        * component created it.
@@ -1749,6 +1728,7 @@ const VideoPlayer = ({
 
       hostSocketIdRef.current =
         null;
+      viewerRecoveryAttemptsRef.current = 0;
 
       /*
        * Disconnect socket.
@@ -1787,6 +1767,9 @@ const VideoPlayer = ({
     <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
       <video
         ref={videoRef}
+        onClick={async () => {
+          if (!isHost) await playVideo();
+        }}
         autoPlay
         playsInline
         muted={isHost}
@@ -1807,6 +1790,20 @@ const VideoPlayer = ({
           )
         }
       />
+
+      {audioUnlockRequired && isConnected && !isHost && (
+        <button
+          type="button"
+          onClick={async event => {
+            event.stopPropagation();
+            const played = await playVideo();
+            if (played) setAudioUnlockRequired(false);
+          }}
+          className="absolute bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-full bg-black/80 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-white backdrop-blur border border-white/10"
+        >
+          Tap to enable live audio
+        </button>
+      )}
 
       {!isConnected && !isHost && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-zinc-950">
