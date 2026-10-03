@@ -96,7 +96,7 @@ const Inbox = () => {
 
   const mountedRef = useRef(false);
 
-  const fetchInProgressRef = useRef(false);
+  const fetchInProgressRef = useRef(false);\n  const pendingRefreshRef = useRef(false);\n  const profileCacheRef = useRef(new Map());
 
   // =========================================================
   // FETCH PROFILES
@@ -1723,7 +1723,7 @@ const Inbox = () => {
             "approved"
           );
 
-        const MAX_GUEST_SLOTS = 7;
+        const MAX_GUEST_SLOTS = 8;
 
         if (
           countError
@@ -2546,7 +2546,7 @@ const Inbox = () => {
               onClick={
                 onClose
               }
-              className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[110]"
+              className="fixed inset-0 bg-black/75  z-[110]"
             />
 
             <motion.div
@@ -2564,9 +2564,9 @@ const Inbox = () => {
                 damping: 25,
                 stiffness: 200,
               }}
-              className="fixed inset-y-0 right-0 w-full max-w-md bg-[#09090e] border-l border-cyan-500/20 z-[111] flex flex-col shadow-2xl"
+              className="fixed inset-y-0 right-0 w-full sm:max-w-sm bg-zinc-950 border-l border-cyan-500/20 z-[111] flex flex-col "
             >
-              <div className="p-4 flex items-center justify-between border-b border-white/10 bg-black/60 backdrop-blur-md">
+              <div className="p-4 flex items-center justify-between border-b border-white/10 bg-zinc-950 border-b border-white/10">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={
@@ -2647,7 +2647,7 @@ const Inbox = () => {
                           }}
                           className={`flex items-center justify-between p-3.5 rounded-2xl transition-all cursor-pointer border ${
                             isUnread
-                              ? "bg-cyan-950/20 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                              ? "bg-cyan-950/20 border-cyan-500/30 -[0_0_15px_rgba(6,182,212,0.15)]"
                               : "bg-white/[0.03] border-white/5 hover:bg-white/[0.07]"
                           }`}
                         >
@@ -2693,7 +2693,7 @@ const Inbox = () => {
                                 </div>
                               )}
 
-                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/20 shadow">
+                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/20 ">
                                 {getActivityIcon(
                                   item.type
                                 )}
@@ -2728,7 +2728,7 @@ const Inbox = () => {
                                 </p>
 
                                 {isUnread && (
-                                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(6,182,212,1)] shrink-0 animate-pulse" />
+                                  <span className="w-2 h-2 rounded-full bg-cyan-400 -[0_0_6px_rgba(6,182,212,1)] shrink-0 " />
                                 )}
                               </div>
 
@@ -2772,10 +2772,10 @@ const Inbox = () => {
                               disabled={
                                 isFollowingBack
                               }
-                              className={`text-[11px] font-black px-3.5 py-1.5 rounded-xl transition-all shadow-md shrink-0 ${
+                              className={`text-[11px] font-black px-3.5 py-1.5 rounded-xl transition-all  shrink-0 ${
                                 isFollowingBack
                                   ? "bg-zinc-800 text-zinc-400 border border-white/10 cursor-default"
-                                  : "bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20 active:scale-95"
+                                  : "bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white -pink-500/20 active:scale-95"
                               }`}
                             >
                               {isFollowingBack
@@ -2803,7 +2803,7 @@ const Inbox = () => {
 
                                 onClose();
                               }}
-                              className="w-12 h-14 rounded-xl bg-zinc-800 relative overflow-hidden border border-cyan-500/30 cursor-pointer flex items-center justify-center shrink-0 shadow-md group hover:border-cyan-400"
+                              className="w-12 h-14 rounded-xl bg-zinc-800 relative overflow-hidden border border-cyan-500/30 cursor-pointer flex items-center justify-center shrink-0  group hover:border-cyan-400"
                             >
                               {item
                                 .videos
@@ -2847,9 +2847,9 @@ const Inbox = () => {
 
   if (loading) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-[#07070a] text-white">
+      <div className="h-screen flex flex-col items-center justify-center bg-zinc-950 text-white">
         <Loader2
-          className="animate-spin text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.9)] mb-3"
+          className="animate-spin text-cyan-400 drop--[0_0_15px_rgba(6,182,212,0.9)] mb-3"
           size={40}
         />
 
@@ -2865,18 +2865,18 @@ const Inbox = () => {
   // =========================================================
 
   return (
-    <div className="flex flex-col h-screen bg-[#07070a] text-white overflow-hidden font-sans select-none">
+    <div className="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden font-sans select-none">
 
       {/* =====================================================
           HEADER
       ===================================================== */}
 
-      <header className="px-5 pt-8 pb-3.5 flex items-center justify-between border-b border-cyan-500/15 bg-black/40 backdrop-blur-xl z-20">
+      <header className="px-5 pt-8 pb-3.5 flex items-center justify-between border-b border-cyan-500/15 bg-zinc-950 z-20">
         <div className="flex items-center gap-2.5">
           <div className="p-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
             <Bell
               size={20}
-              className="drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]"
+              className="drop--[0_0_8px_rgba(6,182,212,0.8)]"
             />
           </div>
 
@@ -2888,7 +2888,7 @@ const Inbox = () => {
 
               {totalUnreadCount >
                 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-[10px] shadow-[0_0_10px_rgba(244,63,94,0.7)] animate-pulse">
+                <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-[10px] -[0_0_10px_rgba(244,63,94,0.7)] ">
                   {totalUnreadCount}{" "}
                   New
                 </span>
@@ -2974,7 +2974,7 @@ const Inbox = () => {
                 handleMarkAllRead
               }
               title="Mark all notifications and messages as read"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 shadow-[0_0_10px_rgba(6,182,212,0.2)]"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 -[0_0_10px_rgba(6,182,212,0.2)]"
             >
               <CheckCheck
                 size={14}
@@ -3048,7 +3048,7 @@ const Inbox = () => {
                   )
                 }
                 placeholder="Search activities, users, messages..."
-                className="w-full bg-[#121218] border border-cyan-500/30 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                className="w-full bg-zinc-900 border border-cyan-500/30 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 transition-colors"
                 autoFocus
               />
 
@@ -3091,7 +3091,7 @@ const Inbox = () => {
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
                 activeFilter ===
                 "all"
-                  ? "bg-cyan-500 text-black border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.5)]"
+                  ? "bg-cyan-500 text-black border-cyan-400 -[0_0_15px_rgba(6,182,212,0.5)]"
                   : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -3134,7 +3134,7 @@ const Inbox = () => {
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
                 activeFilter ===
                 "likes"
-                  ? "bg-gradient-to-r from-pink-500 to-rose-600 text-white border-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.5)]"
+                  ? "bg-gradient-to-r from-pink-500 to-rose-600 text-white border-pink-400 -[0_0_15px_rgba(236,72,153,0.5)]"
                   : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -3154,7 +3154,7 @@ const Inbox = () => {
 
               {unreadLikes.length >
                 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-pink-500 text-white shadow animate-pulse">
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-pink-500 text-white  ">
                   {
                     unreadLikes.length
                   }
@@ -3182,7 +3182,7 @@ const Inbox = () => {
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
                 activeFilter ===
                 "comments"
-                  ? "bg-cyan-400 text-black border-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.5)]"
+                  ? "bg-cyan-400 text-black border-cyan-300 -[0_0_15px_rgba(6,182,212,0.5)]"
                   : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -3202,7 +3202,7 @@ const Inbox = () => {
 
               {unreadComments.length >
                 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-cyan-500 text-black shadow animate-pulse">
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-cyan-500 text-black  ">
                   {
                     unreadComments.length
                   }
@@ -3221,7 +3221,7 @@ const Inbox = () => {
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
                 activeFilter ===
                 "messages"
-                  ? "bg-purple-500 text-white border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.5)]"
+                  ? "bg-purple-500 text-white border-purple-400 -[0_0_15px_rgba(168,85,247,0.5)]"
                   : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -3241,7 +3241,7 @@ const Inbox = () => {
 
               {unreadMessagesTotal >
                 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-purple-500 text-white shadow animate-pulse">
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-purple-500 text-white  ">
                   {
                     unreadMessagesTotal
                   }
@@ -3269,7 +3269,7 @@ const Inbox = () => {
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shrink-0 border ${
                 activeFilter ===
                 "followers"
-                  ? "bg-blue-500 text-white border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+                  ? "bg-blue-500 text-white border-blue-400 -[0_0_15px_rgba(59,130,246,0.5)]"
                   : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -3289,7 +3289,7 @@ const Inbox = () => {
 
               {unreadFollowers.length >
                 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-blue-500 text-white shadow animate-pulse">
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-blue-500 text-white  ">
                   {
                     unreadFollowers.length
                   }
@@ -3324,7 +3324,7 @@ const Inbox = () => {
                   );
                 }
               }}
-              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-pink-950/40 via-zinc-900 to-black border border-pink-500/30 cursor-pointer hover:border-pink-400/70 hover:shadow-[0_0_20px_rgba(236,72,153,0.25)] transition-all group"
+              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-pink-950/40 via-zinc-900 to-black border border-pink-500/30 cursor-pointer hover:border-pink-400/70 hover:-[0_0_20px_rgba(236,72,153,0.25)] transition-all group"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="w-9 h-9 bg-pink-500/20 text-pink-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -3336,7 +3336,7 @@ const Inbox = () => {
 
                 {unreadLikes.length >
                 0 ? (
-                  <span className="bg-pink-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black shadow-[0_0_10px_rgba(236,72,153,0.8)] animate-pulse">
+                  <span className="bg-pink-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black -[0_0_10px_rgba(236,72,153,0.8)] ">
                     {
                       unreadLikes.length
                     }{" "}
@@ -3378,7 +3378,7 @@ const Inbox = () => {
                   );
                 }
               }}
-              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-cyan-950/40 via-zinc-900 to-black border border-cyan-500/30 cursor-pointer hover:border-cyan-400/70 hover:shadow-[0_0_20px_rgba(6,182,212,0.25)] transition-all group"
+              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-cyan-950/40 via-zinc-900 to-black border border-cyan-500/30 cursor-pointer hover:border-cyan-400/70 hover:-[0_0_20px_rgba(6,182,212,0.25)] transition-all group"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="w-9 h-9 bg-cyan-500/20 text-cyan-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -3390,7 +3390,7 @@ const Inbox = () => {
 
                 {unreadComments.length >
                 0 ? (
-                  <span className="bg-cyan-500 text-black px-2 py-0.5 rounded-full text-[10px] font-black shadow-[0_0_10px_rgba(6,182,212,0.8)] animate-pulse">
+                  <span className="bg-cyan-500 text-black px-2 py-0.5 rounded-full text-[10px] font-black -[0_0_10px_rgba(6,182,212,0.8)] ">
                     {
                       unreadComments.length
                     }{" "}
@@ -3423,7 +3423,7 @@ const Inbox = () => {
                   "messages"
                 )
               }
-              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-zinc-900 to-black border border-purple-500/30 cursor-pointer hover:border-purple-400/70 hover:shadow-[0_0_20px_rgba(168,85,247,0.25)] transition-all group"
+              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-zinc-900 to-black border border-purple-500/30 cursor-pointer hover:border-purple-400/70 hover:-[0_0_20px_rgba(168,85,247,0.25)] transition-all group"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="w-9 h-9 bg-purple-500/20 text-purple-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -3435,7 +3435,7 @@ const Inbox = () => {
 
                 {unreadMessagesTotal >
                 0 ? (
-                  <span className="bg-purple-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black shadow-[0_0_10px_rgba(168,85,247,0.8)] animate-pulse">
+                  <span className="bg-purple-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black -[0_0_10px_rgba(168,85,247,0.8)] ">
                     {
                       unreadMessagesTotal
                     }{" "}
@@ -3477,7 +3477,7 @@ const Inbox = () => {
                   );
                 }
               }}
-              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-blue-950/40 via-zinc-900 to-black border border-blue-500/30 cursor-pointer hover:border-blue-400/70 hover:shadow-[0_0_20px_rgba(59,130,246,0.25)] transition-all group"
+              className="flex flex-col justify-between p-3.5 rounded-2xl bg-gradient-to-br from-blue-950/40 via-zinc-900 to-black border border-blue-500/30 cursor-pointer hover:border-blue-400/70 hover:-[0_0_20px_rgba(59,130,246,0.25)] transition-all group"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="w-9 h-9 bg-blue-500/20 text-blue-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -3489,7 +3489,7 @@ const Inbox = () => {
 
                 {unreadFollowers.length >
                 0 ? (
-                  <span className="bg-blue-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black shadow-[0_0_10px_rgba(59,130,246,0.8)] animate-pulse">
+                  <span className="bg-blue-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black -[0_0_10px_rgba(59,130,246,0.8)] ">
                     {
                       unreadFollowers.length
                     }{" "}
@@ -3535,7 +3535,7 @@ const Inbox = () => {
                   }
                   className="flex flex-col items-center min-w-[72px] cursor-pointer group"
                 >
-                  <div className="relative p-[2.5px] rounded-full bg-gradient-to-tr from-cyan-400 via-pink-500 to-rose-500 shadow-[0_0_12px_rgba(236,72,153,0.5)] group-hover:scale-105 transition-transform">
+                  <div className="relative p-[2.5px] rounded-full bg-gradient-to-tr from-cyan-400 via-pink-500 to-rose-500 -[0_0_12px_rgba(236,72,153,0.5)] group-hover:scale-105 transition-transform">
                     <img
                       src={
                         live
@@ -3549,7 +3549,7 @@ const Inbox = () => {
                       alt=""
                     />
 
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider shadow">
+                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider ">
                       Live
                     </div>
                   </div>
@@ -3605,7 +3605,7 @@ const Inbox = () => {
                       key={
                         invite.id
                       }
-                      className="bg-gradient-to-r from-cyan-950/40 via-zinc-900 to-pink-950/30 border border-cyan-500/40 p-4 rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.15)] space-y-3"
+                      className="bg-zinc-900 border border-cyan-500/40 p-4 rounded-2xl -[0_0_20px_rgba(34,211,238,0.15)] space-y-3"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
@@ -3616,13 +3616,13 @@ const Inbox = () => {
                                 "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
                               }
                               alt=""
-                              className="w-12 h-12 rounded-full object-cover border-2 border-cyan-400 p-0.5 shadow-md"
+                              className="w-12 h-12 rounded-full object-cover border-2 border-cyan-400 p-0.5 "
                             />
 
-                            <div className="absolute -bottom-1 -right-1 bg-pink-600 text-white p-1 rounded-full text-[10px] shadow">
+                            <div className="absolute -bottom-1 -right-1 bg-pink-600 text-white p-1 rounded-full text-[10px] ">
                               <Radio
                                 size={10}
-                                className="animate-pulse"
+                                className=""
                               />
                             </div>
                           </div>
@@ -3665,7 +3665,7 @@ const Inbox = () => {
                               invite
                             )
                           }
-                          className="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                          className="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-400 hover:to-pink-400 text-black font-black text-xs uppercase tracking-wider rounded-xl  -cyan-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
                         >
                           {acceptingInviteId ===
                           invite.id ? (
@@ -3811,7 +3811,7 @@ const Inbox = () => {
                       }
                       className={`flex items-center justify-between p-3.5 rounded-2xl transition-all cursor-pointer border ${
                         isUnread
-                          ? "bg-gradient-to-r from-cyan-950/30 via-zinc-900 to-black border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                          ? "bg-gradient-to-r from-cyan-950/30 via-zinc-900 to-black border-cyan-500/40 -[0_0_15px_rgba(6,182,212,0.15)]"
                           : "bg-white/[0.03] border-white/5 hover:bg-white/[0.08]"
                       }`}
                     >
@@ -3857,7 +3857,7 @@ const Inbox = () => {
                             </div>
                           )}
 
-                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/20 shadow">
+                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-black rounded-full flex items-center justify-center border border-white/20 ">
                             {getActivityIcon(
                               item.type
                             )}
@@ -3890,7 +3890,7 @@ const Inbox = () => {
                             </p>
 
                             {isUnread && (
-                              <span className="w-2 h-2 rounded-full bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,1)] shrink-0 animate-pulse" />
+                              <span className="w-2 h-2 rounded-full bg-pink-500 -[0_0_8px_rgba(236,72,153,1)] shrink-0 " />
                             )}
                           </div>
 
@@ -3936,10 +3936,10 @@ const Inbox = () => {
                           disabled={
                             isFollowingBack
                           }
-                          className={`text-[11px] font-black px-3.5 py-1.5 rounded-xl transition-all shadow-md shrink-0 ${
+                          className={`text-[11px] font-black px-3.5 py-1.5 rounded-xl transition-all  shrink-0 ${
                             isFollowingBack
                               ? "bg-zinc-800 text-zinc-400 border border-white/10 cursor-default"
-                              : "bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20 active:scale-95"
+                              : "bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white -pink-500/20 active:scale-95"
                           }`}
                         >
                           {isFollowingBack
@@ -3963,7 +3963,7 @@ const Inbox = () => {
                               event
                             )
                           }
-                          className="w-12 h-14 rounded-xl bg-zinc-800 relative overflow-hidden border border-cyan-500/40 cursor-pointer flex items-center justify-center shrink-0 shadow-md group hover:border-cyan-400 hover:scale-105 transition-all"
+                          className="w-12 h-14 rounded-xl bg-zinc-800 relative overflow-hidden border border-cyan-500/40 cursor-pointer flex items-center justify-center shrink-0  group hover:border-cyan-400 hover:scale-105 transition-all"
                           title="Click to view target video"
                         >
                           {item
@@ -4030,7 +4030,7 @@ const Inbox = () => {
               <div className="flex items-center gap-2">
                 {unreadMessagesTotal >
                   0 && (
-                  <span className="text-[10px] font-black text-pink-400 bg-pink-500/10 border border-pink-500/30 px-2 py-0.5 rounded-full animate-pulse">
+                  <span className="text-[10px] font-black text-pink-400 bg-pink-500/10 border border-pink-500/30 px-2 py-0.5 rounded-full ">
                     {
                       unreadMessagesTotal
                     }{" "}
@@ -4086,7 +4086,7 @@ const Inbox = () => {
                       true
                     )
                   }
-                  className="mt-3.5 px-4 py-2 bg-gradient-to-r from-cyan-500 to-pink-500 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 active:scale-95 transition-all flex items-center gap-1.5"
+                  className="mt-3.5 px-4 py-2 bg-gradient-to-r from-cyan-500 to-pink-500 text-black font-black text-xs uppercase tracking-wider rounded-xl  -cyan-500/20 active:scale-95 transition-all flex items-center gap-1.5"
                 >
                   <Plus
                     size={14}
@@ -4128,7 +4128,7 @@ const Inbox = () => {
                         }
                         className={`flex items-center gap-3.5 p-3.5 rounded-2xl cursor-pointer transition-all border ${
                           hasUnread
-                            ? "bg-gradient-to-r from-purple-950/30 via-zinc-900 to-black border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+                            ? "bg-gradient-to-r from-purple-950/30 via-zinc-900 to-black border-purple-500/40 -[0_0_15px_rgba(168,85,247,0.15)]"
                             : "bg-white/[0.03] border-white/5 hover:bg-white/[0.08]"
                         }`}
                       >
@@ -4145,12 +4145,12 @@ const Inbox = () => {
                             }
                             crossOrigin="anonymous"
                             referrerPolicy="no-referrer"
-                            className="w-[52px] h-[52px] rounded-full object-cover border-2 border-cyan-400/40 p-0.5 shadow-md"
+                            className="w-[52px] h-[52px] rounded-full object-cover border-2 border-cyan-400/40 p-0.5 "
                             alt=""
                           />
 
                           {hasUnread && (
-                            <div className="absolute -top-1 -right-1 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-[10px] min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(244,63,94,0.9)] border-2 border-black animate-pulse">
+                            <div className="absolute -top-1 -right-1 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-[10px] min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center -[0_0_10px_rgba(244,63,94,0.9)] border-2 border-black ">
                               {
                                 message.unreadCount
                               }
@@ -4258,7 +4258,7 @@ const Inbox = () => {
                   false
                 )
               }
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[120]"
+              className="fixed inset-0 bg-black/80  z-[120]"
             />
 
             <motion.div
@@ -4277,7 +4277,7 @@ const Inbox = () => {
                 scale: 0.95,
                 y: 20,
               }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-md max-h-[85vh] bg-[#0c0c12] border border-cyan-500/30 rounded-3xl z-[121] flex flex-col shadow-2xl overflow-hidden"
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-md max-h-[85vh] bg-zinc-950 border border-cyan-500/30 rounded-3xl z-[121] flex flex-col  overflow-hidden"
             >
               <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/40">
                 <div className="flex items-center gap-2">
@@ -4330,7 +4330,7 @@ const Inbox = () => {
                       )
                     }
                     placeholder="Search by username or name..."
-                    className="w-full bg-[#161622] border border-cyan-500/30 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                    className="w-full bg-zinc-900 border border-cyan-500/30 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-400 transition-colors"
                     autoFocus
                   />
 
