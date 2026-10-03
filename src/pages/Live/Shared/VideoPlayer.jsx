@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
+import { LiveSFUClient, LIVE_SFU_ENABLED } from './LiveSFUClient';
 
 const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
 
@@ -270,11 +271,93 @@ const VideoPlayer = ({
 
   /*
    * ------------------------------------------------------------
+   * SCALABLE LIVE SFU PIPELINE
+   * ------------------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!LIVE_SFU_ENABLED) return undefined;
+    if (!streamId || typeof streamId !== 'string' || streamId.length < 10) return undefined;
+
+    let mounted = true;
+    let socket = null;
+    let client = null;
+    let ownedStream = null;
+
+    const start = async () => {
+      try {
+        socket = io(SOCKET_SERVER_URL, {
+          transports: ['websocket', 'polling'],
+          query: { room: streamId, role: isHost ? 'host' : 'viewer', streamType },
+          forceNew: true,
+          reconnection: true,
+          reconnectionAttempts: Infinity,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          timeout: 20000,
+          autoConnect: true,
+        });
+        socketRef.current = socket;
+
+        if (isHost) {
+          ownedStream = customStream;
+          if (!ownedStream) {
+            ownedStream = streamType === 'gaming'
+              ? await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+              : await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          }
+          localStreamRef.current = ownedStream;
+          if (videoRef.current) videoRef.current.srcObject = ownedStream;
+        }
+
+        client = new LiveSFUClient({
+          socket,
+          streamId,
+          role: isHost ? 'host' : 'viewer',
+          onStream: stream => {
+            if (!mounted || isHost) return;
+            if (videoRef.current) videoRef.current.srcObject = stream;
+            playVideo();
+            setIsConnected(stream.getTracks().length > 0);
+          },
+          onStatus: status => mounted && setConnectionStatus(status),
+        });
+
+        await client.start(ownedStream);
+        if (!mounted) return;
+        setIsConnected(true);
+        setConnectionStatus('Live');
+        if (isHost) await playVideo();
+      } catch (error) {
+        if (!mounted) return;
+        console.error('❌ Live SFU startup failed:', error);
+        setIsConnected(false);
+        setConnectionStatus(error?.message || 'Live SFU unavailable');
+      }
+    };
+
+    start();
+
+    return () => {
+      mounted = false;
+      try { client?.close(); } catch {}
+      if (ownedStream && !customStream) ownedStream.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+      if (socket) {
+        try { socket.removeAllListeners(); socket.disconnect(); } catch {}
+      }
+      if (socketRef.current === socket) socketRef.current = null;
+    };
+  }, [streamId, streamType, customStream, isHost]);
+
+  /*
+   * ------------------------------------------------------------
    * MAIN WEBRTC / SOCKET PIPELINE
    * ------------------------------------------------------------
    */
 
   useEffect(() => {
+    if (LIVE_SFU_ENABLED) return undefined;
     if (
       !streamId ||
       streamId === 'undefined' ||
