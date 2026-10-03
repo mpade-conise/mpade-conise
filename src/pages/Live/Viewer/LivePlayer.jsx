@@ -27,6 +27,7 @@ import {
 // Components
 import LiveChat from './LiveChat';
 import GiftPanel from './GiftPanel';
+import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import VideoPlayer from '../Shared/VideoPlayer';
 import FloatingHearts from './FloatingHearts';
 import StreamHeader from '../Shared/StreamHeader';
@@ -118,6 +119,7 @@ const LivePlayer = () => {
   const [heartCount, setHeartCount] = useState(0);
   const [viewerCount, setViewerCount] = useState(0);
   const [eventNotification, setEventNotification] = useState(null);
+  const [activeGift, setActiveGift] = useState(null);
 
   const [isCameraOff, setIsCameraOff] = useState(false);
 
@@ -147,6 +149,7 @@ const LivePlayer = () => {
 
   const heartCountRef = useRef(0);
   const streamChannelRef = useRef(null);
+  const giftChannelRef = useRef(null);
   const cohostChannelRef = useRef(null);
 
   const eventNotificationTimerRef = useRef(null);
@@ -497,6 +500,62 @@ const LivePlayer = () => {
       supabase.removeChannel(channel);
     };
   }, [streamId, retryNonce, navigate]);
+
+  /*
+   * ---------------------------------------------------------
+   * LIVE GIFTS
+   *
+   * GiftAlertOverlay owns presentation, queueing and animation.
+   * This subscription only forwards authoritative live_gifts
+   * INSERT events into the shared presentation component.
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!streamId) return undefined;
+
+    let isMounted = true;
+
+    const channel = supabase
+      .channel(`live-player-gifts:${streamId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'live_gifts',
+          filter: `stream_id=eq.${streamId}`
+        },
+        payload => {
+          if (!isMounted || !payload?.new) return;
+
+          const gift = {
+            ...payload.new,
+            _alertKey: String(
+              payload.new.id ||
+              payload.new.event_id ||
+              `${streamId}-${payload.new.gift_id || payload.new.gift_name || 'gift'}-${payload.new.created_at || Date.now()}`
+            )
+          };
+
+          setActiveGift(gift);
+        }
+      )
+      .subscribe();
+
+    giftChannelRef.current = channel;
+
+    return () => {
+      isMounted = false;
+
+      if (giftChannelRef.current === channel) {
+        giftChannelRef.current = null;
+      }
+
+      setActiveGift(null);
+      supabase.removeChannel(channel);
+    };
+  }, [streamId]);
 
   /*
    * ---------------------------------------------------------
@@ -1313,6 +1372,15 @@ const LivePlayer = () => {
         <FloatingHearts
           count={heartCount}
           streamId={streamId}
+        />
+      </div>
+
+      {/* LIVE GIFT ALERTS — presentation is handled only by GiftAlertOverlay */}
+      <div className="absolute inset-0 pointer-events-none z-[75]">
+        <GiftAlertOverlay
+          gift={activeGift}
+          lowData={dataSaver || networkState.quality === 'poor'}
+          position="center"
         />
       </div>
 
