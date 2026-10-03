@@ -155,6 +155,7 @@ const BattleController = ({
    * co-host selector from here.
    */
   onFindOpponent,
+  onBack = null,
 
   /*
    * Whether the current user is allowed to control the battle.
