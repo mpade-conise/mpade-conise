@@ -1162,24 +1162,6 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
     mediaError
   ]);
 
-  useImperativeHandle(ref, () => ({
-    requestJoin: handleSendRequest,
-    cancelRequest,
-    leavePanel: handleLeavePanel,
-    toggleCamera,
-    toggleMic,
-    toggleFlipCamera,
-    retryMedia
-  }), [
-    handleSendRequest,
-    cancelRequest,
-    handleLeavePanel,
-    toggleCamera,
-    toggleMic,
-    toggleFlipCamera,
-    retryMedia
-  ]);
-
   const handleLike = useCallback(async () => {
     if (!streamId) return;
 
@@ -1198,6 +1180,24 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
     setMediaError('');
     await startPreview(facingMode);
   }, [startPreview, facingMode]);
+
+  useImperativeHandle(ref, () => ({
+    requestJoin: handleSendRequest,
+    cancelRequest,
+    leavePanel: handleLeavePanel,
+    toggleCamera,
+    toggleMic,
+    toggleFlipCamera,
+    retryMedia
+  }), [
+    handleSendRequest,
+    cancelRequest,
+    handleLeavePanel,
+    toggleCamera,
+    toggleMic,
+    toggleFlipCamera,
+    retryMedia
+  ]);
 
   useEffect(() => {
     if (!enabled) return;
