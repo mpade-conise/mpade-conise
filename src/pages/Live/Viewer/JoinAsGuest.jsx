@@ -1479,7 +1479,7 @@ const JoinAsGuest = () => {
       </AnimatePresence>
 
       {isLiveOnPanel ? (
-        <div className="absolute inset-0 pt-14 pb-20">
+        <div className="absolute inset-0 pt-14 pb-[285px] sm:pb-[110px]">
           <div className="absolute inset-0">
             <DynamicStreamGrid
               streamId={streamId}
@@ -1499,7 +1499,7 @@ const JoinAsGuest = () => {
             />
           </div>
 
-          <div className="absolute top-20 left-3 z-40 flex items-center gap-2">
+          <div className="absolute top-20 left-3 z-40 flex items-center gap-2 max-w-[calc(100%-7rem)] overflow-hidden">
             <div className="rounded-full bg-red-500/90 px-2.5 py-1 flex items-center gap-1.5 text-[10px] font-black">
               <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
               LIVE
@@ -1581,9 +1581,9 @@ const JoinAsGuest = () => {
             </div>
           )}
 
-          <div className="absolute left-3 bottom-24 z-40 w-[min(78vw,310px)]">
+          <div className="absolute left-3 right-3 bottom-[76px] sm:bottom-3 z-40 sm:right-auto w-auto sm:w-[min(78vw,340px)] pointer-events-auto">
             {showChat && (
-              <div className="rounded-2xl overflow-hidden bg-black/35 backdrop-blur-md border border-white/10">
+              <div className="w-full h-[190px] sm:h-[300px] rounded-2xl overflow-hidden bg-black/35 backdrop-blur-md border border-white/10 shadow-2xl">
                 <LiveChat streamId={streamId} hideMessages={false} />
               </div>
             )}
@@ -1826,8 +1826,8 @@ const JoinAsGuest = () => {
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 z-[70] px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-3 bg-gradient-to-t from-black via-black/95 to-transparent">
-        <div className="max-w-2xl mx-auto rounded-3xl border border-white/10 bg-zinc-950/90 backdrop-blur-2xl p-2 flex items-center justify-center gap-1.5 sm:gap-2">
+      <div className="fixed bottom-0 left-0 right-0 z-[70] px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-3 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-none">
+        <div className="max-w-2xl mx-auto rounded-3xl border border-white/10 bg-zinc-950/90 backdrop-blur-2xl p-2 flex items-center justify-center gap-1.5 sm:gap-2 pointer-events-auto">
           <button
             onClick={toggleMic}
             className={`h-11 w-11 sm:w-auto sm:px-4 rounded-2xl flex items-center justify-center gap-2 border transition active:scale-90 ${
