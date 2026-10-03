@@ -641,32 +641,6 @@ const StreamDashboard = () => {
               </AnimatePresence>
             </div>
 
-            {isBattleMode && Object.keys(remoteStreams || {}).length > 0 && (
-              <div className="absolute inset-2 z-[25] overflow-hidden rounded-2xl border border-white/10 bg-black/30 pointer-events-none">
-                <div className="grid h-full w-full grid-cols-2 gap-1">
-                  <div className="relative overflow-hidden bg-zinc-950">
-                    <span className="absolute top-2 left-2 z-10 rounded-full bg-black/70 px-2 py-1 text-[8px] font-black uppercase text-cyan-300">You</span>
-                  </div>
-                  <div className="relative overflow-hidden bg-zinc-950">
-                    <video
-                      autoPlay
-                      playsInline
-                      muted
-                      ref={element => {
-                        const remote = Object.values(remoteStreams || {})[0] || null;
-                        if (element && remote && element.srcObject !== remote) {
-                          element.srcObject = remote;
-                          element.play?.().catch(() => {});
-                        }
-                      }}
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                    <span className="absolute top-2 left-2 z-10 rounded-full bg-black/70 px-2 py-1 text-[8px] font-black uppercase text-fuchsia-300">Co-Host</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* BATTLE */}
             {isBattleMode && (
               <BattleOverlay
@@ -1105,14 +1079,15 @@ const StreamDashboard = () => {
                       username: streamData?.host?.username || '@host',
                       avatar: streamData?.host?.avatar_url || null
                     }}
-                    opponent={{
+                    opponent={Object.keys(remoteStreams || {}).length > 0 || incomingInvite ? {
                       id: streamData?.challenger?.id || streamData?.challenger_id || incomingInvite?.senderHostId || incomingInvite?.host_id || null,
                       name: streamData?.challenger?.username || incomingInvite?.senderUsername || incomingInvite?.username || 'Co-Host',
                       username: streamData?.challenger?.username || incomingInvite?.senderUsername || incomingInvite?.username || '@cohost',
                       avatar: streamData?.challenger?.avatar_url || null
-                    }}
+                    } : null}
                     battleState={battleControllerState}
-                    canControl={true}
+                    canControl={Object.keys(remoteStreams || {}).length > 0}
+                    onBack={() => setActivePanel(null)}
                     compact={true}
                     battleStage={(() => {
                       const firstRemote = Object.values(remoteStreams || {})[0] || null;
