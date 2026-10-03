@@ -1390,6 +1390,10 @@ const VideoPlayer = ({
           streamId,
           answer:
             pc.localDescription,
+          to:
+            hostSocketIdRef.current,
+          targetSocketId:
+            hostSocketIdRef.current,
         }
       );
 
