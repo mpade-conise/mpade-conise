@@ -16,7 +16,6 @@ import VideoPlayer from '../Shared/VideoPlayer';
 import FloatingHearts from './FloatingHearts';
 import StreamHeader from '../Shared/StreamHeader';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
-import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 
 const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
 
@@ -44,6 +43,7 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
   const navigate = useNavigate();
 
   const localVideoRef = useRef(null);
+  const hostVideoRef = useRef(null);
   const socketRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -63,6 +63,10 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
   const approvedRequestIdRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (hostVideoRef.current) hostVideoRef.current.srcObject = hostRemoteStream || null;
+  }, [hostRemoteStream]);
   const [mediaError, setMediaError] = useState('');
   const [permissionState, setPermissionState] = useState('checking');
   const [isCamOn, setIsCamOn] = useState(true);
@@ -1569,22 +1573,16 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
       {isLiveOnPanel ? (
         <div className="absolute inset-0 pt-14 pb-[285px] sm:pb-[110px]">
           <div className="absolute inset-0">
-            <DynamicStreamGrid
-              streamId={streamId}
-              hostStream={hostRemoteStream}
-              hostVideo={!hostRemoteStream ? <VideoPlayer streamId={streamId} isHost={false} /> : null}
-              hostInfo={{
-                username: streamData?.host?.username || 'Host',
-                avatar_url: streamData?.host?.avatar_url
-              }}
-              coHostStream={assignedMode === 'video' ? localStreamRef.current : null}
-              coHostInfo={{
-                username: userProfile?.username || 'You',
-                avatar_url: userProfile?.avatar_url,
-                mode: assignedMode
-              }}
-              isHostView={false}
-            />
+            {hostRemoteStream ? (
+              <video
+                ref={hostVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <VideoPlayer streamId={streamId} isHost={false} />
+            )}
           </div>
 
           <div className="absolute top-20 left-3 z-40 flex items-center gap-2 max-w-[calc(100%-7rem)] overflow-hidden">
