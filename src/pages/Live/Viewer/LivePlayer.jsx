@@ -129,6 +129,8 @@ const LivePlayer = () => {
   const [hasActiveCohosts, setHasActiveCohosts] = useState(false);
   const [guestEngineOpen, setGuestEngineOpen] = useState(false);
   const [guestState, setGuestState] = useState(null);
+  const [isFollowingGuest, setIsFollowingGuest] = useState(false);
+  const [guestFollowLoading, setGuestFollowLoading] = useState(false);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -884,7 +886,79 @@ const LivePlayer = () => {
     guestEngineRef.current?.leavePanel?.();
     setGuestEngineOpen(false);
     setGuestState(null);
+    setIsFollowingGuest(false);
   };
+
+  const handleFollowGuest = async () => {
+    const guestId = guestState?.userProfile?.id || guestState?.userProfile?.user_id;
+
+    if (!currentUser?.id || !guestId || currentUser.id === guestId || guestFollowLoading) return;
+
+    setGuestFollowLoading(true);
+
+    if (isFollowingGuest) {
+      const { error } = await supabase
+        .from('follows')
+        .delete()
+        .eq('follower_id', currentUser.id)
+        .eq('following_id', guestId);
+
+      if (error) {
+        console.error('Failed to unfollow guest:', error);
+      } else {
+        setIsFollowingGuest(false);
+      }
+    } else {
+      const { error } = await supabase
+        .from('follows')
+        .insert({
+          follower_id: currentUser.id,
+          following_id: guestId
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          setIsFollowingGuest(true);
+        } else {
+          console.error('Failed to follow guest:', error);
+        }
+      } else {
+        setIsFollowingGuest(true);
+      }
+    }
+
+    setGuestFollowLoading(false);
+  };
+
+  useEffect(() => {
+    const guestId = guestState?.userProfile?.id || guestState?.userProfile?.user_id;
+
+    if (!guestId || !currentUser?.id || currentUser.id === guestId || !guestEngineOpen) {
+      setIsFollowingGuest(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const checkGuestFollow = async () => {
+      const { data, error } = await supabase
+        .from('follows')
+        .select('follower_id')
+        .eq('follower_id', currentUser.id)
+        .eq('following_id', guestId)
+        .maybeSingle();
+
+      if (!cancelled && !error) {
+        setIsFollowingGuest(Boolean(data));
+      }
+    };
+
+    checkGuestFollow();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [guestState?.userProfile?.id, guestState?.userProfile?.user_id, currentUser?.id, guestEngineOpen]);
 
   /*
    * ---------------------------------------------------------
@@ -1098,6 +1172,31 @@ const LivePlayer = () => {
             <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
             {guestState?.isLiveOnPanel ? (
               <div className="w-40 sm:w-48 pointer-events-auto rounded-2xl overflow-hidden border border-cyan-300/50 bg-black/80 shadow-2xl">
+                <div className="px-1.5 py-1 flex items-center justify-between gap-1 border-b border-white/10 bg-black/70">
+                  <span className="min-w-0 truncate text-[8px] font-black text-white">
+                    @{guestState?.userProfile?.username || 'Guest'}
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {currentUser?.id && guestState?.userProfile?.id && currentUser.id !== guestState.userProfile.id && (
+                      <button
+                        onClick={handleFollowGuest}
+                        disabled={guestFollowLoading}
+                        className="h-6 w-6 rounded-full bg-[#fe2c55] text-white flex items-center justify-center disabled:opacity-50"
+                        aria-label={isFollowingGuest ? 'Unfollow guest' : 'Follow guest'}
+                        title={isFollowingGuest ? 'Unfollow' : 'Follow'}
+                      >
+                        {guestFollowLoading ? <Loader2 size={10} className="animate-spin" /> : isFollowingGuest ? <UserCheck size={11} /> : <UserPlus size={11} />}
+                      </button>
+                    )}
+                    <button
+                      onClick={handleGuestLeave}
+                      className="h-6 px-1.5 rounded-full bg-red-500/15 border border-red-400/20 text-red-300 text-[7px] font-black"
+                      aria-label="Leave guest panel"
+                    >
+                      LEAVE
+                    </button>
+                  </div>
+                </div>
                 <div className="relative aspect-[2/1] bg-zinc-950">
                   {guestState.localStream && guestState.assignedMode === 'video' && guestState.isCamOn ? (
                     <video
