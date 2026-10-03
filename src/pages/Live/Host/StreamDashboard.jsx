@@ -570,7 +570,7 @@ const StreamDashboard = () => {
         <GiftAlertOverlay activeGift={giftsEnabled ? activeGift : null} setActiveGift={setActiveGift} />
 
         {/* HEADER */}
-        <div className="absolute top-0 left-0 right-0 z-[60] p-4 pt-10 bg-gradient-to-b from-black/80 via-black/30 to-transparent pointer-events-none">
+        <div className="absolute top-0 left-0 right-0 h-[10%] z-[60] px-4 pt-4 bg-gradient-to-b from-black/80 via-black/30 to-transparent pointer-events-none">
           <div className="pointer-events-auto">
             <StreamHeader
               data={streamData}
@@ -582,7 +582,7 @@ const StreamDashboard = () => {
         </div>
 
         {/* LIVE STAGE */}
-        <div className="absolute inset-0 z-0 bg-zinc-900">
+        <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-0 bg-zinc-900 overflow-hidden">
           <div className="relative h-full w-full overflow-hidden bg-zinc-950">
             <video
               ref={localVideoRef}
@@ -595,41 +595,6 @@ const StreamDashboard = () => {
             {isCameraOff && (
               <div className="absolute inset-0 flex items-center justify-center text-zinc-500 bg-zinc-900 font-black tracking-widest text-xs italic">
                 CAMERA OFF
-              </div>
-            )}
-
-            {/* COMPACT GUEST GRID — TOP 50% ONLY */}
-            {Object.keys(remoteStreams || {}).length > 0 && (
-              <div className="absolute top-24 left-2 right-2 z-40 h-[50%] max-h-[50%] pointer-events-none overflow-hidden">
-                <div className="grid h-full w-full grid-cols-2 sm:grid-cols-4 auto-rows-fr gap-1.5 sm:gap-2 content-start">
-                  {Object.entries(remoteStreams || {}).slice(0, 8).map(([peerId, remoteStream], index) => {
-                    const guest = activeGuests?.[index];
-                    return (
-                      <div key={peerId} className="relative min-w-0 w-full aspect-[2/1] overflow-hidden rounded-lg sm:rounded-xl border border-white/15 bg-zinc-950/80 shadow-xl backdrop-blur-sm">
-                        <video
-                          autoPlay
-                          playsInline
-                          muted
-                          ref={element => {
-                            if (element && remoteStream && element.srcObject !== remoteStream) {
-                              element.srcObject = remoteStream;
-                              element.play?.().catch(() => {});
-                            }
-                          }}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pt-4 pb-1">
-                          <span className="text-[8px] sm:text-[9px] font-black text-white truncate block">
-                            @{guest?.username || ('Guest ' + (index + 1))}
-                          </span>
-                        </div>
-                        <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[7px] sm:text-[8px] font-black uppercase tracking-wider text-cyan-300">
-                          Guest
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             )}
 
@@ -697,6 +662,41 @@ const StreamDashboard = () => {
               )}
             </AnimatePresence>
           </div>
+
+          {/* INLINE GUEST PANELS — separate from host video panel */}
+          {Object.keys(remoteStreams || {}).length > 0 && (
+            <div className="absolute top-2 left-2 right-2 z-40 pointer-events-none overflow-hidden">
+              <div className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 justify-items-end">
+                {Object.entries(remoteStreams || {}).slice(0, 8).map(([peerId, remoteStream], index) => {
+                  const guest = activeGuests?.[index];
+                  return (
+                    <div key={peerId} className="relative min-w-0 w-full max-w-40 sm:max-w-48 aspect-[2/1] overflow-hidden rounded-lg sm:rounded-xl border border-white/15 bg-zinc-950/90 shadow-xl backdrop-blur-sm">
+                      <video
+                        autoPlay
+                        playsInline
+                        muted
+                        ref={element => {
+                          if (element && remoteStream && element.srcObject !== remoteStream) {
+                            element.srcObject = remoteStream;
+                            element.play?.().catch(() => {});
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pt-4 pb-1">
+                        <span className="text-[8px] sm:text-[9px] font-black text-white truncate block">
+                          @{guest?.username || ('Guest ' + (index + 1))}
+                        </span>
+                      </div>
+                      <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[7px] sm:text-[8px] font-black uppercase tracking-wider text-cyan-300">
+                        Guest
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* HOST ACTION AREA */}
