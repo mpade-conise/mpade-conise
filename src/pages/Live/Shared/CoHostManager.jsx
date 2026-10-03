@@ -20,6 +20,8 @@ import { useStreamSocket } from "../Host/useStreamSocket";
 import { useStreamWebRTC } from "../Host/useStreamWebRTC";
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 
+const MAX_CO_HOSTS = 4;
+
 const CoHostStage = ({ socket: parentSocket }) => {
   const { streamId } = useParams();
   const navigate = useNavigate();
@@ -99,6 +101,9 @@ const CoHostStage = ({ socket: parentSocket }) => {
 
   const [isMerged, setIsMerged] =
     useState(false);
+
+  const [activeCoHosts, setActiveCoHosts] =
+    useState([]);
 
   const mountedRef = useRef(true);
 
@@ -221,6 +226,25 @@ const CoHostStage = ({ socket: parentSocket }) => {
       );
 
       setIsMerged(true);
+
+      const coHostId =
+        data?.coHostId ||
+        data?.cohostId ||
+        data?.targetUserId ||
+        data?.senderHostId ||
+        data?.host_id ||
+        data?.socketId;
+
+      if (coHostId) {
+        setActiveCoHosts(previous => {
+          if (previous.some(item => item.id === coHostId)) return previous;
+          if (previous.length >= MAX_CO_HOSTS) return previous;
+          return [...previous, {
+            id: coHostId,
+            username: data?.username || data?.cohostUsername || data?.name || 'Co-Host'
+          }];
+        });
+      }
     };
 
     const handleInviteDeclined = data => {
@@ -232,6 +256,18 @@ const CoHostStage = ({ socket: parentSocket }) => {
       );
 
       setIsMerged(false);
+
+      const coHostId =
+        data?.coHostId ||
+        data?.cohostId ||
+        data?.targetUserId ||
+        data?.senderHostId ||
+        data?.host_id ||
+        data?.socketId;
+
+      if (coHostId) {
+        setActiveCoHosts(previous => previous.filter(item => item.id !== coHostId));
+      }
     };
 
     const handleMergeStarted = data => {
@@ -374,6 +410,11 @@ const CoHostStage = ({ socket: parentSocket }) => {
     }
 
     if (!streamId) return;
+
+    if (activeCoHosts.length >= MAX_CO_HOSTS) {
+      console.warn('⚠️ [CoHostStage] Maximum co-host capacity reached:', MAX_CO_HOSTS);
+      return;
+    }
 
     setInviteLoading(previous => ({
       ...previous,
@@ -819,6 +860,10 @@ const CoHostStage = ({ socket: parentSocket }) => {
 
             Live Creators
 
+            <span className="ml-auto text-[9px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 rounded-full">
+              {activeCoHosts.length}/{MAX_CO_HOSTS} CO-HOSTS
+            </span>
+
           </h3>
 
         </div>
@@ -867,9 +912,8 @@ const CoHostStage = ({ socket: parentSocket }) => {
                         )
                       }
                       disabled={
-                        inviteLoading[
-                          targetId
-                        ]
+                        inviteLoading[targetId] ||
+                        activeCoHosts.length >= MAX_CO_HOSTS
                       }
                       className="bg-red-500 hover:bg-red-400 disabled:opacity-50 disabled:cursor-not-allowed text-white px-2.5 py-1 rounded-lg text-[10px] font-bold"
                     >
@@ -877,7 +921,9 @@ const CoHostStage = ({ socket: parentSocket }) => {
                         targetId
                       ]
                         ? 'Invited'
-                        : 'Merge Feed'}
+                        : activeCoHosts.length >= MAX_CO_HOSTS
+                          ? 'Full'
+                          : 'Merge Feed'}
                     </button>
 
                   </div>
