@@ -216,9 +216,8 @@ class LiveVoiceEngine {
     }
 
     this.nodes.forEach(node => {
-      try {
-        node.disconnect();
-      } catch (_) {}
+      try { if (typeof node.stop === 'function') node.stop(); } catch (_) {}
+      try { node.disconnect(); } catch (_) {}
     });
 
     this.nodes = [];
@@ -251,7 +250,7 @@ class LiveVoiceEngine {
 
     validNodes.forEach(node => {
       previous.connect(node);
-      previous = node;
+      previous = node?._mpadeOutputNode || node;
     });
 
     previous.connect(this.destination);
@@ -368,6 +367,52 @@ class LiveVoiceEngine {
       oscillator,
       lfoGain
     };
+  }
+
+  _createPitchShift(semitones = 0) {
+    const ratio = Math.pow(2, semitones / 12);
+    if (!Number.isFinite(ratio) || Math.abs(ratio - 1) < 0.001) return this._createGain(1);
+
+    const input = this._createGain(1);
+    const output = this._createGain(0.72);
+    const delayA = this._trackNode(this.audioContext.createDelay(1));
+    const delayB = this._trackNode(this.audioContext.createDelay(1));
+    const gainA = this._createGain(0.5);
+    const gainB = this._createGain(0.5);
+    const baseDelay = 0.12;
+    const depth = Math.min(0.09, Math.max(0.018, Math.abs(ratio - 1) * 0.07));
+    const rate = Math.min(7, Math.max(0.7, Math.abs(ratio - 1) / depth));
+    const direction = ratio > 1 ? -1 : 1;
+
+    delayA.delayTime.value = baseDelay;
+    delayB.delayTime.value = baseDelay + depth * 0.5;
+
+    const lfoA = this._trackNode(this.audioContext.createOscillator());
+    const lfoB = this._trackNode(this.audioContext.createOscillator());
+    const modA = this._trackNode(this.audioContext.createGain());
+    const modB = this._trackNode(this.audioContext.createGain());
+
+    lfoA.frequency.value = rate;
+    lfoB.frequency.value = rate;
+    lfoB.detune.value = 180;
+    modA.gain.value = direction * depth;
+    modB.gain.value = direction * depth;
+
+    lfoA.connect(modA);
+    lfoB.connect(modB);
+    modA.connect(delayA.delayTime);
+    modB.connect(delayB.delayTime);
+    input.connect(delayA);
+    input.connect(delayB);
+    delayA.connect(gainA);
+    delayB.connect(gainB);
+    gainA.connect(output);
+    gainB.connect(output);
+    lfoA.start();
+    lfoB.start();
+
+    input._mpadeOutputNode = output;
+    return input;
   }
 
   _createRingMod(frequency = 440, depth = 0.8) {
@@ -521,6 +566,7 @@ class LiveVoiceEngine {
       // --------------------------------------------------------
 
       case 'helium': {
+        const pitch = this._createPitchShift(7);
         const highPass =
           this._createFilter(
             'highpass',
@@ -543,6 +589,7 @@ class LiveVoiceEngine {
           );
 
         this._connectChain([
+          pitch,
           highPass,
           presence,
           delay,
@@ -562,6 +609,7 @@ class LiveVoiceEngine {
       //
 
       case 'autotune-major': {
+        const pitch = this._createPitchShift(2);
         const highPass =
           this._createFilter(
             'highpass',
@@ -586,6 +634,7 @@ class LiveVoiceEngine {
           );
 
         this._connectChain([
+          pitch,
           highPass,
           clarity,
           presence,
@@ -739,6 +788,7 @@ class LiveVoiceEngine {
       //
 
       case 'chipmunk': {
+        const pitch = this._createPitchShift(12);
         const highPass =
           this._createFilter(
             'highpass',
@@ -761,6 +811,7 @@ class LiveVoiceEngine {
           );
 
         this._connectChain([
+          pitch,
           highPass,
           highShelf,
           ring.gain,
@@ -806,6 +857,7 @@ class LiveVoiceEngine {
       // --------------------------------------------------------
 
       case 'demon-lord': {
+        const pitch = this._createPitchShift(-7);
         const lowPass =
           this._createFilter(
             'lowpass',
@@ -825,6 +877,7 @@ class LiveVoiceEngine {
           this._createWaveShaper(28);
 
         this._connectChain([
+          pitch,
           lowPass,
           bass,
           distortion,
