@@ -28,9 +28,9 @@ const [showPhoneEditor, setShowPhoneEditor] = useState(false);
 const coinPackages = useMemo(() => [
 {
 id: 1,
-coins: 500,
+coins: 125,
 bonus: 0,
-price: 1000,
+price: 250,
 label: 'Starter',
 icon: <Zap size={20} />,
 color: 'from-blue-400 to-blue-600',
@@ -505,7 +505,7 @@ return ( <div className="min-h-screen bg-black text-white font-sans selection:bg
     </button>
   </nav>
 
-  <main className="relative z-10 max-w-xl mx-auto px-5 sm:px-6 pt-7 pb-28 bank-scroll min-h-screen overflow-y-auto">
+  <main className="relative z-10 max-w-xl mx-auto px-5 sm:px-6 pt-7 pb-28 bank-scroll h-[calc(100dvh-73px)] overflow-y-scroll">
     {offline && (
       <div className="mb-5 rounded-2xl border border-orange-500/20 bg-orange-500/[0.06] px-4 py-3 flex items-center gap-3">
         <WifiOff size={16} className="text-orange-400 shrink-0" />
