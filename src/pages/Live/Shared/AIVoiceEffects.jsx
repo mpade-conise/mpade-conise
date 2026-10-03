@@ -8,23 +8,22 @@ const AIVoiceEffects = ({ streamId, onBack, onSelectEffect }) => {
     return localStorage.getItem(`mpade_voice_fx_${streamId}`) || 'studio';
   });
 
-  // Explicit, audibly distinct base processing target frequencies (Hz) for the DSP matrix
   const voiceProfiles = [
-    { id: 'studio', name: 'Studio Pure', frequency: 1000, desc: 'Crystal clear vocal enhancement centered at 1.0 kHz' },
-    { id: 'bass', name: 'Deep Bass Monster', frequency: 120, desc: 'Sub-harmonic sub-bass voice modulation at 120 Hz' },
-    { id: 'robot', name: 'Robot Network', frequency: 440, desc: 'Metallic ring modulation centered at 440 Hz' },
-    { id: 'helium', name: 'Helium Echo', frequency: 2500, desc: 'High-frequency pitch multiplier scaled at 2.5 kHz' },
-    { id: 'autotune-major', name: 'AI Pitch Correct', frequency: 800, desc: 'Chromatic pitch tracking optimized at 800 Hz' },
-    { id: 'stadium', name: 'Arena Echo Arena', frequency: 350, desc: 'Spacious hall resonance tuned around 350 Hz' },
-    { id: 'radio-1930', name: 'Vintage AM Radio', frequency: 3000, desc: 'High bandpass crunch filter peaking at 3.0 kHz' },
-    { id: 'cyberpunk-glitch', name: 'Cyber Overdrive', frequency: 1500, desc: 'Bitcrushed phase distortion tracking at 1.5 kHz' },
-    { id: 'whisper-synth', name: 'Ghostly Whisper', frequency: 7000, desc: 'Ethereal air-noise excitation tracking at 7.0 kHz' },
-    { id: 'chipmunk', name: 'Squeak Velocity', frequency: 4000, desc: 'Ultra high-frequency pitch shifting peaking at 4.0 kHz' },
-    { id: 'space-captain', name: 'Cosmic Walkie-Talkie', frequency: 2200, desc: 'Radio communications filter bandpassing at 2.2 kHz' },
-    { id: 'demon-lord', name: 'Underworld Dread', frequency: 90, desc: 'Heavy dark-matter resonance drops down to 90 Hz' },
-    { id: 'telephone', name: 'Legacy Landline', frequency: 1800, desc: 'Narrow bandwidth vocal filter limited to 1.8 kHz' },
-    { id: 'choir-ensemble', name: 'Synth Harmony', frequency: 600, desc: 'Multi-voice chord oscillator modulating around 600 Hz' },
-    { id: 'reverse-texture', name: 'Dream Matrix Shift', frequency: 1200, desc: 'Psychedelic phase delays shifting patterns at 1.2 kHz' }
+    { id: 'studio', name: 'Studio Pure', desc: 'Real-time vocal cleanup, presence and compression' },
+    { id: 'bass', name: 'Deep Bass Monster', desc: 'Real low-end voice enhancement with warmth and compression' },
+    { id: 'robot', name: 'Robot Network', desc: 'Real ring modulation plus band-pass filtering and distortion' },
+    { id: 'helium', name: 'Helium Echo', desc: 'Real upward pitch shift with a short echo' },
+    { id: 'autotune-major', name: 'AI Pitch Lift', desc: 'Real-time upward pitch transformation with vocal tightening' },
+    { id: 'stadium', name: 'Arena Echo', desc: 'Real spacious delay and resonance for a stadium-style voice' },
+    { id: 'radio-1930', name: 'Vintage AM Radio', desc: 'Real telephone-style bandwidth limiting and saturation' },
+    { id: 'cyberpunk-glitch', name: 'Cyber Overdrive', desc: 'Real distortion and ring modulation for a synthetic voice' },
+    { id: 'whisper-synth', name: 'Ghostly Whisper', desc: 'Real high-pass air shaping with echo texture' },
+    { id: 'chipmunk', name: 'Squeak Velocity', desc: 'Real upward pitch shift for a high cartoon-like voice' },
+    { id: 'space-captain', name: 'Cosmic Walkie-Talkie', desc: 'Real radio band-pass, saturation and short delay' },
+    { id: 'demon-lord', name: 'Underworld Dread', desc: 'Real downward pitch shift with bass and distortion' },
+    { id: 'telephone', name: 'Legacy Landline', desc: 'Real narrow telephone bandwidth and saturation' },
+    { id: 'choir-ensemble', name: 'Synth Harmony', desc: 'Real tremolo and delay for a synthetic layered texture' },
+    { id: 'reverse-texture', name: 'Dream Matrix Shift', desc: 'Real ring modulation and regenerative delay texture' }
   ];
 
   useEffect(() => {
@@ -58,7 +57,7 @@ const AIVoiceEffects = ({ streamId, onBack, onSelectEffect }) => {
     liveVoiceEngine.setPreset(id);
     if (onSelectEffect) {
       const selectedProfile = voiceProfiles.find(v => v.id === id);
-      onSelectEffect(id, selectedProfile?.frequency); 
+      onSelectEffect(id, selectedProfile); 
     }
   };
 
@@ -93,8 +92,8 @@ const AIVoiceEffects = ({ streamId, onBack, onSelectEffect }) => {
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold tracking-wide">{fx.name}</span>
                   <span className="text-[8px] font-mono opacity-50 px-1 bg-zinc-800 rounded text-zinc-400">
-                    {fx.frequency >= 1000 ? `${(fx.frequency / 1000).toFixed(1)}kHz` : `${fx.frequency}Hz`}
-                  </span>
+                    REAL DSP
+                  </span>>
                 </div>
                 <span className="text-[10px] text-zinc-500 font-normal whitespace-normal line-clamp-1 group-hover:text-zinc-400 transition-colors">
                   {fx.desc}
