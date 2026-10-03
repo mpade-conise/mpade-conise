@@ -1,14 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { toBlobURL } from '@ffmpeg/util';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   Heart, MessageCircle, Share2, Music, UserPlus, Disc, 
   Loader2, MoreHorizontal, Bookmark, X, Send,
-  Download, HeartOff, Scissors, Users, Captions, EyeOff, Flag, Check,
-  MessageSquare, Copy, ExternalLink, Play,
-  Repeat2, Trash2, ShieldAlert 
+  Download, Scissors, EyeOff, Flag, Check,
+  Copy, ExternalLink, Play,
+  Repeat2, Trash2 
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../supabaseClient';
@@ -53,21 +51,36 @@ const ActionButton = ({ icon, label, onClick }) => {
 const ShareDrawer = ({ video, onClose }) => {
   const [copied, setCopied] = useState(false);
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(video.video_url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyToClipboard = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(video.video_url);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = video.video_url;
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy link failed:', err);
+    }
   };
 
   const shareExternal = async () => {
     try {
-      await navigator.share({
-        title: 'Check out this video on Mpade Universe',
-        text: video.caption,
-        url: video.video_url,
-      });
+      if (navigator.share) {
+        await navigator.share({ title: 'Check out this video on Mpade Universe', text: video.caption, url: video.video_url });
+      } else {
+        await copyToClipboard();
+      }
     } catch (err) {
-      console.log('External share failed or cancelled');
+      if (err?.name !== 'AbortError') console.error('External share failed:', err);
     }
   };
 
@@ -105,25 +118,40 @@ const ShareDrawer = ({ video, onClose }) => {
 };
 
 const CommentDrawer = ({ videoId, onClose, user, onCommentCountUpdate }) => {
+  const COMMENT_PAGE_SIZE = 30;
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [isFetching, setIsFetching] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [isPosting, setIsPosting] = useState(false);
   const scrollRef = useRef(null);
 
-  useEffect(() => {
-    const fetchComments = async () => {
-      setIsFetching(true);
+  const fetchComments = async (offset = 0, append = false) => {
+    if (append && (!hasMore || isFetchingMore)) return;
+    append ? setIsFetchingMore(true) : setIsFetching(true);
+    try {
       const { data, error } = await supabase
         .from('video_comments')
         .select('id, text, created_at, profiles:user_id(username, avatar_url)')
         .eq('video_id', videoId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(offset, offset + COMMENT_PAGE_SIZE - 1);
+      if (error) throw error;
+      const next = data || [];
+      setComments(prev => append ? [...prev, ...next.filter(item => !prev.some(existing => existing.id === item.id))] : next);
+      setHasMore(next.length === COMMENT_PAGE_SIZE);
+    } catch (err) {
+      console.error('Comment fetch failed:', err);
+    } finally {
+      append ? setIsFetchingMore(false) : setIsFetching(false);
+    }
+  };
 
-      if (!error) setComments(data || []);
-      setIsFetching(false);
-    };
-    fetchComments();
+  useEffect(() => {
+    setComments([]);
+    setHasMore(true);
+    fetchComments(0, false);
   }, [videoId]);
 
   const postComment = async () => {
@@ -195,8 +223,6 @@ const CommentDrawer = ({ videoId, onClose, user, onCommentCountUpdate }) => {
 
 const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUpdate }) => {
   const [isProcessing, setIsProcessing] = React.useState(null);
-  const ffmpeg = new FFmpeg();
-
   if (!video) return null; 
   const isOwner = user?.id === video?.user_id;
 
@@ -305,7 +331,7 @@ const handleDownloadAction = async () => {
 
 // --- VIDEO CARD COMPONENT ---
 
-const VideoCard = ({ video, currentUser }) => {
+const VideoCard = ({ video, currentUser, interactionStatus, onDelete }) => {
   const [playing, setPlaying] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
@@ -325,21 +351,13 @@ const VideoCard = ({ video, currentUser }) => {
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const containerRef = useRef(null);
+  const viewRecordedRef = useRef(false);
 
   useEffect(() => {
-    const fetchStatus = async () => {
-      if (!currentUser) return;
-      const [like, fav, follow] = await Promise.all([
-        supabase.from('video_likes').select('id').eq('video_id', video.id).eq('user_id', currentUser.id).maybeSingle(),
-        supabase.from('favorites').select('id').eq('video_id', video.id).eq('user_id', currentUser.id).maybeSingle(),
-        supabase.from('follows').select('id').eq('follower_id', currentUser.id).eq('following_id', video.user_id).maybeSingle()
-      ]);
-      setIsLiked(!!like.data);
-      setIsFavorited(!!fav.data);
-      setIsFollowing(!!follow.data);
-    };
-    fetchStatus();
-  }, [video.id, video.user_id, currentUser]);
+    setIsLiked(!!interactionStatus?.liked);
+    setIsFavorited(!!interactionStatus?.favorited);
+    setIsFollowing(!!interactionStatus?.following);
+  }, [interactionStatus]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => {
@@ -347,7 +365,18 @@ const VideoCard = ({ video, currentUser }) => {
         videoRef.current?.play().catch(() => {});
         audioRef.current?.play().catch(() => {});
         setPlaying(true);
-        incrementView(video.id);
+        if (!viewRecordedRef.current) {
+          viewRecordedRef.current = true;
+          const viewKey = `mpade-viewed-${video.id}`;
+          try {
+            if (!sessionStorage.getItem(viewKey)) {
+              sessionStorage.setItem(viewKey, '1');
+              incrementView(video.id);
+            }
+          } catch {
+            incrementView(video.id);
+          }
+        }
       } else {
         videoRef.current?.pause();
         audioRef.current?.pause();
@@ -500,7 +529,7 @@ const VideoCard = ({ video, currentUser }) => {
       <AnimatePresence>
         {showComments && <CommentDrawer videoId={video.id} onClose={() => setShowComments(false)} user={currentUser} onCommentCountUpdate={() => setCounts(prev => ({...prev, comments: prev.comments + 1}))} />}
         {showShare && <ShareDrawer video={video} onClose={() => setShowShare(false)} />}
-        {showSettings && <SettingsOverlay video={video} onClose={() => setShowSettings(false)} user={currentUser} onReport={() => handleReport(video.id, currentUser)} onNotInterested={() => handleNotInterested(video.id, currentUser)} onUpdate={() => window.location.reload()} />}
+        {showSettings && <SettingsOverlay video={video} onClose={() => setShowSettings(false)} user={currentUser} onReport={() => handleReport(video.id, currentUser)} onNotInterested={() => handleNotInterested(video.id, currentUser)} onUpdate={() => onDelete?.(video.id)} />}
       </AnimatePresence>
     </div>
   );
@@ -516,6 +545,7 @@ const Feed = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
+  const [interactionStatus, setInteractionStatus] = useState({});
   const location = useLocation();
   const loadMoreRef = useRef(null);
   const feedRequestRef = useRef(0); 
@@ -614,6 +644,12 @@ const Feed = () => {
           });
         }
       )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'videos' }, payload => {
+        setVideos(current => current.map(video => video.id === payload.new.id ? { ...video, ...payload.new } : video));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'videos' }, payload => {
+        setVideos(current => current.filter(video => video.id !== payload.old.id));
+      })
       .subscribe();
 
     return () => {
@@ -621,6 +657,29 @@ const Feed = () => {
       supabase.removeChannel(feedChannel);
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentUser || !videos.length) return;
+    const videoIds = videos.map(video => video.id);
+    const authorIds = [...new Set(videos.map(video => video.user_id).filter(Boolean))];
+    let active = true;
+    const loadInteractionStatus = async () => {
+      const [likes, favorites, follows] = await Promise.all([
+        supabase.from('video_likes').select('video_id').eq('user_id', currentUser.id).in('video_id', videoIds),
+        supabase.from('favorites').select('video_id').eq('user_id', currentUser.id).in('video_id', videoIds),
+        authorIds.length ? supabase.from('follows').select('following_id').eq('follower_id', currentUser.id).in('following_id', authorIds) : Promise.resolve({ data: [] })
+      ]);
+      if (!active) return;
+      const next = {};
+      videoIds.forEach(id => { next[id] = { liked: false, favorited: false, following: false }; });
+      (likes.data || []).forEach(row => { if (next[row.video_id]) next[row.video_id].liked = true; });
+      (favorites.data || []).forEach(row => { if (next[row.video_id]) next[row.video_id].favorited = true; });
+      (follows.data || []).forEach(row => videos.filter(video => video.user_id === row.following_id).forEach(video => { if (next[video.id]) next[video.id].following = true; }));
+      setInteractionStatus(next);
+    };
+    loadInteractionStatus();
+    return () => { active = false; };
+  }, [currentUser, videos]);
 
   useEffect(() => {
     const container = loadMoreRef.current;
@@ -653,10 +712,19 @@ const Feed = () => {
     </div>
   );
 
+  const removeVideo = (videoId) => {
+    setVideos(current => current.filter(video => video.id !== videoId));
+    setInteractionStatus(current => {
+      const next = { ...current };
+      delete next[videoId];
+      return next;
+    });
+  };
+
   return (
     <div className="h-screen w-full overflow-y-scroll snap-y snap-mandatory bg-black scrollbar-hide">
       {videos.map((vid) => (
-        <VideoCard key={vid.id} video={vid} currentUser={currentUser} />
+        <VideoCard key={vid.id} video={vid} currentUser={currentUser} interactionStatus={interactionStatus[vid.id]} onDelete={removeVideo} />
       ))}
       <div ref={loadMoreRef} className="h-24 w-full flex items-center justify-center snap-end">
         {loadingMore && <Loader2 className="animate-spin text-cyan-400" size={28} />}
