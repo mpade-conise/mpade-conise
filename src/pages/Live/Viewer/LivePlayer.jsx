@@ -31,7 +31,6 @@ import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import VideoPlayer from '../Shared/VideoPlayer';
 import FloatingHearts from './FloatingHearts';
 import StreamHeader from '../Shared/StreamHeader';
-import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
 import JoinAsGuest from './JoinAsGuest';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
 import { MultiHostPKBattleBar } from '../../../components/live/MultiHostPKBattleBar';
@@ -1129,30 +1128,13 @@ const LivePlayer = () => {
       >
         {/* VIDEO STAGE: reserved 10% top header + 30% bottom interaction area. */}
         <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-10 overflow-hidden bg-black">
-          <DynamicStreamGrid
-          streamId={streamId}
-          hostVideo={
-            <VideoPlayer
-              streamId={streamId}
-              isHost={false}
-              dataSaver={dataSaver}
-              quality={quality}
-              reconnectToken={reconnectToken}
-            />
-          }
-          hostInfo={{
-            id: streamData?.host_id,
-            username: streamData?.host?.username || 'Host',
-            avatar_url: streamData?.host?.avatar_url || null,
-            verified_status: streamData?.host?.verified_status || null,
-            is_verified: Boolean(streamData?.host?.is_verified),
-            online: Boolean(streamData?.host?.online)
-          }}
-          coHosts={activeCohostsList}
-          isHostView={false}
-          isBattleMode={isBattleMode}
-          className="h-full"
-        />
+          <VideoPlayer
+            streamId={streamId}
+            isHost={false}
+            dataSaver={dataSaver}
+            quality={quality}
+            reconnectToken={reconnectToken}
+          />
 
         </div>
 
