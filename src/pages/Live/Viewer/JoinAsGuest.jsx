@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { forwardRef, useImperativeHandle, useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -39,7 +39,7 @@ const GLOBAL_ICE_CONFIG = {
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
 
-const JoinAsGuest = () => {
+const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateChange }, ref) => {
   const { streamId } = useParams();
   const navigate = useNavigate();
 
@@ -1116,6 +1116,69 @@ const JoinAsGuest = () => {
     navigate
   ]);
 
+  useEffect(() => {
+    if (!engineOnly || !onStateChange) return;
+
+    onStateChange({
+      isLoading,
+      isRequesting,
+      isLiveOnPanel,
+      assignedMode,
+      userProfile,
+      localStream: localStreamRef.current,
+      hostRemoteStream,
+      isCamOn,
+      isMicOn,
+      facingMode,
+      connectionState,
+      connectionQuality,
+      isReconnecting,
+      reconnectMessage,
+      hostDisconnected,
+      lowDataMode,
+      streamData,
+      mediaError
+    });
+  }, [
+    engineOnly,
+    onStateChange,
+    isLoading,
+    isRequesting,
+    isLiveOnPanel,
+    assignedMode,
+    userProfile,
+    hostRemoteStream,
+    isCamOn,
+    isMicOn,
+    facingMode,
+    connectionState,
+    connectionQuality,
+    isReconnecting,
+    reconnectMessage,
+    hostDisconnected,
+    lowDataMode,
+    streamData,
+    mediaError
+  ]);
+
+  useImperativeHandle(ref, () => ({
+    requestJoin: handleSendRequest,
+    cancelRequest,
+    leavePanel: handleLeavePanel,
+    toggleCamera,
+    toggleMic,
+    toggleFlipCamera,
+    retryMedia
+  }), [
+    handleSendRequest,
+    cancelRequest,
+    handleLeavePanel,
+    toggleCamera,
+    toggleMic,
+    toggleFlipCamera,
+    retryMedia
+  ]);
+
   const handleLike = useCallback(async () => {
     if (!streamId) return;
 
@@ -1136,6 +1199,8 @@ const JoinAsGuest = () => {
   }, [startPreview, facingMode]);
 
   useEffect(() => {
+    if (!enabled) return;
+
     mountedRef.current = true;
 
     const init = async () => {
@@ -1204,6 +1269,7 @@ const JoinAsGuest = () => {
       disconnectSocket();
     };
   }, [
+    enabled,
     streamId,
     startPreview,
     fetchDetails,
@@ -1216,7 +1282,7 @@ const JoinAsGuest = () => {
   ]);
 
   useEffect(() => {
-    if (!streamId) return;
+    if (!enabled || !streamId) return;
 
     const giftChannel = supabase
       .channel(`live_gifts_guest_${streamId}`)
@@ -1272,7 +1338,7 @@ const JoinAsGuest = () => {
   }, [streamId]);
 
   useEffect(() => {
-    if (!streamId) return;
+    if (!enabled || !streamId) return;
 
     const streamChannel = supabase
       .channel(`live_stream_status_guest_${streamId}`)
@@ -1319,7 +1385,7 @@ const JoinAsGuest = () => {
   }, [streamId, cleanupConnection, stopLocalMedia]);
 
   useEffect(() => {
-    if (!isLiveOnPanel) return;
+    if (!enabled || !isLiveOnPanel) return;
 
     const timer = window.setInterval(async () => {
       if (!pcRef.current || pcRef.current.connectionState !== 'connected') return;
@@ -1381,6 +1447,8 @@ const JoinAsGuest = () => {
 
   const currentQuality = qualityConfig[connectionQuality] || qualityConfig.connecting;
   const QualityIcon = currentQuality.icon;
+
+  if (engineOnly) return null;
 
   if (isLoading) {
     return (
@@ -1935,6 +2003,6 @@ const JoinAsGuest = () => {
       </AnimatePresence>
     </div>
   );
-};
+});
 
 export default JoinAsGuest;
