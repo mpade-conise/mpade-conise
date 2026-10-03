@@ -592,7 +592,8 @@ const VoiceCall = () => {
             roomId,
             streamId: roomId,
             candidate: event.candidate,
-            to: peerUserId
+            to: peerUserId,
+            callId
           });
         };
 
@@ -965,7 +966,8 @@ const VoiceCall = () => {
                   streamId: roomId,
                   answer:
                     currentPc.localDescription,
-                  to: peerUserId
+                  to: peerUserId,
+                  callId
                 }
               );
 
