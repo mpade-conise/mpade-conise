@@ -1107,13 +1107,14 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
     cleanupConnection();
     stopLocalMedia();
 
-    navigate(`/live/watch/${streamId}`);
+    if (!engineOnly) navigate(`/live/watch/${streamId}`);
   }, [
     currentUserId,
     streamId,
     cleanupConnection,
     stopLocalMedia,
-    navigate
+    navigate,
+    engineOnly
   ]);
 
   useEffect(() => {
