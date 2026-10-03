@@ -850,6 +850,72 @@ const SettingsPage = () => {
     }
   };
 
+  const callAccountLifecycle = async (path, options = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+
+    const response = await fetch(
+      `${import.meta.env.VITE_BACKEND_URL || "https://mpade-backend.onrender.com"}${path}`,
+      {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+          ...(options.headers || {}),
+        },
+      }
+    );
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(payload?.error || "Account lifecycle action failed.");
+    }
+
+    return payload;
+  };
+
+  const handleDeactivateAccount = async () => {
+    if (!window.confirm("Deactivate your account? You will be unable to use the account until it is reactivated.")) return;
+
+    try {
+      setSaving(true);
+      await callAccountLifecycle("/api/account/deactivate", { method: "POST" });
+      await supabase.auth.signOut({ scope: "global" });
+      navigate("/");
+    } catch (error) {
+      console.error("Account deactivation error:", error);
+      setStatusMessage(error?.message || "Unable to deactivate account.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm("Permanently delete your account? This cannot be undone.")) return;
+
+    const confirmation = window.prompt("Type DELETE to permanently delete your account.");
+    if (confirmation !== "DELETE") {
+      setStatusMessage("Account deletion cancelled.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await callAccountLifecycle("/api/account", { method: "DELETE" });
+      await supabase.auth.signOut({ scope: "global" });
+      navigate("/");
+    } catch (error) {
+      console.error("Account deletion error:", error);
+      setStatusMessage(error?.message || "Unable to delete account.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   /* ==========================================================
      CLEAR LOCAL DATA
      ========================================================== */
@@ -1590,9 +1656,9 @@ const SettingsPage = () => {
                     {section.id === "exit" && (
                       <AccountExitSection
                         navigate={navigate}
-                        onLogout={
-                          handleLogout
-                        }
+                        onLogout={handleLogout}
+                        onDeactivate={handleDeactivateAccount}
+                        onDelete={handleDeleteAccount}
                       />
                     )}
                   </div>
@@ -5315,6 +5381,8 @@ const SystemSection = ({
 const AccountExitSection = ({
   navigate,
   onLogout,
+  onDeactivate,
+  onDelete,
 }) => (
   <div>
     <div className="p-5 border-b border-white/5">
@@ -5384,15 +5452,15 @@ const AccountExitSection = ({
     <SettingRow
       icon={<PauseCircle size={18} />}
       title="Deactivate Account"
-      description="Account deactivation requires a server-side account lifecycle endpoint so access and sessions are revoked atomically."
-      right={<Badge>Server action required</Badge>}
+      description="Temporarily disable your account and revoke access until it is reactivated."
+      right={<ActionButton icon={<PauseCircle size={13} />} onClick={onDeactivate} danger>Deactivate</ActionButton>}
     />
 
     <SettingRow
       icon={<Trash2 size={18} />}
       title="Delete Account"
-      description="Permanent deletion must be performed server-side with Supabase Admin privileges and storage cleanup."
-      right={<Badge tone="red">Protected</Badge>}
+      description="Permanently delete your account. This action cannot be undone."
+      right={<ActionButton icon={<Trash2 size={13} />} onClick={onDelete} danger>Delete</ActionButton>}
       danger
       border={false}
     />
