@@ -12,7 +12,7 @@ import {
  * need to bundle the large WASM files into the Vite build.
  */
 const MEDIAPIPE_WASM_URL =
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm";
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm";
 
 const SEGMENTER_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/image_segmenter/" +
@@ -250,107 +250,69 @@ export function useAIEffects({
    * image is drawn first, then the background is blurred underneath
    * the person.
    */
+  const buildMaskCanvas = useCallback((result, width, height) => {
+    if (!result?.categoryMask) return null;
+
+    const maskData = result.categoryMask.getAsUint8Array();
+    const maskCanvas = document.createElement("canvas");
+    maskCanvas.width = width;
+    maskCanvas.height = height;
+    const maskCtx = maskCanvas.getContext("2d");
+    if (!maskCtx) return null;
+
+    const maskImage = maskCtx.createImageData(width, height);
+    const totalPixels = width * height;
+
+    for (let i = 0; i < totalPixels; i++) {
+      const value = maskData[i] > 0 ? 255 : 0;
+      const offset = i * 4;
+      maskImage.data[offset] = 255;
+      maskImage.data[offset + 1] = 255;
+      maskImage.data[offset + 2] = 255;
+      maskImage.data[offset + 3] = value;
+    }
+
+    maskCtx.putImageData(maskImage, 0, 0);
+    return maskCanvas;
+  }, []);
+
   const drawBackgroundBlur = useCallback(
     (ctx, video, result, width, height) => {
-      if (!result?.categoryMask) {
-        drawOriginalFrame(
-          ctx,
-          video,
-          width,
-          height
-        );
-
+      const maskCanvas = buildMaskCanvas(result, width, height);
+      if (!maskCanvas) {
+        drawOriginalFrame(ctx, video, width, height);
         return;
       }
 
-      const mask = result.categoryMask;
+      const blurredCanvas = document.createElement("canvas");
+      const foregroundCanvas = document.createElement("canvas");
+      blurredCanvas.width = width;
+      blurredCanvas.height = height;
+      foregroundCanvas.width = width;
+      foregroundCanvas.height = height;
 
-      /*
-       * Draw the blurred background.
-       */
-      ctx.save();
-
-      ctx.filter = `blur(${Math.max(
-        2,
-        intensityRef.current / 8
-      )}px)`;
-
-      ctx.drawImage(
-        video,
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.restore();
-
-      /*
-       * Keep the person sharp.
-       *
-       * destination-in uses the segmentation mask as the alpha
-       * channel for the sharp foreground.
-       */
-      const maskCanvas = document.createElement("canvas");
-
-      maskCanvas.width = width;
-      maskCanvas.height = height;
-
-      const maskCtx = maskCanvas.getContext("2d");
-
-      if (!maskCtx) {
+      const blurredCtx = blurredCanvas.getContext("2d");
+      const foregroundCtx = foregroundCanvas.getContext("2d");
+      if (!blurredCtx || !foregroundCtx) {
+        drawOriginalFrame(ctx, video, width, height);
         return;
       }
 
-      const maskData = mask.getAsUint8Array();
+      const blurAmount = Math.max(2, Math.round(intensityRef.current / 5));
+      blurredCtx.filter = `blur(${blurAmount}px)`;
+      blurredCtx.drawImage(video, 0, 0, width, height);
+      blurredCtx.filter = "none";
 
-      const maskImage = maskCtx.createImageData(
-        width,
-        height
-      );
+      foregroundCtx.drawImage(video, 0, 0, width, height);
+      foregroundCtx.globalCompositeOperation = "destination-in";
+      foregroundCtx.drawImage(maskCanvas, 0, 0, width, height);
+      foregroundCtx.globalCompositeOperation = "source-over";
 
-      const totalPixels = width * height;
-
-      for (let i = 0; i < totalPixels; i++) {
-        const value = maskData[i] > 0 ? 255 : 0;
-
-        const offset = i * 4;
-
-        maskImage.data[offset] = 255;
-        maskImage.data[offset + 1] = 255;
-        maskImage.data[offset + 2] = 255;
-        maskImage.data[offset + 3] = value;
-      }
-
-      maskCtx.putImageData(maskImage, 0, 0);
-
-      ctx.save();
-
-      ctx.globalCompositeOperation =
-        "destination-over";
-
-      ctx.drawImage(
-        video,
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.globalCompositeOperation =
-        "destination-in";
-
-      ctx.drawImage(
-        maskCanvas,
-        0,
-        0,
-        width,
-        height
-      );
-
-      ctx.restore();
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(blurredCanvas, 0, 0, width, height);
+      ctx.drawImage(foregroundCanvas, 0, 0, width, height);
     },
-    [drawOriginalFrame]
+    [buildMaskCanvas, drawOriginalFrame]
   );
 
   /*
@@ -408,22 +370,10 @@ export function useAIEffects({
       const totalPixels = width * height;
 
       for (let i = 0; i < totalPixels; i++) {
-        const maskValue = maskData[i];
-
+        const maskValue = maskData[i] > 0 ? 255 : 0;
         const offset = i * 4;
-
-        /*
-         * Gradually control transparency using intensity.
-         */
-        const alpha =
-          (maskValue / 255) *
-          Math.min(
-            255,
-            255 * (intensityRef.current / 70)
-          );
-
-        imageData.data[offset + 3] =
-          Math.min(255, alpha);
+        const edge = Math.max(0, Math.min(255, intensityRef.current * 3.64));
+        imageData.data[offset + 3] = maskValue ? 255 : edge > 254 ? 0 : 0;
       }
 
       frameCtx.putImageData(
@@ -809,15 +759,11 @@ export function useAIEffects({
    */
   const getProcessedStream =
     useCallback(() => {
-      if (!enabledRef.current) {
+      if (!enabledRef.current || effectRef.current === "none") {
         return sourceStreamRef.current;
       }
 
-      return (
-        outputStreamRef.current ||
-        sourceStreamRef.current ||
-        null
-      );
+      return outputStreamRef.current || sourceStreamRef.current || null;
     }, []);
 
   /*
@@ -825,24 +771,11 @@ export function useAIEffects({
    */
   const getProcessedVideoTrack =
     useCallback(() => {
-      if (!enabledRef.current) {
-        return (
-          sourceStreamRef.current
-            ?.getVideoTracks()
-            ?.at(0) || null
-        );
+      if (!enabledRef.current || effectRef.current === "none") {
+        return sourceStreamRef.current?.getVideoTracks()?.at(0) || null;
       }
 
-      return (
-        outputTrackRef.current ||
-        outputStreamRef.current
-          ?.getVideoTracks()
-          ?.at(0) ||
-        sourceStreamRef.current
-          ?.getVideoTracks()
-          ?.at(0) ||
-        null
-      );
+      return outputTrackRef.current || outputStreamRef.current?.getVideoTracks()?.at(0) || sourceStreamRef.current?.getVideoTracks()?.at(0) || null;
     }, []);
 
   /*
