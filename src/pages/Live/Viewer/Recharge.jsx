@@ -91,11 +91,12 @@ const normalizePhone = value => String(value || '').replace(/\s+/g, '').trim();
 
 const isValidPhone = value => {
 const phone = normalizePhone(value);
-return /^(?:\+265|265|0)?[89]\d{8}$/.test(phone);
+return /^(?:+265|265|0)?[89]\d{8}$/.test(phone);
 };
 
 const fetchProfile = useCallback(async () => {
 setLoadingProfile(true);
+
 
 try {
   const {
@@ -135,6 +136,7 @@ try {
   setLoadingProfile(false);
 }
 
+
 }, [navigate]);
 
 useEffect(() => {
@@ -145,6 +147,7 @@ useEffect(() => {
 const online = () => setOffline(false);
 const offlineHandler = () => setOffline(true);
 
+
 window.addEventListener('online', online);
 window.addEventListener('offline', offlineHandler);
 
@@ -152,6 +155,7 @@ return () => {
   window.removeEventListener('online', online);
   window.removeEventListener('offline', offlineHandler);
 };
+
 
 }, []);
 
@@ -168,6 +172,7 @@ setPaymentResult(null);
 const refreshBalance = async () => {
 if (!userProfile?.id) return;
 
+
 try {
   const { data, error } = await supabase
     .from('profiles')
@@ -182,10 +187,12 @@ try {
   console.error('Balance refresh error:', error);
 }
 
+
 };
 
 const handlePackageSelect = pkg => {
 if (loading || loadingProfile || offline) return;
+
 
 setPaymentError('');
 setPaymentResult(null);
@@ -197,10 +204,12 @@ const provider = String(
 
 setSelectedProvider(provider === 'AIRTEL' ? 'AIRTEL' : 'TNM');
 
+
 };
 
 const handlePurchase = async () => {
 if (loading || !selectedPackage || !userProfile) return;
+
 
 if (offline) {
   setPaymentError('You are offline. Please reconnect before starting payment.');
@@ -360,10 +369,12 @@ try {
   setLoading(false);
 }
 
+
 };
 
 const handleRetryPayment = () => {
 if (!selectedPackage) return;
+
 
 setPaymentStage('idle');
 setPaymentError('');
@@ -371,10 +382,12 @@ setPaymentMessage('');
 setPaymentResult(null);
 setChargeId('');
 
+
 };
 
 const closePaymentModal = () => {
 if (loading) return;
+
 
 if (paymentStage === 'success') {
   resetPayment();
@@ -388,10 +401,12 @@ setPaymentError('');
 setPaymentResult(null);
 setChargeId('');
 
+
 };
 
 const displayPhone = value => {
 const phone = normalizePhone(value);
+
 
 if (!phone) return 'No number saved';
 
@@ -400,6 +415,7 @@ if (phone.length > 6) {
 }
 
 return phone;
+
 
 };
 
@@ -423,6 +439,7 @@ return ( <div className="min-h-screen bg-black text-white font-sans selection:bg
 0%,100% { box-shadow: 0 0 18px rgba(6,182,212,.12); }
 50% { box-shadow: 0 0 32px rgba(6,182,212,.25); }
 }
+
 
     @keyframes coin-pulse {
       0%,100% { transform: scale(1); opacity: .8; }
@@ -487,7 +504,7 @@ return ( <div className="min-h-screen bg-black text-white font-sans selection:bg
     </button>
   </nav>
 
-  <main className="relative z-10 max-w-xl mx-auto px-5 sm:px-6 pt-7 pb-28 bank-scroll">
+  <main className="relative z-10 max-w-xl mx-auto px-5 sm:px-6 pt-7 pb-28 bank-scroll min-h-screen overflow-y-auto">
     {offline && (
       <div className="mb-5 rounded-2xl border border-orange-500/20 bg-orange-500/[0.06] px-4 py-3 flex items-center gap-3">
         <WifiOff size={16} className="text-orange-400 shrink-0" />
