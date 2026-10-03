@@ -1,6 +1,6 @@
 // src/components/live/GuestManager.jsx
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Radio,
@@ -37,6 +37,9 @@ const GuestManager = ({
 }) => {
   const [processingRequestIds, setProcessingRequestIds] =
     useState(() => new Set());
+
+  const [internalPendingRequests, setInternalPendingRequests] =
+    useState([]);
 
   const [processingGuestIds, setProcessingGuestIds] =
     useState(() => new Set());
@@ -123,29 +126,260 @@ const GuestManager = ({
 
   /*
    * ------------------------------------------------------------
-   * Pending-request synchronization
+   * Guest-request synchronization
    *
-   * Parent remains the source of truth.
+   * GuestManager must be able to receive requests directly.
+   * We support both:
+   *   1. Socket.IO guest_cohost_request events
+   *   2. Supabase INSERT/UPDATE realtime events
    *
-   * StreamDashboard already manages the guest-request
-   * realtime subscription, so we do not create another
-   * subscription here.
-   *
-   * This prevents duplicate Supabase listeners.
+   * The parent setters are still updated when supplied, so this
+   * remains compatible with existing parent state management.
    * ------------------------------------------------------------
    */
   useEffect(() => {
-    if (!streamId) {
-      return;
+    if (!streamId) return;
+
+    let cancelled = false;
+    let requestChannel = null;
+
+    const normalizeRequest = request => {
+      if (!request) return null;
+
+      const requestStreamId =
+        request.stream_id ||
+        request.streamId;
+
+      const requestUserId =
+        request.user_id ||
+        request.userId ||
+        request.guest_id ||
+        request.guestId;
+
+      if (
+        requestStreamId &&
+        String(requestStreamId) !== String(streamId)
+      ) {
+        return null;
+      }
+
+      if (!requestUserId || !request.id) return null;
+
+      return {
+        ...request,
+        stream_id: requestStreamId || streamId,
+        user_id: requestUserId,
+        username:
+          request.username ||
+          request.name ||
+          'Guest',
+        avatar_url:
+          request.avatar_url ||
+          request.avatar ||
+          null,
+        mode:
+          request.mode === 'audio'
+            ? 'audio'
+            : 'video',
+        status:
+          request.status ||
+          'pending'
+      };
+    };
+
+    const addPendingRequest = request => {
+      const normalized = normalizeRequest(request);
+      if (!normalized || normalized.status !== 'pending') return;
+
+      setInternalPendingRequests(previous => {
+        const existing = previous.find(
+          item => item?.id === normalized.id
+        );
+
+        if (existing) {
+          return previous.map(item =>
+            item?.id === normalized.id
+              ? { ...item, ...normalized }
+              : item
+          );
+        }
+
+        return [...previous, normalized];
+      });
+
+      if (setPendingRequests) {
+        setPendingRequests(previous => {
+          const current = Array.isArray(previous)
+            ? previous
+            : [];
+
+          const existing = current.find(
+            item => item?.id === normalized.id
+          );
+
+          if (existing) {
+            return current.map(item =>
+              item?.id === normalized.id
+                ? { ...item, ...normalized }
+                : item
+            );
+          }
+
+          return [...current, normalized];
+        });
+      }
+    };
+
+    const removePendingRequest = requestId => {
+      if (!requestId) return;
+
+      setInternalPendingRequests(previous =>
+        previous.filter(item => item?.id !== requestId)
+      );
+
+      if (setPendingRequests) {
+        setPendingRequests(previous =>
+          (Array.isArray(previous) ? previous : []).filter(
+            item => item?.id !== requestId
+          )
+        );
+      }
+    };
+
+    const loadPendingRequests = async () => {
+      const { data, error } = await supabase
+        .from('live_guest_requests')
+        .select('*')
+        .eq('stream_id', streamId)
+        .eq('status', 'pending');
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error(
+          '❌ [GuestManager] Failed to load guest requests:',
+          error
+        );
+        return;
+      }
+
+      const normalized = (data || [])
+        .map(normalizeRequest)
+        .filter(Boolean);
+
+      setInternalPendingRequests(normalized);
+
+      if (setPendingRequests) {
+        setPendingRequests(normalized);
+      }
+    };
+
+    loadPendingRequests();
+
+    requestChannel = supabase
+      .channel(`guest_manager_requests_${streamId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'live_guest_requests',
+          filter: `stream_id=eq.${streamId}`
+        },
+        payload => {
+          addPendingRequest(payload?.new);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'live_guest_requests',
+          filter: `stream_id=eq.${streamId}`
+        },
+        payload => {
+          const row = payload?.new;
+          if (!row?.id) return;
+
+          if (row.status === 'pending') {
+            addPendingRequest(row);
+          } else {
+            removePendingRequest(row.id);
+          }
+        }
+      )
+      .subscribe(status => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error(
+            '❌ [GuestManager] Guest request realtime channel error.'
+          );
+        }
+      });
+
+    const handleSocketRequest = payload => {
+      const request = normalizeRequest({
+        ...payload,
+        id:
+          payload?.requestId ||
+          payload?.request_id ||
+          payload?.id,
+        stream_id:
+          payload?.streamId ||
+          payload?.stream_id ||
+          streamId,
+        user_id:
+          payload?.userId ||
+          payload?.user_id ||
+          payload?.guestId ||
+          payload?.guest_id,
+        avatar_url:
+          payload?.avatar_url ||
+          payload?.avatar
+      });
+
+      addPendingRequest(request);
+    };
+
+    if (socket) {
+      socket.on(
+        'guest_cohost_request',
+        handleSocketRequest
+      );
     }
 
-    /*
-     * Nothing else is required here.
-     *
-     * Keeping the effect makes streamId a deliberate dependency
-     * and makes the ownership clear.
-     */
-  }, [streamId]);
+    return () => {
+      cancelled = true;
+
+      if (socket) {
+        socket.off(
+          'guest_cohost_request',
+          handleSocketRequest
+        );
+      }
+
+      if (requestChannel) {
+        supabase.removeChannel(requestChannel);
+      }
+    };
+  }, [streamId, socket, setPendingRequests]);
+
+  const visiblePendingRequests = useMemo(() => {
+    const merged = new Map();
+
+    [
+      ...(Array.isArray(pendingRequests)
+        ? pendingRequests
+        : []),
+      ...internalPendingRequests
+    ].forEach(request => {
+      if (!request?.id) return;
+      if (request.status && request.status !== 'pending') return;
+      merged.set(request.id, request);
+    });
+
+    return Array.from(merged.values());
+  }, [pendingRequests, internalPendingRequests]);
 
   /*
    * ------------------------------------------------------------
@@ -997,12 +1231,12 @@ const GuestManager = ({
               font-mono
             "
           >
-            ({pendingRequests?.length || 0})
+            ({visiblePendingRequests.length || 0})
           </span>
         </h3>
 
         <div className="space-y-1.5">
-          {pendingRequests?.length === 0 ? (
+          {visiblePendingRequests.length === 0 ? (
             <p
               className="
                 text-[10px]
@@ -1015,7 +1249,7 @@ const GuestManager = ({
             </p>
           ) : (
             <AnimatePresence mode="popLayout">
-              {pendingRequests.map(
+              {visiblePendingRequests.map(
                 request => {
                   const isProcessing =
                     processingRequestIds.has(
