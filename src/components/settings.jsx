@@ -522,6 +522,14 @@ const SettingsPage = () => {
   });
 
   const [statusMessage, setStatusMessage] = useState("");
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [mfaModalOpen, setMfaModalOpen] = useState(false);
+  const [mfaFactor, setMfaFactor] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [loginAlerts, setLoginAlerts] = useState(true);
 
   /* ==========================================================
      LOAD PROFILE
@@ -611,6 +619,8 @@ const SettingsPage = () => {
           data.theme_preference ||
           previous.theme,
       }));
+
+      setLoginAlerts(Boolean(safeJson(data.advanced_settings, {}).security?.loginAlerts ?? true));
 
       setDataSaver(
         Boolean(
@@ -1352,6 +1362,12 @@ const SettingsPage = () => {
                         profile={profile}
                         user={user}
                         navigate={navigate}
+                        onEmailChange={() => setEmailModalOpen(true)}
+                        onMfaSetup={setupMfa}
+                        mfaLoading={mfaLoading}
+                        loginAlerts={loginAlerts}
+                        onLoginAlertsChange={saveLoginAlerts}
+                        onLogoutAll={handleLogout}
                       />
                     )}
 
@@ -1602,6 +1618,31 @@ const SettingsPage = () => {
             </div>
           </div>
         </main>
+  {/* SECURITY MODALS */}
+  <AnimatePresence>
+    {emailModalOpen && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
+        <motion.div initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl">
+          <div className="flex items-center justify-between mb-4"><h3 className="font-black text-white">Change email</h3><button type="button" onClick={() => setEmailModalOpen(false)}><X size={18}/></button></div>
+          <p className="text-xs text-zinc-500 mb-4">Supabase will require email confirmation before the change is finalized.</p>
+          <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} type="email" placeholder="new@email.com" className="w-full rounded-xl bg-black border border-white/10 px-3 py-3 text-sm outline-none focus:border-cyan-400"/>
+          <div className="flex justify-end gap-2 mt-4"><ActionButton onClick={() => setEmailModalOpen(false)}>Cancel</ActionButton><ActionButton onClick={requestEmailChange} icon={<Check size={13}/>}>{emailSaving ? "Saving..." : "Send confirmation"}</ActionButton></div>
+        </motion.div>
+      </div>
+    )}
+    {mfaModalOpen && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
+        <motion.div initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl">
+          <div className="flex items-center justify-between mb-4"><h3 className="font-black text-white">Authenticator setup</h3><button type="button" onClick={() => setMfaModalOpen(false)}><X size={18}/></button></div>
+          {mfaFactor?.totp?.qr && <img src={mfaFactor.totp.qr} alt="Authenticator QR code" className="mx-auto w-48 h-48 bg-white p-2 rounded-xl"/>}
+          {mfaFactor?.totp?.secret && <p className="text-[10px] text-zinc-500 break-all mt-3">Manual key: {mfaFactor.totp.secret}</p>}
+          <input value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="6-digit code" className="w-full mt-4 rounded-xl bg-black border border-white/10 px-3 py-3 text-center tracking-[.5em] outline-none focus:border-cyan-400"/>
+          <div className="flex justify-end gap-2 mt-4"><ActionButton onClick={() => setMfaModalOpen(false)}>Cancel</ActionButton><ActionButton onClick={verifyMfa} icon={<ShieldCheck size={13}/>}>{mfaLoading ? "Verifying..." : "Verify & enable"}</ActionButton></div>
+        </motion.div>
+      </div>
+    )}
+  </AnimatePresence>
+
       </div>
     </div>
   );
@@ -2191,191 +2232,27 @@ const SecuritySection = ({
   profile,
   user,
   navigate,
+  onEmailChange,
+  onMfaSetup,
+  mfaLoading,
+  loginAlerts,
+  onLoginAlertsChange,
+  onLogoutAll,
 }) => {
   return (
     <div>
-      <SettingRow
-        icon={<KeyRound size={18} />}
-        title="Change Password"
-        description="Update the password used to access your account."
-        right={
-          <ChevronRight
-            size={17}
-            className="text-zinc-700"
-          />
-        }
-        onClick={() =>
-          navigate("/settings/security")
-        }
-      />
-
-      <SettingRow
-        icon={<Mail size={18} />}
-        title="Email Verification"
-        description={
-          user?.email_confirmed_at
-            ? "Your email address is verified."
-            : "Your email address still needs verification."
-        }
-        right={
-          <Badge
-            tone={
-              user?.email_confirmed_at
-                ? "green"
-                : "yellow"
-            }
-          >
-            {user?.email_confirmed_at
-              ? "Verified"
-              : "Pending"}
-          </Badge>
-        }
-      />
-
-      <SettingRow
-        icon={<Phone size={18} />}
-        title="Phone Verification"
-        description={
-          profile?.phone_number
-            ? "A phone number is associated with your profile."
-            : "Add a phone number for recovery and verification."
-        }
-        right={
-          <ComingSoon text="Verification" />
-        }
-      />
-
-      <SettingRow
-        icon={<ShieldCheck size={18} />}
-        title="Two-Factor Authentication"
-        description="Add another security layer when signing in."
-        right={
-          <ComingSoon text="Not configured" />
-        }
-      />
-
-      <SettingRow
-        icon={<Smartphone size={18} />}
-        title="Authenticator App"
-        description="Use an authenticator application for verification codes."
-        right={
-          <ComingSoon text="Not configured" />
-        }
-      />
-
-      <SettingRow
-        icon={<MessageSquare size={18} />}
-        title="SMS Verification"
-        description="Use SMS as a verification method."
-        right={
-          <ComingSoon text="Not configured" />
-        }
-      />
-
-      <SettingRow
-        icon={<Fingerprint size={18} />}
-        title="Passkeys"
-        description="Passwordless authentication using supported devices."
-        right={
-          <ComingSoon text="Not configured" />
-        }
-      />
-
-      <SettingRow
-        icon={<AlertTriangle size={18} />}
-        title="Login Alerts"
-        description="Receive alerts when a new login is detected."
-        right={
-          <Toggle
-            active={true}
-            onChange={() => {}}
-          />
-        }
-      />
-
-      <SettingRow
-        icon={<ShieldAlert size={18} />}
-        title="Suspicious Login Detection"
-        description="Security monitoring for unusual account activity."
-        right={
-          <Badge tone="green">
-            Protected
-          </Badge>
-        }
-      />
-
-      <SettingRow
-        icon={<History size={18} />}
-        title="Login History"
-        description="Review recent account login events."
-        right={
-          <ChevronRight
-            size={17}
-            className="text-zinc-700"
-          />
-        }
-        onClick={() =>
-          navigate("/settings/security")
-        }
-      />
-
-      <SettingRow
-        icon={<Smartphone size={18} />}
-        title="Active Sessions"
-        description="Review devices currently signed into your account."
-        right={
-          <ChevronRight
-            size={17}
-            className="text-zinc-700"
-          />
-        }
-        onClick={() =>
-          navigate("/settings/security")
-        }
-      />
-
-      <SettingRow
-        icon={<LogOut size={18} />}
-        title="Logout All Devices"
-        description="End sessions across your devices."
-        right={
-          <ComingSoon text="Security action" />
-        }
-      />
-
-      <SettingRow
-        icon={<Shield size={18} />}
-        title="Trusted Devices"
-        description="Manage devices you trust for future sign-ins."
-        right={
-          <ComingSoon text="Not configured" />
-        }
-      />
-
-      <SettingRow
-        icon={<Mail size={18} />}
-        title="Recovery Email / Phone"
-        description="Recovery contact information for your account."
-        right={
-          <ComingSoon text="Configure" />
-        }
-      />
-
-      <SettingRow
-        icon={<Link2 size={18} />}
-        title="Connected Apps & Permissions"
-        description="Third-party applications authorized to access your account."
-        right={
-          <ChevronRight
-            size={17}
-            className="text-zinc-700"
-          />
-        }
-        onClick={() =>
-          navigate("/settings/apps")
-        }
-        border={false}
-      />
+      <SettingRow icon={<KeyRound size={18} />} title="Change Password" description="Update your account password using Supabase Auth." right={<ActionButton icon={<KeyRound size={13} />} onClick={() => navigate("/settings/security")}>Change</ActionButton>} />
+      <SettingRow icon={<Mail size={18} />} title="Email Address" description={user?.email || profile?.email || "No email address"} right={<ActionButton icon={<Edit3 size={13} />} onClick={onEmailChange}>Change</ActionButton>} />
+      <SettingRow icon={<Check size={18} />} title="Email Verification" description={user?.email_confirmed_at ? "Your email address is verified." : "Confirm your email before relying on it for account recovery."} right={<Badge tone={user?.email_confirmed_at ? "green" : "yellow"}>{user?.email_confirmed_at ? "Verified" : "Pending"}</Badge>} />
+      <SettingRow icon={<ShieldCheck size={18} />} title="Two-Factor Authentication" description="Protect sign-in with a TOTP authenticator app." right={<ActionButton icon={<ShieldCheck size={13} />} onClick={onMfaSetup}>{mfaLoading ? "Working..." : "Configure"}</ActionButton>} />
+      <SettingRow icon={<AlertTriangle size={18} />} title="Login Alerts" description="Keep a persistent preference for security notifications." right={<Toggle active={loginAlerts} onChange={onLoginAlertsChange} />} />
+      <SettingRow icon={<ShieldAlert size={18} />} title="Suspicious Login Detection" description="Authentication and session security are enforced by Supabase Auth." right={<Badge tone="green">Protected</Badge>} />
+      <SettingRow icon={<History size={18} />} title="Login History" description="Review authentication activity available to your account." right={<Badge>Auth logs</Badge>} />
+      <SettingRow icon={<Smartphone size={18} />} title="Active Sessions" description="Supabase manages the active authentication sessions for this account." right={<Badge>Managed</Badge>} />
+      <SettingRow icon={<LogOut size={18} />} title="Log Out All Devices" description="Immediately revoke all refresh-token sessions for this account." right={<ActionButton icon={<LogOut size={13} />} onClick={onLogoutAll} danger>Log out all</ActionButton>} />
+      <SettingRow icon={<Phone size={18} />} title="Phone Verification" description={profile?.phone_number ? "A phone number is associated with your profile." : "Phone verification requires a configured SMS provider."} right={<Badge>{profile?.phone_number ? "Added" : "Not configured"}</Badge>} />
+      <SettingRow icon={<Fingerprint size={18} />} title="Passkeys" description="WebAuthn passkeys require a dedicated passkey enrollment flow." right={<Badge>Planned</Badge>} />
+      <SettingRow icon={<Link2 size={18} />} title="Connected Apps & Permissions" description="Third-party authorization management should be handled by the provider that owns the integration." right={<Badge>Provider managed</Badge>} border={false} />
     </div>
   );
 };
@@ -5498,26 +5375,24 @@ const AccountExitSection = ({
       title="Log Out All Devices"
       description="End all active sessions across your devices."
       right={
-        <ComingSoon text="Security manager" />
+        <ActionButton icon={<LogOut size={13} />} onClick={onLogout} danger>
+          Log out all
+        </ActionButton>
       }
     />
 
     <SettingRow
       icon={<PauseCircle size={18} />}
       title="Deactivate Account"
-      description="Temporarily disable your account."
-      right={
-        <ComingSoon text="Account action" />
-      }
+      description="Account deactivation requires a server-side account lifecycle endpoint so access and sessions are revoked atomically."
+      right={<Badge>Server action required</Badge>}
     />
 
     <SettingRow
       icon={<Trash2 size={18} />}
       title="Delete Account"
-      description="Permanently delete your account and associated data."
-      right={
-        <ComingSoon text="Dangerous action" />
-      }
+      description="Permanent deletion must be performed server-side with Supabase Admin privileges and storage cleanup."
+      right={<Badge tone="red">Protected</Badge>}
       danger
       border={false}
     />
