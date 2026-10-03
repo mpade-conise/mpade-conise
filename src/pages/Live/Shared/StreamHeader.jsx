@@ -1379,7 +1379,7 @@ const StreamHeader = ({
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{
-                    width: `${goalPercent}%`
+                    width: String(goalPercent) + '%'
                   }}
                   transition={{
                     type: 'spring',
