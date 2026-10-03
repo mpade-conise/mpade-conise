@@ -269,12 +269,17 @@ function App() {
         .eq('id', callerId)
         .single();
 
-      setIncomingCall({
-        callerId: callerId,
-        callerUsername: callerProfile?.username || data?.callerName || data?.callerUsername || 'User',
-        callerAvatar: callerProfile?.avatar_url || data?.callerAvatar || null,
-        callType: data?.callType || 'video',
-        roomId: data?.roomId || [session.user.id, callerId].sort().join("-")
+      const callId = data?.callId || `${callerId}:${data?.roomId || ''}`;
+      setIncomingCall((previous) => {
+        if (previous?.callId === callId) return previous;
+        return {
+          callerId,
+          callerUsername: callerProfile?.username || data?.callerName || data?.callerUsername || 'User',
+          callerAvatar: callerProfile?.avatar_url || data?.callerAvatar || null,
+          callType: data?.callType || 'video',
+          roomId: data?.roomId || [session.user.id, callerId].sort().join("-"),
+          callId
+        };
       });
     };
 
@@ -324,10 +329,7 @@ function App() {
     return () => {
       socket.off('connect', handleConnect);
       socket.off('reconnect', handleReconnect);
-      socket.off('incoming_call_signal', processIncomingCallSignal);
-      socket.off('initiate_call_signal', handleInitiateSignal);
-      socket.off('incoming_call', processIncomingCallSignal);
-      socket.off('call_offer', processIncomingCallSignal);
+      socket.off('incoming_call_signal', handleInitiateSignal);
       socket.off('call_cancelled_by_caller', handleCallCancel);
       socket.off('cancel_call_signal', handleCallCancel);
       socket.off('decline_call', handleCallCancel);
@@ -360,9 +362,12 @@ function App() {
     if (!incomingCall || !globalSocket) return;
     
     const targetUserId = incomingCall.callerId || incomingCall.fromUserId;
-    globalSocket.emit('reject_incoming_call', { 
-      roomId: incomingCall.roomId, 
-      to: targetUserId 
+    globalSocket.emit('reject_incoming_call', {
+      roomId: incomingCall.roomId,
+      to: targetUserId,
+      callerId: targetUserId,
+      receiverId: session?.user?.id,
+      callId: incomingCall.callId || null
     });
     setIncomingCall(null);
   };
