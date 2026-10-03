@@ -18,7 +18,10 @@ import {
   UserPlus,
   UserCheck,
   RefreshCw,
-  MoreHorizontal
+  MoreHorizontal,
+  Mic,
+  MicOff,
+  Camera
 } from 'lucide-react';
 
 // Components
@@ -1124,14 +1127,14 @@ const LivePlayer = () => {
                     className={`h-8 w-8 rounded-xl border flex items-center justify-center ${guestState.isMicOn ? 'bg-white/5 border-white/10 text-white' : 'bg-red-500/15 border-red-400/20 text-red-300'}`}
                     aria-label="Toggle guest microphone"
                   >
-                    {guestState.isMicOn ? <MessageCircle size={13} /> : <WifiOff size={13} />}
+                    {guestState.isMicOn ? <Mic size={13} /> : <MicOff size={13} />}
                   </button>
                   <button
                     onClick={() => guestEngineRef.current?.toggleCamera?.()}
                     className={`h-8 w-8 rounded-xl border flex items-center justify-center ${guestState.isCamOn ? 'bg-white/5 border-white/10 text-white' : 'bg-red-500/15 border-red-400/20 text-red-300'}`}
                     aria-label="Toggle guest camera"
                   >
-                    {guestState.isCamOn ? <VideoOff size={13} /> : <VideoOff size={13} />}
+                    {guestState.isCamOn ? <Camera size={13} /> : <VideoOff size={13} />}
                   </button>
                   <button
                     onClick={handleGuestLeave}
