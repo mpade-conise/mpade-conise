@@ -96,7 +96,9 @@ const Inbox = () => {
 
   const mountedRef = useRef(false);
 
-  const fetchInProgressRef = useRef(false);\n  const pendingRefreshRef = useRef(false);\n  const profileCacheRef = useRef(new Map());
+  const fetchInProgressRef = useRef(false);
+  const pendingRefreshRef = useRef(false);
+  const profileCacheRef = useRef(new Map());
 
   // =========================================================
   // FETCH PROFILES
