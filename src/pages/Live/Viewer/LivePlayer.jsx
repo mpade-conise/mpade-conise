@@ -28,6 +28,7 @@ import VideoPlayer from '../Shared/VideoPlayer';
 import FloatingHearts from './FloatingHearts';
 import StreamHeader from '../Shared/StreamHeader';
 import DynamicStreamGrid from '../../../components/DynamicStreamGrid.jsx';
+import JoinAsGuest from './JoinAsGuest';
 import LiveStreamGoalBar from '../../../components/live/LiveStreamGoalBar.jsx';
 import { MultiHostPKBattleBar } from '../../../components/live/MultiHostPKBattleBar';
 
@@ -123,6 +124,8 @@ const LivePlayer = () => {
 
   const [activeCohostsList, setActiveCohostsList] = useState([]);
   const [hasActiveCohosts, setHasActiveCohosts] = useState(false);
+  const [guestEngineOpen, setGuestEngineOpen] = useState(false);
+  const [guestState, setGuestState] = useState(null);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -145,6 +148,7 @@ const LivePlayer = () => {
 
   const eventNotificationTimerRef = useRef(null);
   const cohostRefreshTimerRef = useRef(null);
+  const guestEngineRef = useRef(null);
   const redirectTimerRef = useRef(null);
 
   const mountedRef = useRef(true);
@@ -853,7 +857,30 @@ const LivePlayer = () => {
   const handleJoinGuest = () => {
     if (!streamId) return;
 
-    navigate(`/live/watch/${streamId}/join-guest`);
+    setGuestEngineOpen(true);
+  };
+
+  const handleGuestClose = () => {
+    if (guestEngineRef.current) {
+      if (guestState?.isRequesting) {
+        guestEngineRef.current.cancelRequest?.();
+      } else if (guestState?.isLiveOnPanel) {
+        guestEngineRef.current.leavePanel?.();
+      }
+    }
+
+    setGuestEngineOpen(false);
+    setGuestState(null);
+  };
+
+  const handleGuestRequest = () => {
+    guestEngineRef.current?.requestJoin?.();
+  };
+
+  const handleGuestLeave = () => {
+    guestEngineRef.current?.leavePanel?.();
+    setGuestEngineOpen(false);
+    setGuestState(null);
   };
 
   /*
@@ -1050,6 +1077,132 @@ const LivePlayer = () => {
           isHostView={false}
           isBattleMode={isBattleMode}
         />
+
+        <JoinAsGuest
+          ref={guestEngineRef}
+          engineOnly
+          enabled={guestEngineOpen}
+          onStateChange={setGuestState}
+        />
+
+        {guestEngineOpen && (
+          <div className="absolute top-[18%] left-3 right-3 z-[46] pointer-events-none">
+            {guestState?.isLiveOnPanel ? (
+              <div className="w-36 sm:w-44 pointer-events-auto rounded-2xl overflow-hidden border border-cyan-300/50 bg-black/80 shadow-2xl">
+                <div className="relative aspect-[2/1] bg-zinc-950">
+                  {guestState.localStream && guestState.assignedMode === 'video' && guestState.isCamOn ? (
+                    <video
+                      autoPlay
+                      playsInline
+                      muted
+                      ref={element => {
+                        if (element) {
+                          element.srcObject = guestState.localStream;
+                          element.play?.().catch(() => {});
+                        }
+                      }}
+                      className={`w-full h-full object-cover ${guestState.facingMode === 'user' ? '-scale-x-100' : ''}`}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900">
+                      <span className="text-[9px] font-black text-zinc-300">
+                        {guestState.assignedMode === 'audio' ? 'AUDIO ONLY' : 'CAMERA OFF'}
+                      </span>
+                    </div>
+                  )}
+                  <div className="absolute left-1.5 bottom-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[8px] font-black">
+                    YOU
+                  </div>
+                  <div className="absolute right-1.5 top-1.5 rounded-full bg-emerald-500/90 px-1.5 py-0.5 text-[7px] font-black">
+                    LIVE
+                  </div>
+                </div>
+
+                <div className="p-1.5 flex items-center justify-between gap-1">
+                  <button
+                    onClick={() => guestEngineRef.current?.toggleMic?.()}
+                    className={`h-8 w-8 rounded-xl border flex items-center justify-center ${guestState.isMicOn ? 'bg-white/5 border-white/10 text-white' : 'bg-red-500/15 border-red-400/20 text-red-300'}`}
+                    aria-label="Toggle guest microphone"
+                  >
+                    {guestState.isMicOn ? <MessageCircle size={13} /> : <WifiOff size={13} />}
+                  </button>
+                  <button
+                    onClick={() => guestEngineRef.current?.toggleCamera?.()}
+                    className={`h-8 w-8 rounded-xl border flex items-center justify-center ${guestState.isCamOn ? 'bg-white/5 border-white/10 text-white' : 'bg-red-500/15 border-red-400/20 text-red-300'}`}
+                    aria-label="Toggle guest camera"
+                  >
+                    {guestState.isCamOn ? <VideoOff size={13} /> : <VideoOff size={13} />}
+                  </button>
+                  <button
+                    onClick={handleGuestLeave}
+                    className="h-8 px-2 rounded-xl border border-red-400/20 bg-red-500/15 text-red-300 text-[8px] font-black"
+                  >
+                    LEAVE
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-black/85 backdrop-blur-2xl p-3 shadow-2xl pointer-events-auto">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black">Join as guest</p>
+                    <p className="text-[9px] text-white/45 mt-0.5">
+                      Your camera and microphone stay private until the host approves you.
+                    </p>
+                  </div>
+                  <button onClick={handleGuestClose} className="h-8 w-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <div className="w-28 sm:w-36 aspect-[2/1] rounded-2xl overflow-hidden bg-zinc-950 border border-white/10 shrink-0">
+                    {guestState?.localStream && guestState?.isCamOn ? (
+                      <video
+                        autoPlay
+                        playsInline
+                        muted
+                        ref={element => {
+                          if (element) {
+                            element.srcObject = guestState.localStream;
+                            element.play?.().catch(() => {});
+                          }
+                        }}
+                        className={`w-full h-full object-cover ${guestState.facingMode === 'user' ? '-scale-x-100' : ''}`}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[8px] font-black text-zinc-500">
+                        CAMERA OFF
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1 flex flex-col justify-between">
+                    <div className="text-[9px] text-zinc-500">
+                      {guestState?.isRequesting ? 'Waiting for host approval...' : 'Ready to join the live panel.'}
+                    </div>
+                    {guestState?.isRequesting ? (
+                      <button
+                        onClick={() => guestEngineRef.current?.cancelRequest?.()}
+                        className="w-full rounded-xl border border-white/10 bg-white/5 py-2 text-[9px] font-black"
+                      >
+                        CANCEL
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleGuestRequest}
+                        disabled={guestState?.mediaError || !guestState?.localStream}
+                        className="w-full rounded-xl bg-[#fe2c55] py-2 text-[9px] font-black disabled:opacity-40"
+                      >
+                        REQUEST TO JOIN
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* HOST CAMERA OFF */}
         <AnimatePresence>
