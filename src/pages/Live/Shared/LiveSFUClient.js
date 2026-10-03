@@ -134,4 +134,4 @@ export class LiveSFUClient {
   }
 }
 
-export const LIVE_SFU_ENABLED = String(import.meta.env.VITE_LIVE_SFU_ENABLED || '').toLowerCase() === 'true';
+export const LIVE_SFU_ENABLED = String(import.meta.env.VITE_LIVE_SFU_ENABLED ?? 'true').toLowerCase() === 'true';
