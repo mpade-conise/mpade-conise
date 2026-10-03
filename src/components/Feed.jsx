@@ -509,10 +509,16 @@ const VideoCard = ({ video, currentUser }) => {
 // --- UPDATED FEED COMPONENT ---
 
 const Feed = () => {
+  const PAGE_SIZE = 8;
+  const VIDEO_COLUMNS = 'id, user_id, video_url, caption, music_url, music_name, created_at, likes_count, comments_count, favorites_count, profiles:user_id (username, avatar_url)';
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
-  const location = useLocation(); 
+  const location = useLocation();
+  const loadMoreRef = useRef(null);
+  const feedRequestRef = useRef(0); 
 
   useEffect(() => {
     const stopAllMedia = () => {
@@ -523,21 +529,57 @@ const Feed = () => {
     return () => stopAllMedia();
   }, []);
 
+  const fetchVideoPage = async (page, replace = false) => {
+    const requestId = ++feedRequestRef.current;
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    if (replace) setLoading(true);
+    else setLoadingMore(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('videos')
+        .select(VIDEO_COLUMNS)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (requestId !== feedRequestRef.current) return;
+      if (error) throw error;
+
+      const nextVideos = data || [];
+      setVideos(current => {
+        if (replace) return nextVideos;
+        const existingIds = new Set(current.map(video => video.id));
+        return [...current, ...nextVideos.filter(video => !existingIds.has(video.id))];
+      });
+      setHasMore(nextVideos.length === PAGE_SIZE);
+    } catch (err) {
+      if (requestId === feedRequestRef.current) console.error("Feed error:", err);
+    } finally {
+      if (requestId === feedRequestRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    }
+  };
+
   useEffect(() => {
+    let active = true;
+
     const initFeed = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        setCurrentUser(user);
-        const { data, error } = await supabase
-          .from('videos')
-          .select('*, profiles:user_id (username, avatar_url)')
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        setVideos(data || []);
-      } catch (err) { console.error("Feed error:", err); } 
-      finally { setLoading(false); }
+        if (active) setCurrentUser(user);
+        await fetchVideoPage(0, true);
+      } catch (err) {
+        if (active) {
+          console.error("Feed error:", err);
+          setLoading(false);
+        }
+      }
     };
-    
+
     initFeed();
 
     const feedChannel = supabase
@@ -550,22 +592,49 @@ const Feed = () => {
             .from('profiles')
             .select('username, avatar_url')
             .eq('id', payload.new.user_id)
-            .single();
+            .maybeSingle();
 
           const integratedVideoObject = {
-            ...payload.new,
+            id: payload.new.id,
+            user_id: payload.new.user_id,
+            video_url: payload.new.video_url,
+            caption: payload.new.caption,
+            music_url: payload.new.music_url,
+            music_name: payload.new.music_name,
+            created_at: payload.new.created_at,
+            likes_count: payload.new.likes_count,
+            comments_count: payload.new.comments_count,
+            favorites_count: payload.new.favorites_count,
             profiles: profileData || null
           };
 
-          setVideos((currentFeed) => [integratedVideoObject, ...currentFeed]);
+          setVideos(currentFeed => {
+            if (currentFeed.some(video => video.id === integratedVideoObject.id)) return currentFeed;
+            return [integratedVideoObject, ...currentFeed];
+          });
         }
       )
       .subscribe();
 
     return () => {
+      active = false;
       supabase.removeChannel(feedChannel);
     };
   }, []);
+
+  useEffect(() => {
+    const container = loadMoreRef.current;
+    if (!container || loading || loadingMore || !hasMore) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        fetchVideoPage(Math.floor(videos.length / PAGE_SIZE), false);
+      }
+    }, { rootMargin: '1200px 0px' });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [videos.length, loading, loadingMore, hasMore]);
 
   useEffect(() => {
     if (!loading && videos.length > 0 && location.state?.scrollToId) {
@@ -589,6 +658,10 @@ const Feed = () => {
       {videos.map((vid) => (
         <VideoCard key={vid.id} video={vid} currentUser={currentUser} />
       ))}
+      <div ref={loadMoreRef} className="h-24 w-full flex items-center justify-center snap-end">
+        {loadingMore && <Loader2 className="animate-spin text-cyan-400" size={28} />}
+        {!hasMore && videos.length > 0 && <span className="text-[10px] uppercase tracking-widest text-zinc-500">You've reached the end</span>}
+      </div>
     </div>
   );
 };
