@@ -13,33 +13,6 @@ const buildIceConfig = () => {
 };
 
 const GLOBAL_ICE_CONFIG = buildIceConfig();
-  iceServers: [
-    {
-      urls: 'stun:stun.relay.metered.ca:80',
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:80',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn',
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn',
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:443',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn',
-    },
-    {
-      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn',
-    },
-  ],
-  iceCandidatePoolSize: 10,
-};
 
 const VideoPlayer = ({
   streamId: propStreamId,
