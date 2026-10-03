@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../supabaseClient';
+import VideoTrimEditor from './VideoTrimEditor';
+import VideoDuetEditor from './VideoDuetEditor';
 import { 
   handleLike, 
   handleFavorite, 
@@ -221,7 +223,7 @@ const CommentDrawer = ({ videoId, onClose, user, onCommentCountUpdate }) => {
   );
 };
 
-const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUpdate }) => {
+const SettingsOverlay = ({ onClose, video, user, onReport, onNotInterested, onUpdate, onDuet, onTrim }) => {
   const [isProcessing, setIsProcessing] = React.useState(null);
   if (!video) return null; 
   const isOwner = user?.id === video?.user_id;
@@ -308,8 +310,8 @@ const handleDownloadAction = async () => {
           <div className="grid grid-cols-4 gap-2 mb-4">
             <ActionSquare icon={<Download size={22}/>} label="Save" onClick={handleDownloadAction} loading={isProcessing === 'downloading'} />
             <ActionSquare icon={<Share2 size={22}/>} label="Share" onClick={() => handleShare(video)} />
-            <ActionSquare icon={<Repeat2 size={22}/>} label="Duet" onClick={() => alert("Soon!")} />
-            <ActionSquare icon={<Scissors size={22}/>} label="Trim" onClick={() => alert("Editor opening...")} />
+            <ActionSquare icon={<Repeat2 size={22}/>} label="Duet" onClick={() => { onClose(); onDuet?.(); }} />
+            <ActionSquare icon={<Scissors size={22}/>} label="Trim" onClick={() => { onClose(); onTrim?.(); }} />
           </div>
           <button onClick={() => { onNotInterested?.(video.id); onClose(); }} className="flex items-center gap-4 p-4 bg-black/50 border border-cyan-500/30 rounded-2xl text-cyan-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all">
             <EyeOff size={20} className="drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]" /> <span className="font-semibold text-sm">Not Interested</span>
@@ -339,6 +341,8 @@ const VideoCard = ({ video, currentUser, interactionStatus, onDelete }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showTrimEditor, setShowTrimEditor] = useState(false);
+  const [showDuetEditor, setShowDuetEditor] = useState(false);
   const [showPlayIcon, setShowPlayIcon] = useState(false);
   const [playback, setPlayback] = useState({ currentTime: 0, duration: 0, buffered: 0 });
 
@@ -529,8 +533,10 @@ const VideoCard = ({ video, currentUser, interactionStatus, onDelete }) => {
       <AnimatePresence>
         {showComments && <CommentDrawer videoId={video.id} onClose={() => setShowComments(false)} user={currentUser} onCommentCountUpdate={() => setCounts(prev => ({...prev, comments: prev.comments + 1}))} />}
         {showShare && <ShareDrawer video={video} onClose={() => setShowShare(false)} />}
-        {showSettings && <SettingsOverlay video={video} onClose={() => setShowSettings(false)} user={currentUser} onReport={() => handleReport(video.id, currentUser)} onNotInterested={() => handleNotInterested(video.id, currentUser)} onUpdate={() => onDelete?.(video.id)} />}
+        {showSettings && <SettingsOverlay video={video} onClose={() => setShowSettings(false)} user={currentUser} onReport={() => handleReport(video.id, currentUser)} onNotInterested={() => handleNotInterested(video.id, currentUser)} onUpdate={() => onDelete?.(video.id)} onDuet={() => setShowDuetEditor(true)} onTrim={() => setShowTrimEditor(true)} />}
       </AnimatePresence>
+      {showTrimEditor && <div onClick={e => e.stopPropagation()}><VideoTrimEditor video={video} onClose={() => setShowTrimEditor(false)} /></div>}
+      {showDuetEditor && <div onClick={e => e.stopPropagation()}><VideoDuetEditor video={video} onClose={() => setShowDuetEditor(false)} /></div>}
     </div>
   );
 };
