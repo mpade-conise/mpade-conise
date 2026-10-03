@@ -58,7 +58,7 @@ const JoinAsGuest = () => {
   const lastRequestRef = useRef(null);
   const currentUserIdRef = useRef(null);
   const hostUserIdRef = useRef(null);
-  const reconnectAttemptsRef = useRef(0);
+  const reconnectAttemptsRef = useRef(0);\n  const approvalInFlightRef = useRef(false);\n  const approvedRequestIdRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [mediaError, setMediaError] = useState('');
@@ -677,12 +677,21 @@ const JoinAsGuest = () => {
     showNotice
   ]);
 
-  const handleApproval = useCallback(async (mode, hostId) => {
+  const handleApproval = useCallback(async (mode, hostId, requestId = null) => {
     if (!mountedRef.current) return;
+
+    const normalizedMode = mode === 'audio' ? 'audio' : 'video';
+    const normalizedRequestId = requestId || lastRequestRef.current || null;
+
+    if (approvalInFlightRef.current) return;
+    if (normalizedRequestId && approvedRequestIdRef.current === normalizedRequestId && isLiveOnPanel) return;
+
+    approvalInFlightRef.current = true;
+    if (normalizedRequestId) approvedRequestIdRef.current = normalizedRequestId;
 
     setIsRequesting(false);
     setIsLiveOnPanel(true);
-    setAssignedMode(mode === 'audio' ? 'audio' : 'video');
+    setAssignedMode(normalizedMode);
     setHostDisconnected(false);
     setIsReconnecting(true);
     setReconnectMessage('Connecting you to the live panel...');
@@ -690,6 +699,7 @@ const JoinAsGuest = () => {
     const resolvedHost = hostId || hostUserIdRef.current;
 
     if (!resolvedHost) {
+      approvalInFlightRef.current = false;
       setIsReconnecting(false);
       setConnectionQuality('poor');
       showNotice('error', 'Host connection information is unavailable.');
@@ -708,7 +718,11 @@ const JoinAsGuest = () => {
       return;
     }
 
-    await startBroadcastIngest(mediaStream, mode, resolvedHost);
+    try {
+      await startBroadcastIngest(mediaStream, normalizedMode, resolvedHost);
+    } finally {
+      approvalInFlightRef.current = false;
+    }
   }, [
     startPreview,
     facingMode,
@@ -775,7 +789,8 @@ const JoinAsGuest = () => {
         if (existingApproval && mountedRef.current) {
           await handleApproval(
             existingApproval.mode || 'video',
-            existingApproval.host_id || detectedHost
+            existingApproval.host_id || detectedHost,
+            existingApproval.id
           );
         }
 
@@ -831,7 +846,7 @@ const JoinAsGuest = () => {
         .maybeSingle();
 
       if (existing?.status === 'approved') {
-        await handleApproval('video', hostUserIdRef.current);
+        await handleApproval('video', hostUserIdRef.current, existing?.id);
         return;
       }
 
@@ -896,7 +911,8 @@ const JoinAsGuest = () => {
 
               await handleApproval(
                 payload.new.mode || 'video',
-                payload.new.host_id || hostUserIdRef.current
+                payload.new.host_id || hostUserIdRef.current,
+                payload.new.id
               );
             }
 
@@ -954,13 +970,15 @@ const JoinAsGuest = () => {
         requestChannelRef.current = null;
       }
 
+      const requestId = lastRequestRef.current;
       lastRequestRef.current = null;
+      approvedRequestIdRef.current = null;
       setIsRequesting(false);
 
       if (socketRef.current?.connected) {
         socketRef.current.emit('guest_cancel_cohost_request', {
           streamId,
-          requestId: lastRequestRef.current,
+          requestId,
           userId: currentUserIdRef.current
         });
       }
@@ -1135,22 +1153,24 @@ const JoinAsGuest = () => {
     const socket = initSocket();
 
     const onApproveCohost = payload => {
-      const guestMatch = payload?.guestId
-        ? payload.guestId === currentUserIdRef.current
+      const targetGuestId = payload?.guestId || payload?.guest_id || payload?.userId || payload?.user_id;
+      const guestMatch = targetGuestId
+        ? targetGuestId === currentUserIdRef.current
         : true;
 
       if (!guestMatch || !mountedRef.current) return;
 
       handleApproval(
-        payload.mode || 'video',
-        payload.hostId || hostUserIdRef.current
+        payload.mode || payload.guestMode || 'video',
+        payload.hostId || payload.host_id || hostUserIdRef.current,
+        payload.requestId || payload.request_id || null
       );
     };
 
     const onRejectCohost = payload => {
       if (
         payload?.guestId &&
-        payload.guestId !== currentUserIdRef.current
+        (payload.guestId || payload.guest_id || payload.userId || payload.user_id) !== currentUserIdRef.current
       ) return;
 
       if (!mountedRef.current) return;
