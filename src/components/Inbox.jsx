@@ -88,10 +88,7 @@ const Inbox = () => {
   const [isActivityPanelOpen, setIsActivityPanelOpen] =
     useState(false);
 
-  const [isActivityPanelOpen, setIsActivityPanelOpen] =
-    useState(false);
-
-  // =========================================================
+/  // =========================================================
   // REFS
   // =========================================================
 
@@ -244,9 +241,7 @@ const Inbox = () => {
 
         const streamsPromise = supabase
           .from("live_streams")
-          .select(
-            "*, profiles:host_id(avatar_url, username)"
-          )
+          .select("id, host_id, title, category, status, profiles:host_id(avatar_url, username)")
           .eq("status", "live");
 
         // -----------------------------------------------------
@@ -2201,13 +2196,23 @@ const Inbox = () => {
                   if (!mountedRef.current) return;
                   const next = payload.new;
                   const previousId = payload.old?.id;
-                  setLiveStreams((previous) => {
-                    if (payload.eventType === "DELETE") return previous.filter((stream) => stream.id !== previousId);
-                    if (!next?.id) return previous;
-                    if (next.status !== "live") return previous.filter((stream) => stream.id !== next.id);
-                    const existing = previous.find((stream) => stream.id === next.id);
-                    if (existing) return previous.map((stream) => stream.id === next.id ? { ...stream, ...next } : stream);
-                    return [next, ...previous];
+                  if (payload.eventType === "DELETE") {
+                    setLiveStreams((previous) => previous.filter((stream) => stream.id !== previousId));
+                    return;
+                  }
+                  if (!next?.id) return;
+                  if (next.status !== "live") {
+                    setLiveStreams((previous) => previous.filter((stream) => stream.id !== next.id));
+                    return;
+                  }
+                  const existing = liveStreams.find((stream) => stream.id === next.id);
+                  if (existing || next.profiles) {
+                    setLiveStreams((previous) => previous.map((stream) => stream.id === next.id ? { ...stream, ...next, profiles: next.profiles || stream.profiles } : stream));
+                    return;
+                  }
+                  supabase.from("profiles").select("avatar_url, username").eq("id", next.host_id).maybeSingle().then(({ data }) => {
+                    if (!mountedRef.current) return;
+                    setLiveStreams((previous) => [{ ...next, profiles: data || null }, ...previous.filter((stream) => stream.id !== next.id)]);
                   });
                 }
               )
