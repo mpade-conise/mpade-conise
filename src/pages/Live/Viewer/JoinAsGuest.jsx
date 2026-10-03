@@ -448,6 +448,7 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
 
     const pc = new RTCPeerConnection(GLOBAL_ICE_CONFIG);
 
+    const audioTransceiver = pc.addTransceiver('audio', { direction: 'sendrecv' });
     pcRef.current = pc;
 
     setConnectionState('connecting');
@@ -530,13 +531,19 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
       guestMediaStream.getTracks().forEach(track => {
         if (track.kind === 'video') {
           track.enabled = mode === 'video' && isCamOn;
+          pc.addTrack(track, guestMediaStream);
+          return;
         }
 
         if (track.kind === 'audio') {
           track.enabled = isMicOn;
-        }
 
-        pc.addTrack(track, guestMediaStream);
+          try {
+            audioTransceiver.sender.replaceTrack(track);
+          } catch (error) {
+            console.warn('[WEBRTC] Audio track attachment failed:', error);
+          }
+        }
       });
     }
 
