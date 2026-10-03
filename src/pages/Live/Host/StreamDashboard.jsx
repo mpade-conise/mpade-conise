@@ -73,7 +73,8 @@ const StreamDashboard = () => {
   // 2. EXECUTE ABSTRACTED WEBRTC HARDWARE CONTROLLER
   const {
     localVideoRef,
-    hardwareReady
+    hardwareReady,
+    remoteStreams
   } = useStreamWebRTC(streamId, socket, isCameraOff, isMuted, challengerVideoRef);
 
   const currentViewers = Array.isArray(viewers) ? viewers.length : Number(viewers || 0);
@@ -594,6 +595,41 @@ const StreamDashboard = () => {
             {isCameraOff && (
               <div className="absolute inset-0 flex items-center justify-center text-zinc-500 bg-zinc-900 font-black tracking-widest text-xs italic">
                 CAMERA OFF
+              </div>
+            )}
+
+            {/* COMPACT GUEST GRID — TOP 50% ONLY */}
+            {Object.keys(remoteStreams || {}).length > 0 && (
+              <div className="absolute top-24 left-2 right-2 z-40 h-[50%] max-h-[50%] pointer-events-none overflow-hidden">
+                <div className="grid h-full w-full grid-cols-2 sm:grid-cols-4 auto-rows-fr gap-1.5 sm:gap-2 content-start">
+                  {Object.entries(remoteStreams || {}).slice(0, 8).map(([peerId, remoteStream], index) => {
+                    const guest = activeGuests?.[index];
+                    return (
+                      <div key={peerId} className="relative min-w-0 w-full aspect-[2/1] overflow-hidden rounded-lg sm:rounded-xl border border-white/15 bg-zinc-950/80 shadow-xl backdrop-blur-sm">
+                        <video
+                          autoPlay
+                          playsInline
+                          muted
+                          ref={element => {
+                            if (element && remoteStream && element.srcObject !== remoteStream) {
+                              element.srcObject = remoteStream;
+                              element.play?.().catch(() => {});
+                            }
+                          }}
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pt-4 pb-1">
+                          <span className="text-[8px] sm:text-[9px] font-black text-white truncate block">
+                            @{guest?.username || ('Guest ' + (index + 1))}
+                          </span>
+                        </div>
+                        <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[7px] sm:text-[8px] font-black uppercase tracking-wider text-cyan-300">
+                          Guest
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
