@@ -88,6 +88,9 @@ const Inbox = () => {
   const [isActivityPanelOpen, setIsActivityPanelOpen] =
     useState(false);
 
+  const [isActivityPanelOpen, setIsActivityPanelOpen] =
+    useState(false);
+
   // =========================================================
   // REFS
   // =========================================================
@@ -1803,9 +1806,7 @@ const Inbox = () => {
             )
         );
 
-        navigate(
-          `/live/watch/${invite.stream_id}/join-guest`
-        );
+        navigate(`/live/watch/${invite.stream_id}`);
       } catch (error) {
         console.error(
           "Accept invite error:",
@@ -1907,15 +1908,97 @@ const Inbox = () => {
             user.id
           );
 
-          await fetchData(
-            user.id
-          );
+          await fetchData(user.id);
 
-          if (
-            !mountedRef.current
-          ) {
+          if (!mountedRef.current) {
             return;
           }
+
+          const refreshLiveInvites = async () => {
+            const { data: invites, error: inviteError } = await supabase
+              .from("live_guest_requests")
+              .select("id, stream_id, user_id, host_id, mode, status, created_at")
+              .eq("user_id", user.id)
+              .eq("status", "invited")
+              .order("created_at", { ascending: false });
+
+            if (inviteError) {
+              console.error("Inbox live invites refresh error:", inviteError);
+              return;
+            }
+
+            const streamIds = [...new Set((invites || []).map((invite) => invite.stream_id).filter(Boolean))];
+            if (!streamIds.length) {
+              setLiveInvites([]);
+              return;
+            }
+
+            const { data: streams, error: streamError } = await supabase
+              .from("live_streams")
+              .select("id, host_id, title, category, status, host:profiles!host_id(id, username, avatar_url)")
+              .in("id", streamIds)
+              .eq("status", "live");
+
+            if (streamError) {
+              console.error("Inbox invite streams refresh error:", streamError);
+              return;
+            }
+
+            const streamMap = new Map((streams || []).map((stream) => [stream.id, stream]));
+            setLiveInvites((invites || []).filter((invite) => streamMap.has(invite.stream_id)).map((invite) => ({ ...invite, stream: streamMap.get(invite.stream_id) })));
+          };
+
+          const refreshMessageThread = async (payload) => {
+            const row = payload?.new || payload?.old;
+            const peerId = row?.sender_id === user.id ? row?.receiver_id : row?.sender_id;
+            if (!peerId) return;
+
+            const orFilter = "and(sender_id.eq." + user.id + ",receiver_id.eq." + peerId + "),and(sender_id.eq." + peerId + ",receiver_id.eq." + user.id + ")";
+            const { data: threadRows, error: threadError } = await supabase
+              .from("messages")
+              .select("*")
+              .or(orFilter)
+              .order("updated_at", { ascending: false })
+              .limit(300);
+
+            if (threadError) {
+              console.error("Inbox message thread refresh error:", threadError);
+              return;
+            }
+
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("id, username, avatar_url, full_name, is_verified, online")
+              .eq("id", peerId)
+              .maybeSingle();
+
+            if (!mountedRef.current) return;
+
+            const rows = threadRows || [];
+            const latest = rows[0];
+            if (!latest) {
+              setMessages((previous) => previous.filter((message) => message.displayProfile?.id !== peerId));
+              return;
+            }
+
+            const unreadCount = rows.reduce((count, message) => {
+              const unread = typeof message.unread === "boolean" ? message.unread : typeof message.unread === "string" ? message.unread.toLowerCase() === "true" : message.status === "unread" || message.status === "delivered";
+              return count + (message.receiver_id === user.id && unread ? 1 : 0);
+            }, 0);
+
+            const isFromMe = latest.sender_id === user.id;
+            const displayProfile = {
+              id: peerId,
+              username: profile?.username || latest.user_name || ("user_" + peerId.substring(0, 5)),
+              full_name: profile?.full_name || "",
+              avatar_url: profile?.avatar_url || ("https://api.dicebear.com/7.x/avataaars/svg?seed=" + peerId),
+              is_verified: profile?.is_verified || false,
+              online: profile?.online ?? latest.online ?? false,
+            };
+
+            const nextThread = { ...latest, displayProfile, unreadCount, isFromMe, last_msg: latest.last_msg || latest.content || "", updated_at: latest.updated_at || latest.created_at };
+            setMessages((previous) => [nextThread, ...previous.filter((message) => message.displayProfile?.id !== peerId)]);
+          };
 
           // ---------------------------------------------------
           // REMOVE OLD CHANNEL
@@ -2075,18 +2158,11 @@ const Inbox = () => {
                 {
                   event: "*",
                   schema: "public",
-                  table:
-                    "live_guest_requests",
-                  filter: `user_id=eq.${user.id}`,
+                  table: "live_guest_requests",
+                  filter: "user_id=eq." + user.id,
                 },
                 () => {
-                  if (
-                    mountedRef.current
-                  ) {
-                    fetchData(
-                      user.id
-                    );
-                  }
+                  if (mountedRef.current) refreshLiveInvites();
                 }
               )
 
@@ -2101,38 +2177,12 @@ const Inbox = () => {
                   schema: "public",
                   table: "messages",
                 },
-                (
-                  payload
-                ) => {
-                  if (
-                    !mountedRef.current
-                  ) {
-                    return;
-                  }
-
-                  const newRow =
-                    payload.new;
-
-                  const oldRow =
-                    payload.old;
-
-                  const belongsToUser =
-                    newRow?.sender_id ===
-                      user.id ||
-                    newRow?.receiver_id ===
-                      user.id ||
-                    oldRow?.sender_id ===
-                      user.id ||
-                    oldRow?.receiver_id ===
-                      user.id;
-
-                  if (
-                    belongsToUser
-                  ) {
-                    fetchData(
-                      user.id
-                    );
-                  }
+                (payload) => {
+                  if (!mountedRef.current) return;
+                  const newRow = payload.new;
+                  const oldRow = payload.old;
+                  const belongsToUser = newRow?.sender_id === user.id || newRow?.receiver_id === user.id || oldRow?.sender_id === user.id || oldRow?.receiver_id === user.id;
+                  if (belongsToUser) refreshMessageThread(payload);
                 }
               )
 
@@ -2145,17 +2195,20 @@ const Inbox = () => {
                 {
                   event: "*",
                   schema: "public",
-                  table:
-                    "live_streams",
+                  table: "live_streams",
                 },
-                () => {
-                  if (
-                    mountedRef.current
-                  ) {
-                    fetchData(
-                      user.id
-                    );
-                  }
+                (payload) => {
+                  if (!mountedRef.current) return;
+                  const next = payload.new;
+                  const previousId = payload.old?.id;
+                  setLiveStreams((previous) => {
+                    if (payload.eventType === "DELETE") return previous.filter((stream) => stream.id !== previousId);
+                    if (!next?.id) return previous;
+                    if (next.status !== "live") return previous.filter((stream) => stream.id !== next.id);
+                    const existing = previous.find((stream) => stream.id === next.id);
+                    if (existing) return previous.map((stream) => stream.id === next.id ? { ...stream, ...next } : stream);
+                    return [next, ...previous];
+                  });
                 }
               )
 
@@ -2410,7 +2463,7 @@ const Inbox = () => {
   // =========================================================
 
   const filteredSuggestedUsers =
-    suggestedUsers.filter(
+    suggestedUsers.filter((user) => !myFollows.has(user.id)).filter(
       (user) => {
         if (
           !newChatSearch.trim()
