@@ -91,7 +91,8 @@ const normalizePhone = value => String(value || '').replace(/\s+/g, '').trim();
 
 const isValidPhone = value => {
 const phone = normalizePhone(value);
-return /^(?:+265|265|0)?[89]\d{8}$/.test(phone);
+  return /^(?:\+265|265|0)?[89]\d{8}$/.test(phone);
+
 };
 
 const fetchProfile = useCallback(async () => {
