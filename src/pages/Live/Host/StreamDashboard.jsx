@@ -19,6 +19,7 @@ import LiveAnalyticsPanel from './HostAnalytics';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
 import StreamHeader from '../Shared/StreamHeader';
 import BattleOverlay from './BattleOverlay';
+import BattleController from '../Shared/BattleController';
 import SettingsPanel from '../Shared/setting';
 import GuestManager from '../Shared/GuestManager';
 
@@ -47,6 +48,7 @@ const StreamDashboard = () => {
   const [streamData, setStreamData] = useState(null);
   const [reactions, setReactions] = useState([]);
   const [battleScores, setBattleScores] = useState({ host: 0, challenger: 0 });
+  const [battleControllerState, setBattleControllerState] = useState(null);
   const [peakViewers, setPeakViewers] = useState(0);
   const [startedAt, setStartedAt] = useState(null);
   const [activeGuests, setActiveGuests] = useState([]);
@@ -74,7 +76,8 @@ const StreamDashboard = () => {
   const {
     localVideoRef,
     hardwareReady,
-    remoteStreams
+    remoteStreams,
+    localStream
   } = useStreamWebRTC(streamId, socket, isCameraOff, isMuted, challengerVideoRef);
 
   const currentViewers = Array.isArray(viewers) ? viewers.length : Number(viewers || 0);
@@ -301,6 +304,7 @@ const StreamDashboard = () => {
   const handleEndBattle = () => {
     if (socket) socket.emit('end_battle', { streamId });
     setIsBattleMode(false);
+    setBattleControllerState(null);
     setBattleScores({ host: 0, challenger: 0 });
     showNotice('Battle ended.', 'info');
   };
@@ -636,6 +640,32 @@ const StreamDashboard = () => {
                 ))}
               </AnimatePresence>
             </div>
+
+            {isBattleMode && Object.keys(remoteStreams || {}).length > 0 && (
+              <div className="absolute inset-2 z-[25] overflow-hidden rounded-2xl border border-white/10 bg-black/30 pointer-events-none">
+                <div className="grid h-full w-full grid-cols-2 gap-1">
+                  <div className="relative overflow-hidden bg-zinc-950">
+                    <span className="absolute top-2 left-2 z-10 rounded-full bg-black/70 px-2 py-1 text-[8px] font-black uppercase text-cyan-300">You</span>
+                  </div>
+                  <div className="relative overflow-hidden bg-zinc-950">
+                    <video
+                      autoPlay
+                      playsInline
+                      muted
+                      ref={element => {
+                        const remote = Object.values(remoteStreams || {})[0] || null;
+                        if (element && remote && element.srcObject !== remote) {
+                          element.srcObject = remote;
+                          element.play?.().catch(() => {});
+                        }
+                      }}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                    <span className="absolute top-2 left-2 z-10 rounded-full bg-black/70 px-2 py-1 text-[8px] font-black uppercase text-fuchsia-300">Co-Host</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* BATTLE */}
             {isBattleMode && (
@@ -1065,78 +1095,122 @@ const StreamDashboard = () => {
               )}
 
               {activePanel === 'battle' && (
-                <div className="min-h-full p-5">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Swords size={18} className="text-cyan-400" />
-                        <h2 className="font-black text-lg">Live Battle</h2>
-                      </div>
-                      <p className="text-xs text-white/45 mt-1">
-                        Manage your PK battle session.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setActivePanel(null)}
-                      className="p-2 rounded-full bg-white/5 hover:bg-white/10"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-xl bg-cyan-400/10 border border-cyan-400/10 p-4">
-                        <div className="text-[9px] uppercase text-cyan-300/70 font-bold">You</div>
-                        <div className="text-2xl font-black mt-1">{battleScores.host}</div>
-                      </div>
-
-                      <div className="rounded-xl bg-fuchsia-400/10 border border-fuchsia-400/10 p-4">
-                        <div className="text-[9px] uppercase text-fuchsia-300/70 font-bold">Challenger</div>
-                        <div className="text-2xl font-black mt-1">{battleScores.challenger}</div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 mt-4">
-                      <button
-                        type="button"
-                        onClick={handleBattleInvite}
-                        className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-cyan-400 text-black text-xs font-black"
-                      >
-                        <UserPlus size={14} />
-                        Find Challenger
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={isBattleMode ? handleEndBattle : () => setActivePanel('battle')}
-                        className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-black ${isBattleMode ? 'bg-red-500 text-white' : 'bg-white/5 text-white'}`}
-                      >
-                        <Swords size={14} />
-                        {isBattleMode ? 'End Battle' : 'Battle Ready'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <Gift size={16} className="text-yellow-400" />
-                      <div>
-                        <div className="text-xs font-bold">Gift contribution</div>
-                        <div className="text-[10px] text-white/40">Scores can be synchronized through the battle socket.</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <Users size={16} className="text-cyan-400" />
-                      <div>
-                        <div className="text-xs font-bold">Battle viewers</div>
-                        <div className="text-[10px] text-white/40">{currentViewers} people are watching.</div>
-                      </div>
-                    </div>
-                  </div>
+                <div className="min-h-full p-4">
+                  <BattleController
+                    streamId={streamId}
+                    userId={streamData?.host_id || null}
+                    host={{
+                      id: streamData?.host_id || null,
+                      name: streamData?.host?.username || 'You',
+                      username: streamData?.host?.username || '@host',
+                      avatar: streamData?.host?.avatar_url || null
+                    }}
+                    opponent={{
+                      id: streamData?.challenger?.id || streamData?.challenger_id || incomingInvite?.senderHostId || incomingInvite?.host_id || null,
+                      name: streamData?.challenger?.username || incomingInvite?.senderUsername || incomingInvite?.username || 'Co-Host',
+                      username: streamData?.challenger?.username || incomingInvite?.senderUsername || incomingInvite?.username || '@cohost',
+                      avatar: streamData?.challenger?.avatar_url || null
+                    }}
+                    battleState={battleControllerState}
+                    canControl={true}
+                    compact={true}
+                    battleStage={(() => {
+                      const firstRemote = Object.values(remoteStreams || {})[0] || null;
+                      return (
+                        <div className="relative aspect-[16/7] w-full grid grid-cols-2 gap-1 bg-zinc-950">
+                          <div className="relative overflow-hidden bg-zinc-900">
+                            <video
+                              autoPlay
+                              muted
+                              playsInline
+                              ref={element => {
+                                if (element && localStream && element.srcObject !== localStream) {
+                                  element.srcObject = localStream;
+                                  element.play?.().catch(() => {});
+                                }
+                              }}
+                              className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
+                            />
+                            <span className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2 py-1 text-[8px] font-black uppercase text-cyan-300">You</span>
+                          </div>
+                          <div className="relative overflow-hidden bg-zinc-900">
+                            {firstRemote ? (
+                              <video
+                                autoPlay
+                                playsInline
+                                muted
+                                ref={element => {
+                                  if (element && element.srcObject !== firstRemote) {
+                                    element.srcObject = firstRemote;
+                                    element.play?.().catch(() => {});
+                                  }
+                                }}
+                                className="absolute inset-0 w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="absolute inset-0 flex items-center justify-center text-[8px] font-black uppercase tracking-widest text-white/30">
+                                Waiting for co-host
+                              </div>
+                            )}
+                            <span className="absolute bottom-2 left-2 rounded-full bg-black/70 px-2 py-1 text-[8px] font-black uppercase text-fuchsia-300">Co-Host</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    onFindOpponent={() => {
+                      setActivePanel('guests');
+                      showNotice('Connect a co-host before starting the battle.', 'info');
+                    }}
+                    onStartBattle={async payload => {
+                      setIsBattleMode(true);
+                      setBattleScores({ host: 0, challenger: 0 });
+                      setBattleControllerState({
+                        status: 'active',
+                        battleId: payload.battleId,
+                        timeLeft: 300,
+                        scores: { host: 0, opponent: 0 },
+                        opponentConnected: Object.keys(remoteStreams || {}).length > 0
+                      });
+                      socket?.emit?.('battle_started', {
+                        ...payload,
+                        streamId,
+                        coHostStreamId: incomingInvite?.senderStreamId || incomingInvite?.stream_id || streamData?.challenger_stream_id || null
+                      });
+                      return true;
+                    }}
+                    onEndBattle={async payload => {
+                      socket?.emit?.('battle_finished', payload);
+                      setIsBattleMode(false);
+                      setBattleControllerState(null);
+                      setBattleScores({ host: 0, challenger: 0 });
+                    }}
+                    onCancelBattle={async payload => {
+                      socket?.emit?.('battle_cancelled', payload);
+                      setIsBattleMode(false);
+                      setBattleControllerState(null);
+                    }}
+                    onBattleEvent={event => {
+                      socket?.emit?.('battle_event', event);
+                    }}
+                    onScoreChange={change => {
+                      setBattleScores(previous => ({
+                        host: change.side === 'host' ? change.score : previous.host,
+                        challenger: change.side === 'opponent' ? change.score : previous.challenger
+                      }));
+                      setBattleControllerState(previous => previous ? {
+                        ...previous,
+                        scores: {
+                          host: change.side === 'host' ? change.score : previous.scores?.host || 0,
+                          opponent: change.side === 'opponent' ? change.score : previous.scores?.opponent || 0
+                        }
+                      } : previous);
+                      socket?.emit?.('battle_score', {
+                        ...change,
+                        side: change.side === 'opponent' ? 'challenger' : change.side
+                      });
+                    }}
+                    onGift={giftEvent => socket?.emit?.('battle_gift', giftEvent)}
+                  />
                 </div>
               )}
             </div>
