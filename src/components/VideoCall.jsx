@@ -212,6 +212,31 @@ const VideoCall = () => {
           }
         };
 
+        pc.onconnectionstatechange = async () => {
+          if (!isComponentMounted) return;
+          if (pc.connectionState === 'connected') {
+            setCallStatus('Connected');
+            iceRestartingRef.current = false;
+          } else if (pc.connectionState === 'connecting') {
+            setCallStatus('Connecting...');
+          } else if (pc.connectionState === 'disconnected') {
+            setCallStatus('Connection Interrupted');
+          } else if (pc.connectionState === 'failed' && callRole === 'caller' && !iceRestartingRef.current && pc.signalingState === 'stable') {
+            try {
+              iceRestartingRef.current = true;
+              setCallStatus('Reconnecting...');
+              pc.restartIce();
+              const offer = await pc.createOffer({ iceRestart: true });
+              await pc.setLocalDescription(offer);
+              socketRef.current?.emit('send_webrtc_offer', { roomId, streamId: roomId, offer, targetViewerId: peerUserId, to: peerUserId, callId });
+            } catch (error) {
+              iceRestartingRef.current = false;
+              setCallStatus('Connection Failed');
+              console.warn('Video ICE restart failed:', error);
+            }
+          }
+        };
+
         // C. Spin up Socket Context AFTER WebRTC Instance is safely created
         const socket = io(SOCKET_SERVER_URL, {
           transports: ['polling', 'websocket'],
