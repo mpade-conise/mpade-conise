@@ -165,6 +165,7 @@ const BattleController = ({
    * Compact version for smaller StreamDashboard sidebars.
    */
   compact = false,
+  battleStage = null,
 
   className = "",
 }) => {
@@ -1071,6 +1072,13 @@ const BattleController = ({
           </span>
         </div>
       </div>
+
+      {/* Optional real co-host battle stage */}
+      {battleStage && (
+        <div className="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
+          {battleStage}
+        </div>
+      )}
 
       {/* Main panel */}
       <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-black/40 shadow-2xl backdrop-blur-2xl">
