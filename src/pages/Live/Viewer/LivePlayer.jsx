@@ -882,11 +882,14 @@ const LivePlayer = () => {
     guestEngineRef.current?.requestJoin?.();
   };
 
-  const handleGuestLeave = () => {
-    guestEngineRef.current?.leavePanel?.();
-    setGuestEngineOpen(false);
-    setGuestState(null);
-    setIsFollowingGuest(false);
+  const handleGuestLeave = async () => {
+    try {
+      await guestEngineRef.current?.leavePanel?.();
+    } finally {
+      setGuestEngineOpen(false);
+      setGuestState(null);
+      setIsFollowingGuest(false);
+    }
   };
 
   const handleFollowGuest = async () => {
@@ -1168,10 +1171,10 @@ const LivePlayer = () => {
         />
 
         {guestEngineOpen && (
-          <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-[46] pointer-events-none overflow-hidden">
-            <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+          <div className="absolute top-[11%] bottom-[30%] left-0 right-0 z-[46] pointer-events-none overflow-hidden">
+            <div className="absolute top-1 right-2 sm:top-2 sm:right-3">
             {guestState?.isLiveOnPanel ? (
-              <div className="w-40 sm:w-48 pointer-events-auto rounded-2xl overflow-hidden border border-cyan-300/50 bg-black/80 shadow-2xl">
+              <div className="w-32 sm:w-40 pointer-events-auto rounded-xl overflow-hidden border border-cyan-300/50 bg-black/80 shadow-2xl">
                 <div className="px-1.5 py-1 flex items-center justify-between gap-1 border-b border-white/10 bg-black/70">
                   <span className="min-w-0 truncate text-[8px] font-black text-white">
                     @{guestState?.userProfile?.username || 'Guest'}
@@ -1385,9 +1388,9 @@ const LivePlayer = () => {
         />
       </div>
 
-      {/* TOP UI */}
-      <div className="fixed top-0 left-0 right-0 h-[10%] z-50 p-4 pt-8 bg-gradient-to-b from-black/90 via-black/30 to-transparent pointer-events-none flex flex-col gap-2.5">
-        <div className="pointer-events-auto">
+      {/* STREAM HEADER — reserved top 10%; guest controls stay in the guest panel */}
+      <div className="fixed top-0 left-0 right-0 h-[10%] z-50 px-2 pt-2 bg-gradient-to-b from-black/90 via-black/30 to-transparent pointer-events-none">
+        <div className="pointer-events-auto w-full h-full">
           <StreamHeader
             data={streamData}
             isHost={false}
@@ -1395,82 +1398,10 @@ const LivePlayer = () => {
             onLeave={() => navigate('/live')}
           />
         </div>
+      </div>
 
-        {/* HOST INFO / FOLLOW */}
-        <div className="pointer-events-auto flex items-center justify-between gap-3 max-w-xl">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="relative w-9 h-9 rounded-full overflow-hidden bg-white/10 border border-white/10">
-              {streamData?.host?.avatar_url ? (
-                <img
-                  src={streamData.host.avatar_url}
-                  className="w-full h-full object-cover"
-                  alt=""
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-white/60 text-xs">
-                  👤
-                </div>
-              )}
-
-              {streamData?.host?.online && (
-                <span className="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full bg-green-400 border-2 border-black" />
-              )}
-            </div>
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-white text-xs font-black truncate max-w-[150px]">
-                  {streamData?.host?.username || 'Host'}
-                </span>
-
-                {(
-                  streamData?.host?.is_verified ||
-                  streamData?.host?.verified_status === 'verified'
-                ) && (
-                  <span className="w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[8px] flex items-center justify-center font-black">
-                    ✓
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 text-[9px] text-white/50">
-                <span>{formatCompactNumber(viewerCount)} watching</span>
-
-                {streamData?.category && (
-                  <>
-                    <span>•</span>
-                    <span className="truncate max-w-[100px]">
-                      {streamData.category}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {currentUser?.id && currentUser.id !== streamData?.host_id && (
-            <button
-              onClick={handleFollow}
-              disabled={followLoading}
-              className={`shrink-0 px-3.5 py-2 rounded-full text-[9px] font-black uppercase flex items-center gap-1.5 transition-all ${
-                isFollowing
-                  ? 'bg-white/10 border border-white/10 text-white'
-                  : 'bg-[#fe2c55] text-white'
-              }`}
-            >
-              {followLoading ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : isFollowing ? (
-                <UserCheck size={12} />
-              ) : (
-                <UserPlus size={12} />
-              )}
-
-              {isFollowing ? 'Following' : 'Follow'}
-            </button>
-          )}
-        </div>
-
+      {/* STREAM META — below the header, never inside the header area */}
+      <div className="absolute top-[11%] left-2 right-2 z-[45] pointer-events-none flex items-start justify-start">
         {/* GOAL BAR */}
         <div className="flex justify-start pl-1 pointer-events-auto">
           <LiveStreamGoalBar
@@ -1489,6 +1420,7 @@ const LivePlayer = () => {
           </div>
         )}
       </div>
+
 
       {/* EVENT NOTIFICATION */}
       <div className="absolute bottom-28 left-4 z-50 flex flex-col gap-2 pointer-events-none">
