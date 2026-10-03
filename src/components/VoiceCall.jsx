@@ -20,33 +20,13 @@ import {
 
 const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
 
-const GLOBAL_ICE_CONFIG = {
-  iceServers: [
-    {
-      urls: 'stun:stun.relay.metered.ca:80'
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:80',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:443',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
-    },
-    {
-      urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-      username: '28087eceaa61e6de7d551200',
-      credential: 'KW6Vsm7ZTUwjjDWn'
-    }
-  ],
-  iceCandidatePoolSize: 10
+const buildIceConfig = () => {
+  const turnUrls = String(import.meta.env.VITE_TURN_URLS || '').split(',').map((url) => url.trim()).filter(Boolean);
+  const iceServers = [{ urls: 'stun:stun.relay.metered.ca:80' }];
+  const username = import.meta.env.VITE_TURN_USERNAME;
+  const credential = import.meta.env.VITE_TURN_CREDENTIAL;
+  if (username && credential && turnUrls.length) iceServers.push({ urls: turnUrls, username, credential });
+  return { iceServers, iceCandidatePoolSize: 10 };
 };
 
 const VoiceCall = () => {
@@ -80,6 +60,8 @@ const VoiceCall = () => {
   const endingCallRef = useRef(false);
   const offerSentRef = useRef(false);
   const answerSentRef = useRef(false);
+  const remoteEndedRef = useRef(false);
+  const iceRestartingRef = useRef(false);
 
   const roomIdRef = useRef(null);
   const callRoleRef = useRef(null);
@@ -239,7 +221,7 @@ const VoiceCall = () => {
         setCallStatus('Connection Error');
       }
     }
-  }, [peerUserId]);
+  }, [peerUserId, callId]);
 
   // ------------------------------------------------------------
   // CLEAN WEBRTC RESOURCES
@@ -313,6 +295,8 @@ const VoiceCall = () => {
     iceQueueRef.current = [];
     offerSentRef.current = false;
     answerSentRef.current = false;
+    remoteEndedRef.current = false;
+    iceRestartingRef.current = false;
   }, []);
 
   // ------------------------------------------------------------
@@ -330,20 +314,8 @@ const VoiceCall = () => {
     const roomId = roomIdRef.current;
 
     if (socket && socket.connected && roomId && peerUserId) {
-      const payload = {
-        roomId,
-        to: peerUserId,
-        receiverId: peerUserId,
-        callerId: currentUserId,
-        userId: currentUserId
-      };
-
-      // Use one primary event.
-      socket.emit('peer_hung_up', payload);
-
-      // Keep compatibility with existing backend events.
-      socket.emit('call_cancelled_by_caller', payload);
-      socket.emit('cancel_call_signal', payload);
+      const payload = { roomId, to: peerUserId, receiverId: peerUserId, callerId: currentUserId, userId: currentUserId, callId };
+      socket.emit('end_call', payload);
     }
 
     cleanupResources();
@@ -353,7 +325,8 @@ const VoiceCall = () => {
     cleanupResources,
     navigate,
     peerUserId,
-    currentUserId
+    currentUserId,
+    callId
   ]);
 
   // ------------------------------------------------------------
@@ -403,7 +376,7 @@ const VoiceCall = () => {
 
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
+          .select('id, username, avatar_url, is_verified, online')
           .eq('id', peerUserId)
           .maybeSingle();
 
@@ -473,8 +446,6 @@ const VoiceCall = () => {
       }
     );
 
-    let localRealtimeChannel = null;
-
     const initializeCall = async () => {
       try {
         // ------------------------------------------------------
@@ -517,9 +488,7 @@ const VoiceCall = () => {
         // 2. PEER CONNECTION
         // ------------------------------------------------------
 
-        const pc = new RTCPeerConnection(
-          GLOBAL_ICE_CONFIG
-        );
+        const pc = new RTCPeerConnection(buildIceConfig());
 
         pcRef.current = pc;
 
@@ -651,18 +620,36 @@ const VoiceCall = () => {
           }
         };
 
-        pc.oniceconnectionstatechange = () => {
-          console.log(
-            '🧊 ICE connection state:',
-            pc.iceConnectionState
-          );
+        pc.oniceconnectionstatechange = async () => {
+          console.log('🧊 ICE connection state:', pc.iceConnectionState);
 
-          if (
-            pc.iceConnectionState === 'failed'
-          ) {
-            console.error(
-              '❌ ICE connection failed. TURN server may be unreachable.'
-            );
+          if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            iceRestartingRef.current = false;
+            return;
+          }
+
+          if (pc.iceConnectionState !== 'failed' || iceRestartingRef.current || !socketRef.current?.connected) return;
+
+          try {
+            iceRestartingRef.current = true;
+            setCallStatus('Reconnecting...');
+            pc.restartIce();
+            if (pc.signalingState !== 'stable') return;
+            const offer = await pc.createOffer({ iceRestart: true, offerToReceiveAudio: true });
+            await pc.setLocalDescription(offer);
+            socketRef.current.emit('send_webrtc_offer', {
+              roomId,
+              streamId: roomId,
+              offer: pc.localDescription,
+              targetViewerId: peerUserId,
+              to: peerUserId,
+              callId,
+              iceRestart: true
+            });
+          } catch (error) {
+            iceRestartingRef.current = false;
+            console.warn('⚠️ Voice ICE restart failed:', error);
+            if (mountedRef.current) setCallStatus('Connection Failed');
           }
         };
 
@@ -759,51 +746,6 @@ const VoiceCall = () => {
 
 
             // -----------------------------------------------
-            // Supabase realtime fallback
-            // -----------------------------------------------
-
-            try {
-              localRealtimeChannel =
-                supabase.channel(
-                  `user-call-signals-${peerUserId}`
-                );
-
-              realtimeChannelsRef.current.push(
-                localRealtimeChannel
-              );
-
-              localRealtimeChannel.subscribe(
-                async (status) => {
-                  if (status === 'SUBSCRIBED') {
-                    try {
-                      await localRealtimeChannel.send({
-                        type: 'broadcast',
-                        event:
-                          'incoming_call_broadcast',
-                        payload:
-                          callSignalData
-                      });
-
-                      console.log(
-                        '📡 Incoming call broadcast sent.'
-                      );
-                    } catch (error) {
-                      console.warn(
-                        'Realtime broadcast failed:',
-                        error
-                      );
-                    }
-                  }
-                }
-              );
-            } catch (error) {
-              console.warn(
-                'Realtime fallback setup failed:',
-                error
-              );
-            }
-
-            // -----------------------------------------------
             // DO NOT immediately force multiple offers.
             // Wait for peer_ready.
             // -----------------------------------------------
@@ -896,10 +838,10 @@ const VoiceCall = () => {
 
         socket.on(
           'webrtc_offer_received',
-          async ({ offer }) => {
-            if (!mountedRef.current) return;
+          async ({ offer, callId: incomingCallId, iceRestart }) => {
+            if (!mountedRef.current || (incomingCallId && incomingCallId !== callId)) return;
 
-            if (callRole === 'caller') {
+            if (callRole === 'caller' && !iceRestart) {
               console.log(
                 'ℹ️ Caller ignored incoming offer.'
               );
@@ -999,7 +941,7 @@ const VoiceCall = () => {
 
         socket.on(
           'webrtc_answer_received',
-          async ({ answer }) => {
+          async ({ answer, callId: incomingCallId }) => {
             if (!mountedRef.current) return;
 
             const currentPc =
@@ -1094,24 +1036,14 @@ const VoiceCall = () => {
         // PEER HUNG UP
         // ------------------------------------------------------
 
-        socket.on(
-          'peer_hung_up',
-          () => {
-            if (!mountedRef.current) return;
-
-            console.log(
-              '📞 Remote peer ended the call.'
-            );
-
-            setCallStatus(
-              'Call Ended'
-            );
-
-            cleanupResources();
-
-            navigate(-1);
-          }
-        );
+        socket.on('peer_hung_up', (data = {}) => {
+          if (!mountedRef.current || (data.callId && data.callId !== callId)) return;
+          remoteEndedRef.current = true;
+          endingCallRef.current = true;
+          setCallStatus('Call Ended');
+          cleanupResources();
+          navigate(-1);
+        });
 
         // ------------------------------------------------------
         // IN-CALL CHAT
