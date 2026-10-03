@@ -7,7 +7,6 @@ import {
 // --- MODULAR COMPONENT IMPORTS ---
 import CoHostManager from './CoHostManager';
 import GuestManager from './GuestManager';
-import GiftSender from './GiftSender';
 import BattleController from './BattleController';
 import EndLiveSession from '../Host/EndStream';
 import AIVoiceEffects from './AIVoiceEffects';
@@ -58,7 +57,6 @@ const SettingsPanel = ({
           />
         );
       case 'guest': return <GuestManager streamId={streamId} onBack={() => setCurrentTab('menu')} />;
-      case 'gifts': return <GiftSender streamId={streamId} onBack={() => setCurrentTab('menu')} />;
       case 'battle': return <BattleController streamId={streamId} onBack={() => setCurrentTab('menu')} />;
       case 'voice': return <AIVoiceEffects streamId={streamId} onBack={() => setCurrentTab('menu')} />;
       case 'bg': return <BackgroundChanger streamId={streamId} onBack={() => setCurrentTab('menu')} />;
@@ -109,7 +107,6 @@ const SettingsPanel = ({
           <button onClick={() => setCurrentTab('cohost')} className="menu-btn"><Users size={14} className="text-cyan-400 drop-shadow-[0_0_5px_#06b6d4]" /><span>Co-Host Connect</span></button>
           <button onClick={() => setCurrentTab('guest')} className="menu-btn"><UserCheck size={14} className="text-cyan-400 drop-shadow-[0_0_5px_#06b6d4]" /><span>Guest Queue</span></button>
           <button onClick={() => setCurrentTab('battle')} className="menu-btn"><Swords size={14} className="text-cyan-400 drop-shadow-[0_0_5px_#06b6d4]" /><span>PK Battle Mode</span></button>
-          <button onClick={() => setCurrentTab('gifts')} className="menu-btn"><Gift size={14} className="text-cyan-400 drop-shadow-[0_0_5px_#06b6d4]" /><span>Send Testing Gifts</span></button>
         </div>
       </div>
 
