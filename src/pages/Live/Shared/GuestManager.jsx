@@ -376,8 +376,9 @@ const GuestManager = ({
           'approve_cohost',
           {
             streamId,
-            guestId:
-              request.user_id,
+            guestId: request.user_id,
+            requestId: request.id,
+            hostId: approvedRequest.host_id || null,
             mode: assignedMode
           }
         );
@@ -483,8 +484,44 @@ const GuestManager = ({
           );
         }
 
+        if (socket && socket.connected) {
+
+
+          socket.emit('reject_cohost', {
+
+
+            streamId,
+
+
+            guestId: request.user_id,
+
+
+            requestId: request.id
+
+
+          });
+
+
+        }
+
+
+
         console.log(
+
+
+          `📡 [GuestManager] reject_cohost sent for ${request.user_id}.`
+
+
+        );
+
+
+
+        console.log(
+
+
           `✅ [GuestManager] Request ${request.id} rejected.`
+
+
         );
       } catch (error) {
         console.error(
