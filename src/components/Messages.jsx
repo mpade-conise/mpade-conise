@@ -526,97 +526,6 @@ const Messaging = () => {
       setIsPeerOnline(status === 'online');
     };
 
-    /* -------------------------------------------------------
-       INCOMING CALL
-    ------------------------------------------------------- */
-
-    const handleIncomingCall = (callData) => {
-      if (!mounted || !callData) return;
-
-      if (callData.receiverId !== currentUserId) return;
-
-      /*
-       * Ignore our own call.
-       */
-      if (callData.callerId === currentUserId) return;
-
-      /*
-       * Ignore calls intended for a different conversation.
-       */
-      if (
-        callData.receiverId !== currentUserId ||
-        callData.callerId !== peerUserId
-      ) {
-        return;
-      }
-
-      console.log('[Messaging] Incoming call:', callData);
-
-      setIncomingCall((previous) => {
-        /*
-         * Prevent duplicate incoming-call events.
-         */
-        if (
-          previous &&
-          previous.callId &&
-          callData.callId &&
-          previous.callId === callData.callId
-        ) {
-          return previous;
-        }
-
-        return {
-          ...callData,
-          callId:
-            callData.callId ||
-            crypto.randomUUID(),
-          roomId:
-            callData.roomId ||
-            [callData.callerId, callData.receiverId]
-              .sort()
-              .join('-')
-        };
-      });
-    };
-
-    /* -------------------------------------------------------
-       CALL CANCELLED
-    ------------------------------------------------------- */
-
-    const handleCallCancelled = (callData) => {
-      if (!mounted) return;
-
-      if (!callData) {
-        setIncomingCall(null);
-        return;
-      }
-
-      /*
-       * Only close the modal if it matches this call.
-       */
-      setIncomingCall((currentCall) => {
-        if (!currentCall) return null;
-
-        if (
-          callData.callId &&
-          currentCall.callId &&
-          callData.callId !== currentCall.callId
-        ) {
-          return currentCall;
-        }
-
-        if (
-          callData.callerId &&
-          currentCall.callerId &&
-          callData.callerId !== currentCall.callerId
-        ) {
-          return currentCall;
-        }
-
-        return null;
-      });
-    };
-
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('connect_error', handleConnectError);
@@ -639,15 +548,9 @@ const Messaging = () => {
      *
      * No Supabase Broadcast channel is created here.
      */
-    socket.on(
-      'incoming_call_signal',
-      handleIncomingCall
-    );
 
-    socket.on(
-      'call_cancelled_by_caller',
-      handleCallCancelled
-    );
+
+
 
     loadConversation();
 
@@ -682,15 +585,9 @@ const Messaging = () => {
         handlePresence
       );
 
-      socket.off(
-        'incoming_call_signal',
-        handleIncomingCall
-      );
 
-      socket.off(
-        'call_cancelled_by_caller',
-        handleCallCancelled
-      );
+
+
 
       socket.disconnect();
 
