@@ -133,8 +133,6 @@ const LivePlayer = () => {
   const [guestFollowLoading, setGuestFollowLoading] = useState(false);
 
   const [currentUser, setCurrentUser] = useState(null);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [followLoading, setFollowLoading] = useState(false);
 
   const [chatVisible, setChatVisible] = useState(true);
   const [dataSaver, setDataSaver] = useState(false);
@@ -499,78 +497,6 @@ const LivePlayer = () => {
       supabase.removeChannel(channel);
     };
   }, [streamId, retryNonce, navigate]);
-
-  /*
-   * ---------------------------------------------------------
-   * FOLLOW HOST
-   * ---------------------------------------------------------
-   */
-
-  useEffect(() => {
-    if (!currentUser?.id || !streamData?.host_id) return undefined;
-
-    let cancelled = false;
-
-    const checkFollowing = async () => {
-      const { data, error } = await supabase
-        .from('follows')
-        .select('follower_id')
-        .eq('follower_id', currentUser.id)
-        .eq('following_id', streamData.host_id)
-        .maybeSingle();
-
-      if (!cancelled && !error) {
-        setIsFollowing(Boolean(data));
-      }
-    };
-
-    checkFollowing();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUser?.id, streamData?.host_id]);
-
-  const handleFollow = async () => {
-    if (!currentUser?.id || !streamData?.host_id || followLoading) return;
-
-    setFollowLoading(true);
-
-    const currentlyFollowing = isFollowing;
-
-    if (currentlyFollowing) {
-      const { error } = await supabase
-        .from('follows')
-        .delete()
-        .eq('follower_id', currentUser.id)
-        .eq('following_id', streamData.host_id);
-
-      if (error) {
-        console.error('Failed to unfollow host:', error);
-      } else {
-        setIsFollowing(false);
-      }
-    } else {
-      const { error } = await supabase
-        .from('follows')
-        .insert({
-          follower_id: currentUser.id,
-          following_id: streamData.host_id
-        });
-
-      if (error) {
-        if (error.code === '23505') {
-          setIsFollowing(true);
-        } else {
-          console.error('Failed to follow host:', error);
-        }
-      } else {
-        setIsFollowing(true);
-      }
-    }
-
-    setFollowLoading(false);
-  };
 
   /*
    * ---------------------------------------------------------
@@ -1193,8 +1119,10 @@ const LivePlayer = () => {
                     )}
                     <button
                       onClick={handleGuestLeave}
-                      className="h-6 px-1.5 rounded-full bg-red-500/15 border border-red-400/20 text-red-300 text-[7px] font-black"
+                      type="button"
+                      className="h-6 px-2 rounded-full bg-red-500/15 border border-red-400/20 text-red-300 text-[7px] font-black pointer-events-auto"
                       aria-label="Leave guest panel"
+                      title="Leave guest panel"
                     >
                       LEAVE
                     </button>
