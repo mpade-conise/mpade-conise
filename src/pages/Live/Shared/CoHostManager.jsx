@@ -552,16 +552,6 @@ const CoHostStage = ({ socket: parentSocket }) => {
      VIDEO GRID
      ========================================================= */
 
-  const coHostStreams =
-    primaryRemoteStream
-      ? [primaryRemoteStream]
-      : [];
-
-  /*
-   * DynamicStreamGrid is now the single presentation
-   * component for host + remote feed.
-   */
-
   return (
     <div className="h-screen w-full bg-black text-white relative font-sans overflow-hidden flex">
 
@@ -701,11 +691,6 @@ const CoHostStage = ({ socket: parentSocket }) => {
             null
           }
 
-          /*
-           * Always provide the video element.
-           * DynamicStreamGrid binds primaryRemoteStream
-           * to this element.
-           */
 
           coHostVideo={
             <div className="relative w-full h-full bg-zinc-900 overflow-hidden">
