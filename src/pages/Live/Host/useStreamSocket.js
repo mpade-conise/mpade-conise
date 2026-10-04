@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
+const SOCKET_SERVER_URL = 'https://mpade-backend-production.up.railway.app';
 
 const ALERT_DURATION = 3000;
 const GIFT_ALERT_DURATION = 4000;
