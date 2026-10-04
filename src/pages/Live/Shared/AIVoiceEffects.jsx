@@ -93,7 +93,7 @@ const AIVoiceEffects = ({ streamId, onBack, onSelectEffect }) => {
                   <span className="text-xs font-bold tracking-wide">{fx.name}</span>
                   <span className="text-[8px] font-mono opacity-50 px-1 bg-zinc-800 rounded text-zinc-400">
                     REAL DSP
-                  </span>>
+                  </span>
                 </div>
                 <span className="text-[10px] text-zinc-500 font-normal whitespace-normal line-clamp-1 group-hover:text-zinc-400 transition-colors">
                   {fx.desc}

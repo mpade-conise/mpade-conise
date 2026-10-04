@@ -613,130 +613,15 @@ const CoHostStage = ({ socket: parentSocket }) => {
 
         <div className="w-full h-full grid grid-cols-1 md:grid-cols-2 gap-1 bg-black">
           <div className="relative w-full h-full bg-zinc-900 overflow-hidden">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className={'w-full h-full object-cover ' + (isCameraOff ? 'opacity-0' : 'opacity-100')}
-            />
-            {isCameraOff && (
-              <div className="absolute inset-0 flex items-center justify-center text-xs tracking-widest text-zinc-600 bg-zinc-900">
-                CAMERA BLANKED
-              </div>
-            )}
-            <span className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-cyan-400 border border-cyan-500/10">
-              HOST (YOU)
-            </span>
+            <video ref={localVideoRef} autoPlay muted playsInline className={'w-full h-full object-cover ' + (isCameraOff ? 'opacity-0' : 'opacity-100')} />
+            {isCameraOff && <div className="absolute inset-0 flex items-center justify-center text-xs tracking-widest text-zinc-600 bg-zinc-900">CAMERA BLANKED</div>}
+            <span className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-cyan-400 border border-cyan-500/10">HOST (YOU)</span>
           </div>
           <div className="relative w-full h-full bg-zinc-900 overflow-hidden">
-            <video
-              ref={challengerVideoRef}
-              autoPlay
-              playsInline
-              controls={false}
-              className="w-full h-full object-cover"
-            />
-            {!primaryRemoteStream && (
-              <div className="absolute inset-0 flex items-center justify-center bg-zinc-950">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-10 h-10 rounded-full border-2 border-white/10 border-t-emerald-400 animate-spin" />
-                  <span className="text-[9px] font-black uppercase tracking-widest text-white/30">
-                    Waiting For Co-Host...
-                  </span>
-                </div>
-              </div>
-            )}
+            <video ref={challengerVideoRef} autoPlay playsInline controls={false} className="w-full h-full object-cover" />
+            {!primaryRemoteStream && <div className="absolute inset-0 flex items-center justify-center bg-zinc-950"><div className="flex flex-col items-center gap-2"><div className="w-10 h-10 rounded-full border-2 border-white/10 border-t-emerald-400 animate-spin" /><span className="text-[9px] font-black uppercase tracking-widest text-white/30">Waiting For Co-Host...</span></div></div>}
           </div>
         </div>
-
-              {isCameraOff && (
-                <div className="absolute inset-0 flex items-center justify-center text-xs tracking-widest text-zinc-600 bg-zinc-900 font-mono">
-                  CAMERA BLANKED
-                </div>
-              )}
-
-              <span className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-cyan-400 border border-cyan-500/10">
-                HOST (YOU)
-              </span>
-
-            </div>
-          }
-
-          hostInfo={{
-            username: 'Host'
-          }}
-
-          /* =================================================
-             REMOTE CO-HOST STREAM
-             ================================================= */
-
-          coHosts={
-            primaryRemoteStream
-              ? [
-                  {
-                    id: 'remote-cohost',
-                    username: 'Co-Host'
-                  }
-                ]
-              : []
-          }
-
-          coHostStreams={
-            coHostStreams
-          }
-
-          coHostStream={
-            primaryRemoteStream ||
-            null
-          }
-
-
-          coHostVideo={
-            <div className="relative w-full h-full bg-zinc-900 overflow-hidden">
-
-              <video
-                ref={challengerVideoRef}
-                autoPlay
-                playsInline
-                controls={false}
-                className="w-full h-full object-cover"
-              />
-
-              {!primaryRemoteStream && (
-                <div className="absolute inset-0 flex items-center justify-center bg-zinc-950">
-
-                  <div className="flex flex-col items-center gap-2">
-
-                    <div className="w-10 h-10 rounded-full border-2 border-white/10 border-t-emerald-400 animate-spin" />
-
-                    <span className="text-[9px] font-black uppercase tracking-widest text-white/30">
-                      Waiting For Co-Host...
-                    </span>
-
-                  </div>
-
-                </div>
-              )}
-
-            </div>
-          }
-
-          coHostInfo={
-            primaryRemoteStream
-              ? {
-                  id: 'remote-cohost',
-                  username: 'Co-Host'
-                }
-              : null
-          }
-
-          isHostView={true}
-
-          isBattleMode={false}
-
-          activeSmallGift={null}
-        />
 
         {/* ===================================================
             HUD

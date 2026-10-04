@@ -866,7 +866,7 @@ const AIFilters = forwardRef(function AIFilters(
         if (beautyAmount > 0) {
           context.save();
           context.globalAlpha = 0.08 + beautyAmount * 0.2;
-          context.filter = \`blur(\${0.5 + beautyAmount * 2.2}px) saturate(\${1 + beautyAmount * 0.08})\`;
+          context.filter = `blur(${0.5 + beautyAmount * 2.2}px) saturate(${1 + beautyAmount * 0.08})`;
           if (isMirrored) {
             context.translate(width, 0);
             context.scale(-1, 1);
@@ -878,7 +878,7 @@ const AIFilters = forwardRef(function AIFilters(
         if (backgroundAmount > 0) {
           context.save();
           context.globalAlpha = backgroundAmount * 0.22;
-          context.filter = \`blur(\${backgroundAmount * 8}px)\`;
+          context.filter = `blur(${backgroundAmount * 8}px)`;
           context.drawImage(canvas, 0, 0, width, height);
           context.restore();
         }
