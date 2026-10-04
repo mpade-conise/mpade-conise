@@ -11,7 +11,7 @@ import BattleController from './BattleController';
 import EndLiveSession from '../Host/EndStream';
 import AIVoiceEffects from './AIVoiceEffects';
 import BackgroundChanger from './BackgroundChanger';
-import AIEffects  from './AIFilters';
+import AIFilters from './AIFilters';
 import PauseLiveSession from './PauseLiveSession';
 import TopGifterTracker from './TopGifterTracker';
 import LeaderboardPanel from './LeaderboardPanel';
