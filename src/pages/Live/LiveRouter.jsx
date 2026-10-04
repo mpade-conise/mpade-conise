@@ -1,23 +1,23 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Compass, Video, Home, Zap, ShieldCheck } from 'lucide-react';
 
 // Host Pages
-import GoLive from './Host/GoLive';
-import GuestLiveSetup from './guest'; // 8-Panel Guest Setup
-import MobileGamingSetup from './gaming'; // Mobile Gaming Setup
-import StreamDashboard from './Host/StreamDashboard';
-import HostAnalytics from './Host/HostAnalytics';
+const GoLive = lazy(() => import('./Host/GoLive'));
+const GuestLiveSetup = lazy(() => import('./guest'));
+const MobileGamingSetup = lazy(() => import('./gaming'));
+const StreamDashboard = lazy(() => import('./Host/StreamDashboard'));
+const HostAnalytics = lazy(() => import('./Host/HostAnalytics'));
 
 // Viewer Pages
-import StreamDiscovery from './Viewer/StreamDiscovery';
-import LivePlayer from './Viewer/LivePlayer';
-import Recharge from './Viewer/Recharge'; 
-import PaymentVerify from './Viewer/PaymentVerify';
-import JoinAsGuest from './Viewer/JoinAsGuest';
+const StreamDiscovery = lazy(() => import('./Viewer/StreamDiscovery'));
+const LivePlayer = lazy(() => import('./Viewer/LivePlayer'));
+const Recharge = lazy(() => import('./Viewer/Recharge'));
+const PaymentVerify = lazy(() => import('./Viewer/PaymentVerify'));
+const JoinAsGuest = lazy(() => import('./Viewer/JoinAsGuest'));
 
 // Moderator Pages
-import ModDashboard from './Moderator/ModDashboard';
+const ModDashboard = lazy(() => import('./Moderator/ModDashboard'));
 
 function NavLink({ to, icon, label }) {
   const { pathname } = useLocation();
@@ -77,7 +77,8 @@ const LiveRouter = () => {
 
       {/* --- PAGE CONTENT --- */}
       <div className={`flex-1 ${!isFullscreenExperience ? 'pb-24' : ''}`}> 
-        <Routes>
+        <Suspense fallback={<UniverseOffline />}>
+          <Routes>
           {/* Discovery */}
           <Route index element={<StreamDiscovery />} />
           <Route path="explore" element={<StreamDiscovery />} />
@@ -115,7 +116,8 @@ const LiveRouter = () => {
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/live" replace />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </div>
     </div>
   );
