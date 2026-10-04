@@ -311,14 +311,18 @@ function Upload({ onComplete }) {
           URL.revokeObjectURL(videoPreview);
         } catch {}
       }
+    };
+  }, [videoPreview]);
 
+  useEffect(() => {
+    return () => {
       if (thumbnailPreview) {
         try {
           URL.revokeObjectURL(thumbnailPreview);
         } catch {}
       }
     };
-  }, [videoPreview, thumbnailPreview]);
+  }, [thumbnailPreview]);
 
   const stopRecordingTimer = useCallback(() => {
     if (recordingTimerRef.current) {
@@ -1433,7 +1437,7 @@ function Upload({ onComplete }) {
 
         const merged = await mergeVideoOnServer(sourceObject.objectKey);
         if (!merged?.objectKey || !merged?.objectUrl) {
-          throw new Error('The processed video does not have a public delivery URL.');
+          throw new Error('The processed video did not receive a signed delivery URL.');
         }
 
         finalVideoObject = { objectKey: merged.objectKey, objectUrl: merged.objectUrl };
