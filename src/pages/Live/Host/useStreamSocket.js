@@ -27,6 +27,9 @@ export const useStreamSocket = (
   const [incomingInvite, setIncomingInvite] =
     useState(null);
 
+  const [incomingCohostInvite, setIncomingCohostInvite] =
+    useState(null);
+
   const [reactionTrigger, setReactionTrigger] =
     useState(null);
 
@@ -421,6 +424,17 @@ export const useStreamSocket = (
        BATTLE INVITATION
        ======================================================= */
 
+    const handleCohostInvite = payload => {
+      if (cancelled || !mountedRef.current || !payload) return;
+
+      console.log(
+        '🚀 [useStreamSocket] Co-host invitation received:',
+        payload
+      );
+
+      setIncomingCohostInvite(payload);
+    };
+
     const handleBattleInvite = payload => {
       if (
         cancelled ||
@@ -530,6 +544,11 @@ export const useStreamSocket = (
     );
 
     socketInstance.on(
+      'cohost_invite_received',
+      handleCohostInvite
+    );
+
+    socketInstance.on(
       'cohost_eviction_notice',
       handleCohostEviction
     );
@@ -620,6 +639,11 @@ export const useStreamSocket = (
       socketInstance.off(
         'battle_invite_received',
         handleBattleInvite
+      );
+
+      socketInstance.off(
+        'cohost_invite_received',
+        handleCohostInvite
       );
 
       socketInstance.off(
