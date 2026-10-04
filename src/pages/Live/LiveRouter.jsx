@@ -19,6 +19,27 @@ import JoinAsGuest from './Viewer/JoinAsGuest';
 // Moderator Pages
 import ModDashboard from './Moderator/ModDashboard';
 
+function NavLink({ to, icon, label }) {
+  const { pathname } = useLocation();
+  const isActive = pathname === to;
+  return (
+    <Link to={to} className="flex flex-col items-center gap-1 group">
+      <div className={`transition-colors ${isActive ? 'text-cyan-500' : 'text-zinc-500 group-hover:text-white'}`}>{icon}</div>
+      <span className={`text-[8px] font-black uppercase tracking-widest ${isActive ? 'text-white' : 'text-zinc-600'}`}>{label}</span>
+    </Link>
+  );
+}
+
+function UniverseOffline() {
+  return (
+    <div className="h-screen flex flex-col items-center justify-center gap-4">
+      <div className="w-12 h-1 bg-[#fe2c55] animate-pulse" />
+      <p className="text-zinc-500 font-black uppercase tracking-[0.3em] text-xs">Universe Offline</p>
+      <Link to="/live" className="mt-4 text-[10px] font-bold text-zinc-400 border border-white/10 px-6 py-3 rounded-full hover:bg-white/5 transition-all">Return to Discovery</Link>
+    </div>
+  );
+}
+
 const LiveRouter = () => {
   const location = useLocation();
 
@@ -99,36 +120,5 @@ const LiveRouter = () => {
     </div>
   );
 };
-
-// --- HELPER COMPONENTS ---
-
-const NavLink = ({ to, icon, label }) => {
-  const { pathname } = useLocation();
-  const isActive = pathname === to;
-
-  return (
-    <Link to={to} className="flex flex-col items-center gap-1 group">
-      <div className={`transition-colors ${isActive ? 'text-cyan-500' : 'text-zinc-500 group-hover:text-white'}`}>
-        {icon}
-      </div>
-      <span className={`text-[8px] font-black uppercase tracking-widest ${isActive ? 'text-white' : 'text-zinc-600'}`}>
-        {label}
-      </span>
-    </Link>
-  );
-};
-
-const UniverseOffline = () => (
-  <div className="h-screen flex flex-col items-center justify-center gap-4">
-    <div className="w-12 h-1 bg-[#fe2c55] animate-pulse" />
-    <p className="text-zinc-500 font-black uppercase tracking-[0.3em] text-xs">Universe Offline</p>
-    <Link 
-      to="/live" 
-      className="mt-4 text-[10px] font-bold text-zinc-400 border border-white/10 px-6 py-3 rounded-full hover:bg-white/5 transition-all"
-    >
-      Return to Discovery
-    </Link>
-  </div>
-);
 
 export default LiveRouter;
