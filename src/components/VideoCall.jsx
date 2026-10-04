@@ -355,12 +355,26 @@ const VideoCall = () => {
           }
         });
 
-        socket.on('peer_hung_up', (data = {}) => {
+        const handleRemoteCallEnd = (data = {}) => {
           if (!isComponentMounted) return;
           if (data.callId && data.callId !== callId) return;
+
           remoteEndedRef.current = true;
+
+          if (data.reason === 'declined') {
+            setCallStatus('Call declined');
+            cleanUpCall(false, false);
+            window.setTimeout(() => {
+              if (isComponentMounted) navigate(-1);
+            }, 1200);
+            return;
+          }
+
           cleanUpCall(false);
-        });
+        };
+
+        socket.on('peer_hung_up', handleRemoteCallEnd);
+        socket.on('call_cancelled_by_caller', handleRemoteCallEnd);
 
         // In-Call Chat & Reaction Event Listeners
         socket.on('in_call_text_message', (data) => {
@@ -468,7 +482,7 @@ const VideoCall = () => {
     }
   }, [isVideoOff]);
 
-  const cleanUpCall = (notifyPeer = true) => {
+  const cleanUpCall = (notifyPeer = true, shouldNavigate = true) => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
@@ -486,7 +500,7 @@ const VideoCall = () => {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-    navigate(-1);
+    if (shouldNavigate) navigate(-1);
   };
 
   const formatTime = (secs) => {
