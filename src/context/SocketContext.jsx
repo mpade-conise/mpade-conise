@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { io } from 'socket.io-client';
 import { supabase } from '../supabaseClient';
 
-const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
+const SOCKET_SERVER_URL = "https://mpade-backend-production.up.railway.app";
 
 const SocketContext = createContext(null);
 
