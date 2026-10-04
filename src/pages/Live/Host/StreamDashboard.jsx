@@ -69,6 +69,8 @@ const StreamDashboard = () => {
     setActiveGift,
     incomingInvite,
     setIncomingInvite,
+    incomingCohostInvite,
+    setIncomingCohostInvite,
     reactionTrigger
   } = useStreamSocket(streamId, true);
 
@@ -81,6 +83,42 @@ const StreamDashboard = () => {
   } = useStreamWebRTC(streamId, socket, isCameraOff, isMuted, challengerVideoRef);
 
   const currentViewers = Array.isArray(viewers) ? viewers.length : Number(viewers || 0);
+
+
+  const handleAcceptCohostInvite = () => {
+    if (!socket || !incomingCohostInvite) return;
+
+    const targetUserId =
+      incomingCohostInvite.fromHostId ||
+      incomingCohostInvite.senderHostId ||
+      incomingCohostInvite.host_id;
+
+    socket.emit('respond_cohost_invite', {
+      room: incomingCohostInvite.room || streamId,
+      targetUserId,
+      acceptedBySocketId: socket.id,
+      status: 'accepted'
+    });
+
+    setIncomingCohostInvite(null);
+  };
+
+  const handleDeclineCohostInvite = () => {
+    if (!socket || !incomingCohostInvite) return;
+
+    const targetUserId =
+      incomingCohostInvite.fromHostId ||
+      incomingCohostInvite.senderHostId ||
+      incomingCohostInvite.host_id;
+
+    socket.emit('respond_cohost_invite', {
+      room: incomingCohostInvite.room || streamId,
+      targetUserId,
+      status: 'declined'
+    });
+
+    setIncomingCohostInvite(null);
+  };
 
   // --- TOAST / NOTICE ---
   const showNotice = (message, type = 'info') => {
@@ -879,7 +917,23 @@ const StreamDashboard = () => {
           )}
         </AnimatePresence>
 
-        {/* NOTICE */}
+        {incomingCohostInvite && (
+        <div className="absolute inset-0 z-[125] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 pointer-events-auto">
+          <div className="w-full max-w-sm rounded-3xl border border-emerald-500/30 bg-zinc-950 p-6 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
+              <UserPlus size={22} className="text-emerald-400" />
+            </div>
+            <h3 className="text-base font-black text-center mt-4">Co-Host Invitation</h3>
+            <p className="text-xs text-white/50 text-center mt-2">Another host wants to connect with you and merge the live feeds.</p>
+            <div className="flex items-center gap-2 mt-5">
+              <button type="button" onClick={handleDeclineCohostInvite} className="flex-1 px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold">Decline</button>
+              <button type="button" onClick={handleAcceptCohostInvite} className="flex-1 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black">Accept</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NOTICE */}
         <AnimatePresence>
           {notice && (
             <motion.div
