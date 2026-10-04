@@ -64,9 +64,6 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
 
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    if (hostVideoRef.current) hostVideoRef.current.srcObject = hostRemoteStream || null;
-  }, [hostRemoteStream]);
   const [mediaError, setMediaError] = useState('');
   const [permissionState, setPermissionState] = useState('checking');
   const [isCamOn, setIsCamOn] = useState(true);
@@ -83,6 +80,10 @@ const JoinAsGuest = forwardRef(({ engineOnly = false, enabled = true, onStateCha
   const [hostUserId, setHostUserId] = useState(null);
   const [streamData, setStreamData] = useState(null);
   const [hostRemoteStream, setHostRemoteStream] = useState(null);
+
+  useEffect(() => {
+    if (hostVideoRef.current) hostVideoRef.current.srcObject = hostRemoteStream || null;
+  }, [hostRemoteStream]);
 
   const [connectionState, setConnectionState] = useState('new');
   const [iceConnectionState, setIceConnectionState] = useState('new');
