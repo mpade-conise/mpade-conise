@@ -226,6 +226,10 @@ const CoHostStage = ({ socket: parentSocket }) => {
 
       setIsMerged(true);
 
+      setTimeout(() => {
+        if (mountedRef.current) navigate(`/live/dashboard/${streamId}`);
+      }, 350);
+
       const coHostId =
         data?.coHostId ||
         data?.cohostId ||
