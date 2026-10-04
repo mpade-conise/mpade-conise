@@ -9,6 +9,8 @@ const SocketContext = createContext(null);
 export const SocketProvider = ({ children, session }) => {
   const [incomingCall, setIncomingCall] = useState(null);
   const socketRef = useRef(null);
+  const incomingCallRef = useRef(null);
+  const recentlyHandledCallerRef = useRef(new Map());
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -39,9 +41,25 @@ export const SocketProvider = ({ children, session }) => {
 
     const handleIncomingCall = async (data) => {
       console.log("📞 Incoming Call Signal Received globally:", data);
-      
+
       const callerId = data?.callerId || data?.fromUserId || data?.senderId || data?.userId;
-      if (!callerId) return;
+      if (!callerId || String(callerId) === String(session.user.id)) return;
+
+      const callId = data?.callId || null;
+      const now = Date.now();
+      const active = incomingCallRef.current;
+      const recentlyHandledAt = recentlyHandledCallerRef.current.get(String(callerId)) || 0;
+
+      if (
+        (active && String(active.callerId) === String(callerId)) ||
+        now - recentlyHandledAt < 15000
+      ) {
+        console.log("⏭️ Ignoring duplicate/recent incoming call signal:", {
+          callerId,
+          callId
+        });
+        return;
+      }
 
       // Fetch caller profile
       const { data: callerProfile } = await supabase
@@ -50,16 +68,27 @@ export const SocketProvider = ({ children, session }) => {
         .eq('id', callerId)
         .single();
 
-      setIncomingCall({
+      const nextIncomingCall = {
+        callId,
         callerId,
-        callerUsername: callerProfile?.username || 'User',
-        callerAvatar: callerProfile?.avatar_url || null,
+        callerUsername: callerProfile?.username || data?.callerUsername || data?.callerName || 'User',
+        callerAvatar: callerProfile?.avatar_url || data?.callerAvatar || null,
         callType: data?.callType || 'video',
         roomId: data?.roomId || [session.user.id, callerId].sort().join("-")
-      });
+      };
+
+      incomingCallRef.current = nextIncomingCall;
+      setIncomingCall(nextIncomingCall);
     };
 
-    const handleCancel = () => setIncomingCall(null);
+    const handleCancel = () => {
+      const active = incomingCallRef.current;
+      if (active?.callerId) {
+        recentlyHandledCallerRef.current.set(String(active.callerId), Date.now());
+      }
+      incomingCallRef.current = null;
+      setIncomingCall(null);
+    };
 
     // Event Registration
     socket.on('connect', handleConnect);
@@ -81,6 +110,10 @@ export const SocketProvider = ({ children, session }) => {
   }, [session?.user?.id]);
 
   const rejectCall = () => {
+    if (incomingCall?.callerId) {
+      recentlyHandledCallerRef.current.set(String(incomingCall.callerId), Date.now());
+    }
+    incomingCallRef.current = null;
     if (incomingCall && socketRef.current) {
       socketRef.current.emit('reject_incoming_call', {
         roomId: incomingCall.roomId,
@@ -90,7 +123,16 @@ export const SocketProvider = ({ children, session }) => {
     setIncomingCall(null);
   };
 
-  const clearIncomingCall = () => setIncomingCall(null);
+  const clearIncomingCall = () => {
+    if (incomingCallRef.current?.callerId) {
+      recentlyHandledCallerRef.current.set(
+        String(incomingCallRef.current.callerId),
+        Date.now()
+      );
+    }
+    incomingCallRef.current = null;
+    setIncomingCall(null);
+  };
 
   return (
     <SocketContext.Provider value={{ socket: socketRef.current, incomingCall, rejectCall, clearIncomingCall }}>
