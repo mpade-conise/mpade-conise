@@ -6,7 +6,7 @@ import { PhoneOff, Mic, MicOff, Video, VideoOff, Shield, Monitor, MessageSquare,
 import { motion, AnimatePresence } from 'framer-motion';
 import { startRingbackTone, stopRingbackTone } from '../utils/callNotificationEngine';
 
-const SOCKET_SERVER_URL = "https://mpade-backend.onrender.com";
+const SOCKET_SERVER_URL = "https://mpade-backend-production.up.railway.app";
 
 const GLOBAL_ICE_CONFIG = {
   iceServers: [
