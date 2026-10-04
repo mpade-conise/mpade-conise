@@ -117,7 +117,9 @@ export const SocketProvider = ({ children, session }) => {
     if (incomingCall && socketRef.current) {
       socketRef.current.emit('reject_incoming_call', {
         roomId: incomingCall.roomId,
-        to: incomingCall.callerId
+        to: incomingCall.callerId,
+        callerId: incomingCall.callerId,
+        callId: incomingCall.callId || null
       });
     }
     setIncomingCall(null);
