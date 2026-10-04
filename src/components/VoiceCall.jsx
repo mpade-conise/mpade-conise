@@ -18,7 +18,7 @@ import {
   stopRingbackTone
 } from '../utils/callNotificationEngine';
 
-const SOCKET_SERVER_URL = 'https://mpade-backend.onrender.com';
+const SOCKET_SERVER_URL = 'https://mpade-backend-production.up.railway.app';
 
 const buildIceConfig = () => {
   const turnUrls = String(import.meta.env.VITE_TURN_URLS || '').split(',').map((url) => url.trim()).filter(Boolean);
