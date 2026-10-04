@@ -355,11 +355,11 @@ const VideoCall = () => {
           }
         });
 
-        socket.on('peer_hung_up', () => {
-          if (isComponentMounted) {
-            remoteEndedRef.current = true;
-            cleanUpCall(false);
-          }
+        socket.on('peer_hung_up', (data = {}) => {
+          if (!isComponentMounted) return;
+          if (data.callId && data.callId !== callId) return;
+          remoteEndedRef.current = true;
+          cleanUpCall(false);
         });
 
         // In-Call Chat & Reaction Event Listeners
@@ -385,7 +385,7 @@ const VideoCall = () => {
 
     return () => {
       isComponentMounted = false;
-      cleanUpCall();
+      cleanUpCall(false);
     };
   }, [currentUserId, peerUserId, URLRole, requestedRoomId, callId]); 
 
@@ -693,7 +693,7 @@ const VideoCall = () => {
 
         <button 
           type="button"
-          onClick={cleanUpCall} 
+          onClick={() => cleanUpCall(true)} 
           title="End Call"
           className="p-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl transition-transform active:scale-95 shadow-xl shadow-red-600/40"
         >
