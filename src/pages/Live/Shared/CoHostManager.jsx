@@ -278,6 +278,9 @@ const CoHostStage = ({ socket: parentSocket }) => {
       );
 
       setIsMerged(true);
+      setTimeout(() => {
+        if (mountedRef.current) navigate(`/live/dashboard/${streamId}`);
+      }, 350);
     };
 
     const handleMergeEnded = data => {
@@ -494,6 +497,10 @@ const CoHostStage = ({ socket: parentSocket }) => {
 
     setIsMerged(true);
     setIncomingInvite(null);
+
+    setTimeout(() => {
+      if (mountedRef.current) navigate(`/live/dashboard/${streamId}`);
+    }, 350);
   };
 
   /* =========================================================
@@ -713,14 +720,10 @@ const CoHostStage = ({ socket: parentSocket }) => {
             </button>
 
             <button
-              onClick={() =>
-                navigate(
-                  `/live/host/${streamId}`
-                )
-              }
+              onClick={() => navigate(`/live/dashboard/${streamId}`)}
               className="p-3 bg-zinc-800 rounded-full text-xs font-bold px-5"
             >
-              Exit Room
+              Back to Host Studio
             </button>
 
           </nav>
