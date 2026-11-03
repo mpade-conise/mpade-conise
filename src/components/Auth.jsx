@@ -101,12 +101,7 @@ const Auth = () => {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-[3px] bg-red-500 shadow-[0_0_25px_#ef4444]" />
 
         <div className="flex justify-between items-start mb-10">
-          <div>
-            <h1 className="text-4xl font-black italic tracking-tighter bg-gradient-to-r from-white via-red-400 to-red-600 bg-clip-text text-transparent uppercase drop-shadow-[0_0_15px_rgba(239,68,68,0.6)]">
-              {mode === 'signup' ? 'Progress' : 'Welcome'}
-            </h1>
-            <p className="text-red-400/80 text-xs font-bold tracking-[0.2em] mt-1 uppercase drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]">Mpade Universe</p>
-          </div>
+          <img src="/con-universe-logo.svg" alt="Con Universe" className="w-40 h-40 object-contain -ml-4 -my-5" />
           {mode === 'signup' && (
             <div className="px-4 py-2 bg-red-500/20 border border-red-500/50 rounded-full text-[10px] text-red-400 font-black tracking-widest shadow-[0_0_15px_rgba(239,68,68,0.4)]">STEP {step} / 3</div>
           )}
