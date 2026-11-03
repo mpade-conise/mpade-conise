@@ -1065,15 +1065,7 @@ const SettingsPage = () => {
 
   const openSection = (id) => {
     setActiveSection(id);
-
-    window.setTimeout(() => {
-      document
-        .getElementById(`settings-section-${id}`)
-        ?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-    }, 50);
+    setSearch("");
   };
 
   /* ==========================================================
@@ -1278,6 +1270,7 @@ const SettingsPage = () => {
                 PROFILE CARD
             ================================================== */}
 
+            {!activeSection && (
             <motion.div
               initial={{
                 opacity: 0,
@@ -1410,6 +1403,7 @@ const SettingsPage = () => {
                 </div>
               </div>
             </motion.div>
+            )}
 
             {/* ==================================================
                 SEARCH RESULT COUNT
@@ -1435,7 +1429,7 @@ const SettingsPage = () => {
                 SETTINGS GRID
             ================================================== */}
 
-            {!search && (
+            {!activeSection && (
               <div className="mb-8">
                 <SectionTitle
                   title="All settings"
@@ -1468,8 +1462,17 @@ const SettingsPage = () => {
                 INDIVIDUAL SECTIONS
             ================================================== */}
 
+            {activeSection && (
+              <div className="mb-5">
+                <button type="button" onClick={() => setActiveSection(null)} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-[10px] font-black uppercase tracking-widest text-cyan-400 hover:bg-white/[0.08] transition">
+                  <ArrowLeft size={15} />
+                  All settings
+                </button>
+              </div>
+            )}
+
             <div className="space-y-8">
-              {filteredSections.map((section) => (
+              {filteredSections.filter((section) => !activeSection || section.id === activeSection).map((section) => (
                 <section
                   key={section.id}
                   id={`settings-section-${section.id}`}
@@ -1742,6 +1745,7 @@ const SettingsPage = () => {
                 </section>
               ))}
             </div>
+            )}
 
             {/* ==================================================
                 FOOTER
