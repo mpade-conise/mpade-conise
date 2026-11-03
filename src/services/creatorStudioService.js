@@ -37,6 +37,11 @@ export const normalizeOverview = (row = {}) => {
     liveCount: safeNumber(value.live_count),
     profileLikes: safeNumber(value.profile_likes),
     gifts: safeNumber(value.live_gifts ?? value.gifts_count),
+    balance: safeNumber(value.balance),
+    creatorEarnings: safeNumber(value.creator_earnings ?? value.revenue),
+    livestreamRevenue: safeNumber(value.live_revenue),
+    profileViews: safeNumber(value.profile_views ?? value.profile_visits),
+    totalEngagements: safeNumber(value.total_engagements ?? (safeNumber(value.video_likes) + safeNumber(value.video_comments) + safeNumber(value.video_shares) + safeNumber(value.video_saves) + safeNumber(value.video_reposts))),
   };
 };
 
