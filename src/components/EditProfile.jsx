@@ -95,6 +95,7 @@ import {
 } from 'lucide-react';
 
 import { supabase } from '../supabaseClient';
+import { QRCodeSVG } from 'qrcode.react';
 
 
 // ============================================================
@@ -768,12 +769,7 @@ const EditProfile = () => {
           safeString(data?.verified_status) || 'none'
       });
 
-      setAccount(
-        mergeDeep(
-          DEFAULT_ACCOUNT,
-          savedSettings.account
-        )
-      );
+      setAccount(mergeDeep(DEFAULT_ACCOUNT, { ...savedSettings.account, accountType: data?.account_type ?? savedSettings.account?.accountType, profileCategory: data?.profile_category ?? savedSettings.account?.profileCategory, nickname: data?.nickname ?? savedSettings.account?.nickname, headline: data?.profile_headline ?? savedSettings.account?.headline, pronunciation: data?.name_pronunciation ?? savedSettings.account?.pronunciation, pronouns: data?.pronouns ?? savedSettings.account?.pronouns }));
 
       setSocials(
         mergeDeep(
@@ -782,54 +778,19 @@ const EditProfile = () => {
         )
       );
 
-      setVisibility(
-        mergeDeep(
-          DEFAULT_VISIBILITY,
-          savedSettings.visibility
-        )
-      );
+      setVisibility(mergeDeep(DEFAULT_VISIBILITY, { ...savedSettings.visibility, birthday: data?.birthday_visibility ?? savedSettings.visibility?.birthday, gender: data?.gender_visibility ?? savedSettings.visibility?.gender, phone: data?.phone_visibility ?? savedSettings.visibility?.phone, location: data?.location_visibility ?? savedSettings.visibility?.location }));
 
-      setPrivacy(
-        mergeDeep(
-          DEFAULT_PRIVACY,
-          savedSettings.privacy
-        )
-      );
+      setPrivacy(mergeDeep(DEFAULT_PRIVACY, data?.privacy_settings || savedSettings.privacy));
 
-      setDiscovery(
-        mergeDeep(
-          DEFAULT_DISCOVERY,
-          savedSettings.discovery
-        )
-      );
+      setDiscovery(mergeDeep(DEFAULT_DISCOVERY, data?.discovery_settings || savedSettings.discovery));
 
-      setAppearance(
-        mergeDeep(
-          DEFAULT_APPEARANCE,
-          savedSettings.appearance
-        )
-      );
+      setAppearance(mergeDeep(DEFAULT_APPEARANCE, data?.appearance_settings || savedSettings.appearance));
 
-      setMediaSettings(
-        mergeDeep(
-          DEFAULT_MEDIA,
-          savedSettings.mediaSettings
-        )
-      );
+      setMediaSettings(mergeDeep(DEFAULT_MEDIA, { ...savedSettings.mediaSettings, videoEnabled: data?.profile_video_enabled ?? savedSettings.mediaSettings?.videoEnabled, videoAutoplay: data?.profile_music_autoplay ?? savedSettings.mediaSettings?.videoAutoplay, musicAutoplay: data?.profile_music_autoplay ?? savedSettings.mediaSettings?.musicAutoplay, musicLoop: data?.profile_music_loop ?? savedSettings.mediaSettings?.musicLoop, coverPosition: data?.cover_position ?? savedSettings.mediaSettings?.coverPosition }));
 
-      setContentSettings(
-        mergeDeep(
-          DEFAULT_CONTENT,
-          savedSettings.contentSettings
-        )
-      );
+      setContentSettings(mergeDeep(DEFAULT_CONTENT, data?.content_settings || savedSettings.contentSettings));
 
-      setCreator(
-        mergeDeep(
-          DEFAULT_CREATOR,
-          savedSettings.creator
-        )
-      );
+      setCreator(mergeDeep(DEFAULT_CREATOR, { ...savedSettings.creator, creatorMode: data?.creator_mode ?? savedSettings.creator?.creatorMode, creatorCategory: data?.creator_category ?? savedSettings.creator?.creatorCategory, businessContact: data?.business_email ?? savedSettings.creator?.businessContact }));
 
       setInterestSettings(
         mergeDeep(
@@ -838,33 +799,9 @@ const EditProfile = () => {
         )
       );
 
-      setPersonal(
-        mergeDeep(
-          {
-            relationshipStatus: '',
-            occupation: '',
-            education: '',
-            school: '',
-            skills: '',
-            languages: ''
-          },
-          savedSettings.personal
-        )
-      );
+      setPersonal(mergeDeep({ relationshipStatus: '', occupation: '', education: '', school: '', skills: '', languages: '' }, { ...savedSettings.personal, relationshipStatus: data?.relationship_status ?? savedSettings.personal?.relationshipStatus, occupation: data?.occupation ?? savedSettings.personal?.occupation, education: data?.education ?? savedSettings.personal?.education, school: data?.school_university ?? savedSettings.personal?.school, skills: Array.isArray(data?.skills) ? data.skills.join(', ') : savedSettings.personal?.skills, languages: Array.isArray(data?.languages) ? data.languages.join(', ') : savedSettings.personal?.languages }));
 
-      setLocationSettings(
-        mergeDeep(
-          {
-            country: 'Malawi',
-            region: 'Southern Region',
-            city: '',
-            gpsSharing: false,
-            hideExactLocation: true,
-            visibility: 'followers'
-          },
-          savedSettings.locationSettings
-        )
-      );
+      setLocationSettings(mergeDeep({ country: 'Malawi', region: 'Southern Region', city: '', gpsSharing: false, hideExactLocation: true, visibility: 'followers' }, { ...savedSettings.locationSettings, country: data?.country ?? savedSettings.locationSettings?.country, region: data?.region ?? savedSettings.locationSettings?.region, city: data?.city ?? savedSettings.locationSettings?.city, gpsSharing: data?.gps_sharing ?? savedSettings.locationSettings?.gpsSharing, visibility: data?.location_visibility ?? savedSettings.locationSettings?.visibility }));
 
       setSecurity(
         mergeDeep(
@@ -903,19 +840,7 @@ const EditProfile = () => {
         )
       );
 
-      setVerification(
-        mergeDeep(
-          {
-            type: 'personal',
-            status: 'not_requested',
-            information: '',
-            organizationName: '',
-            organizationWebsite: '',
-            requestMessage: ''
-          },
-          savedSettings.verification
-        )
-      );
+      setVerification(mergeDeep({ type: 'personal', status: 'not_requested', information: '', organizationName: '', organizationWebsite: '', requestMessage: '' }, data?.verification_settings || savedSettings.verification));
 
       setAccountSecurity(prev => ({
         ...prev,
@@ -1606,11 +1531,43 @@ const EditProfile = () => {
           is_private:
             formData.is_private,
 
-          social_links: {
-            ...existingSocials,
-            _profile_settings:
-              extendedSettings
-          }
+          social_links: { ...existingSocials, _profile_settings: extendedSettings },
+          display_name: account.nickname || formData.full_name.trim(),
+          nickname: account.nickname,
+          name_pronunciation: account.pronunciation,
+          pronouns: account.pronouns,
+          profile_headline: account.headline,
+          profile_category: account.profileCategory,
+          account_type: account.accountType,
+          creator_mode: creator.creatorMode,
+          creator_category: creator.creatorCategory,
+          business_email: creator.businessContact,
+          relationship_status: personal.relationshipStatus,
+          occupation: personal.occupation,
+          education: personal.education,
+          school_university: personal.school,
+          skills: personal.skills.split(',').map(value => value.trim()).filter(Boolean),
+          languages: personal.languages.split(',').map(value => value.trim()).filter(Boolean),
+          country: locationSettings.country,
+          region: locationSettings.region,
+          city: locationSettings.city,
+          location_visibility: locationSettings.visibility,
+          gps_sharing: locationSettings.gpsSharing,
+          birthday_visibility: visibility.birthday,
+          gender_visibility: visibility.gender,
+          phone_visibility: visibility.phone,
+          profile_video_enabled: mediaSettings.videoEnabled,
+          profile_music_autoplay: mediaSettings.musicAutoplay,
+          profile_music_loop: mediaSettings.musicLoop,
+          cover_position: mediaSettings.coverPosition,
+          privacy_settings: privacy,
+          discovery_settings: discovery,
+          appearance_settings: appearance,
+          content_settings: contentSettings,
+          creator_settings: creator,
+          verification_settings: verification,
+          financial_settings: { bankDetails, monetization, payoutMethod: formData.payout_method, currency: formData.currency_preference },
+          edit_settings: extendedSettings
         };
 
         const {
@@ -5468,28 +5425,9 @@ const EditProfile = () => {
         >
           <div className="flex flex-col items-center py-6">
 
-            <div className="w-52 h-52 rounded-2xl bg-white flex items-center justify-center">
-              <div className="grid grid-cols-9 gap-1 p-4">
-
-                {Array.from({
-                  length: 81
-                }).map((_, index) => (
-                  <div
-                    key={index}
-                    className={[
-                      'w-3 h-3',
-                      (
-                        index * 17 +
-                        index * 3
-                      ) % 5 < 2
-                        ? 'bg-black'
-                        : 'bg-white'
-                    ].join(' ')}
-                  />
-                ))}
-
-              </div>
-            </div>
+            <div className="w-52 h-52 rounded-2xl bg-white p-3 flex items-center justify-center">
+              <QRCodeSVG value={profileUrl} size={184} level="H" includeMargin />
+            </div>>
 
             <p className="text-sm font-semibold mt-5">
               @{formData.username}
