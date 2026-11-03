@@ -1,706 +1,140 @@
-// src/services/creatorStudioService.js
-
 import { supabase } from "../supabaseClient";
-
-/*
- * ============================================================
- * CREATOR STUDIO SERVICE
- * ============================================================
- *
- * Central data/service layer for Creator Studio.
- *
- * Supports:
- * - Dashboard analytics
- * - Video analytics
- * - Live analytics
- * - Daily analytics
- * - Top content
- * - Achievements
- * - AI insights
- * - Growth
- * - Video management
- *
- * IMPORTANT:
- * No JSX belongs in this file.
- * ============================================================
- */
-
-
-/* ============================================================
- * HELPERS
- * ============================================================
- */
 
 export const safeNumber = (value, fallback = 0) => {
   const number = Number(value);
-
-  return Number.isFinite(number)
-    ? number
-    : fallback;
+  return Number.isFinite(number) ? number : fallback;
 };
 
-
-export const normalizeOverview = (overview = {}) => {
-  if (!overview) {
-    return {
-      views: 0,
-      likes: 0,
-      comments: 0,
-      shares: 0,
-      saves: 0,
-      reposts: 0,
-      followers: 0,
-      revenue: 0,
-      coins: 0,
-      engagement_rate: 0,
-      average_watch_seconds: 0,
-      completion_rate: 0,
-      profile_visits: 0,
-      unique_viewers: 0,
-      returning_viewers: 0,
-      live_viewers: 0,
-      peak_concurrent_viewers: 0,
-    };
-  }
-
+export const normalizeOverview = (row = {}) => {
+  const value = row || {};
   return {
-    ...overview,
-
-    views: safeNumber(
-      overview.views ??
-      overview.views_count ??
-      overview.total_views
-    ),
-
-    likes: safeNumber(
-      overview.likes ??
-      overview.likes_count ??
-      overview.total_likes
-    ),
-
-    comments: safeNumber(
-      overview.comments ??
-      overview.comments_count ??
-      overview.total_comments
-    ),
-
-    shares: safeNumber(
-      overview.shares ??
-      overview.shares_count ??
-      overview.total_shares
-    ),
-
-    saves: safeNumber(
-      overview.saves ??
-      overview.saves_count ??
-      overview.total_saves
-    ),
-
-    reposts: safeNumber(
-      overview.reposts ??
-      overview.reposts_count ??
-      overview.total_reposts
-    ),
-
-    followers: safeNumber(
-      overview.followers ??
-      overview.follower_count ??
-      overview.followers_count
-    ),
-
-    revenue: safeNumber(
-      overview.revenue ??
-      overview.total_revenue
-    ),
-
-    coins: safeNumber(
-      overview.coins ??
-      overview.coins_received ??
-      overview.total_coins
-    ),
-
-    engagement_rate: safeNumber(
-      overview.engagement_rate
-    ),
-
-    average_watch_seconds: safeNumber(
-      overview.average_watch_seconds
-    ),
-
-    completion_rate: safeNumber(
-      overview.completion_rate ??
-      overview.average_completion_rate
-    ),
-
-    profile_visits: safeNumber(
-      overview.profile_visits
-    ),
-
-    unique_viewers: safeNumber(
-      overview.unique_viewers
-    ),
-
-    returning_viewers: safeNumber(
-      overview.returning_viewers
-    ),
-
-    live_viewers: safeNumber(
-      overview.live_viewers
-    ),
-
-    peak_concurrent_viewers: safeNumber(
-      overview.peak_concurrent_viewers
-    ),
+    ...value,
+    views: safeNumber(value.views ?? value.video_views ?? value.views_count ?? value.total_views),
+    videoViews: safeNumber(value.video_views ?? value.views),
+    likes: safeNumber(value.likes ?? value.video_likes ?? value.likes_count ?? value.total_likes),
+    videoLikes: safeNumber(value.video_likes ?? value.likes),
+    comments: safeNumber(value.comments ?? value.video_comments ?? value.comments_count ?? value.total_comments),
+    videoComments: safeNumber(value.video_comments ?? value.comments),
+    shares: safeNumber(value.shares ?? value.video_shares ?? value.shares_count ?? value.total_shares),
+    videoShares: safeNumber(value.video_shares ?? value.shares),
+    saves: safeNumber(value.saves ?? value.video_saves ?? value.saves_count ?? value.total_saves),
+    videoSaves: safeNumber(value.video_saves ?? value.saves),
+    favorites: safeNumber(value.video_favorites ?? value.favorites_count ?? value.favorites),
+    reposts: safeNumber(value.reposts ?? value.video_reposts ?? value.reposts_count ?? value.total_reposts),
+    followers: safeNumber(value.followers ?? value.follower_count ?? value.followers_count),
+    following: safeNumber(value.following ?? value.following_count),
+    revenue: safeNumber(value.revenue ?? value.live_revenue ?? value.creator_earnings ?? value.total_revenue),
+    coins: safeNumber(value.coins ?? value.live_coins ?? value.earned_coins ?? value.coins_received ?? value.total_coins),
+    engagement_rate: safeNumber(value.engagement_rate),
+    average_watch_seconds: safeNumber(value.average_watch_seconds),
+    completion_rate: safeNumber(value.completion_rate ?? value.average_completion_rate),
+    profile_visits: safeNumber(value.profile_visits ?? value.profile_views),
+    unique_viewers: safeNumber(value.unique_viewers),
+    returning_viewers: safeNumber(value.returning_viewers),
+    live_viewers: safeNumber(value.live_viewers),
+    peak_concurrent_viewers: safeNumber(value.peak_concurrent_viewers ?? value.highest_peak_viewers),
+    videoCount: safeNumber(value.video_count),
+    liveCount: safeNumber(value.live_count),
+    profileLikes: safeNumber(value.profile_likes),
+    gifts: safeNumber(value.live_gifts ?? value.gifts_count),
   };
 };
 
-
-/* ============================================================
- * GROWTH CALCULATION
- * ============================================================
- */
-
-export const calculateGrowth = (
-  current,
-  previous
-) => {
-  const currentValue = safeNumber(current);
-  const previousValue = safeNumber(previous);
-
-  if (previousValue === 0) {
-    if (currentValue === 0) {
-      return 0;
-    }
-
-    return 100;
-  }
-
-  return (
-    ((currentValue - previousValue) /
-      Math.abs(previousValue)) *
-    100
-  );
+export const calculateGrowth = (current, previous) => {
+  const a = safeNumber(current), b = safeNumber(previous);
+  return b === 0 ? (a === 0 ? 0 : 100) : ((a - b) / Math.abs(b)) * 100;
 };
 
-
-/* ============================================================
- * DAILY STAT HELPERS
- * ============================================================
- */
-
-export const getLatestDailyStat = (
-  dailyAnalytics = []
-) => {
-  if (!Array.isArray(dailyAnalytics) || !dailyAnalytics.length) {
-    return null;
-  }
-
-  return [...dailyAnalytics].sort(
-    (a, b) =>
-      new Date(b.stat_date || b.created_at || 0) -
-      new Date(a.stat_date || a.created_at || 0)
-  )[0];
-};
-
-
-export const getPreviousDailyStat = (
-  dailyAnalytics = []
-) => {
-  if (
-    !Array.isArray(dailyAnalytics) ||
-    dailyAnalytics.length < 2
-  ) {
-    return null;
-  }
-
-  const sorted = [...dailyAnalytics].sort(
-    (a, b) =>
-      new Date(b.stat_date || b.created_at || 0) -
-      new Date(a.stat_date || a.created_at || 0)
-  );
-
-  return sorted[1];
-};
-
-
-/* ============================================================
- * AUTHENTICATION
- * ============================================================
- */
+export const getLatestDailyStat = (rows = []) => Array.isArray(rows) && rows.length ? [...rows].sort((a,b) => new Date(b.stat_date || b.created_at || 0) - new Date(a.stat_date || a.created_at || 0))[0] : null;
+export const getPreviousDailyStat = (rows = []) => Array.isArray(rows) && rows.length > 1 ? [...rows].sort((a,b) => new Date(b.stat_date || b.created_at || 0) - new Date(a.stat_date || a.created_at || 0))[1] : null;
 
 const getCurrentUser = async () => {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!user) {
-    throw new Error(
-      "You must be logged in to access Creator Studio."
-    );
-  }
-
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  if (!user) throw new Error("You must be logged in to access Universe Tools.");
   return user;
 };
 
-
-/* ============================================================
- * GENERIC ANALYTICS VIEW
- * ============================================================
- */
-
-const fetchCreatorView = async (
-  viewName,
-  userId,
-  {
-    orderBy = null,
-    ascending = false,
-    limit = null,
-    single = false,
-  } = {}
-) => {
-  let query = supabase
-    .from(viewName)
-    .select("*")
-    .eq("creator_id", userId);
-
-  if (orderBy) {
-    query = query.order(orderBy, {
-      ascending,
-    });
-  }
-
-  if (limit) {
-    query = query.limit(limit);
-  }
-
-  if (single) {
-    const {
-      data,
-      error,
-    } = await query.maybeSingle();
-
-    if (error) {
-      throw error;
-    }
-
-    return data || null;
-  }
-
-  const {
-    data,
-    error,
-  } = await query;
-
-  if (error) {
-    throw error;
-  }
-
+const readMany = async (table, userColumn, userId, { orderBy, ascending = false, limit } = {}) => {
+  let query = supabase.from(table).select("*").eq(userColumn, userId);
+  if (orderBy) query = query.order(orderBy, { ascending });
+  if (limit) query = query.limit(limit);
+  const { data, error } = await query;
+  if (error) throw error;
   return data || [];
 };
 
-
-/* ============================================================
- * OVERVIEW
- * ============================================================
- */
-
-export const getOverview = async (userId) => {
-  return fetchCreatorView(
-    "creator_studio_overview",
-    userId,
-    {
-      single: true,
-    }
-  );
+const readOne = async (table, userColumn, userId) => {
+  const { data, error } = await supabase.from(table).select("*").eq(userColumn, userId).maybeSingle();
+  if (error) throw error;
+  return data || null;
 };
 
+export const getProfile = userId => readOne("profiles", "id", userId);
+export const getOverview = async userId => normalizeOverview(await readOne("creator_studio_overview", "creator_id", userId) || {});
+export const getVideoPerformance = userId => readMany("creator_video_performance", "creator_id", userId, { orderBy: "created_at" });
+export const getLivePerformance = userId => readMany("creator_live_performance", "creator_id", userId, { orderBy: "started_at" });
+export const getDailyAnalytics = userId => readMany("creator_studio_daily_analytics", "creator_id", userId, { orderBy: "stat_date", ascending: true });
+export const getTopContent = userId => readMany("creator_top_content", "creator_id", userId, { orderBy: "views", limit: 20 });
+export const getAchievements = userId => readMany("creator_achievements", "creator_id", userId, { orderBy: "created_at" });
+export const getAIInsights = userId => readMany("creator_ai_insights", "creator_id", userId, { orderBy: "created_at", limit: 20 });
+export const getGrowth = userId => readMany("creator_growth_snapshots", "creator_id", userId, { orderBy: "snapshot_date", limit: 30 });
+export const getCreatorVideos = userId => readMany("videos", "user_id", userId, { orderBy: "created_at" });
+export const getEarnings = userId => readMany("creator_earnings", "creator_id", userId, { orderBy: "created_at", limit: 100 });
 
-/* ============================================================
- * VIDEO PERFORMANCE
- * ============================================================
- */
-
-export const getVideoPerformance = async (userId) => {
-  return fetchCreatorView(
-    "creator_video_performance",
-    userId,
-    {
-      orderBy: "created_at",
-      ascending: false,
-    }
-  );
-};
-
-
-/* ============================================================
- * LIVE PERFORMANCE
- * ============================================================
- */
-
-export const getLivePerformance = async (userId) => {
-  return fetchCreatorView(
-    "creator_live_performance",
-    userId,
-    {
-      orderBy: "started_at",
-      ascending: false,
-    }
-  );
-};
-
-
-/* ============================================================
- * DAILY ANALYTICS
- * ============================================================
- */
-
-export const getDailyAnalytics = async (userId) => {
-  return fetchCreatorView(
-    "creator_studio_daily_analytics",
-    userId,
-    {
-      orderBy: "stat_date",
-      ascending: true,
-    }
-  );
-};
-
-
-/* ============================================================
- * TOP CONTENT
- * ============================================================
- */
-
-export const getTopContent = async (userId) => {
-  return fetchCreatorView(
-    "creator_top_content",
-    userId,
-    {
-      orderBy: "views_count",
-      ascending: false,
-      limit: 20,
-    }
-  );
-};
-
-
-/* ============================================================
- * ACHIEVEMENTS
- * ============================================================
- */
-
-export const getAchievements = async (userId) => {
-  return fetchCreatorView(
-    "creator_achievement_summary",
-    userId
-  );
-};
-
-
-/* ============================================================
- * AI INSIGHTS
- * ============================================================
- */
-
-export const getAIInsights = async (userId) => {
-  return fetchCreatorView(
-    "creator_ai_insight_summary",
-    userId,
-    {
-      orderBy: "created_at",
-      ascending: false,
-      limit: 20,
-    }
-  );
-};
-
-
-/* ============================================================
- * GROWTH
- * ============================================================
- */
-
-export const getGrowth = async (userId) => {
-  return fetchCreatorView(
-    "creator_growth_summary",
-    userId,
-    {
-      single: true,
-    }
-  );
-};
-
-
-/* ============================================================
- * CREATOR VIDEOS
- * ============================================================
- */
-
-export const getCreatorVideos = async (userId) => {
-  const {
-    data,
-    error,
-  } = await supabase
-    .from("videos")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", {
-      ascending: false,
-    });
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
-};
-
-
-/* ============================================================
- * VIDEO UPDATE
- * ============================================================
- */
-
-export const updateVideo = async (
-  videoId,
-  updates = {}
-) => {
-  if (!videoId) {
-    throw new Error("Video ID is required.");
-  }
-
+export const updateVideo = async (videoId, updates = {}) => {
+  if (!videoId) throw new Error("Video ID is required.");
   const user = await getCurrentUser();
-
-  const {
-    data,
-    error,
-  } = await supabase
-    .from("videos")
-    .update(updates)
-    .eq("id", videoId)
-    .eq("user_id", user.id)
-    .select()
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
+  const { data, error } = await supabase.from("videos").update(updates).eq("id", videoId).eq("user_id", user.id).select("*").single();
+  if (error) throw error;
   return data;
 };
 
-
-/* ============================================================
- * ARCHIVE VIDEO
- * ============================================================
- */
-
-export const archiveVideo = async (
-  videoId
-) => {
-  return updateVideo(videoId, {
-    status: "archived",
-    archived_at: new Date().toISOString(),
-  });
+export const archiveVideo = videoId => updateVideo(videoId, { status: "archived", archived_at: new Date().toISOString() });
+export const restoreVideo = videoId => updateVideo(videoId, { status: "published", archived_at: null, deleted_at: null });
+export const deleteVideo = videoId => updateVideo(videoId, { status: "deleted", deleted_at: new Date().toISOString() });
+export const scheduleVideo = (videoId, scheduledAt) => {
+  if (!scheduledAt) throw new Error("A scheduled date and time are required.");
+  return updateVideo(videoId, { status: "scheduled", scheduled_at: scheduledAt });
 };
-
-
-/* ============================================================
- * RESTORE VIDEO
- * ============================================================
- */
-
-export const restoreVideo = async (
-  videoId
-) => {
-  return updateVideo(videoId, {
-    status: "published",
-    archived_at: null,
-  });
-};
-
-
-/* ============================================================
- * DELETE VIDEO
- * ============================================================
- */
-
-export const deleteVideo = async (
-  videoId
-) => {
-  if (!videoId) {
-    throw new Error("Video ID is required.");
-  }
-
-  const user = await getCurrentUser();
-
-  /*
-   * Soft delete is safer for Creator Studio.
-   * It preserves the video record and allows future recovery.
-   */
-
-  const {
-    data,
-    error,
-  } = await supabase
-    .from("videos")
-    .update({
-      status: "deleted",
-      deleted_at: new Date().toISOString(),
-    })
-    .eq("id", videoId)
-    .eq("user_id", user.id)
-    .select()
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-};
-
-
-/* ============================================================
- * SCHEDULE VIDEO
- * ============================================================
- */
-
-export const scheduleVideo = async (
-  videoId,
-  scheduledAt
-) => {
-  if (!videoId) {
-    throw new Error("Video ID is required.");
-  }
-
-  if (!scheduledAt) {
-    throw new Error(
-      "A scheduled date and time are required."
-    );
-  }
-
-  return updateVideo(videoId, {
-    status: "scheduled",
-    scheduled_at: scheduledAt,
-  });
-};
-
-
-/* ============================================================
- * COMPLETE CREATOR STUDIO DATA
- * ============================================================
- */
 
 export const getCreatorStudioData = async () => {
   const user = await getCurrentUser();
-
   const userId = user.id;
-
-  const [
-    overview,
-    videos,
-    liveStreams,
-    dailyAnalytics,
-    topContent,
-    achievements,
-    aiInsights,
-    growth,
-  ] = await Promise.all([
-    getOverview(userId),
-    getVideoPerformance(userId),
-    getLivePerformance(userId),
-    getDailyAnalytics(userId),
-    getTopContent(userId),
-    getAchievements(userId),
-    getAIInsights(userId),
-    getGrowth(userId),
-  ]);
-
+  const tasks = {
+    profile: () => getProfile(userId),
+    overview: () => getOverview(userId),
+    videos: () => getCreatorVideos(userId),
+    videoPerformance: () => getVideoPerformance(userId),
+    livePerformance: () => getLivePerformance(userId),
+    dailyAnalytics: () => getDailyAnalytics(userId),
+    topContent: () => getTopContent(userId),
+    achievements: () => getAchievements(userId),
+    aiInsights: () => getAIInsights(userId),
+    growth: () => getGrowth(userId),
+    earnings: () => getEarnings(userId),
+  };
+  const entries = Object.entries(tasks);
+  const results = await Promise.all(entries.map(async ([key, task]) => {
+    try { return [key, await task(), null]; }
+    catch (error) { console.error(`[UniverseTools] ${key} query failed:`, error); return [key, key === "profile" || key === "overview" ? null : [], error]; }
+  }));
+  const data = Object.fromEntries(results.map(([key, value]) => [key, value]));
+  const errors = results.filter(([, , error]) => error).map(([key, , error]) => ({ feature: key, message: error.message, code: error.code }));
+  const dailyAnalytics = data.dailyAnalytics || [];
+  const aiInsights = data.aiInsights || [];
   return {
-    overview: normalizeOverview(
-      overview || {}
-    ),
-
-    videos: Array.isArray(videos)
-      ? videos
-      : [],
-
-    liveStreams: Array.isArray(liveStreams)
-      ? liveStreams
-      : [],
-
-    dailyAnalytics: Array.isArray(
-      dailyAnalytics
-    )
-      ? dailyAnalytics
-      : [],
-
-    topContent: Array.isArray(topContent)
-      ? topContent
-      : [],
-
-    achievements: Array.isArray(
-      achievements
-    )
-      ? achievements
-      : [],
-
-    aiInsights: Array.isArray(
-      aiInsights
-    )
-      ? aiInsights
-      : [],
-
-    growth: growth || null,
+    ...data,
+    creatorId: userId,
+    dailyStats: dailyAnalytics,
+    growth: data.growth?.[0] || null,
+    aiTip: aiInsights[0]?.content || aiInsights[0]?.title || "Keep publishing consistently and use your audience analytics to improve your content.",
+    errors,
   };
 };
 
-
-/* ============================================================
- * DEFAULT SERVICE OBJECT
- * ============================================================
- *
- * Required by:
- *
- * import creatorStudioService
- *   from "../services/creatorStudioService";
- *
- * ============================================================
- */
-
 const creatorStudioService = {
-  getCurrentUser,
-
-  getOverview,
-  getVideoPerformance,
-  getLivePerformance,
-  getDailyAnalytics,
-  getTopContent,
-  getAchievements,
-  getAIInsights,
-  getGrowth,
-
-  getCreatorVideos,
-
-  updateVideo,
-  archiveVideo,
-  restoreVideo,
-  deleteVideo,
-  scheduleVideo,
-
-  getCreatorStudioData,
-
-  normalizeOverview,
-  safeNumber,
-  calculateGrowth,
-  getLatestDailyStat,
-  getPreviousDailyStat,
+  getCurrentUser, getProfile, getOverview, getVideoPerformance, getLivePerformance, getDailyAnalytics, getTopContent, getAchievements, getAIInsights, getGrowth, getCreatorVideos, getEarnings, updateVideo, archiveVideo, restoreVideo, deleteVideo, scheduleVideo, getCreatorStudioData, normalizeOverview, safeNumber, calculateGrowth, getLatestDailyStat, getPreviousDailyStat,
 };
 
 export default creatorStudioService;
