@@ -134,7 +134,7 @@ const Payout = () => {
     mobileNumber.trim().length > 0;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#070b12] text-white"><div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,rgba(8,145,178,0.12),transparent_42%),radial-gradient(ellipse_at_bottom_right,rgba(37,99,235,0.10),transparent_38%)]" />
+    <div className="relative min-h-screen overflow-x-hidden bg-[#070b12] text-white"><div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,rgba(8,145,178,0.12),transparent_42%),radial-gradient(ellipse_at_bottom_right,rgba(37,99,235,0.10),transparent_38%)]" />
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080d16]/85 backdrop-blur-2xl">
         <div className="mx-auto flex h-[72px] max-w-5xl items-center gap-3 px-4 sm:px-6">
