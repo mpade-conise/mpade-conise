@@ -380,7 +380,7 @@ const Payout = () => {
             whileTap={{ scale: 0.985 }}
             disabled={!canWithdraw}
             onClick={handleWithdraw}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-200 via-cyan-100 to-white py-4 text-sm font-black uppercase tracking-[0.12em] text-[#06111d] shadow-[0_12px_30px_-12px_rgba(34,211,238,0.5)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_-12px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:translate-y-0
+            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-200 via-cyan-100 to-white py-4 text-sm font-black uppercase tracking-[0.12em] text-[#06111d] shadow-[0_12px_30px_-12px_rgba(34,211,238,0.5)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_-12px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:translate-y-0"
           >
             {loading ? (
               <>
