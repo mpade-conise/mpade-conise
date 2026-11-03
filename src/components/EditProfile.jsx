@@ -453,10 +453,9 @@ const EditProfile = () => {
     visibility: 'followers'
   });
 
-  const [security, setSecurity] = useState({
-    twoFactorEnabled: false,
-    loginAlerts: true
-  });
+  const [security, setSecurity] = useState({ twoFactorEnabled: false, loginAlerts: true });
+  const [mfaSetup, setMfaSetup] = useState({ factorId: '', qrCode: '', secret: '', code: '', challengeId: '', verifying: false });
+  const [accountActivity, setAccountActivity] = useState({ sessions: [], logs: [], loading: false });
 
   const [accountSecurity, setAccountSecurity] = useState({
     email: '',
@@ -733,11 +732,7 @@ const EditProfile = () => {
           ? data.social_links
           : {};
 
-      const savedSettings =
-        rawSocials?._profile_settings &&
-        typeof rawSocials._profile_settings === 'object'
-          ? rawSocials._profile_settings
-          : {};
+      const savedSettings = { ...(data?.edit_settings || {}), ...(rawSocials?._profile_settings && typeof rawSocials._profile_settings === 'object' ? rawSocials._profile_settings : {}) };
 
       setFormData({
         username: safeString(data?.username),
@@ -803,15 +798,9 @@ const EditProfile = () => {
 
       setLocationSettings(mergeDeep({ country: 'Malawi', region: 'Southern Region', city: '', gpsSharing: false, hideExactLocation: true, visibility: 'followers' }, { ...savedSettings.locationSettings, country: data?.country ?? savedSettings.locationSettings?.country, region: data?.region ?? savedSettings.locationSettings?.region, city: data?.city ?? savedSettings.locationSettings?.city, gpsSharing: data?.gps_sharing ?? savedSettings.locationSettings?.gpsSharing, visibility: data?.location_visibility ?? savedSettings.locationSettings?.visibility }));
 
-      setSecurity(
-        mergeDeep(
-          {
-            twoFactorEnabled: false,
-            loginAlerts: true
-          },
-          savedSettings.security
-        )
-      );
+      setSecurity(mergeDeep({ twoFactorEnabled: false, loginAlerts: true }, savedSettings.security));
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      setSecurity(prev => ({ ...prev, twoFactorEnabled: Boolean(factorsData?.totp?.some(factor => factor.status === 'verified')) }));
 
       setBankDetails(
         mergeDeep(
@@ -1879,46 +1868,65 @@ const EditProfile = () => {
 
   const enableTwoFactor = async () => {
     try {
-      if (
-        !supabase.auth.mfa ||
-        !supabase.auth.mfa.enroll
-      ) {
-        setErrorMessage(
-          'Two-factor authentication is not available in this Supabase client.'
-        );
-        return;
-      }
-
-      const {
-        data,
-        error
-      } = await supabase.auth.mfa.enroll({
-        factorType: 'totp',
-        friendlyName: 'Con-Universe Authenticator'
-      });
-
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Con-Universe Authenticator' });
       if (error) throw error;
+      setMfaSetup({ factorId: data.id, qrCode: data.totp?.qr_code || '', secret: data.totp?.secret || '', code: '', challengeId: '', verifying: false });
+      setSuccessMessage('Scan the QR code with your authenticator app, then enter its six-digit code.');
+    } catch (error) { setErrorMessage(error?.message || 'Unable to start two-factor setup.'); }
+  };
 
-      setSecurity(prev => ({
-        ...prev,
-        twoFactorEnabled: true
-      }));
+  const verifyTwoFactor = async () => {
+    if (!mfaSetup.factorId || !/^\d{6}$/.test(mfaSetup.code)) { setErrorMessage('Enter the six-digit authenticator code.'); return; }
+    try {
+      setMfaSetup(prev => ({ ...prev, verifying: true }));
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: mfaSetup.factorId });
+      if (challengeError) throw challengeError;
+      const { error } = await supabase.auth.mfa.verify({ factorId: mfaSetup.factorId, challengeId: challenge.id, code: mfaSetup.code });
+      if (error) throw error;
+      setSecurity(prev => ({ ...prev, twoFactorEnabled: true }));
+      setMfaSetup({ factorId: '', qrCode: '', secret: '', code: '', challengeId: '', verifying: false });
+      setSuccessMessage('Two-factor authentication is now verified and enabled.');
+    } catch (error) { setErrorMessage(error?.message || 'The authenticator code could not be verified.'); setMfaSetup(prev => ({ ...prev, verifying: false })); }
+  };
 
-      setSuccessMessage(
-        '2FA setup started.'
-      );
+  const disableTwoFactor = async () => {
+    try {
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) throw error;
+      const factors = data?.totp?.filter(factor => factor.status === 'verified') || [];
+      for (const factor of factors) {
+        const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        if (unenrollError) throw unenrollError;
+      }
+      setSecurity(prev => ({ ...prev, twoFactorEnabled: false }));
+      setSuccessMessage('Two-factor authentication disabled.');
+    } catch (error) { setErrorMessage(error?.message || 'Unable to disable two-factor authentication.'); }
+  };
 
-      console.log(
-        'MFA setup data:',
-        data
-      );
+  const loadAccountActivity = async () => {
+    setAccountActivity(prev => ({ ...prev, loading: true }));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const [sessions, logs] = await Promise.all([
+        supabase.from('user_sessions').select('*').eq('user_id', user.id).order('last_active', { ascending: false }).limit(20),
+        supabase.from('security_logs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30)
+      ]);
+      setAccountActivity({ sessions: sessions.data || [], logs: logs.data || [], loading: false });
+      if (sessions.error) console.warn('Session history:', sessions.error);
+      if (logs.error) console.warn('Security history:', logs.error);
+    } catch (error) { setAccountActivity(prev => ({ ...prev, loading: false })); setErrorMessage(error?.message || 'Unable to load account activity.'); }
+  };
 
-    } catch (error) {
-      setErrorMessage(
-        error?.message ||
-        'Unable to enable 2FA.'
-      );
-    }
+  const downloadAccountData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (error) throw error;
+      const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), auth: { id: user.id, email: user.email }, profile: data }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob), link = document.createElement('a');
+      link.href = url; link.download = 'con-universe-account-data.json'; link.click(); URL.revokeObjectURL(url);
+      setSuccessMessage('Account data export downloaded.');
+    } catch (error) { setErrorMessage(error?.message || 'Unable to export account data.'); }
   };
 
   // ============================================================
@@ -5002,20 +5010,21 @@ const EditProfile = () => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={
-                        enableTwoFactor
-                      }
-                      className="px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 text-sm font-semibold"
-                    >
-                      {security.twoFactorEnabled
-                        ? 'Manage'
-                        : 'Enable'}
-                    </button>
+                    {security.twoFactorEnabled ? <button onClick={disableTwoFactor} className="px-4 py-2 rounded-xl bg-red-500/15 text-red-300 text-sm font-semibold">Disable</button> : <button onClick={enableTwoFactor} className="px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 text-sm font-semibold">Enable</button>}
 
                   </div>
 
                 </SectionCard>
+
+                {mfaSetup.factorId && (
+                  <SectionCard title="Complete authenticator setup">
+                    {mfaSetup.qrCode && <div className="bg-white p-3 rounded-xl w-fit mx-auto"><img src={mfaSetup.qrCode} alt="Authenticator QR code" className="w-48 h-48" /></div>}
+                    <p className="text-xs text-slate-400">If you cannot scan the QR code, enter this setup key manually:</p>
+                    <p className="font-mono text-sm break-all text-cyan-300 select-all">{mfaSetup.secret}</p>
+                    <InputField label="Six-digit authenticator code" value={mfaSetup.code} onChange={value => setMfaSetup(prev => ({ ...prev, code: value.replace(/\D/g, '').slice(0, 6) }))} placeholder="000000" />
+                    <button onClick={verifyTwoFactor} disabled={mfaSetup.verifying || mfaSetup.code.length !== 6} className="px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 text-sm font-bold disabled:opacity-40">{mfaSetup.verifying ? 'Verifying…' : 'Verify and enable 2FA'}</button>
+                  </SectionCard>
+                )}
 
                 <SectionCard title="Login Security">
 
@@ -5035,13 +5044,7 @@ const EditProfile = () => {
                     }
                   />
 
-                  <button className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-white/10 bg-white/5">
-                    <span className="flex items-center gap-2">
-                      <Smartphone size={17} />
-                      Active devices
-                    </span>
-                    <ChevronDown size={16} />
-                  </button>
+                  <button onClick={loadAccountActivity} className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-white/10 bg-white/5"><span className="flex items-center gap-2"><Smartphone size={17} />Active devices</span><ChevronDown size={16} /></button>
 
                   <button className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-white/10 bg-white/5">
                     <span className="flex items-center gap-2">
@@ -5051,13 +5054,7 @@ const EditProfile = () => {
                     <ChevronDown size={16} />
                   </button>
 
-                  <button className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-white/10 bg-white/5">
-                    <span className="flex items-center gap-2">
-                      <Database size={17} />
-                      Security activity
-                    </span>
-                    <ChevronDown size={16} />
-                  </button>
+                  <button onClick={loadAccountActivity} className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-white/10 bg-white/5"><span className="flex items-center gap-2"><Database size={17} />Security activity</span><ChevronDown size={16} /></button>
 
                 </SectionCard>
 
@@ -5077,8 +5074,9 @@ const EditProfile = () => {
                     Logout all devices
                   </button>
 
-                </SectionCard>
-
+                  {accountActivity.loading && <p className="text-xs text-cyan-300">Loading account activity…</p>}
+                  {accountActivity.sessions.length > 0 && <div className="space-y-2"><p className="text-xs font-bold">Recent sessions</p>{accountActivity.sessions.map((session, index) => <div key={session.id || index} className="p-3 rounded-xl bg-white/5 text-xs">{session.device_model || 'Device'} · {session.location || 'Unknown location'} · {session.is_current ? 'Current session' : 'Other session'}<p className="text-slate-500 mt-1">{session.last_active ? new Date(session.last_active).toLocaleString() : '—'}</p></div>)}</div>}
+                  {accountActivity.logs.length > 0 && <div className="space-y-2"><p className="text-xs font-bold">Security events</p>{accountActivity.logs.map((log, index) => <div key={log.id || index} className="p-3 rounded-xl bg-white/5 text-xs">{String(log.event_type || 'Account event').replaceAll('_', ' ')} · {log.device_name || 'Unknown device'}<p className="text-slate-500 mt-1">{log.created_at ? new Date(log.created_at).toLocaleString() : '—'}</p></div>)}</div>}
               </div>
             )}
 
