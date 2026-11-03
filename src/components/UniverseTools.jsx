@@ -2773,11 +2773,9 @@ const GrowthSection = ({
             />
 
             <Signal
-              label="Views"
-              value={
-                growth.revenue_growth !== undefined ? growth.revenue_growth : growth.views ?? growth.video_views ?? '—'
-              }
-              icon={Eye}
+              label="Revenue growth"
+              value={growth.revenue_growth ?? '—'}
+              icon={DollarSign}
             />
 
             <Signal
