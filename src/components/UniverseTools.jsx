@@ -266,6 +266,9 @@ const UniverseTools = () => {
     dailyAnalytics,
     topContent,
     achievements,
+    goals,
+    schedules,
+    progress,
     aiInsights,
     growth,
     videos,
@@ -1207,12 +1210,7 @@ const UniverseTools = () => {
 
               {activeTab ===
                 'goals' && (
-                <GoalsSection
-                  achievements={
-                    achievements
-                  }
-                  stats={stats}
-                />
+                <GoalsSection goals={goals} progress={progress} stats={stats} />
               )}
 
               {activeTab ===
@@ -1236,15 +1234,7 @@ const UniverseTools = () => {
 
               {activeTab ===
                 'schedule' && (
-                <ScheduleSection
-                  videos={videos}
-                  liveStreams={
-                    liveStreams
-                  }
-                  onVideo={
-                    openVideo
-                  }
-                />
+                <ScheduleSection videos={videos} liveStreams={liveStreams} schedules={schedules} onVideo={openVideo} />
               )}
 
               {activeTab ===
@@ -3194,108 +3184,27 @@ GOALS
 ============================================================
 */
 
-const GoalsSection = ({
-  achievements,
-  stats,
-}) => {
-  return (
-    <motion.div
-      initial={{
-        opacity: 0,
-        y: 10,
-      }}
-      animate={{
-        opacity: 1,
-        y: 0,
-      }}
-      className="space-y-6"
-    >
-
-      <PageHeader
-        eyebrow="Creator progression"
-        title="Goals"
-        description="Goal progress is displayed when achievement or creator progress data exists."
-      />
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-
-        <MetricCard
-          label="Followers"
-          value={formatNumber(
-            stats.followers
-          )}
-          icon={Users}
-          tone="cyan"
-        />
-
-        <MetricCard
-          label="Video Views"
-          value={formatNumber(
-            stats.videoViews
-          )}
-          icon={Eye}
-          tone="purple"
-        />
-
-        <MetricCard
-          label="Engagement"
-          value={formatNumber(
-            stats.totalEngagements
-          )}
-          icon={Activity}
-          tone="emerald"
-        />
-
-        <MetricCard
-          label="Achievements"
-          value={formatNumber(
-            achievements.length
-          )}
-          icon={Trophy}
-          tone="yellow"
-        />
-
-      </div>
-
-      <SectionShell
-        title="Creator goals"
-        subtitle="Available database progression"
-      >
-
-        {achievements.length ? (
-          <div className="grid md:grid-cols-2 gap-3">
-
-            {achievements.map(
-              (
-                achievement,
-                index
-              ) => (
-                <AchievementCard
-                  key={
-                    achievement.id ||
-                    index
-                  }
-                  achievement={
-                    achievement
-                  }
-                />
-              )
-            )}
-
-          </div>
-        ) : (
-          <EmptyState
-            icon={Target}
-            title="No goals available"
-            description="Goal records have not been populated yet."
-          />
-        )}
-
-      </SectionShell>
-
-    </motion.div>
-  );
-};
+const GoalsSection = ({ goals = [], progress, stats }) => (
+  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <PageHeader eyebrow="Creator progression" title="Goals" description="Targets and progress are loaded from creator_goals and creator_progress." />
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <MetricCard label="Followers" value={formatNumber(stats.followers)} icon={Users} tone="cyan" />
+      <MetricCard label="Video Views" value={formatNumber(stats.videoViews)} icon={Eye} tone="purple" />
+      <MetricCard label="Creator Level" value={formatNumber(progress?.level)} icon={Trophy} tone="yellow" />
+      <MetricCard label="Current Streak" value={formatNumber(progress?.current_streak)} icon={Zap} tone="emerald" />
+    </div>
+    <SectionShell title="Creator goals" subtitle={`${goals.length} database goals`}>
+      {goals.length ? <div className="grid md:grid-cols-2 gap-3">{goals.map((goal, index) => {
+        const target = safeNumber(goal.target), current = safeNumber(goal.current_value), percent = target > 0 ? Math.min(100, Math.max(0, current / target * 100)) : 0;
+        return <div key={goal.id || index} className="p-5 rounded-3xl bg-white/[0.018] border border-white/[0.05]">
+          <div className="flex justify-between gap-3"><div><p className="text-[10px] font-black capitalize">{String(goal.goal_type || "Creator goal").replaceAll("_", " ")}</p><p className="text-[8px] text-zinc-600 mt-1 capitalize">{goal.period_type || "—"} · {goal.status || "active"}</p></div><p className="text-[9px] text-cyan-400">{percent.toFixed(0)}%</p></div>
+          <div className="h-1.5 rounded-full bg-zinc-900 overflow-hidden mt-4"><div className="h-full bg-cyan-500" style={{ width: `${percent}%` }} /></div>
+          <div className="flex justify-between text-[8px] text-zinc-500 mt-2"><span>{formatNumber(current)} / {formatNumber(target)}</span><span>Ends {formatDate(goal.ends_at)}</span></div>
+        </div>;
+      })}</div> : <EmptyState icon={Target} title="No goals available" description="No creator goal records have been created yet." />}
+    </SectionShell>
+  </motion.div>
+);
 
 /*
 ============================================================
@@ -3489,159 +3398,18 @@ SCHEDULE
 ============================================================
 */
 
-const ScheduleSection = ({
-  videos,
-  liveStreams,
-  onVideo,
-}) => {
-  const scheduledVideos =
-    videos.filter(
-      (video) =>
-        video.scheduled_at ||
-        video.status ===
-          'scheduled'
-    );
-
-  const scheduledLives =
-    liveStreams.filter(
-      (stream) =>
-        stream.scheduled_at
-    );
-
-  return (
-    <motion.div
-      initial={{
-        opacity: 0,
-        y: 10,
-      }}
-      animate={{
-        opacity: 1,
-        y: 0,
-      }}
-      className="space-y-6"
-    >
-
-      <PageHeader
-        eyebrow="Publishing"
-        title="Schedule"
-        description="Scheduled content uses the existing scheduled_at fields."
-      />
-
-      <div className="grid lg:grid-cols-2 gap-4">
-
-        <SectionShell
-          title="Scheduled videos"
-          subtitle={`${scheduledVideos.length} scheduled`}
-        >
-
-          {scheduledVideos.length ? (
-            <div className="space-y-2">
-
-              {scheduledVideos.map(
-                (video) => (
-                  <button
-                    key={video.id}
-                    onClick={() =>
-                      onVideo(video)
-                    }
-                    className="w-full text-left flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.04] hover:border-cyan-500/10"
-                  >
-
-                    <div className="w-10 h-12 rounded-xl bg-zinc-900 overflow-hidden">
-
-                      {video.thumbnail_url ? (
-                        <img
-                          src={
-                            video.thumbnail_url
-                          }
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Video
-                            size={14}
-                            className="text-zinc-700"
-                          />
-                        </div>
-                      )}
-
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-
-                      <p className="text-[10px] font-bold truncate">
-                        {video.title ||
-                          video.caption ||
-                          'Untitled video'}
-                      </p>
-
-                      <p className="text-[8px] text-cyan-400 mt-1">
-                        {formatDate(
-                          video.scheduled_at
-                        )}
-                      </p>
-
-                    </div>
-
-                    <ChevronRight
-                      size={13}
-                      className="text-zinc-700"
-                    />
-
-                  </button>
-                )
-              )}
-
-            </div>
-          ) : (
-            <EmptyState
-              icon={Calendar}
-              title="No scheduled videos"
-              description="There are no scheduled video records."
-            />
-          )}
-
-        </SectionShell>
-
-        <SectionShell
-          title="Scheduled livestreams"
-          subtitle={`${scheduledLives.length} scheduled`}
-        >
-
-          {scheduledLives.length ? (
-            <div className="space-y-2">
-
-              {scheduledLives.map(
-                (
-                  stream
-                ) => (
-                  <LiveRow
-                    key={
-                      stream.id
-                    }
-                    stream={
-                      stream
-                    }
-                  />
-                )
-              )}
-
-            </div>
-          ) : (
-            <EmptyState
-              icon={Radio}
-              title="No scheduled livestreams"
-              description="There are no scheduled livestream records."
-            />
-          )}
-
-        </SectionShell>
-
-      </div>
-
-    </motion.div>
-  );
+const ScheduleSection = ({ videos = [], liveStreams = [], schedules = [], onVideo }) => {
+  const scheduledVideos = videos.filter(video => video.scheduled_at || video.status === "scheduled"), scheduledLives = liveStreams.filter(stream => stream.scheduled_at);
+  return <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <PageHeader eyebrow="Publishing" title="Schedule" description="Scheduled entries are loaded from creator_schedules, videos and livestream records." />
+    <SectionShell title="Publishing schedule" subtitle={`${schedules.length} schedule records`}>
+      {schedules.length ? <div className="space-y-2">{schedules.map((item, index) => <div key={item.id || index} className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.04]"><Calendar size={14} className="text-cyan-400" /><div className="flex-1 min-w-0"><p className="text-[10px] font-bold truncate">{item.title || item.content_type || "Scheduled content"}</p><p className="text-[8px] text-zinc-500">{formatDate(item.scheduled_at)} · {item.status || "scheduled"} · {item.timezone || "local time"}</p></div><span className="text-[8px] text-zinc-600">{item.auto_publish ? "Auto publish" : "Manual"}</span></div>)}</div> : <EmptyState icon={Calendar} title="No schedule records" description="No creator_schedules entries are currently available." />}
+    </SectionShell>
+    <div className="grid lg:grid-cols-2 gap-4">
+      <SectionShell title="Scheduled videos" subtitle={`${scheduledVideos.length} scheduled`}>{scheduledVideos.length ? <div className="space-y-2">{scheduledVideos.map(video => <button key={video.id} onClick={() => onVideo(video)} className="w-full text-left flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.04]"><Video size={14} className="text-cyan-400" /><div className="flex-1 min-w-0"><p className="text-[10px] font-bold truncate">{video.title || video.caption || "Untitled video"}</p><p className="text-[8px] text-cyan-400 mt-1">{formatDate(video.scheduled_at)}</p></div></button>)}</div> : <EmptyState icon={Video} title="No scheduled videos" />}</SectionShell>
+      <SectionShell title="Scheduled livestreams" subtitle={`${scheduledLives.length} scheduled`}>{scheduledLives.length ? <div className="space-y-2">{scheduledLives.map((stream, index) => <LiveRow key={stream.id || index} stream={stream} />)}</div> : <EmptyState icon={Radio} title="No scheduled livestreams" />}</SectionShell>
+    </div>
+  </motion.div>;
 };
 
 /*
