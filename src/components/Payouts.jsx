@@ -134,10 +134,10 @@ const Payout = () => {
     mobileNumber.trim().length > 0;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white">
+    <div className="relative min-h-screen overflow-hidden bg-[#070b12] text-white"><div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,rgba(8,145,178,0.12),transparent_42%),radial-gradient(ellipse_at_bottom_right,rgba(37,99,235,0.10),transparent_38%)]" />
       {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[#050505]/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-lg items-center gap-3 px-4">
+      <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-[#080d16]/85 backdrop-blur-2xl">
+        <div className="mx-auto flex h-[72px] max-w-5xl items-center gap-3 px-4 sm:px-6">
           <button
             type="button"
             onClick={() => navigate(-1)}
@@ -158,21 +158,21 @@ const Payout = () => {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-lg px-4 pb-10 pt-5">
+      <main className="relative mx-auto w-full max-w-2xl px-4 pb-14 pt-7 sm:px-6 sm:pt-9">
         {/* Balance */}
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative mb-5 overflow-hidden rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-600 via-blue-700 to-blue-900 p-6 shadow-2xl shadow-cyan-950/20"
+          className="relative mb-6 overflow-hidden rounded-[30px] border border-cyan-200/20 bg-gradient-to-br from-[#087e9b] via-[#174b9b] to-[#172c68] p-6 shadow-[0_24px_70px_-30px_rgba(8,145,178,0.55)] sm:p-8"
         >
           <div className="relative z-10">
-            <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-cyan-50/70">
               <Wallet size={13} />
               Available balance
             </div>
 
             <div className="flex items-end gap-2">
-              <h2 className="text-4xl font-black tracking-tight">
+              <h2 className="text-5xl font-black tracking-[-0.055em] drop-shadow-sm sm:text-6xl">
                 {coins.toLocaleString()}
               </h2>
 
@@ -181,7 +181,7 @@ const Payout = () => {
               </span>
             </div>
 
-            <div className="mt-4 flex items-center gap-2 text-[11px] text-white/55">
+            <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-[10px] font-semibold text-white/75 backdrop-blur-sm">
               <ShieldCheck size={13} />
               Secure mobile-money withdrawal
             </div>
@@ -221,9 +221,9 @@ const Payout = () => {
         </AnimatePresence>
 
         {/* Withdrawal form */}
-        <section className="rounded-[28px] border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5">
+        <section className="rounded-[30px] border border-white/[0.09] bg-[#101827]/85 p-5 shadow-[0_24px_70px_-35px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:p-7">
           <div className="mb-5">
-            <h2 className="text-sm font-bold">Withdraw coins</h2>
+            <div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.8)]" /><h2 className="text-base font-extrabold tracking-tight">Withdraw coins</h2></div>
             <p className="mt-1 text-[11px] text-white/35">
               Enter the amount and mobile-money account to receive
               your cash.
@@ -252,7 +252,7 @@ const Payout = () => {
                   setErrorMsg("");
                   setSuccessMsg("");
                 }}
-                className="w-full rounded-2xl border border-white/[0.08] bg-black/40 px-5 py-4 pr-20 text-2xl font-black outline-none transition placeholder:text-white/15 focus:border-cyan-400/60"
+                className="w-full rounded-2xl border border-white/[0.10] bg-[#080e19] px-5 py-5 pr-20 text-2xl font-black tracking-tight outline-none transition placeholder:text-white/20 focus:border-cyan-300/60 focus:ring-4 focus:ring-cyan-300/[0.08]"
               />
 
               <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-white/30">
@@ -273,7 +273,7 @@ const Payout = () => {
                   setSuccessMsg("");
                 }}
                 disabled={value > coins}
-                className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-2 py-2.5 text-[10px] font-bold text-white/55 transition hover:border-cyan-400/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-25"
+                className={`rounded-xl border px-2 py-3 text-[10px] font-extrabold transition disabled:cursor-not-allowed disabled:opacity-25 ${withdrawAmount === String(value) ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.08)]" : "border-white/[0.08] bg-white/[0.035] text-white/55 hover:border-cyan-300/30 hover:bg-cyan-300/[0.06] hover:text-white"}`}
               >
                 {value.toLocaleString()}
               </button>
@@ -281,14 +281,14 @@ const Payout = () => {
           </div>
 
           {/* Receive summary */}
-          <div className="mb-5 rounded-2xl border border-white/[0.07] bg-black/30 p-4">
+          <div className="mb-5 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.045] to-white/[0.015] p-4 sm:p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-white/35">
                   You receive
                 </p>
 
-                <p className="mt-1 text-xl font-black text-emerald-400">
+                <p className="mt-1 text-2xl font-black tracking-tight text-emerald-300">
                   K{receiveAmount.toLocaleString()}
                 </p>
               </div>
@@ -369,7 +369,7 @@ const Payout = () => {
                   setErrorMsg("");
                   setSuccessMsg("");
                 }}
-                className="w-full rounded-2xl border border-white/[0.08] bg-black/40 py-4 pl-11 pr-4 text-sm font-bold outline-none transition placeholder:text-white/15 focus:border-cyan-400/60"
+                className="w-full rounded-2xl border border-white/[0.10] bg-[#080e19] py-4 pl-11 pr-4 text-sm font-bold outline-none transition placeholder:text-white/20 focus:border-cyan-300/60 focus:ring-4 focus:ring-cyan-300/[0.08]"
               />
             </div>
           </div>
@@ -380,7 +380,7 @@ const Payout = () => {
             whileTap={{ scale: 0.985 }}
             disabled={!canWithdraw}
             onClick={handleWithdraw}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-white py-4 text-sm font-black uppercase tracking-wide text-black transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-25"
+            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-cyan-200 via-cyan-100 to-white py-4 text-sm font-black uppercase tracking-[0.12em] text-[#06111d] shadow-[0_12px_30px_-12px_rgba(34,211,238,0.5)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_-12px_rgba(34,211,238,0.6)] disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:translate-y-0
           >
             {loading ? (
               <>
