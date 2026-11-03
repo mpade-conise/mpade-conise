@@ -2763,9 +2763,7 @@ const GrowthSection = ({
             <Signal
               label="Followers"
               value={
-                growth.followers ??
-                growth.follower_count ??
-                '—'
+                growth.audience_growth ?? growth.followers ?? growth.follower_count ?? '—'
               }
               icon={Users}
             />
@@ -2773,9 +2771,7 @@ const GrowthSection = ({
             <Signal
               label="Views"
               value={
-                growth.views ??
-                growth.video_views ??
-                '—'
+                growth.revenue_growth !== undefined ? growth.revenue_growth : growth.views ?? growth.video_views ?? '—'
               }
               icon={Eye}
             />
@@ -2783,14 +2779,7 @@ const GrowthSection = ({
             <Signal
               label="Engagement"
               value={
-                growth.engagement_rate !==
-                null &&
-                growth.engagement_rate !==
-                  undefined
-                  ? `${safeNumber(
-                      growth.engagement_rate
-                    ).toFixed(1)}%`
-                  : '—'
+                growth.engagement_growth !== undefined ? `${safeNumber(growth.engagement_growth).toFixed(1)}%` : growth.engagement_rate !== null && growth.engagement_rate !== undefined ? `${safeNumber(growth.engagement_rate).toFixed(1)}%` : '—'
               }
               icon={
                 Activity
@@ -3356,17 +3345,11 @@ const AISection = ({
                     <div>
 
                       <p className="text-xs font-bold text-zinc-300">
-                        {insight.title ||
-                          insight.type ||
-                          'Creator insight'}
+                        {insight.title || insight.insight_type || 'Creator insight'}
                       </p>
 
                       <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                        {insight.insight ||
-                          insight.message ||
-                          insight.recommendation ||
-                          insight.description ||
-                          'No insight text available.'}
+                        {insight.content || insight.insight || insight.message || insight.recommendation || insight.description || 'No insight text available.'}
                       </p>
 
                     </div>
@@ -4635,19 +4618,10 @@ const TinyValue = ({
 const AchievementCard = ({
   achievement,
 }) => {
-  const progress = safeNumber(
-    achievement.progress ??
-      achievement.progress_percent ??
-      achievement.percentage
-  );
-
-  const hasProgress =
-    achievement.progress !==
-      undefined ||
-    achievement.progress_percent !==
-      undefined ||
-    achievement.percentage !==
-      undefined;
+  const target = safeNumber(achievement.target);
+  const rawProgress = safeNumber(achievement.progress ?? achievement.progress_percent ?? achievement.percentage);
+  const progress = achievement.progress_percent !== undefined || achievement.percentage !== undefined ? rawProgress : target > 0 ? rawProgress / target * 100 : rawProgress;
+  const hasProgress = achievement.progress !== undefined || achievement.progress_percent !== undefined || achievement.percentage !== undefined;
 
   return (
     <div className="p-5 rounded-3xl bg-white/[0.018] border border-white/[0.05]">
@@ -4666,16 +4640,11 @@ const AchievementCard = ({
         <div className="flex-1">
 
           <p className="text-[10px] font-black">
-            {achievement.name ||
-              achievement.title ||
-              achievement.achievement_name ||
-              'Achievement'}
+            {achievement.achievement_name || achievement.name || achievement.title || 'Achievement'}
           </p>
 
           <p className="text-[8px] text-zinc-600 mt-1 leading-relaxed">
-            {achievement.description ||
-              achievement.summary ||
-              'Creator achievement'}
+            {achievement.description || achievement.achievement_key || achievement.summary || 'Creator achievement'}
           </p>
 
         </div>
