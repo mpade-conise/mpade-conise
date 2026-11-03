@@ -1471,6 +1471,7 @@ const SettingsPage = () => {
               </div>
             )}
 
+            {activeSection && (
             <div className="space-y-8">
               {filteredSections.filter((section) => !activeSection || section.id === activeSection).map((section) => (
                 <section
