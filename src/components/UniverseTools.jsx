@@ -274,6 +274,8 @@ const UniverseTools = () => {
     videos,
     liveStreams,
     earnings,
+    notifications,
+    giftRecords,
     dailyStats,
 
     loading,
@@ -822,9 +824,16 @@ const UniverseTools = () => {
                 className="mx-auto text-zinc-700 mb-3"
               />
 
-              <p className="text-[9px] text-zinc-600 uppercase tracking-widest font-black">
-                No creator notifications
-              </p>
+              {notifications?.length ? (
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  {notifications.map((item, index) => (
+                    <div key={item.id || index} className="p-3 rounded-xl bg-white/[0.025] text-left">
+                      <p className="text-[9px] font-bold text-zinc-300">{String(item.type || "Notification").replaceAll("_", " ")}</p>
+                      <p className="text-[8px] text-zinc-500 mt-1">{item.sender_name || "Universe"} · {formatDate(item.created_at)}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-[9px] text-zinc-600 uppercase tracking-widest font-black">No creator notifications</p>}
 
             </div>
           </motion.div>
@@ -1200,12 +1209,7 @@ const UniverseTools = () => {
 
               {activeTab ===
                 'gifts' && (
-                <GiftsSection
-                  stats={stats}
-                  livePerformance={
-                    livePerformance
-                  }
-                />
+                <GiftsSection stats={stats} livePerformance={livePerformance} giftRecords={giftRecords} />
               )}
 
               {activeTab ===
