@@ -82,6 +82,9 @@ export const getLivePerformance = userId => readMany("creator_live_performance",
 export const getDailyAnalytics = userId => readMany("creator_studio_daily_analytics", "creator_id", userId, { orderBy: "stat_date", ascending: true });
 export const getTopContent = async userId => (await readMany("creator_top_content", "creator_id", userId, { orderBy: "views", limit: 20 })).map(row => ({ ...row, views_count: safeNumber(row.views), likes_count: safeNumber(row.likes), comments_count: safeNumber(row.comments), favorites_count: safeNumber(row.favorites), shares_count: safeNumber(row.shares), saves_count: safeNumber(row.saves), reposts_count: safeNumber(row.reposts) }));
 export const getAchievements = userId => readMany("creator_achievements", "creator_id", userId, { orderBy: "created_at" });
+export const getGoals = userId => readMany("creator_goals", "creator_id", userId, { orderBy: "created_at" });
+export const getSchedules = userId => readMany("creator_schedules", "creator_id", userId, { orderBy: "scheduled_at" });
+export const getProgress = userId => readOne("creator_progress", "creator_id", userId);
 export const getAIInsights = userId => readMany("creator_ai_insights", "creator_id", userId, { orderBy: "created_at", limit: 20 });
 export const getGrowth = userId => readMany("creator_growth_snapshots", "creator_id", userId, { orderBy: "snapshot_date", limit: 30 });
 export const getCreatorVideos = userId => readMany("videos", "user_id", userId, { orderBy: "created_at" });
@@ -115,6 +118,9 @@ export const getCreatorStudioData = async () => {
     dailyAnalytics: () => getDailyAnalytics(userId),
     topContent: () => getTopContent(userId),
     achievements: () => getAchievements(userId),
+    goals: () => getGoals(userId),
+    schedules: () => getSchedules(userId),
+    progress: () => getProgress(userId),
     aiInsights: () => getAIInsights(userId),
     growth: () => getGrowth(userId),
     earnings: () => getEarnings(userId),
@@ -139,7 +145,7 @@ export const getCreatorStudioData = async () => {
 };
 
 const creatorStudioService = {
-  getCurrentUser, getProfile, getOverview, getVideoPerformance, getLivePerformance, getDailyAnalytics, getTopContent, getAchievements, getAIInsights, getGrowth, getCreatorVideos, getEarnings, updateVideo, archiveVideo, restoreVideo, deleteVideo, scheduleVideo, getCreatorStudioData, normalizeOverview, safeNumber, calculateGrowth, getLatestDailyStat, getPreviousDailyStat,
+  getCurrentUser, getProfile, getOverview, getVideoPerformance, getLivePerformance, getDailyAnalytics, getTopContent, getAchievements, getGoals, getSchedules, getProgress, getAIInsights, getGrowth, getCreatorVideos, getEarnings, updateVideo, archiveVideo, restoreVideo, deleteVideo, scheduleVideo, getCreatorStudioData, normalizeOverview, safeNumber, calculateGrowth, getLatestDailyStat, getPreviousDailyStat,
 };
 
 export default creatorStudioService;
