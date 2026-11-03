@@ -408,7 +408,7 @@ function App() {
         </div>
       )}
 
-      <main className="h-screen pb-20 overflow-hidden relative">
+      <main className={`${location.pathname === '/payouts' ? "min-h-screen h-auto overflow-y-auto pb-8" : "h-screen pb-20 overflow-hidden"} relative`}>
         <AnimatePresence mode="wait">
           <Suspense fallback={<div className="fixed inset-0 bg-[#08080a] flex items-center justify-center text-zinc-500 text-xs tracking-wider uppercase font-bold animate-pulse">Initializing Channel...</div>}>
             <Routes location={location} key={location.pathname}>
