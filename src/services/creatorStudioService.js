@@ -77,10 +77,10 @@ const readOne = async (table, userColumn, userId) => {
 
 export const getProfile = userId => readOne("profiles", "id", userId);
 export const getOverview = async userId => normalizeOverview(await readOne("creator_studio_overview", "creator_id", userId) || {});
-export const getVideoPerformance = userId => readMany("creator_video_performance", "creator_id", userId, { orderBy: "created_at" });
+export const getVideoPerformance = async userId => (await readMany("creator_video_performance", "creator_id", userId, { orderBy: "created_at" })).map(row => ({ ...row, views_count: safeNumber(row.views), likes_count: safeNumber(row.likes), comments_count: safeNumber(row.comments), favorites_count: safeNumber(row.favorites), shares_count: safeNumber(row.shares), saves_count: safeNumber(row.saves), reposts_count: safeNumber(row.reposts) }));
 export const getLivePerformance = userId => readMany("creator_live_performance", "creator_id", userId, { orderBy: "started_at" });
 export const getDailyAnalytics = userId => readMany("creator_studio_daily_analytics", "creator_id", userId, { orderBy: "stat_date", ascending: true });
-export const getTopContent = userId => readMany("creator_top_content", "creator_id", userId, { orderBy: "views", limit: 20 });
+export const getTopContent = async userId => (await readMany("creator_top_content", "creator_id", userId, { orderBy: "views", limit: 20 })).map(row => ({ ...row, views_count: safeNumber(row.views), likes_count: safeNumber(row.likes), comments_count: safeNumber(row.comments), favorites_count: safeNumber(row.favorites), shares_count: safeNumber(row.shares), saves_count: safeNumber(row.saves), reposts_count: safeNumber(row.reposts) }));
 export const getAchievements = userId => readMany("creator_achievements", "creator_id", userId, { orderBy: "created_at" });
 export const getAIInsights = userId => readMany("creator_ai_insights", "creator_id", userId, { orderBy: "created_at", limit: 20 });
 export const getGrowth = userId => readMany("creator_growth_snapshots", "creator_id", userId, { orderBy: "snapshot_date", limit: 30 });
