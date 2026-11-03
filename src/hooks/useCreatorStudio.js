@@ -50,6 +50,8 @@ const useCreatorStudio = () => {
     videos: data?.videos || EMPTY,
     liveStreams: data?.livePerformance || EMPTY,
     earnings: data?.earnings || EMPTY,
+    notifications: data?.notifications || EMPTY,
+    giftRecords: data?.giftRecords || EMPTY,
     loading, refreshing, error, lastSyncedAt,
     refresh, reload: loadCreatorStudio, loadCreatorStudio,
     aiTip: data?.aiTip || "Review your creator analytics to identify your strongest content.",
