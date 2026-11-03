@@ -456,6 +456,7 @@ const EditProfile = () => {
   const [security, setSecurity] = useState({ twoFactorEnabled: false, loginAlerts: true });
   const [mfaSetup, setMfaSetup] = useState({ factorId: '', qrCode: '', secret: '', code: '', challengeId: '', verifying: false });
   const [accountActivity, setAccountActivity] = useState({ sessions: [], logs: [], loading: false });
+  const [payoutHistory, setPayoutHistory] = useState({ rows: [], loading: false, loaded: false });
 
   const [accountSecurity, setAccountSecurity] = useState({
     email: '',
@@ -1879,6 +1880,16 @@ const EditProfile = () => {
       setSecurity(prev => ({ ...prev, twoFactorEnabled: false }));
       setSuccessMessage('Two-factor authentication disabled.');
     } catch (error) { setErrorMessage(error?.message || 'Unable to disable two-factor authentication.'); }
+  };
+
+  const loadPayoutHistory = async () => {
+    setPayoutHistory(prev => ({ ...prev, loading: true }));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data, error } = await supabase.from('payouts').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50);
+      if (error) throw error;
+      setPayoutHistory({ rows: data || [], loading: false, loaded: true });
+    } catch (error) { setPayoutHistory(prev => ({ ...prev, loading: false, loaded: true })); setErrorMessage(error?.message || 'Unable to load payout history.'); }
   };
 
   const loadAccountActivity = async () => {
@@ -4168,18 +4179,21 @@ const EditProfile = () => {
                     icon={Video}
                     title="Featured videos"
                     description="Choose videos to showcase."
+                    onClick={() => setActiveSection('content')}
                   />
 
                   <ActionCard
                     icon={Music}
                     title="Playlists"
-                    description="Manage profile playlists."
+                    description="Open profile content settings."
+                    onClick={() => setActiveSection('content')}
                   />
 
                   <ActionCard
                     icon={FileText}
                     title="Drafts"
-                    description="Manage unpublished content."
+                    description="Open profile content settings."
+                    onClick={() => setActiveSection('content')}
                   />
 
                 </div>
@@ -4918,13 +4932,11 @@ const EditProfile = () => {
                       <ExternalLink size={15} />
                     </button>
 
-                    <button className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/5 border border-white/10">
-                      <span className="flex items-center gap-2">
-                        <Wallet size={17} />
-                        Payout history
-                      </span>
-                      <ExternalLink size={15} />
+                    <button onClick={loadPayoutHistory} className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+                      <span className="flex items-center gap-2"><Wallet size={17} />Payout history</span><ExternalLink size={15} />
                     </button>
+                    {payoutHistory.loading && <p className="text-xs text-cyan-300">Loading payout history…</p>}
+                    {payoutHistory.loaded && (payoutHistory.rows.length ? <div className="space-y-2">{payoutHistory.rows.map((payout, index) => <div key={payout.id || index} className="p-3 rounded-xl bg-white/5 text-xs flex justify-between gap-3"><div><p className="font-semibold">{payout.provider || 'Payout'} · {payout.status || 'pending'}</p><p className="text-slate-500 mt-1">{payout.recipient_name || ''} · {payout.created_at ? new Date(payout.created_at).toLocaleDateString() : '—'}</p></div><span className="font-bold text-cyan-300">K{Number(payout.amount || 0).toLocaleString()}</span></div>)}</div> : <p className="text-xs text-slate-500">No payout records found.</p>)}
 
                   </SectionCard>
 
@@ -5867,9 +5879,10 @@ const MediaUploadBox = ({
 const ActionCard = ({
   icon: Icon,
   title,
-  description
+  description,
+  onClick
 }) => (
-  <button className="text-left rounded-2xl border border-white/10 bg-white/[0.03] p-5 hover:bg-white/[0.06] transition">
+  <button type="button" onClick={onClick} className="text-left rounded-2xl border border-white/10 bg-white/[0.03] p-5 hover:bg-white/[0.06] transition">
     <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center mb-4">
       <Icon
         size={19}
