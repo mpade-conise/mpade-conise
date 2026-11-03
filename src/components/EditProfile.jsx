@@ -802,32 +802,9 @@ const EditProfile = () => {
       const { data: factorsData } = await supabase.auth.mfa.listFactors();
       setSecurity(prev => ({ ...prev, twoFactorEnabled: Boolean(factorsData?.totp?.some(factor => factor.status === 'verified')) }));
 
-      setBankDetails(
-        mergeDeep(
-          {
-            bankName: '',
-            accountName: '',
-            accountNumber: '',
-            branch: ''
-          },
-          savedSettings.bankDetails
-        )
-      );
+      setBankDetails(mergeDeep({ bankName: '', accountName: '', accountNumber: '', branch: '' }, data?.financial_settings?.bankDetails || savedSettings.bankDetails));
 
-      setMonetization(
-        mergeDeep(
-          {
-            payoutMinimum: 1000,
-            payoutSchedule: 'monthly',
-            taxInformation: '',
-            giftEarnings: true,
-            coinEarnings: true,
-            withdrawalsEnabled: true,
-            paymentVerified: false
-          },
-          savedSettings.monetization
-        )
-      );
+      setMonetization(mergeDeep({ payoutMinimum: 1000, payoutSchedule: 'monthly', taxInformation: '', giftEarnings: true, coinEarnings: true, withdrawalsEnabled: true, paymentVerified: false }, data?.financial_settings?.monetization || savedSettings.monetization));
 
       setVerification(mergeDeep({ type: 'personal', status: 'not_requested', information: '', organizationName: '', organizationWebsite: '', requestMessage: '' }, data?.verification_settings || savedSettings.verification));
 
@@ -1556,6 +1533,7 @@ const EditProfile = () => {
           creator_settings: creator,
           verification_settings: verification,
           financial_settings: { bankDetails, monetization, payoutMethod: formData.payout_method, currency: formData.currency_preference },
+          profile_completion: profileCompletion,
           edit_settings: extendedSettings
         };
 
@@ -1915,6 +1893,17 @@ const EditProfile = () => {
       if (sessions.error) console.warn('Session history:', sessions.error);
       if (logs.error) console.warn('Security history:', logs.error);
     } catch (error) { setAccountActivity(prev => ({ ...prev, loading: false })); setErrorMessage(error?.message || 'Unable to load account activity.'); }
+  };
+
+  const deactivateAccount = async () => {
+    if (!window.confirm('Deactivate your account? Your profile will be hidden and you will be signed out.')) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('profiles').update({ account_status: 'deactivated' }).eq('id', user.id);
+      if (error) throw error;
+      await supabase.auth.signOut({ scope: 'global' });
+      navigate('/login');
+    } catch (error) { setErrorMessage(error?.message || 'Unable to deactivate this account.'); }
   };
 
   const downloadAccountData = async () => {
@@ -5205,15 +5194,9 @@ const EditProfile = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-                    <button className="px-4 py-3 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center gap-2 text-sm">
-                      <Download size={17} />
-                      Export profile data
-                    </button>
+                    <button onClick={downloadAccountData} className="px-4 py-3 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center gap-2 text-sm"><Download size={17} />Export profile data</button>
 
-                    <button className="px-4 py-3 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center gap-2 text-sm">
-                      <Database size={17} />
-                      Download account data
-                    </button>
+                    <button onClick={downloadAccountData} className="px-4 py-3 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center gap-2 text-sm"><Database size={17} />Download account data</button>
 
                   </div>
 
@@ -5221,10 +5204,7 @@ const EditProfile = () => {
 
                 <SectionCard title="Danger Zone">
 
-                  <button className="w-full px-4 py-3 rounded-xl border border-amber-400/20 bg-amber-500/10 text-amber-300 flex items-center justify-center gap-2 text-sm">
-                    <UserX size={17} />
-                    Deactivate account
-                  </button>
+                  <button onClick={deactivateAccount} className="w-full px-4 py-3 rounded-xl border border-amber-400/20 bg-amber-500/10 text-amber-300 flex items-center justify-center gap-2 text-sm"><UserX size={17} />Deactivate account</button>
 
                   <button className="w-full px-4 py-3 rounded-xl border border-red-400/20 bg-red-500/10 text-red-300 flex items-center justify-center gap-2 text-sm">
                     <Trash2 size={17} />
