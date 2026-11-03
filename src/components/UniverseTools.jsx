@@ -3032,139 +3032,21 @@ GIFTS
 ============================================================
 */
 
-const GiftsSection = ({
-  stats,
-  livePerformance,
-}) => {
-  const gifts =
-    livePerformance.reduce(
-      (sum, item) =>
-        sum +
-        safeNumber(
-          item.gifts_count ??
-            item.total_gifts
-        ),
-      0
-    );
-
-  const coins =
-    livePerformance.reduce(
-      (sum, item) =>
-        sum +
-        safeNumber(
-          item.coins_received
-        ),
-      0
-    );
-
-  return (
-    <motion.div
-      initial={{
-        opacity: 0,
-        y: 10,
-      }}
-      animate={{
-        opacity: 1,
-        y: 0,
-      }}
-      className="space-y-6"
-    >
-
-      <PageHeader
-        eyebrow="Virtual economy"
-        title="Gifts"
-        description="Gift statistics reflect recorded livestream data."
-      />
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-
-        <MetricCard
-          label="Recorded Gifts"
-          value={formatNumber(
-            gifts
-          )}
-          icon={Gift}
-          tone="rose"
-        />
-
-        <MetricCard
-          label="Coins Received"
-          value={formatNumber(
-            coins
-          )}
-          icon={Coins}
-          tone="yellow"
-        />
-
-        <MetricCard
-          label="Creator Coins"
-          value={formatNumber(
-            stats.coins
-          )}
-          icon={Coins}
-          tone="purple"
-        />
-
-        <MetricCard
-          label="Gift Revenue"
-          value={`K${formatMoney(
-            stats.livestreamRevenue
-          )}`}
-          icon={DollarSign}
-          tone="emerald"
-        />
-
-      </div>
-
-      <SectionShell
-        title="Gift records"
-        subtitle="Livestream gift analytics"
-      >
-
-        {livePerformance.length ? (
-          <div className="space-y-2">
-
-            {livePerformance
-              .filter(
-                (item) =>
-                  safeNumber(
-                    item.gifts_count ??
-                      item.total_gifts
-                  ) > 0 ||
-                  safeNumber(
-                    item.coins_received
-                  ) > 0
-              )
-              .map(
-                (
-                  item,
-                  index
-                ) => (
-                  <LiveRow
-                    key={
-                      item.id ||
-                      index
-                    }
-                    stream={
-                      item
-                    }
-                  />
-                )
-              )}
-
-          </div>
-        ) : (
-          <EmptyState
-            icon={Gift}
-            title="No gift records"
-            description="No livestream gift data is available."
-          />
-        )}
-
-      </SectionShell>
-
-    </motion.div>
-  );
+const GiftsSection = ({ stats, livePerformance, giftRecords = [] }) => {
+  const gifts = giftRecords.length || livePerformance.reduce((sum, item) => sum + safeNumber(item.gifts_count ?? item.total_gifts), 0);
+  const coins = giftRecords.length ? giftRecords.reduce((sum, item) => sum + safeNumber(item.price_total) * safeNumber(item.quantity || 1), 0) : livePerformance.reduce((sum, item) => sum + safeNumber(item.coins_received), 0);
+  return <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <PageHeader eyebrow="Virtual economy" title="Gifts" description="Gift transactions are loaded from live_gifts for your livestreams." />
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <MetricCard label="Recorded Gifts" value={formatNumber(gifts)} icon={Gift} tone="rose" />
+      <MetricCard label="Gift Coins" value={formatNumber(coins)} icon={Coins} tone="yellow" />
+      <MetricCard label="Creator Coins" value={formatNumber(stats.coins)} icon={Coins} tone="purple" />
+      <MetricCard label="Gift Revenue" value={`K${formatMoney(stats.livestreamRevenue)}`} icon={DollarSign} tone="emerald" />
+    </div>
+    <SectionShell title="Gift transactions" subtitle={`${giftRecords.length} individual gift records`}>
+      {giftRecords.length ? <div className="space-y-2">{giftRecords.map((gift, index) => <div key={gift.id || index} className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/[0.04]"><Gift size={14} className="text-rose-400" /><div className="flex-1 min-w-0"><p className="text-[10px] font-bold truncate">{gift.gift_name || "Live gift"} · {gift.sender_id || "Viewer"}</p><p className="text-[8px] text-zinc-500">{formatDate(gift.created_at)} · Qty {safeNumber(gift.quantity, 1)}</p></div><span className="text-[9px] font-black text-yellow-400">{formatNumber(safeNumber(gift.price_total) * safeNumber(gift.quantity || 1))} coins</span></div>)}</div> : <EmptyState icon={Gift} title="No gift transactions" description="No live_gifts records are available for your streams." />}
+    </SectionShell>
+  </motion.div>;
 };
 
 /*
