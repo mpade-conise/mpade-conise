@@ -783,6 +783,27 @@ const SettingsPage = () => {
     });
   };
 
+  const saveLoginAlerts = async (enabled) => {
+    setLoginAlerts(enabled);
+
+    const advanced = mergeJson(
+      DEFAULT_JSON_SETTINGS.advanced,
+      profile?.advanced_settings
+    );
+
+    const saved = await updateProfile({
+      advanced_settings: {
+        ...advanced,
+        security: {
+          ...(advanced.security || {}),
+          loginAlerts: enabled,
+        },
+      },
+    }, "Login alert preference saved");
+
+    if (!saved) setLoginAlerts(!enabled);
+  };
+
   /* ==========================================================
      DATA SAVER
      ========================================================== */
