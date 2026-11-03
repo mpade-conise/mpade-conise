@@ -826,6 +826,62 @@ const SettingsPage = () => {
     );
   };
 
+  const setupMfa = async () => {
+    setMfaLoading(true);
+    setStatusMessage("");
+
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "Con Universe Authenticator",
+      });
+
+      if (error) throw error;
+      setMfaFactor(data);
+      setMfaCode("");
+      setMfaModalOpen(true);
+    } catch (error) {
+      console.error("MFA setup error:", error);
+      setStatusMessage(error?.message || "Unable to start authenticator setup.");
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const verifyMfa = async () => {
+    if (!mfaFactor?.id || mfaCode.length !== 6) {
+      setStatusMessage("Enter the 6-digit code from your authenticator app.");
+      return;
+    }
+
+    setMfaLoading(true);
+    setStatusMessage("");
+
+    try {
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: mfaFactor.id,
+      });
+      if (challengeError) throw challengeError;
+
+      const { error } = await supabase.auth.mfa.verify({
+        factorId: mfaFactor.id,
+        challengeId: challenge.id,
+        code: mfaCode,
+      });
+      if (error) throw error;
+
+      setMfaModalOpen(false);
+      setMfaFactor(null);
+      setMfaCode("");
+      setStatusMessage("Two-factor authentication enabled.");
+    } catch (error) {
+      console.error("MFA verification error:", error);
+      setStatusMessage(error?.message || "Unable to verify the authenticator code.");
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
   /* ==========================================================
      LOGOUT
      ========================================================== */
