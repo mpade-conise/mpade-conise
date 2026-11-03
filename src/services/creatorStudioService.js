@@ -89,6 +89,15 @@ export const getAIInsights = userId => readMany("creator_ai_insights", "creator_
 export const getGrowth = userId => readMany("creator_growth_snapshots", "creator_id", userId, { orderBy: "snapshot_date", limit: 30 });
 export const getCreatorVideos = userId => readMany("videos", "user_id", userId, { orderBy: "created_at" });
 export const getEarnings = userId => readMany("creator_earnings", "creator_id", userId, { orderBy: "created_at", limit: 100 });
+export const getNotifications = userId => readMany("unified_notifications", "user_id", userId, { orderBy: "created_at", limit: 50 });
+export const getGiftRecords = async userId => {
+  const streams = await readMany("live_streams", "host_id", userId, { orderBy: "started_at" });
+  const ids = streams.map(stream => stream.id).filter(Boolean);
+  if (!ids.length) return [];
+  const { data, error } = await supabase.from("live_gifts").select("*").in("stream_id", ids).order("created_at", { ascending: false }).limit(100);
+  if (error) throw error;
+  return data || [];
+};
 
 export const updateVideo = async (videoId, updates = {}) => {
   if (!videoId) throw new Error("Video ID is required.");
@@ -124,6 +133,8 @@ export const getCreatorStudioData = async () => {
     aiInsights: () => getAIInsights(userId),
     growth: () => getGrowth(userId),
     earnings: () => getEarnings(userId),
+    notifications: () => getNotifications(userId),
+    giftRecords: () => getGiftRecords(userId),
   };
   const entries = Object.entries(tasks);
   const results = await Promise.all(entries.map(async ([key, task]) => {
@@ -145,7 +156,7 @@ export const getCreatorStudioData = async () => {
 };
 
 const creatorStudioService = {
-  getCurrentUser, getProfile, getOverview, getVideoPerformance, getLivePerformance, getDailyAnalytics, getTopContent, getAchievements, getGoals, getSchedules, getProgress, getAIInsights, getGrowth, getCreatorVideos, getEarnings, updateVideo, archiveVideo, restoreVideo, deleteVideo, scheduleVideo, getCreatorStudioData, normalizeOverview, safeNumber, calculateGrowth, getLatestDailyStat, getPreviousDailyStat,
+  getCurrentUser, getProfile, getOverview, getVideoPerformance, getLivePerformance, getDailyAnalytics, getTopContent, getAchievements, getGoals, getSchedules, getProgress, getAIInsights, getGrowth, getCreatorVideos, getEarnings, getNotifications, getGiftRecords, updateVideo, archiveVideo, restoreVideo, deleteVideo, scheduleVideo, getCreatorStudioData, normalizeOverview, safeNumber, calculateGrowth, getLatestDailyStat, getPreviousDailyStat,
 };
 
 export default creatorStudioService;
