@@ -563,16 +563,19 @@ const Profile = () => {
             effectiveId
           ),
 
-        supabase
-          .from('profile_views')
-          .select('id', {
-            count: 'exact',
-            head: true
-          })
-          .eq(
-            'profile_id',
-            effectiveId
-          )
+        authUser?.id === effectiveId
+          ? supabase
+              .from('profile_views')
+              .select('id', {
+                count: 'exact',
+                head: true
+              })
+              .eq('profile_id', effectiveId)
+          : Promise.resolve({
+              data: null,
+              count: 0,
+              error: null
+            })
       ]);
 
       /*
