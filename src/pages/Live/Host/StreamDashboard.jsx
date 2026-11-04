@@ -17,7 +17,6 @@ import HostControls from './HostControls';
 import ChatBox from '../Shared/ChatBox';
 import LiveAnalyticsPanel from './HostAnalytics';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
-import StreamHeader from '../Shared/StreamHeader';
 import BattleOverlay from './BattleOverlay';
 import BattleController from '../Shared/BattleController';
 import SettingsPanel from '../Shared/setting';
@@ -620,18 +619,6 @@ const StreamDashboard = () => {
       <div className="relative flex-1 h-full min-w-0 overflow-hidden">
         <GiftAlertOverlay gift={giftsEnabled ? activeGift : null} lowData={false} position="center" />
 
-        {/* HEADER */}
-        <div className="absolute top-0 left-0 right-0 h-[10%] z-[60] px-4 pt-4 bg-gradient-to-b from-black/80 via-black/30 to-transparent pointer-events-none">
-          <div className="pointer-events-auto">
-            <StreamHeader
-              data={streamData}
-              isHost={true}
-              viewerCount={currentViewers}
-              onLeave={() => setShowEndConfirm(true)}
-            />
-          </div>
-        </div>
-
         {/* LIVE STAGE — ACCEPTED CO-HOSTS AND BATTLES SHARE ONE DASHBOARD */}
         {(() => {
           const remoteEntries = Object.entries(remoteStreams || {}).slice(0, isBattleMode ? 1 : 3);
@@ -648,7 +635,7 @@ const StreamDashboard = () => {
           );
           return (
             <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-0 bg-black overflow-hidden">
-              <div className={`relative h-full w-full bg-black gap-[2px] ${splitStage ? 'grid grid-cols-2' : 'block'}`} style={splitStage ? { gridTemplateRows: participantCount <= 2 ? 'minmax(0,1fr)' : 'repeat(2,minmax(0,1fr))' } : undefined}>
+              <div className={`relative h-full w-full bg-black gap-[2px] grid ${splitStage ? 'grid-cols-2' : 'grid-cols-1'}`} style={{ gridTemplateRows: splitStage && participantCount > 2 ? 'repeat(2,minmax(0,1fr))' : 'minmax(0,1fr)' }}>
                 <div className={panelClass}>
                   <video ref={localVideoRef} autoPlay muted playsInline className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} />
                   {isCameraOff && <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 text-zinc-500 text-xs font-black tracking-widest">CAMERA OFF</div>}
