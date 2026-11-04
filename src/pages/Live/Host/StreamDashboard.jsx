@@ -634,7 +634,7 @@ const StreamDashboard = () => {
             }} className={`absolute inset-0 w-full h-full object-cover ${mirrored ? 'scale-x-[-1]' : ''}`} />
           );
           return (
-            <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-0 bg-black overflow-hidden">
+            <div className="absolute top-0 bottom-[30%] left-0 right-0 z-0 bg-black overflow-hidden">
               <div className={`relative h-full w-full bg-black gap-[2px] grid ${splitStage ? 'grid-cols-2' : 'grid-cols-1'}`} style={{ gridTemplateRows: splitStage && participantCount > 2 ? 'repeat(2,minmax(0,1fr))' : 'minmax(0,1fr)' }}>
                 <div className={panelClass}>
                   <video ref={localVideoRef} autoPlay muted playsInline className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} />
