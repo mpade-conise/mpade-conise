@@ -5078,6 +5078,7 @@ const EditProfile = () => {
                   {accountActivity.loading && <p className="text-xs text-cyan-300">Loading account activity…</p>}
                   {accountActivity.sessions.length > 0 && <div className="space-y-2"><p className="text-xs font-bold">Recent sessions</p>{accountActivity.sessions.map((session, index) => <div key={session.id || index} className="p-3 rounded-xl bg-white/5 text-xs">{session.device_model || 'Device'} · {session.location || 'Unknown location'} · {session.is_current ? 'Current session' : 'Other session'}<p className="text-slate-500 mt-1">{session.last_active ? new Date(session.last_active).toLocaleString() : '—'}</p></div>)}</div>}
                   {accountActivity.logs.length > 0 && <div className="space-y-2"><p className="text-xs font-bold">Security events</p>{accountActivity.logs.map((log, index) => <div key={log.id || index} className="p-3 rounded-xl bg-white/5 text-xs">{String(log.event_type || 'Account event').replaceAll('_', ' ')} · {log.device_name || 'Unknown device'}<p className="text-slate-500 mt-1">{log.created_at ? new Date(log.created_at).toLocaleString() : '—'}</p></div>)}</div>}
+                </SectionCard>
               </div>
             )}
 
@@ -5417,7 +5418,7 @@ const EditProfile = () => {
 
             <div className="w-52 h-52 rounded-2xl bg-white p-3 flex items-center justify-center">
               <QRCodeSVG value={profileUrl} size={184} level="H" includeMargin />
-            </div>>
+            </div>
 
             <p className="text-sm font-semibold mt-5">
               @{formData.username}
