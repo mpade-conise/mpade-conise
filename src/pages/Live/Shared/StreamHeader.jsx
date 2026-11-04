@@ -861,6 +861,23 @@ const StreamHeader = ({
   const ConnectionIcon =
     connectionIcon;
 
+  if (isHost) {
+    return (
+      <header className="absolute top-0 left-0 right-0 z-[70] px-3 pt-3 pointer-events-none">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2 rounded-full bg-black/75 border border-white/10 p-1 pr-3 backdrop-blur-xl pointer-events-auto">
+            <img src={hostAvatar} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover border border-white/20" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-white">{hostUsername}</p>
+              <p className="text-[11px] text-zinc-300">♥ {formattedLikes} · {formattedViewerCount} watching</p>
+            </div>
+          </div>
+          <button type="button" onClick={onLeave} aria-label="End live stream" className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/75 border border-white/10 text-white backdrop-blur-xl"><X size={21} /></button>
+        </div>
+      </header>
+    );
+  }
+
   return (
     <>
       <header
