@@ -648,9 +648,9 @@ const StreamDashboard = () => {
           );
           return (
             <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-0 bg-black overflow-hidden">
-              <div className={`relative h-full w-full bg-black gap-[2px] ${splitStage ? 'grid grid-cols-2 grid-rows-2' : 'block'}`}>
+              <div className={`relative h-full w-full bg-black gap-[2px] ${splitStage ? 'grid grid-cols-2' : 'block'}`} style={splitStage ? { gridTemplateRows: participantCount <= 2 ? 'minmax(0,1fr)' : 'repeat(2,minmax(0,1fr))' } : undefined}>
                 <div className={panelClass}>
-                  {renderVideo(localStream, true)}
+                  <video ref={localVideoRef} autoPlay muted playsInline className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} />
                   {isCameraOff && <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 text-zinc-500 text-xs font-black tracking-widest">CAMERA OFF</div>}
                   <div className="absolute bottom-3 left-3 z-20 rounded-lg bg-black/60 backdrop-blur px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide">@{streamData?.host?.username || 'Host'} <span className="ml-1 text-cyan-400">● Host</span></div>
                   <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-none">
@@ -665,9 +665,6 @@ const StreamDashboard = () => {
                     <div className="absolute bottom-3 left-3 z-20 rounded-lg bg-black/65 backdrop-blur px-2.5 py-1.5 text-[10px] font-bold text-white">{guest?.username || guest?.display_name || (isBattleMode ? streamData?.challenger?.username || 'Opponent' : 'Co-host')}</div>
                   </div>;
                 })}
-                {!splitStage && <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute bottom-3 left-3 rounded-lg bg-black/60 px-2.5 py-1.5 text-[10px] font-bold">@{streamData?.host?.username || 'Host'} <span className="ml-1 text-cyan-400">● Host</span></div>
-                </div>}
                 {!isBattleMode && Object.keys(remoteStreams || {}).length > 3 && <div className="absolute right-2 bottom-2 z-30 rounded-full bg-black/75 border border-white/10 px-2.5 py-1 text-[9px] font-black text-white">Maximum 4 participants</div>}
                 <div className="absolute inset-y-0 right-2 z-30 w-12 pointer-events-none overflow-hidden">
                   <AnimatePresence>{reactions.map((reaction, index) => <motion.div key={reaction.id || index} initial={{ y: 30, opacity: 0, scale: 0.6 }} animate={{ y: -(index * 48 + 70), opacity: 1, scale: 1 }} exit={{ opacity: 0, y: -180 }} transition={{ duration: 1.8, ease: 'easeOut' }} className="absolute bottom-0 right-0 text-2xl drop-shadow-lg">{reaction.emoji || reaction.reaction || <Smile size={26} />}</motion.div>)}</AnimatePresence>
