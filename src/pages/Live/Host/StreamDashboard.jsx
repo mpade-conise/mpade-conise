@@ -632,57 +632,52 @@ const StreamDashboard = () => {
           </div>
         </div>
 
-        {/* LIVE STAGE — HOST + CO-HOST GRID */}
-        <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-0 bg-black overflow-hidden">
-          <div className={`relative h-full w-full grid ${isBattleMode ? 'grid-cols-2' : 'grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]'} gap-[2px] bg-black`}>
-            <div className="relative min-w-0 min-h-0 overflow-hidden bg-zinc-950">
-              <video ref={localVideoRef} autoPlay muted playsInline className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} />
-              {isCameraOff && <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 text-zinc-500 text-xs font-black tracking-widest">CAMERA OFF</div>}
-              <div className="absolute bottom-3 left-3 z-20 rounded-lg bg-black/60 backdrop-blur px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide">@{streamData?.host?.username || 'Host'} <span className="ml-1 text-cyan-400">● Host</span></div>
-              <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-none">
-                <div className={`px-2.5 py-1 rounded-full backdrop-blur-xl border text-[9px] font-black uppercase tracking-wider ${isOnline ? 'bg-emerald-500/15 border-emerald-400/20 text-emerald-300' : 'bg-red-500/15 border-red-400/20 text-red-300'}`}>
-                  <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />{isOnline ? 'Connected' : 'Reconnecting'}
+        {/* LIVE STAGE — ACCEPTED CO-HOSTS AND BATTLES SHARE ONE DASHBOARD */}
+        {(() => {
+          const remoteEntries = Object.entries(remoteStreams || {}).slice(0, isBattleMode ? 1 : 3);
+          const participantCount = 1 + remoteEntries.length;
+          const splitStage = isBattleMode || remoteEntries.length > 0;
+          const panelClass = "relative min-w-0 min-h-0 overflow-hidden bg-zinc-950";
+          const renderVideo = (stream, mirrored = false) => (
+            <video autoPlay muted playsInline ref={element => {
+              if (element && stream && element.srcObject !== stream) {
+                element.srcObject = stream;
+                element.play?.().catch(() => {});
+              }
+            }} className={`absolute inset-0 w-full h-full object-cover ${mirrored ? 'scale-x-[-1]' : ''}`} />
+          );
+          return (
+            <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-0 bg-black overflow-hidden">
+              <div className={`relative h-full w-full bg-black gap-[2px] ${splitStage ? 'grid grid-cols-2 grid-rows-2' : 'block'}`}>
+                <div className={panelClass}>
+                  {renderVideo(localStream, true)}
+                  {isCameraOff && <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 text-zinc-500 text-xs font-black tracking-widest">CAMERA OFF</div>}
+                  <div className="absolute bottom-3 left-3 z-20 rounded-lg bg-black/60 backdrop-blur px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide">@{streamData?.host?.username || 'Host'} <span className="ml-1 text-cyan-400">● Host</span></div>
+                  <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-none">
+                    <div className={`px-2.5 py-1 rounded-full backdrop-blur-xl border text-[9px] font-black uppercase tracking-wider ${isOnline ? 'bg-emerald-500/15 border-emerald-400/20 text-emerald-300' : 'bg-red-500/15 border-red-400/20 text-red-300'}`}><span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />{isOnline ? 'Connected' : 'Reconnecting'}</div>
+                    {hardwareReady && <span className="px-2.5 py-1 rounded-full bg-black/50 border border-white/10 text-[9px] font-black tracking-wider"><Radio size={10} className="inline mr-1" />LIVE</span>}
+                  </div>
                 </div>
-                {hardwareReady && <span className="px-2.5 py-1 rounded-full bg-black/50 border border-white/10 text-[9px] font-black tracking-wider"><Radio size={10} className="inline mr-1" />LIVE</span>}
+                {remoteEntries.map(([peerId, remoteStream], index) => {
+                  const guest = activeGuests?.find?.(item => [item?.socketId, item?.id, item?.user_id, item?.userId].includes(peerId)) || activeGuests?.[index];
+                  return <div key={peerId} className={panelClass}>
+                    {renderVideo(remoteStream)}
+                    <div className="absolute bottom-3 left-3 z-20 rounded-lg bg-black/65 backdrop-blur px-2.5 py-1.5 text-[10px] font-bold text-white">{guest?.username || guest?.display_name || (isBattleMode ? streamData?.challenger?.username || 'Opponent' : 'Co-host')}</div>
+                  </div>;
+                })}
+                {!splitStage && <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute bottom-3 left-3 rounded-lg bg-black/60 px-2.5 py-1.5 text-[10px] font-bold">@{streamData?.host?.username || 'Host'} <span className="ml-1 text-cyan-400">● Host</span></div>
+                </div>}
+                {!isBattleMode && Object.keys(remoteStreams || {}).length > 3 && <div className="absolute right-2 bottom-2 z-30 rounded-full bg-black/75 border border-white/10 px-2.5 py-1 text-[9px] font-black text-white">Maximum 4 participants</div>}
+                <div className="absolute inset-y-0 right-2 z-30 w-12 pointer-events-none overflow-hidden">
+                  <AnimatePresence>{reactions.map((reaction, index) => <motion.div key={reaction.id || index} initial={{ y: 30, opacity: 0, scale: 0.6 }} animate={{ y: -(index * 48 + 70), opacity: 1, scale: 1 }} exit={{ opacity: 0, y: -180 }} transition={{ duration: 1.8, ease: 'easeOut' }} className="absolute bottom-0 right-0 text-2xl drop-shadow-lg">{reaction.emoji || reaction.reaction || <Smile size={26} />}</motion.div>)}</AnimatePresence>
+                </div>
+                {isBattleMode && <div className="absolute top-2 left-2 right-2 z-40"><BattleOverlay score={battleScores} hostProfile={streamData?.host} coHost={streamData?.challenger || { username: 'Opponent' }} onInviteClick={handleBattleInvite} /></div>}
+                <AnimatePresence>{joinAlert && <motion.div initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-black/70 border border-white/10 backdrop-blur-xl text-xs font-bold shadow-2xl pointer-events-none"><Users size={13} className="inline mr-1.5 text-cyan-400" />{typeof joinAlert === 'string' ? joinAlert : 'New viewer joined'}</motion.div>}</AnimatePresence>
               </div>
             </div>
-
-            <div className={`relative min-w-0 min-h-0 overflow-hidden bg-zinc-950 ${isBattleMode ? '' : 'grid grid-rows-2'}`}>
-              {isBattleMode ? (
-                <div className="relative min-h-0 h-full overflow-hidden bg-zinc-900">
-                  <video ref={challengerVideoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
-                  <div className="absolute bottom-3 left-3 z-20 rounded-lg bg-black/60 backdrop-blur px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide">{streamData?.challenger?.username || 'Opponent'} <span className="ml-1 text-rose-400">● Opponent</span></div>
-                  {!Object.keys(remoteStreams || {}).length && <div className="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">Waiting for opponent video…</div>}
-                </div>
-              ) : Object.entries(remoteStreams || {}).slice(0, 2).map(([peerId, remoteStream], index) => (
-                <div key={peerId} className="relative min-h-0 overflow-hidden bg-zinc-900 border-b border-black">
-                  <video autoPlay playsInline muted ref={element => { if (element && remoteStream && element.srcObject !== remoteStream) { element.srcObject = remoteStream; element.play?.().catch(() => {}); } }} className="absolute inset-0 w-full h-full object-cover" />
-                  <div className="absolute bottom-2 left-2 z-20 rounded-lg bg-black/60 backdrop-blur px-2 py-1 text-[9px] font-bold text-white">Guest {index + 1}</div>
-                </div>
-              ))}
-              {!isBattleMode && Object.keys(remoteStreams || {}).length === 0 && (
-                <div className="relative flex items-center justify-center bg-zinc-900/90 text-center p-3">
-                  <div><Users size={22} className="mx-auto mb-2 text-zinc-600" /><p className="text-[10px] font-bold text-zinc-500">Co-hosts appear here when they connect</p></div>
-                </div>
-              )}
-            </div>
-
-            {!isBattleMode && Object.keys(remoteStreams || {}).length > 2 && (
-              <div className="absolute right-2 bottom-2 z-30 rounded-full bg-black/75 border border-white/10 px-2.5 py-1 text-[9px] font-black text-white">+{Object.keys(remoteStreams).length - 2} more connected</div>
-            )}
-
-            <div className="absolute inset-y-0 right-2 z-30 w-12 pointer-events-none overflow-hidden">
-              <AnimatePresence>
-                {reactions.map((reaction, index) => <motion.div key={reaction.id || index} initial={{ y: 30, opacity: 0, scale: 0.6 }} animate={{ y: -(index * 48 + 70), opacity: 1, scale: 1 }} exit={{ opacity: 0, y: -180 }} transition={{ duration: 1.8, ease: 'easeOut' }} className="absolute bottom-0 right-0 text-2xl drop-shadow-lg">{reaction.emoji || reaction.reaction || <Smile size={26} />}</motion.div>)}
-              </AnimatePresence>
-            </div>
-
-            {isBattleMode && <div className="absolute top-2 left-2 right-2 z-40"><BattleOverlay score={battleScores} hostProfile={streamData?.host} coHost={streamData?.challenger || { username: 'Challenger' }} onInviteClick={handleBattleInvite} /></div>}
-            <AnimatePresence>
-              {joinAlert && <motion.div initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-black/70 border border-white/10 backdrop-blur-xl text-xs font-bold shadow-2xl pointer-events-none"><Users size={13} className="inline mr-1.5 text-cyan-400" />{typeof joinAlert === 'string' ? joinAlert : 'New viewer joined'}</motion.div>}
-            </AnimatePresence>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* HOST ACTION AREA */}
         <div className="absolute inset-x-0 bottom-0 z-50 p-3 sm:p-4 pointer-events-none">
