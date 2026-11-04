@@ -760,6 +760,9 @@ export const useStreamSocket = (
 
     setIncomingInvite,
 
+    incomingCohostInvite,
+    setIncomingCohostInvite,
+
     reactionTrigger,
 
     connectionState
