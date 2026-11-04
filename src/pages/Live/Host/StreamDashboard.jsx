@@ -84,6 +84,15 @@ const StreamDashboard = () => {
 
   const currentViewers = Array.isArray(viewers) ? viewers.length : Number(viewers || 0);
 
+  useEffect(() => {
+    if (!isBattleMode || !challengerVideoRef.current) return;
+    const challengerStream = Object.values(remoteStreams || {})[0];
+    if (!challengerStream) return;
+    const video = challengerVideoRef.current;
+    if (video.srcObject !== challengerStream) video.srcObject = challengerStream;
+    video.play?.().catch(() => {});
+  }, [isBattleMode, remoteStreams]);
+
 
   const handleAcceptCohostInvite = () => {
     if (!socket || !incomingCohostInvite) return;
