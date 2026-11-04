@@ -17,6 +17,7 @@ import HostControls from './HostControls';
 import ChatBox from '../Shared/ChatBox';
 import LiveAnalyticsPanel from './HostAnalytics';
 import GiftAlertOverlay from '../Shared/GiftAlertOverlay';
+import StreamHeader from '../Shared/StreamHeader';
 import BattleOverlay from './BattleOverlay';
 import BattleController from '../Shared/BattleController';
 import SettingsPanel from '../Shared/setting';
@@ -618,6 +619,7 @@ const StreamDashboard = () => {
       {/* MAIN LIVE VIEWPORT */}
       <div className="relative flex-1 h-full min-w-0 overflow-hidden">
         <GiftAlertOverlay gift={giftsEnabled ? activeGift : null} lowData={false} position="center" />
+        <StreamHeader data={streamData} isHost viewerCount={currentViewers} onLeave={() => setShowEndConfirm(true)} />
 
         {/* LIVE STAGE — ACCEPTED CO-HOSTS AND BATTLES SHARE ONE DASHBOARD */}
         {(() => {
@@ -634,16 +636,12 @@ const StreamDashboard = () => {
             }} className={`absolute inset-0 w-full h-full object-cover ${mirrored ? 'scale-x-[-1]' : ''}`} />
           );
           return (
-            <div className="absolute top-0 bottom-[30%] left-0 right-0 z-0 bg-black overflow-hidden">
+            <div className="absolute top-[10%] bottom-[30%] left-0 right-0 z-0 bg-black overflow-hidden">
               <div className={`relative h-full w-full bg-black gap-[2px] grid ${splitStage ? 'grid-cols-2' : 'grid-cols-1'}`} style={{ gridTemplateRows: splitStage && participantCount > 2 ? 'repeat(2,minmax(0,1fr))' : 'minmax(0,1fr)' }}>
                 <div className={panelClass}>
                   <video ref={localVideoRef} autoPlay muted playsInline className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCameraOff ? 'opacity-0' : 'opacity-100'}`} />
                   {isCameraOff && <div className="absolute inset-0 flex items-center justify-center bg-zinc-900 text-zinc-500 text-xs font-black tracking-widest">CAMERA OFF</div>}
                   <div className="absolute bottom-3 left-3 z-20 rounded-lg bg-black/60 backdrop-blur px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide">@{streamData?.host?.username || 'Host'} <span className="ml-1 text-cyan-400">● Host</span></div>
-                  <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-none">
-                    <div className={`px-2.5 py-1 rounded-full backdrop-blur-xl border text-[9px] font-black uppercase tracking-wider ${isOnline ? 'bg-emerald-500/15 border-emerald-400/20 text-emerald-300' : 'bg-red-500/15 border-red-400/20 text-red-300'}`}><span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />{isOnline ? 'Connected' : 'Reconnecting'}</div>
-                    {hardwareReady && <span className="px-2.5 py-1 rounded-full bg-black/50 border border-white/10 text-[9px] font-black tracking-wider"><Radio size={10} className="inline mr-1" />LIVE</span>}
-                  </div>
                 </div>
                 {remoteEntries.map(([peerId, remoteStream], index) => {
                   const guest = activeGuests?.find?.(item => [item?.socketId, item?.id, item?.user_id, item?.userId].includes(peerId)) || activeGuests?.[index];
@@ -779,16 +777,6 @@ const StreamDashboard = () => {
                     </button>
                   </li>
 
-                  <li>
-                    <button
-                      type="button"
-                      onClick={() => setShowEndConfirm(true)}
-                      title="End live"
-                      className="p-2.5 sm:p-3 rounded-full bg-red-500/15 text-red-300 hover:bg-red-500 hover:text-white transition-colors"
-                    >
-                      <Radio size={16} />
-                    </button>
-                  </li>
                 </ul>
               </nav>
             </div>
